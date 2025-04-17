@@ -50,6 +50,9 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
+	// Initialize target camera rotation
+	TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -85,6 +88,9 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Look);
+
+		// Rotate Camera
+		EnhancedInputComponent->BindAction(RotateCameraAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::GetCameraPositionIndex);
 	}
 	else
 	{
@@ -101,17 +107,73 @@ void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 	{
 		// find out which way is forward
 		const FRotator Rotation = Controller->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
+		const FRotator YawRotation(0, Rotation.Yaw + CameraOffset, 0);
 
 		// get forward vector
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	
 		// get right vector 
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
 		// add movement 
 		AddMovementInput(ForwardDirection, MovementVector.Y);
 		AddMovementInput(RightDirection, MovementVector.X);
+	}
+}
+
+void AProjectUmeowmiCharacter::GetCameraPositionIndex(const FInputActionValue& Value)
+{
+	float InputValue = Value.Get<float>();
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Position Index: %f"), InputValue);
+	
+	//If Value is negated, then we need to rotate the camera to the right	
+	// Q or LB
+	if (InputValue < 0)
+	{
+		if (CameraPositionIndex == 3)
+		{
+			CameraPositionIndex = 0;
+		}
+		else
+		{
+			CameraPositionIndex++;
+		}
+		UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Position Index: %d"), CameraPositionIndex);
+	}
+	
+	//If Value is positive, then we need to rotate the camera to the left
+	// E or RB
+	else if (InputValue > 0)
+	{
+		if (CameraPositionIndex == 0)
+		{
+			CameraPositionIndex = 3;
+		}
+		else
+		{
+			CameraPositionIndex--;
+		}
+		UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Position Index: %d"), CameraPositionIndex);
+	}
+
+	// Update the target camera rotation based on position index
+	switch (CameraPositionIndex)
+	{
+		case 0:
+			TargetCameraRotation = FRotator(-25.0f, -45.0f, 0.0f);
+			CameraOffset = -45.0f;
+			break;
+		case 1:
+			TargetCameraRotation = FRotator(-25.0f, -135.0f, 0.0f);
+			CameraOffset = -135.0f;
+			break;
+		case 2:
+			TargetCameraRotation = FRotator(-25.0f, 135.0f, 0.0f);
+			CameraOffset = 135.0f;
+			break;
+		case 3:
+			TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
+			CameraOffset = 45.0f;
+			break;
 	}
 }
 
@@ -123,7 +185,17 @@ void AProjectUmeowmiCharacter::Look(const FInputActionValue& Value)
 	if (Controller != nullptr)
 	{
 		// add yaw and pitch input to controller
-		AddControllerYawInput(LookAxisVector.X);
-		AddControllerPitchInput(LookAxisVector.Y);
+		 //AddControllerYawInput(LookAxisVector.X);
+		 //AddControllerPitchInput(LookAxisVector.Y);
 	}
+}
+
+void AProjectUmeowmiCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	// Smoothly interpolate the camera rotation
+	FRotator CurrentRotation = CameraBoom->GetRelativeRotation();
+	FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetCameraRotation, DeltaTime, CameraTransitionSpeed);
+	CameraBoom->SetRelativeRotation(NewRotation);
 }
