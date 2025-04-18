@@ -94,6 +94,9 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 		// Toggle Grid Movement
 		EnhancedInputComponent->BindAction(ToggleGridMovementAction, ETriggerEvent::Started, this, &AProjectUmeowmiCharacter::ToggleGridMovement);
+		
+		// Zoom Camera
+		EnhancedInputComponent->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::ZoomCamera);
 	}
 	else
 	{
@@ -168,14 +171,7 @@ void AProjectUmeowmiCharacter::GetCameraPositionIndex(const FInputActionValue& V
 	// Q or LB
 	if (InputValue < 0)
 	{
-		if (CameraPositionIndex == 3)
-		{
-			CameraPositionIndex = 0;
-		}
-		else
-		{
-			CameraPositionIndex++;
-		}
+		CameraPositionIndex = (CameraPositionIndex + 1) % NumberOfCameraPositions;
 		UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Position Index: %d"), CameraPositionIndex);
 	}
 	
@@ -183,37 +179,19 @@ void AProjectUmeowmiCharacter::GetCameraPositionIndex(const FInputActionValue& V
 	// E or RB
 	else if (InputValue > 0)
 	{
-		if (CameraPositionIndex == 0)
-		{
-			CameraPositionIndex = 3;
-		}
-		else
-		{
-			CameraPositionIndex--;
-		}
+		CameraPositionIndex = (CameraPositionIndex - 1 + NumberOfCameraPositions) % NumberOfCameraPositions;
 		UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Position Index: %d"), CameraPositionIndex);
 	}
 
-	// Update the target camera rotation based on position index
-	switch (CameraPositionIndex)
-	{
-		case 0:
-			TargetCameraRotation = FRotator(-25.0f, -45.0f, 0.0f);
-			CameraOffset = -45.0f;
-			break;
-		case 1:
-			TargetCameraRotation = FRotator(-25.0f, -135.0f, 0.0f);
-			CameraOffset = -135.0f;
-			break;
-		case 2:
-			TargetCameraRotation = FRotator(-25.0f, 135.0f, 0.0f);
-			CameraOffset = 135.0f;
-			break;
-		case 3:
-			TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
-			CameraOffset = 45.0f;
-			break;
-	}
+	// Calculate the angle for the current camera position
+	float AngleStep = 360.0f / NumberOfCameraPositions;
+	float CurrentAngle = BaseCameraAngle + (CameraPositionIndex * AngleStep);
+	
+	// Update the target camera rotation based on calculated angle
+	TargetCameraRotation = FRotator(-25.0f, CurrentAngle, 0.0f);
+	CameraOffset = CurrentAngle;
+	
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Angle: %f"), CurrentAngle);
 }
 
 void AProjectUmeowmiCharacter::Look(const FInputActionValue& Value)
@@ -301,4 +279,42 @@ FVector AProjectUmeowmiCharacter::SnapToGrid(const FVector& Location) const
 	
 	// Keep Z coordinate unchanged
 	return FVector(SnappedX, SnappedY, Location.Z);
+}
+
+void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
+{
+	// Get the zoom input value
+	float ZoomValue = Value.Get<float>();
+	
+	// Determine if this is from a controller or mouse wheel
+	// Controller input typically comes as a float between -1 and 1
+	// Mouse wheel typically comes as a float with values like -1, 0, or 1
+	
+	// Calculate the zoom amount based on the input source
+	float ZoomAmount = 0.0f;
+	
+	// If the absolute value is close to 1, it's likely from a controller
+	if (FMath::IsNearlyEqual(FMath::Abs(ZoomValue), 1.0f, 0.1f))
+	{
+		// Controller input - use the controller zoom speed
+		ZoomAmount = ZoomValue * ControllerZoomSpeed;
+	}
+	else
+	{
+		// Mouse wheel input - use the mouse wheel zoom speed
+		ZoomAmount = ZoomValue * MouseWheelZoomSpeed;
+	}
+	
+	// Get the current orthographic width
+	float CurrentOrthoWidth = FollowCamera->OrthoWidth;
+	
+	// Calculate the new orthographic width
+	// Note: For orthographic cameras, smaller width = more zoomed in
+	float NewOrthoWidth = FMath::Clamp(CurrentOrthoWidth + ZoomAmount, MinOrthoWidth, MaxOrthoWidth);
+	
+	// Apply the new orthographic width
+	FollowCamera->OrthoWidth = NewOrthoWidth;
+	
+	// Log the zoom change for debugging
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Ortho Width: %f (Input: %f)"), NewOrthoWidth, ZoomValue);
 }
