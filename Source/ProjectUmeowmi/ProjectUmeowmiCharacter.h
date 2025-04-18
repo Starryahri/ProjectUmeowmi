@@ -60,11 +60,38 @@ class AProjectUmeowmiCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	FRotator TargetCameraRotation;
 
+	/** Grid movement settings */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	bool bUseGridMovement = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	float GridSize = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	float GridMovementSpeed = 500.0f;
+
+	/** Target grid position for movement */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	FVector TargetGridPosition;
+
+	/** Target rotation for grid movement */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	FRotator TargetRotation;
+
+	/** Whether we're currently moving to a grid position */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	bool bIsMovingToGrid;
+
+	/** Toggle Grid Movement Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* ToggleGridMovementAction;
+
 	int32 CameraPositionIndex = 3;
 
 public:
 	AProjectUmeowmiCharacter();
 	void GetCameraPositionIndex(const FInputActionValue& Value);
+	void ToggleGridMovement(const FInputActionValue& Value);
 	
 	/** Called every frame to update camera position */
 	virtual void Tick(float DeltaTime) override;
@@ -75,6 +102,9 @@ protected:
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+
+	/** Helper function to snap position to grid */
+	FVector SnapToGrid(const FVector& Location) const;
 			
 protected:
 	virtual void NotifyControllerChanged() override;

@@ -91,6 +91,9 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 		// Rotate Camera
 		EnhancedInputComponent->BindAction(RotateCameraAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::GetCameraPositionIndex);
+
+		// Toggle Grid Movement
+		EnhancedInputComponent->BindAction(ToggleGridMovementAction, ETriggerEvent::Started, this, &AProjectUmeowmiCharacter::ToggleGridMovement);
 	}
 	else
 	{
@@ -114,9 +117,45 @@ void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 		// get right vector 
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		// add movement 
-		AddMovementInput(ForwardDirection, MovementVector.Y);
-		AddMovementInput(RightDirection, MovementVector.X);
+		if (bUseGridMovement)
+		{
+			// Only process new movement input if we're not already moving to a grid position
+			if (!bIsMovingToGrid)
+			{
+				// For grid movement, we only move in cardinal directions
+				// Determine which direction has the larger input
+				if (FMath::Abs(MovementVector.X) > FMath::Abs(MovementVector.Y))
+				{
+					// Move horizontally
+					FVector CurrentLocation = GetActorLocation();
+					TargetGridPosition = CurrentLocation + RightDirection * GridSize * FMath::Sign(MovementVector.X);
+					TargetGridPosition = SnapToGrid(TargetGridPosition);
+					
+					// Set target rotation based on movement direction
+					TargetRotation = FRotator(0.0f, YawRotation.Yaw + (MovementVector.X > 0 ? 90.0f : -90.0f), 0.0f);
+					
+					bIsMovingToGrid = true;
+				}
+				else if (MovementVector.Y != 0)
+				{
+					// Move vertically
+					FVector CurrentLocation = GetActorLocation();
+					TargetGridPosition = CurrentLocation + ForwardDirection * GridSize * FMath::Sign(MovementVector.Y);
+					TargetGridPosition = SnapToGrid(TargetGridPosition);
+					
+					// Set target rotation based on movement direction
+					TargetRotation = FRotator(0.0f, YawRotation.Yaw + (MovementVector.Y > 0 ? 0.0f : 180.0f), 0.0f);
+					
+					bIsMovingToGrid = true;
+				}
+			}
+		}
+		else
+		{
+			// Normal movement
+			AddMovementInput(ForwardDirection, MovementVector.Y);
+			AddMovementInput(RightDirection, MovementVector.X);
+		}
 	}
 }
 
@@ -198,4 +237,68 @@ void AProjectUmeowmiCharacter::Tick(float DeltaTime)
 	FRotator CurrentRotation = CameraBoom->GetRelativeRotation();
 	FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetCameraRotation, DeltaTime, CameraTransitionSpeed);
 	CameraBoom->SetRelativeRotation(NewRotation);
+
+	// Handle grid movement
+	if (bUseGridMovement && bIsMovingToGrid)
+	{
+		FVector CurrentLocation = GetActorLocation();
+		FVector Direction = (TargetGridPosition - CurrentLocation).GetSafeNormal();
+		float DistanceToTarget = FVector::Distance(CurrentLocation, TargetGridPosition);
+
+		if (DistanceToTarget > 1.0f) // If we're not close enough to the target
+		{
+			// Move towards the target grid position
+			AddMovementInput(Direction, 1.0f);
+			
+			// Smoothly rotate towards the target rotation
+			FRotator CurrentActorRotation = GetActorRotation();
+			FRotator NewActorRotation = FMath::RInterpTo(CurrentActorRotation, TargetRotation, DeltaTime, 15.0f);
+			SetActorRotation(NewActorRotation);
+		}
+		else
+		{
+			// We've reached the target grid position
+			SetActorLocation(TargetGridPosition);
+			SetActorRotation(TargetRotation);
+			bIsMovingToGrid = false;
+		}
+	}
+}
+
+void AProjectUmeowmiCharacter::ToggleGridMovement(const FInputActionValue& Value)
+{
+	bUseGridMovement = !bUseGridMovement;
+	
+	// Update movement speed based on grid mode
+	if (bUseGridMovement)
+	{
+		GetCharacterMovement()->MaxWalkSpeed = GridMovementSpeed;
+		// Initialize target position and rotation to current values when enabling grid movement
+		TargetGridPosition = GetActorLocation();
+		TargetRotation = GetActorRotation();
+		bIsMovingToGrid = false;
+		
+		// Ensure character movement component settings are correct for grid movement
+		GetCharacterMovement()->bOrientRotationToMovement = false;
+	}
+	else
+	{
+		GetCharacterMovement()->MaxWalkSpeed = 500.0f; // Reset to default speed
+		bIsMovingToGrid = false;
+		
+		// Reset character movement component settings
+		GetCharacterMovement()->bOrientRotationToMovement = true;
+	}
+
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Grid Movement %s"), bUseGridMovement ? TEXT("Enabled") : TEXT("Disabled"));
+}
+
+FVector AProjectUmeowmiCharacter::SnapToGrid(const FVector& Location) const
+{
+	// Snap X and Y coordinates to the nearest grid point
+	float SnappedX = FMath::RoundToFloat(Location.X / GridSize) * GridSize;
+	float SnappedY = FMath::RoundToFloat(Location.Y / GridSize) * GridSize;
+	
+	// Keep Z coordinate unchanged
+	return FVector(SnappedX, SnappedY, Location.Z);
 }
