@@ -19,9 +19,6 @@ public:
     /** Sets the interaction key text */
     void SetInteractionKey(const FString& Key);
 
-    /** Sets the interaction text */
-    void SetInteractionText(const FString& Text);
-
     /** Sets the interaction icon */
     void SetInteractionIcon(UTexture2D* Icon);
 
@@ -31,10 +28,6 @@ protected:
     /** The text block displaying the interaction key */
     UPROPERTY(meta = (BindWidget))
     UTextBlock* InteractionKeyText;
-
-    /** The text block displaying the interaction description */
-    UPROPERTY(meta = (BindWidget))
-    UTextBlock* InteractionDescriptionText;
 
     /** The image displaying the interaction icon */
     UPROPERTY(meta = (BindWidget))

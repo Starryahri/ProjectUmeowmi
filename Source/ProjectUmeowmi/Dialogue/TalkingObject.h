@@ -6,7 +6,9 @@
 #include "TalkingObjectWidget.h"
 #include "TalkingObject.generated.h"
 
+// Forward declarations
 class UWidgetComponent;
+class USphereComponent;
 class UDlgDialogue;
 class UDlgContext;
 
@@ -30,6 +32,8 @@ public:
     ATalkingObject();
 
     virtual void BeginPlay() override;
+    
+    // We'll keep Tick for now but mark it as virtual so we can override it in derived classes if needed
     virtual void Tick(float DeltaTime) override;
 
     // IDlgDialogueParticipant Interface
@@ -55,6 +59,17 @@ public:
     // Dialogue methods
     void StartRandomDialogue();
     void StartSpecificDialogue(UDlgDialogue* Dialogue);
+
+    // Collision events
+    UFUNCTION()
+    void OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+    
+    UFUNCTION()
+    void OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+    // Debug methods
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Debug")
+    void ToggleDebugVisualization();
 
 protected:
     // Configurable properties
@@ -86,6 +101,10 @@ protected:
     UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
     UWidgetComponent* InteractionWidget;
 
+    // Collision component
+    UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
+    USphereComponent* InteractionSphere;
+
     // Debug visualization
     UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
     bool bShowDebugRange = false;
@@ -95,6 +114,7 @@ private:
     bool bIsInteracting = false;
     UDlgContext* CurrentDialogueContext = nullptr;
     TSet<UDlgDialogue*> UsedDialogues;
+    bool bPlayerInRange = false;
 
     // Helper methods
     void UpdateInteractionWidget();

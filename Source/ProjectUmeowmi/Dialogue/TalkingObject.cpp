@@ -1,5 +1,6 @@
 #include "TalkingObject.h"
 #include "Components/WidgetComponent.h"
+#include "Components/SphereComponent.h"
 #include "DlgSystem/DlgManager.h"
 #include "DlgSystem/DlgContext.h"
 #include "DlgSystem/DlgDialogue.h"
@@ -8,10 +9,20 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Character.h"
+#include "Engine/Engine.h"
 
 ATalkingObject::ATalkingObject()
 {
-    PrimaryActorTick.bCanEverTick = true;
+    // We can disable tick by default since we'll only need it for debug visualization
+    PrimaryActorTick.bCanEverTick = false;
+
+    // Create and setup the interaction sphere component
+    InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
+    InteractionSphere->SetupAttachment(RootComponent);
+    InteractionSphere->SetSphereRadius(InteractionRange);
+    InteractionSphere->SetCollisionProfileName(TEXT("Trigger"));
+    InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereBeginOverlap);
+    InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereEndOverlap);
 
     // Create and setup the widget component
     InteractionWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidget"));
@@ -29,16 +40,19 @@ void ATalkingObject::BeginPlay()
     {
         InteractionWidget->SetWidgetClass(InteractionWidgetClass);
     }
+    
+    // Enable tick if debug visualization is enabled
+    if (bShowDebugRange)
+    {
+        PrimaryActorTick.bCanEverTick = true;
+    }
 }
 
 void ATalkingObject::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // Update interaction widget visibility based on player proximity
-    UpdateInteractionWidget();
-
-    // Draw debug visualization if enabled
+    // Only draw debug visualization if enabled
     if (bShowDebugRange)
     {
         DrawDebugRange();
@@ -114,7 +128,7 @@ bool ATalkingObject::ModifyNameValue(FName ValueName, FName NameValue)
 // Interaction methods
 bool ATalkingObject::CanInteract() const
 {
-    return IsPlayerInRange() && !bIsInteracting && AvailableDialogues.Num() > 0;
+    return bPlayerInRange && !bIsInteracting && AvailableDialogues.Num() > 0;
 }
 
 void ATalkingObject::StartInteraction()
@@ -167,6 +181,62 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
     CurrentDialogueContext = UDlgManager::StartDialogue(Dialogue, Participants);
 }
 
+// Collision events
+void ATalkingObject::OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+    // Check if the overlapping actor is the player
+    ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
+    if (OtherActor == PlayerCharacter)
+    {
+        bPlayerInRange = true;
+        
+        // Update the widget visibility
+        UpdateInteractionWidget();
+        
+        // Display debug message on screen
+        if (GEngine)
+        {
+            FString Message = FString::Printf(TEXT("Player entered interaction range of %s"), *DisplayName.ToString());
+            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Message);
+        }
+    }
+}
+
+void ATalkingObject::OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+    // Check if the actor that stopped overlapping is the player
+    ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
+    if (OtherActor == PlayerCharacter)
+    {
+        bPlayerInRange = false;
+        
+        // Update the widget visibility
+        UpdateInteractionWidget();
+        
+        // Display debug message on screen
+        if (GEngine)
+        {
+            FString Message = FString::Printf(TEXT("Player exited interaction range of %s"), *DisplayName.ToString());
+            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, Message);
+        }
+    }
+}
+
+// Debug methods
+void ATalkingObject::ToggleDebugVisualization()
+{
+    bShowDebugRange = !bShowDebugRange;
+    
+    // Enable or disable tick based on debug visualization
+    PrimaryActorTick.bCanEverTick = bShowDebugRange;
+    
+    // Draw the debug range once when toggled
+    if (bShowDebugRange)
+    {
+        DrawDebugRange();
+    }
+}
+
 // Helper methods
 void ATalkingObject::UpdateInteractionWidget()
 {
@@ -183,21 +253,13 @@ void ATalkingObject::UpdateInteractionWidget()
         if (UTalkingObjectWidget* Widget = Cast<UTalkingObjectWidget>(InteractionWidget->GetWidget()))
         {
             Widget->SetInteractionKey(InteractionKey.ToString());
-            Widget->SetInteractionText(DisplayName.ToString());
         }
     }
 }
 
 bool ATalkingObject::IsPlayerInRange() const
 {
-    ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
-    if (!PlayerCharacter)
-    {
-        return false;
-    }
-
-    const float Distance = FVector::Distance(GetActorLocation(), PlayerCharacter->GetActorLocation());
-    return Distance <= InteractionRange;
+    return bPlayerInRange;
 }
 
 UDlgDialogue* ATalkingObject::GetRandomDialogue() const

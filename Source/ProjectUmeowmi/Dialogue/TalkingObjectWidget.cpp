@@ -15,14 +15,6 @@ void UTalkingObjectWidget::SetInteractionKey(const FString& Key)
     }
 }
 
-void UTalkingObjectWidget::SetInteractionText(const FString& Text)
-{
-    if (InteractionDescriptionText)
-    {
-        InteractionDescriptionText->SetText(FText::FromString(Text));
-    }
-}
-
 void UTalkingObjectWidget::SetInteractionIcon(UTexture2D* Icon)
 {
     if (InteractionIcon && Icon)
