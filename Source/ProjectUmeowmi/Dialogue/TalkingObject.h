@@ -12,6 +12,11 @@ class USphereComponent;
 class UDlgDialogue;
 class UDlgContext;
 
+// Delegate for when a player enters the interaction sphere
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerEnteredInteractionSphere, class ATalkingObject*, TalkingObject);
+// Delegate for when a player exits the interaction sphere
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerExitedInteractionSphere, class ATalkingObject*, TalkingObject);
+
 UENUM(BlueprintType)
 enum class ETalkingObjectType : uint8
 {
@@ -37,7 +42,8 @@ public:
     virtual void Tick(float DeltaTime) override;
 
     // IDlgDialogueParticipant Interface
-    virtual FName GetParticipantName() const;
+    FName GetParticipantName_Implementation() const override { return ParticipantName; }
+
     virtual FText GetParticipantDisplayName(FName ActiveSpeaker) const;
     virtual UTexture2D* GetParticipantIcon(FName ActiveSpeaker, FName ActiveSpeakerState) const;
     virtual bool CheckCondition(const UDlgContext* Context, FName ConditionName) const;
@@ -46,10 +52,6 @@ public:
     virtual bool GetBoolValue(FName ValueName) const;
     virtual FName GetNameValue(FName ValueName) const;
     virtual bool OnDialogueEvent(UDlgContext* Context, FName EventName);
-    virtual bool ModifyFloatValue(FName ValueName, bool bDelta, float Value);
-    virtual bool ModifyIntValue(FName ValueName, bool bDelta, int32 Value);
-    virtual bool ModifyBoolValue(FName ValueName, bool bNewValue);
-    virtual bool ModifyNameValue(FName ValueName, FName NameValue);
 
     // Interaction methods
     bool CanInteract() const;
@@ -70,6 +72,26 @@ public:
     // Debug methods
     UFUNCTION(BlueprintCallable, Category = "Talking Object|Debug")
     void ToggleDebugVisualization();
+
+    // Delegate events
+    UPROPERTY(BlueprintAssignable, Category = "Talking Object|Events")
+    FOnPlayerEnteredInteractionSphere OnPlayerEnteredInteractionSphere;
+
+    UPROPERTY(BlueprintAssignable, Category = "Talking Object|Events")
+    FOnPlayerExitedInteractionSphere OnPlayerExitedInteractionSphere;
+
+    // Getters for talking object information
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Info")
+    FName GetInteractionKeyName() const { return InteractionKey; }
+
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Info")
+    FText GetTalkingObjectDisplayName() const { return DisplayName; }
+
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Info")
+    FName GetTalkingObjectName() const { return ParticipantName; }
+    
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Info")
+    ETalkingObjectType GetTalkingObjectType() const { return ObjectType; }
 
 protected:
     // Configurable properties

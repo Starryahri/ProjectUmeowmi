@@ -60,10 +60,10 @@ void ATalkingObject::Tick(float DeltaTime)
 }
 
 // IDlgDialogueParticipant Interface Implementation
-FName ATalkingObject::GetParticipantName() const
-{
-    return ParticipantName;
-}
+//FName ATalkingObject::GetParticipantName() const
+//{
+//    return ParticipantName;
+//}
 
 FText ATalkingObject::GetParticipantDisplayName(FName ActiveSpeaker) const
 {
@@ -105,25 +105,6 @@ bool ATalkingObject::OnDialogueEvent(UDlgContext* Context, FName EventName)
     return false;
 }
 
-bool ATalkingObject::ModifyFloatValue(FName ValueName, bool bDelta, float Value)
-{
-    return false;
-}
-
-bool ATalkingObject::ModifyIntValue(FName ValueName, bool bDelta, int32 Value)
-{
-    return false;
-}
-
-bool ATalkingObject::ModifyBoolValue(FName ValueName, bool bNewValue)
-{
-    return false;
-}
-
-bool ATalkingObject::ModifyNameValue(FName ValueName, FName NameValue)
-{
-    return false;
-}
 
 // Interaction methods
 bool ATalkingObject::CanInteract() const
@@ -160,6 +141,8 @@ void ATalkingObject::StartRandomDialogue()
 
 void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
 {
+
+
     if (!Dialogue)
     {
         return;
@@ -175,7 +158,7 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
     // Create participants array
     TArray<UObject*> Participants;
     Participants.Add(this);
-    Participants.Add(PlayerCharacter);
+    //Participants.Add(PlayerCharacter);
 
     // Start the dialogue
     CurrentDialogueContext = UDlgManager::StartDialogue(Dialogue, Participants);
@@ -193,6 +176,14 @@ void ATalkingObject::OnInteractionSphereBeginOverlap(UPrimitiveComponent* Overla
         // Update the widget visibility
         UpdateInteractionWidget();
         
+        // Broadcast the delegate
+        OnPlayerEnteredInteractionSphere.Broadcast(this);
+        
+        // display this object's participant name
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Participant name:"));
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, *ParticipantName.ToString());
+
+
         // Display debug message on screen
         if (GEngine)
         {
@@ -212,6 +203,9 @@ void ATalkingObject::OnInteractionSphereEndOverlap(UPrimitiveComponent* Overlapp
         
         // Update the widget visibility
         UpdateInteractionWidget();
+        
+        // Broadcast the delegate
+        OnPlayerExitedInteractionSphere.Broadcast(this);
         
         // Display debug message on screen
         if (GEngine)

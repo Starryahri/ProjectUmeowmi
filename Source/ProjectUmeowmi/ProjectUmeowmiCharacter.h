@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
+#include "DlgSystem/DlgDialogueParticipant.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -12,11 +13,12 @@ class UCameraComponent;
 class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
+class ATalkingObject;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
 UCLASS(config=Game)
-class AProjectUmeowmiCharacter : public ACharacter
+class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipant
 {
 	GENERATED_BODY()
 
@@ -51,6 +53,10 @@ class AProjectUmeowmiCharacter : public ACharacter
 	/** Zoom Camera Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* ZoomAction;
+
+	/** Interact Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* InteractAction;
 
 	/** Camera Offset */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Isometric Camera", meta = (AllowPrivateAccess = "true"))
@@ -126,11 +132,16 @@ class AProjectUmeowmiCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Isometric Camera", meta = (AllowPrivateAccess = "true"))
 	float ControllerZoomSpeed = 200.0f;
 
+	/** Current talking object that can be interacted with */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Interaction", meta = (AllowPrivateAccess = "true"))
+	ATalkingObject* CurrentTalkingObject;
+
 public:
 	AProjectUmeowmiCharacter();
 	void GetCameraPositionIndex(const FInputActionValue& Value);
 	void ToggleGridMovement(const FInputActionValue& Value);
 	void ZoomCamera(const FInputActionValue& Value);
+	void Interact(const FInputActionValue& Value);
 	
 	/** Called every frame to update camera position */
 	virtual void Tick(float DeltaTime) override;
@@ -155,5 +166,17 @@ public:
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+	
+	/** Register a talking object for interaction */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void RegisterTalkingObject(ATalkingObject* TalkingObject);
+	
+	/** Unregister a talking object from interaction */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void UnregisterTalkingObject(ATalkingObject* TalkingObject);
+	
+	/** Check if there's a talking object available for interaction */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	bool HasTalkingObjectAvailable() const { return CurrentTalkingObject != nullptr; }
 };
 
