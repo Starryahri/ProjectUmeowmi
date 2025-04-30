@@ -43,9 +43,8 @@ public:
 
     // IDlgDialogueParticipant Interface
     FName GetParticipantName_Implementation() const override { return ParticipantName; }
-
-    virtual FText GetParticipantDisplayName(FName ActiveSpeaker) const;
-    virtual UTexture2D* GetParticipantIcon(FName ActiveSpeaker, FName ActiveSpeakerState) const;
+    FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override { return DisplayName; }
+    UTexture2D* GetParticipantIcon_Implementation(FName ActiveSpeaker, FName ActiveSpeakerState) const override { return ParticipantIcon; }
     virtual bool CheckCondition(const UDlgContext* Context, FName ConditionName) const;
     virtual float GetFloatValue(FName ValueName) const;
     virtual int32 GetIntValue(FName ValueName) const;

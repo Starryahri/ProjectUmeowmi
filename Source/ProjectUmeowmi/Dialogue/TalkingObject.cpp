@@ -59,22 +59,6 @@ void ATalkingObject::Tick(float DeltaTime)
     }
 }
 
-// IDlgDialogueParticipant Interface Implementation
-//FName ATalkingObject::GetParticipantName() const
-//{
-//    return ParticipantName;
-//}
-
-FText ATalkingObject::GetParticipantDisplayName(FName ActiveSpeaker) const
-{
-    return DisplayName;
-}
-
-UTexture2D* ATalkingObject::GetParticipantIcon(FName ActiveSpeaker, FName ActiveSpeakerState) const
-{
-    return ParticipantIcon;
-}
-
 bool ATalkingObject::CheckCondition(const UDlgContext* Context, FName ConditionName) const
 {
     return false;
