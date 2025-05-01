@@ -5,6 +5,10 @@
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "Components/VerticalBox.h"
+#include "GameFramework/Character.h"
+#include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
+#include "ProjectUmeowmi/Dialogue/TalkingObject.h"
+#include "Kismet/GameplayStatics.h"
 
 void UPUDialogueBox::NativeConstruct()
 {
@@ -114,7 +118,6 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
         }
 
         // Update and recurse through the rest of the options if there are any in the options widget
-        // First check if the widget has children and if it does loop through them
         if (IsValid(DialogueOptions))
         {
             for (int32 i = 0; i < DialogueOptions->GetChildrenCount(); i++)
@@ -122,7 +125,6 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 UPUDialogueOption* Option = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(i));
                 if (IsValid(Option))
                 {
-                    // Set this dialogue box as the parent
                     Option->SetParentDialogueBox(this);
                     Option->Update(ActiveContext);
                 }
@@ -133,6 +135,20 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
         if (ActiveContext->HasDialogueEnded())
         {
             UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Update - Dialogue has ended, closing dialogue box"));
+            
+            // Get the player character and find the current talking object
+            if (ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0))
+            {
+                if (AProjectUmeowmiCharacter* ProjectCharacter = Cast<AProjectUmeowmiCharacter>(PlayerCharacter))
+                {
+                    if (ATalkingObject* TalkingObject = ProjectCharacter->GetCurrentTalkingObject())
+                    {
+                        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Update - Ending interaction with talking object"));
+                        TalkingObject->EndInteraction();
+                    }
+                }
+            }
+
             if (GetVisibility() != ESlateVisibility::Hidden)
             {
                 Close();

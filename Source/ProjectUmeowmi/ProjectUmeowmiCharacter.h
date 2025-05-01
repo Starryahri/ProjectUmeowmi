@@ -220,4 +220,11 @@ public:
 	/** Get the dialogue box widget */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	FORCEINLINE UPUDialogueBox* GetDialogueBox() const { return DialogueBox; }
+
+	/** Get the current talking object */
+	UFUNCTION(BlueprintCallable, Category = "Dialogue")
+	ATalkingObject* GetCurrentTalkingObject() const { return CurrentTalkingObject; }
+
+private:
+	// ... existing private members ...
 };

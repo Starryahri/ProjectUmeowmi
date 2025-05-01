@@ -95,6 +95,8 @@ bool ATalkingObject::OnDialogueEvent(UDlgContext* Context, FName EventName)
 // Interaction methods
 bool ATalkingObject::CanInteract() const
 {
+    UE_LOG(LogTemp, Log, TEXT("TalkingObject::CanInteract - bPlayerInRange: %d, bIsInteracting: %d, AvailableDialogues.Num(): %d"), 
+        bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
     return bPlayerInRange && !bIsInteracting && AvailableDialogues.Num() > 0;
 }
 
@@ -102,21 +104,20 @@ void ATalkingObject::StartInteraction()
 {
     if (CanInteract())
     {
-        // Show debug message
-        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Starting interaction with talking object!"));
-        
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::StartInteraction - Starting interaction"));
         bIsInteracting = true;
         StartRandomDialogue();
     }
     else
     {
-        // Show debug message when interaction is not possible
-        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("Cannot start interaction!"));
+        UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartInteraction - Cannot start interaction! bPlayerInRange: %d, bIsInteracting: %d, AvailableDialogues.Num(): %d"), 
+            bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
     }
 }
 
 void ATalkingObject::EndInteraction()
 {
+    UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Ending interaction"));
     bIsInteracting = false;
     if (CurrentDialogueContext)
     {
@@ -171,47 +172,25 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
 // Collision events
 void ATalkingObject::OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-    // Check if the overlapping actor is the player
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
     if (OtherActor == PlayerCharacter)
     {
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Player entered range"));
         bPlayerInRange = true;
-        
-        // Update the widget visibility
         UpdateInteractionWidget();
-        
-        // Broadcast the delegate
         OnPlayerEnteredInteractionSphere.Broadcast(this);
-
-        // Display debug message on screen
-        if (GEngine)
-        {
-            FString Message = FString::Printf(TEXT("Player entered interaction range of %s"), *DisplayName.ToString());
-            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, Message);
-        }
     }
 }
 
 void ATalkingObject::OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-    // Check if the actor that stopped overlapping is the player
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
     if (OtherActor == PlayerCharacter)
     {
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereEndOverlap - Player exited range"));
         bPlayerInRange = false;
-        
-        // Update the widget visibility
         UpdateInteractionWidget();
-        
-        // Broadcast the delegate
         OnPlayerExitedInteractionSphere.Broadcast(this);
-        
-        // Display debug message on screen
-        if (GEngine)
-        {
-            FString Message = FString::Printf(TEXT("Player exited interaction range of %s"), *DisplayName.ToString());
-            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, Message);
-        }
     }
 }
 
