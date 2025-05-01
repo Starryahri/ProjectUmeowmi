@@ -56,13 +56,39 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
 void UPUDialogueBox::Close_Implementation()
 {
     UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Close_Implementation called"));
+    UE_LOG(LogTemp, Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
     
     SetVisibility(ESlateVisibility::Hidden);
+    UE_LOG(LogTemp, Log, TEXT("Visibility set to hidden. New visibility state: %d"), (int32)GetVisibility());
 
-    if (APlayerController* PC = GetOwningPlayer())
+    // Try to get the player controller from the widget owner first
+    APlayerController* PC = GetOwningPlayer();
+    
+    // If we don't have a player controller, try to get it from the world
+    if (!PC)
     {
+        UE_LOG(LogTemp, Log, TEXT("No player controller from widget owner, trying to get from world"));
+        if (UWorld* World = GetWorld())
+        {
+            PC = World->GetFirstPlayerController();
+        }
+    }
+
+    if (PC)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Found player controller: %p"), PC);
+        UE_LOG(LogTemp, Log, TEXT("Current mouse cursor state: %d"), PC->bShowMouseCursor);
+        
         PC->bShowMouseCursor = false;
-        PC->SetInputMode(FInputModeGameOnly());
+        UE_LOG(LogTemp, Log, TEXT("Mouse cursor hidden. New state: %d"), PC->bShowMouseCursor);
+        
+        FInputModeGameOnly InputMode;
+        PC->SetInputMode(InputMode);
+        UE_LOG(LogTemp, Log, TEXT("Input mode set to game only"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Could not find player controller!"));
     }
 }
 
