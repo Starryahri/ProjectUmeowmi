@@ -4,6 +4,8 @@
 #include "DlgSystem/DlgManager.h"
 #include "DlgSystem/DlgContext.h"
 #include "DlgSystem/DlgDialogue.h"
+#include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
+#include "ProjectUmeowmi/UI/PUDialogueBox.h"
 //#include "DlgSystem/DlgDialogueParticipant.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -100,8 +102,16 @@ void ATalkingObject::StartInteraction()
 {
     if (CanInteract())
     {
+        // Show debug message
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Starting interaction with talking object!"));
+        
         bIsInteracting = true;
         StartRandomDialogue();
+    }
+    else
+    {
+        // Show debug message when interaction is not possible
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("Cannot start interaction!"));
     }
 }
 
@@ -125,8 +135,6 @@ void ATalkingObject::StartRandomDialogue()
 
 void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
 {
-
-
     if (!Dialogue)
     {
         return;
@@ -146,6 +154,18 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
 
     // Start the dialogue
     CurrentDialogueContext = UDlgManager::StartDialogue(Dialogue, Participants);
+
+    // We need to make the dialogue box from the AProjectUmeowmiCharacter visible
+    // Grab the player character and the reference to the dialogue box
+    AProjectUmeowmiCharacter* ProjectCharacter = Cast<AProjectUmeowmiCharacter>(PlayerCharacter);
+    if (ProjectCharacter)
+    {
+        UPUDialogueBox* DialogueBox = ProjectCharacter->GetDialogueBox();
+        if (DialogueBox)
+        {
+            DialogueBox->Open_Implementation(CurrentDialogueContext);
+        }
+    }
 }
 
 // Collision events

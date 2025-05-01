@@ -14,6 +14,7 @@ class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
+class UPUDialogueBox;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -164,6 +165,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Talking Object", meta = (AllowPrivateAccess = "true"))
 	UTexture2D* ParticipantIcon;
 
+	/** Reference to the dialogue box widget */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
+	UPUDialogueBox* DialogueBox;
+
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }
     FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override { return DisplayName; }
@@ -211,4 +216,8 @@ public:
 	/** Check if there's a talking object available for interaction */
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	bool HasTalkingObjectAvailable() const { return CurrentTalkingObject != nullptr; }
+
+	/** Get the dialogue box widget */
+	UFUNCTION(BlueprintCallable, Category = "Dialogue")
+	FORCEINLINE UPUDialogueBox* GetDialogueBox() const { return DialogueBox; }
 };

@@ -8,6 +8,7 @@
 
 class UDlgContext;
 class UTextBlock;
+class UButton;
 /**
  * 
  */
@@ -16,13 +17,14 @@ class PROJECTUMEOWMI_API UPUDialogueOption : public UPUCommonUserWidget
 {
 	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "Dialogue")
+public:
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue")
     int32 OptionIndex = 0;
 
-    UPROPERTY(EditAnywhere, meta = (BindWidget))
+    /** Widget to display the option text */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (BindWidget), Category = "Dialogue")
     UTextBlock* OptionText;
 
-public:
     /** Event called when the dialogue box content is updated */
     UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Dialogue")
     void Update(UDlgContext* ActiveContext);
