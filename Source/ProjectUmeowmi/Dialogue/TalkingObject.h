@@ -118,6 +118,10 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
     UTexture2D* ParticipantIcon;
 
+    // Names of participants to include in the dialogue
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
+    TArray<FName> AllowedParticipantNames;
+
     // Visual components
     UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
     UWidgetComponent* InteractionWidget;

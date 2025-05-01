@@ -150,11 +150,75 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
 
     // Create participants array
     TArray<UObject*> Participants;
+    
+    // Add the talking object itself
     Participants.Add(this);
-    //Participants.Add(PlayerCharacter);
+    UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Added talking object as participant: %s"), *GetName());
+
+    // TODO: AHRIA - 2025-05-01 - This is a temporary fix, but finding all participants in the level is not the best way to do this.
+    // TODO: AHRIA - We need to find a way to only get the participants that are in the allowed list.
+
+    // For NPCs, search for all actors with the participant interface
+    if (ObjectType == ETalkingObjectType::NPC)
+    {
+        // Always add the player character first
+        Participants.Add(PlayerCharacter);
+        UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Added player character as participant"));
+
+        // Get all objects with dialogue participant interface
+        TArray<UObject*> AllParticipants = UDlgManager::GetObjectsWithDialogueParticipantInterface(this);
+        UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Found %d total participants in level"), AllParticipants.Num());
+
+        // Add all found participants that are in our allowed list
+        for (UObject* Participant : AllParticipants)
+        {
+            if (Participant != this && Participant != PlayerCharacter) // Skip self and player since we already added them
+            {
+                // Get the participant name
+                FName FoundParticipantName = IDlgDialogueParticipant::Execute_GetParticipantName(Participant);
+                
+                // Check if this participant is in our allowed list
+                if (AllowedParticipantNames.Num() == 0 || AllowedParticipantNames.Contains(FoundParticipantName))
+                {
+                    Participants.Add(Participant);
+                    UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Added allowed participant: %s (Name: %s)"), 
+                        *Participant->GetName(), 
+                        *FoundParticipantName.ToString());
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Skipping participant: %s (Name: %s) - Not in allowed list"), 
+                        *Participant->GetName(), 
+                        *FoundParticipantName.ToString());
+                }
+            }
+        }
+    }
+    // For System type, we'll leave it empty for now as requested
+    // For Prop type, we'll just use the talking object itself
 
     // Start the dialogue
     CurrentDialogueContext = UDlgManager::StartDialogue(Dialogue, Participants);
+
+    // Log the participants in the dialogue context
+    if (CurrentDialogueContext)
+    {
+        const TMap<FName, UObject*>& ParticipantsMap = CurrentDialogueContext->GetParticipantsMap();
+        UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Dialogue context created with %d participants:"), ParticipantsMap.Num());
+        
+        for (const auto& Pair : ParticipantsMap)
+        {
+            FName ParticipantNameKey = Pair.Key;
+            UObject* Participant = Pair.Value;
+            UE_LOG(LogTemp, Display, TEXT("  - Participant: %s (Name: %s)"), 
+                *Participant->GetName(), 
+                *ParticipantNameKey.ToString());
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("TalkingObject::StartSpecificDialogue - Failed to create dialogue context!"));
+    }
 
     // We need to make the dialogue box from the AProjectUmeowmiCharacter visible
     // Grab the player character and the reference to the dialogue box
@@ -166,6 +230,14 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
         {
             DialogueBox->Open_Implementation(CurrentDialogueContext);
         }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("TalkingObject::StartSpecificDialogue - Failed to get dialogue box from player character!"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("TalkingObject::StartSpecificDialogue - Failed to cast player character to ProjectUmeowmiCharacter!"));
     }
 }
 
