@@ -10,6 +10,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Dialogue/TalkingObject.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -77,10 +78,10 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
+	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
+	{
 		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
 		// Moving
@@ -89,14 +90,17 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Look);
 
-		// Rotate Camera
+		// Rotating camera
 		EnhancedInputComponent->BindAction(RotateCameraAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::GetCameraPositionIndex);
 
-		// Toggle Grid Movement
-		EnhancedInputComponent->BindAction(ToggleGridMovementAction, ETriggerEvent::Started, this, &AProjectUmeowmiCharacter::ToggleGridMovement);
-		
-		// Zoom Camera
+		// Zooming camera
 		EnhancedInputComponent->BindAction(ZoomAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::ZoomCamera);
+
+		// Toggle grid movement
+		EnhancedInputComponent->BindAction(ToggleGridMovementAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::ToggleGridMovement);
+
+		// Interact with talking objects
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Interact);
 	}
 	else
 	{
@@ -318,3 +322,53 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 	// Log the zoom change for debugging
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Ortho Width: %f (Input: %f)"), NewOrthoWidth, ZoomValue);
 }
+
+void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
+{
+	// Check if we have a talking object available
+	if (CurrentTalkingObject)
+	{
+		// Start the interaction with the talking object
+		CurrentTalkingObject->StartInteraction();
+	}
+}
+
+void AProjectUmeowmiCharacter::RegisterTalkingObject(ATalkingObject* TalkingObject)
+{
+	// Store the talking object reference
+	CurrentTalkingObject = TalkingObject;
+	
+	// Log the registration
+	UE_LOG(LogTemp, Log, TEXT("Registered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+}
+
+void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingObject)
+{
+	// Only unregister if this is the current talking object
+	if (CurrentTalkingObject == TalkingObject)
+	{
+		// Clear the reference
+		CurrentTalkingObject = nullptr;
+		
+		// Log the unregistration
+		UE_LOG(LogTemp, Log, TEXT("Unregistered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+	}
+}
+
+//void AProjectUmeowmiCharacter::BeginPlay()
+//{
+//	Super::BeginPlay();
+//	
+//	// Debug logging for DialogueBox
+//	UE_LOG(LogTemp, Log, TEXT("Character BeginPlay - DialogueBox pointer: %p"), DialogueBox);
+//	if (DialogueBox)
+//	{
+//		UE_LOG(LogTemp, Log, TEXT("DialogueBox is valid"));
+//		UE_LOG(LogTemp, Log, TEXT("DialogueBox visibility: %d"), (int32)DialogueBox->GetVisibility());
+//		UE_LOG(LogTemp, Log, TEXT("DialogueBox in viewport: %d"), DialogueBox->IsInViewport());
+//	}
+//	else
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("DialogueBox is null!"));
+//	}
+//}
