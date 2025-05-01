@@ -18,6 +18,9 @@ ATalkingObject::ATalkingObject()
     // We can disable tick by default since we'll only need it for debug visualization
     PrimaryActorTick.bCanEverTick = false;
 
+    // Create and setup the root component
+    RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
+
     // Create and setup the interaction sphere component
     InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
     InteractionSphere->SetupAttachment(RootComponent);
