@@ -354,3 +354,21 @@ void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingOb
 		UE_LOG(LogTemp, Log, TEXT("Unregistered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
 	}
 }
+
+//void AProjectUmeowmiCharacter::BeginPlay()
+//{
+//	Super::BeginPlay();
+//	
+//	// Debug logging for DialogueBox
+//	UE_LOG(LogTemp, Log, TEXT("Character BeginPlay - DialogueBox pointer: %p"), DialogueBox);
+//	if (DialogueBox)
+//	{
+//		UE_LOG(LogTemp, Log, TEXT("DialogueBox is valid"));
+//		UE_LOG(LogTemp, Log, TEXT("DialogueBox visibility: %d"), (int32)DialogueBox->GetVisibility());
+//		UE_LOG(LogTemp, Log, TEXT("DialogueBox in viewport: %d"), DialogueBox->IsInViewport());
+//	}
+//	else
+//	{
+//		UE_LOG(LogTemp, Warning, TEXT("DialogueBox is null!"));
+//	}
+//}

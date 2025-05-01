@@ -182,11 +182,6 @@ void ATalkingObject::OnInteractionSphereBeginOverlap(UPrimitiveComponent* Overla
         
         // Broadcast the delegate
         OnPlayerEnteredInteractionSphere.Broadcast(this);
-        
-        // display this object's participant name
-        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("Participant name:"));
-        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, *ParticipantName.ToString());
-
 
         // Display debug message on screen
         if (GEngine)

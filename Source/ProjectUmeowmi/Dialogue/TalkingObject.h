@@ -130,10 +130,14 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
     bool bShowDebugRange = false;
 
+    // Dialogue context
+    UPROPERTY(BlueprintReadWrite, Category = Dialogue)
+    UDlgContext* CurrentDialogueContext = nullptr;
+    
 private:
     // Internal state
     bool bIsInteracting = false;
-    UDlgContext* CurrentDialogueContext = nullptr;
+
     TSet<UDlgDialogue*> UsedDialogues;
     bool bPlayerInRange = false;
 
