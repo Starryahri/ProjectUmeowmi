@@ -22,6 +22,11 @@ struct FDishCustomizationData : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
     float BasePrice = 0.0f;
 
+    // Array of dish images where index represents ingredient quantity
+    // Each image should show the dish with that many total ingredients
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
+    TArray<UTexture2D*> DishImages;
+
     // Reference to the actual ingredients (populated at runtime)
     UPROPERTY(Transient)
     TArray<FIngredientData> AvailableIngredients;
@@ -72,4 +77,8 @@ public:
     // Get the current total number of ingredients in a dish
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     static int32 GetTotalIngredientCount(const FDishCustomizationData& DishData);
+
+    // Get the appropriate dish image based on current ingredient quantity
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization")
+    static TSoftObjectPtr<UTexture2D> GetCurrentDishImage(const FDishCustomizationData& DishData);
 }; 

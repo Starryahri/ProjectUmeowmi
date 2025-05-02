@@ -146,4 +146,13 @@ int32 UPUDishCustomizationHelper::GetTotalIngredientCount(const FDishCustomizati
         Total += Ingredient.CurrentQuantity;
     }
     return Total;
+}
+
+TSoftObjectPtr<UTexture2D> UPUDishCustomizationHelper::GetCurrentDishImage(const FDishCustomizationData& DishData)
+{
+    int32 TotalIngredients = GetTotalIngredientCount(DishData);
+
+    // Clamp the total to the available images
+    int32 ImageIndex = FMath::Clamp(TotalIngredients, 0, DishData.DishImages.Num() - 1);
+    return DishData.DishImages[ImageIndex];
 } 

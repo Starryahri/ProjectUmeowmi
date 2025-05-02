@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
+#include "DishCustomization/PUDishCustomizationData.h"
 #include "PUDishCustomizationGameMode.generated.h"
 
 UCLASS()
@@ -29,5 +30,5 @@ protected:
 
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
-    class UDishCustomizationData* CurrentDishData;
+    FDishCustomizationData CurrentDishData;
 }; 
