@@ -11,6 +11,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Dialogue/TalkingObject.h"
+#include "DishCustomization/PUDishCustomizationComponent.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -53,6 +54,9 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
+
+	// Create the dish customization component
+	CustomizationComponent = CreateDefaultSubobject<UPUDishCustomizationComponent>(TEXT("DishCustomizationComponent"));
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -330,6 +334,11 @@ void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 	{
 		// Start the interaction with the talking object
 		CurrentTalkingObject->StartInteraction();
+	}
+	// Check if we have a dish customization component and start customization
+	else if (CustomizationComponent)
+	{
+		CustomizationComponent->StartCustomization();
 	}
 }
 

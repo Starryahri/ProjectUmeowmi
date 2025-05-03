@@ -15,6 +15,7 @@ class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
 class UPUDialogueBox;
+class UPUDishCustomizationComponent;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -169,6 +170,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
 	UPUDialogueBox* DialogueBox;
 
+	/** Reference to the customization component */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Customization", meta = (AllowPrivateAccess = "true"))
+	UPUDishCustomizationComponent* CustomizationComponent;
+
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }
     FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override { return DisplayName; }
@@ -225,6 +230,4 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	ATalkingObject* GetCurrentTalkingObject() const { return CurrentTalkingObject; }
 
-private:
-	// ... existing private members ...
 };

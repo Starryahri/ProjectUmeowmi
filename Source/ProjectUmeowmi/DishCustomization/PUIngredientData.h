@@ -30,8 +30,6 @@ struct FIngredientData : public FTableRowBase
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
     int32 CurrentQuantity = 0;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
-    float PricePerUnit;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
     TArray<FVector> PlacementPositions;

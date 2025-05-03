@@ -50,9 +50,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     static bool PopulateDishIngredients(const UDataTable* IngredientDataTable, FDishCustomizationData& DishData);
 
-    // Get total price of a customized dish
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization")
-    static float CalculateDishPrice(const FDishCustomizationData& DishData);
 
     // Check if a dish customization is valid
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")

@@ -59,18 +59,6 @@ bool UPUDishCustomizationHelper::PopulateDishIngredients(const UDataTable* Ingre
     return true;
 }
 
-float UPUDishCustomizationHelper::CalculateDishPrice(const FDishCustomizationData& DishData)
-{
-    float TotalPrice = DishData.BasePrice;
-    
-    for (const FIngredientData& Ingredient : DishData.AvailableIngredients)
-    {
-        TotalPrice += Ingredient.CurrentQuantity * Ingredient.PricePerUnit;
-    }
-
-    return TotalPrice;
-}
-
 bool UPUDishCustomizationHelper::ValidateDishCustomization(const FDishCustomizationData& DishData)
 {
     // Check if total ingredients exceed maximum
