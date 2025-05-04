@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
-#include "PUIngredientData.h"
+#include "PUIngredientBase.h"
 #include "PUDishCustomizationData.generated.h"
 
 USTRUCT(BlueprintType)
@@ -10,26 +10,35 @@ struct FDishCustomizationData : public FTableRowBase
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
+public:
+    // Basic dish information
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
     FName DishTemplateName;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
-    TArray<FName> AvailableIngredientNames;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
+    FText DisplayName;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
-    int32 MaxTotalIngredients = 10;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
+    FText Description;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
+    // Available ingredients for this dish
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Ingredients")
+    TArray<FPUIngredientBase> AvailableIngredients;
+
+    // Quantity limits
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Quantity")
+    int32 MaxTotalIngredients = 5;
+
+    // Base price and images
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
     float BasePrice = 0.0f;
 
-    // Array of dish images where index represents ingredient quantity
-    // Each image should show the dish with that many total ingredients
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
-    TArray<UTexture2D*> DishImages;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
+    TArray<FSoftObjectPath> DishImages;
 
-    // Reference to the actual ingredients (populated at runtime)
+    // Transient data (not saved)
     UPROPERTY(Transient)
-    TArray<FIngredientData> AvailableIngredients;
+    TArray<FPUIngredientBase> CurrentIngredients;
 };
 
 UCLASS()
@@ -44,12 +53,11 @@ public:
 
     // Load and validate an ingredient from Data Table
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
-    static bool LoadIngredient(const UDataTable* IngredientDataTable, const FName& IngredientName, FIngredientData& OutIngredientData);
+    static bool LoadIngredient(const UDataTable* IngredientDataTable, const FName& IngredientName, FPUIngredientBase& OutIngredientData);
 
     // Populate a dish's available ingredients from the ingredient Data Table
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     static bool PopulateDishIngredients(const UDataTable* IngredientDataTable, FDishCustomizationData& DishData);
-
 
     // Check if a dish customization is valid
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
@@ -57,7 +65,7 @@ public:
 
     // Get special effects for current ingredient quantities
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
-    static TArray<FName> GetActiveSpecialEffects(const FIngredientData& IngredientData);
+    static TArray<FGameplayTag> GetActiveSpecialEffects(const FPUIngredientBase& IngredientData);
 
     // Reset a dish to its default state
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")

@@ -1,4 +1,5 @@
 #include "PUDishCustomizationData.h"
+#include "Engine/DataTable.h"
 
 bool UPUDishCustomizationHelper::LoadDishTemplate(const UDataTable* DishDataTable, const FName& DishName, FDishCustomizationData& OutDishData)
 {
@@ -19,7 +20,7 @@ bool UPUDishCustomizationHelper::LoadDishTemplate(const UDataTable* DishDataTabl
     return true;
 }
 
-bool UPUDishCustomizationHelper::LoadIngredient(const UDataTable* IngredientDataTable, const FName& IngredientName, FIngredientData& OutIngredientData)
+bool UPUDishCustomizationHelper::LoadIngredient(const UDataTable* IngredientDataTable, const FName& IngredientName, FPUIngredientBase& OutIngredientData)
 {
     if (!IngredientDataTable)
     {
@@ -27,7 +28,7 @@ bool UPUDishCustomizationHelper::LoadIngredient(const UDataTable* IngredientData
         return false;
     }
 
-    const FIngredientData* FoundRow = IngredientDataTable->FindRow<FIngredientData>(IngredientName, TEXT("LoadIngredient"));
+    const FPUIngredientBase* FoundRow = IngredientDataTable->FindRow<FPUIngredientBase>(IngredientName, TEXT("LoadIngredient"));
     if (!FoundRow)
     {
         UE_LOG(LogTemp, Error, TEXT("Ingredient not found: %s"), *IngredientName.ToString());
@@ -47,12 +48,12 @@ bool UPUDishCustomizationHelper::PopulateDishIngredients(const UDataTable* Ingre
     }
 
     DishData.AvailableIngredients.Empty();
-    for (const FName& IngredientName : DishData.AvailableIngredientNames)
+    for (const FPUIngredientBase& Ingredient : DishData.AvailableIngredients)
     {
-        FIngredientData IngredientData;
-        if (LoadIngredient(IngredientDataTable, IngredientName, IngredientData))
+        FPUIngredientBase LoadedIngredient;
+        if (LoadIngredient(IngredientDataTable, Ingredient.IngredientName, LoadedIngredient))
         {
-            DishData.AvailableIngredients.Add(IngredientData);
+            DishData.AvailableIngredients.Add(LoadedIngredient);
         }
     }
 
@@ -68,10 +69,10 @@ bool UPUDishCustomizationHelper::ValidateDishCustomization(const FDishCustomizat
         return false;
     }
 
-    // Check if any ingredient exceeds its maximum quantity
-    for (const FIngredientData& Ingredient : DishData.AvailableIngredients)
+    // Check if all current ingredients are valid
+    for (const FPUIngredientBase& Ingredient : DishData.CurrentIngredients)
     {
-        if (Ingredient.CurrentQuantity > Ingredient.MaxQuantity)
+        if (Ingredient.CurrentQuantity < Ingredient.MinQuantity || Ingredient.CurrentQuantity > Ingredient.MaxQuantity)
         {
             return false;
         }
@@ -80,67 +81,64 @@ bool UPUDishCustomizationHelper::ValidateDishCustomization(const FDishCustomizat
     return true;
 }
 
-TArray<FName> UPUDishCustomizationHelper::GetActiveSpecialEffects(const FIngredientData& IngredientData)
+TArray<FGameplayTag> UPUDishCustomizationHelper::GetActiveSpecialEffects(const FPUIngredientBase& IngredientData)
 {
-    TArray<FName> ActiveEffects;
-    
-    for (const auto& EffectPair : IngredientData.QuantitySpecialEffects)
-    {
-        if (IngredientData.CurrentQuantity >= EffectPair.Key)
-        {
-            ActiveEffects.Add(EffectPair.Value);
-        }
-    }
-
-    return ActiveEffects;
+    return IngredientData.GetEffectsAtQuantity(IngredientData.CurrentQuantity);
 }
 
 void UPUDishCustomizationHelper::ResetDishToDefault(FDishCustomizationData& DishData)
 {
-    for (FIngredientData& Ingredient : DishData.AvailableIngredients)
-    {
-        Ingredient.CurrentQuantity = Ingredient.MinQuantity;
-    }
+    DishData.CurrentIngredients.Empty();
 }
 
 TArray<FName> UPUDishCustomizationHelper::GetAvailableIngredients(const FDishCustomizationData& DishData)
 {
-    return DishData.AvailableIngredientNames;
+    TArray<FName> AvailableNames;
+    for (const FPUIngredientBase& Ingredient : DishData.AvailableIngredients)
+    {
+        AvailableNames.Add(Ingredient.IngredientName);
+    }
+    return AvailableNames;
 }
 
 bool UPUDishCustomizationHelper::CanAddIngredient(const FDishCustomizationData& DishData, const FName& IngredientName)
 {
-    // Check if ingredient is available for this dish
-    if (!DishData.AvailableIngredientNames.Contains(IngredientName))
+    // Check if ingredient is available
+    bool bIsAvailable = false;
+    for (const FPUIngredientBase& Ingredient : DishData.AvailableIngredients)
+    {
+        if (Ingredient.IngredientName == IngredientName)
+        {
+            bIsAvailable = true;
+            break;
+        }
+    }
+
+    if (!bIsAvailable)
     {
         return false;
     }
 
-    // Check if adding would exceed total ingredient limit
-    int32 CurrentTotal = GetTotalIngredientCount(DishData);
-    if (CurrentTotal >= DishData.MaxTotalIngredients)
-    {
-        return false;
-    }
-
-    return true;
+    // Check if we can add more ingredients
+    return GetTotalIngredientCount(DishData) < DishData.MaxTotalIngredients;
 }
 
 int32 UPUDishCustomizationHelper::GetTotalIngredientCount(const FDishCustomizationData& DishData)
 {
-    int32 Total = 0;
-    for (const FIngredientData& Ingredient : DishData.AvailableIngredients)
+    int32 TotalCount = 0;
+    for (const FPUIngredientBase& Ingredient : DishData.CurrentIngredients)
     {
-        Total += Ingredient.CurrentQuantity;
+        TotalCount += Ingredient.CurrentQuantity;
     }
-    return Total;
+    return TotalCount;
 }
 
 TSoftObjectPtr<UTexture2D> UPUDishCustomizationHelper::GetCurrentDishImage(const FDishCustomizationData& DishData)
 {
     int32 TotalIngredients = GetTotalIngredientCount(DishData);
-
-    // Clamp the total to the available images
-    int32 ImageIndex = FMath::Clamp(TotalIngredients, 0, DishData.DishImages.Num() - 1);
-    return DishData.DishImages[ImageIndex];
+    if (DishData.DishImages.IsValidIndex(TotalIngredients))
+    {
+        return TSoftObjectPtr<UTexture2D>(DishData.DishImages[TotalIngredients]);
+    }
+    return nullptr;
 } 
