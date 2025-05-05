@@ -17,7 +17,9 @@ public class ProjectUmeowmi : ModuleRules
 			"UMG",
 			"CommonUI",
 			"RadarChart",
-			"GameplayTags"
+			"GameplayTags",
+			"Slate",
+			"SlateCore"
 		});
         PrivateDependencyModuleNames.AddRange(new string[] { "DlgSystem" });
     }
