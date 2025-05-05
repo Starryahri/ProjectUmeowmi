@@ -9,6 +9,14 @@
 // Forward declarations
 class UTexture2D;
 
+// Modification type enum
+UENUM(BlueprintType)
+enum class EModificationType : uint8
+{
+    Additive,
+    Multiplicative
+};
+
 // Property modifier definition
 USTRUCT(BlueprintType)
 struct FPropertyModifier
@@ -22,7 +30,10 @@ struct FPropertyModifier
     FName CustomPropertyName;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    float ValueChange = 0.0f;
+    EModificationType ModificationType = EModificationType::Additive;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
+    float ModificationValue = 0.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     FText Description;
@@ -38,6 +49,34 @@ struct FPropertyModifier
             return CustomPropertyName;
         }
         return FName(*UEnum::GetValueAsString(PropertyType));
+    }
+
+    // Helper function to apply the modification
+    float ApplyModification(float BaseValue) const
+    {
+        switch (ModificationType)
+        {
+            case EModificationType::Additive:
+                return BaseValue + ModificationValue;
+            case EModificationType::Multiplicative:
+                return BaseValue * ModificationValue;
+            default:
+                return BaseValue;
+        }
+    }
+
+    // Helper function to remove the modification
+    float RemoveModification(float ModifiedValue) const
+    {
+        switch (ModificationType)
+        {
+            case EModificationType::Additive:
+                return ModifiedValue - ModificationValue;
+            case EModificationType::Multiplicative:
+                return ModifiedValue / ModificationValue;
+            default:
+                return ModifiedValue;
+        }
     }
 };
 
@@ -60,10 +99,7 @@ struct FPUPreparationBase : public FTableRowBase
 public:
     // Basic Identification
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Basic")
-    FName PreparationID;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Basic")
-    EPreparationType PreparationType = EPreparationType::Custom;
+    FGameplayTag PreparationTag;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Basic")
     FText DisplayName;
@@ -93,9 +129,6 @@ public:
     TArray<FPropertyModifier> PropertyModifiers;
 
     // Tags
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Tags")
-    FGameplayTagContainer PreparationTags;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Tags")
     FGameplayTagContainer RequiredTags;
 

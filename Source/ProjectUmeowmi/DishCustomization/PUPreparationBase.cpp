@@ -53,7 +53,7 @@ void FPUPreparationBase::ApplyModifiers(TArray<FIngredientProperty>& Properties)
         {
             if (Property.GetPropertyName() == PropertyName)
             {
-                Property.Value += Modifier.ValueChange;
+                Property.Value = Modifier.ApplyModification(Property.Value);
                 bFound = true;
                 break;
             }
@@ -67,7 +67,7 @@ void FPUPreparationBase::ApplyModifiers(TArray<FIngredientProperty>& Properties)
             {
                 NewProperty.CustomPropertyName = Modifier.CustomPropertyName;
             }
-            NewProperty.Value = Modifier.ValueChange;
+            NewProperty.Value = Modifier.ApplyModification(0.0f); // Start from 0 for new properties
             NewProperty.Description = Modifier.Description;
             NewProperty.PropertyTags = Modifier.ModifierTags;
             Properties.Add(NewProperty);
@@ -85,7 +85,7 @@ void FPUPreparationBase::RemoveModifiers(TArray<FIngredientProperty>& Properties
         {
             if (Property.GetPropertyName() == PropertyName)
             {
-                Property.Value -= Modifier.ValueChange;
+                Property.Value = Modifier.RemoveModification(Property.Value);
                 break;
             }
         }

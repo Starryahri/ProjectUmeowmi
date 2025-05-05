@@ -5,6 +5,8 @@
 #include "PUIngredientBase.h"
 #include "PUDishCustomizationData.generated.h"
 
+class UTexture2D;
+
 USTRUCT(BlueprintType)
 struct FDishCustomizationData : public FTableRowBase
 {
@@ -34,11 +36,15 @@ public:
     float BasePrice = 0.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
-    TArray<FSoftObjectPath> DishImages;
+    TArray<TSoftObjectPtr<UTexture2D>> DishImages;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
+    TSoftObjectPtr<UStaticMesh> DishMesh;
 
     // Transient data (not saved)
     UPROPERTY(Transient)
     TArray<FPUIngredientBase> CurrentIngredients;
+
 };
 
 UCLASS()

@@ -8,6 +8,8 @@
 // Forward declarations
 class UTexture2D;
 class UMaterialInterface;
+class UDataTable;
+struct FPUPreparationBase;
 
 // Property types enum
 UENUM(BlueprintType)
@@ -120,17 +122,17 @@ public:
 
     // Placement
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Placement")
-    TArray<FVector> PlacementPositions;
+    TArray<FVector> DefaultPlacementPositions;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Placement")
-    TArray<FRotator> PlacementRotations;
+    TArray<FRotator> DefaultPlacementRotations;
 
-    // Preparation System
+    // Active Preparations
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation")
-    TArray<FPreparationModifier> AvailablePreparations;
+    FGameplayTagContainer ActivePreparations;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation")
-    TArray<FName> CurrentPreparations;
+    UDataTable* PreparationDataTable;
 
     // Special Effects
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Effects")
@@ -143,8 +145,11 @@ public:
     TArray<FIngredientProperty> GetPropertiesByTag(const FGameplayTag& Tag) const;
     bool HasPropertiesWithTag(const FGameplayTag& Tag) const;
     float GetTotalValueForTag(const FGameplayTag& Tag) const;
-    void ApplyPreparation(const FName& PreparationName);
-    void RemovePreparation(const FName& PreparationName);
-    TArray<FName> GetAvailablePreparations() const;
     TArray<FGameplayTag> GetEffectsAtQuantity(int32 Quantity) const;
+
+    // Preparation Functions
+    bool ApplyPreparation(const FPUPreparationBase& Preparation);
+    bool RemovePreparation(const FPUPreparationBase& Preparation);
+    bool HasPreparation(const FGameplayTag& PreparationTag) const;
+    FText GetCurrentDisplayName() const;
 }; 

@@ -1,4 +1,7 @@
 #include "PUIngredientBase.h"
+#include "Engine/DataTable.h"
+#include "GameplayTagsManager.h"
+#include "PUPreparationBase.h"
 
 float FPUIngredientBase::GetPropertyValue(const FName& PropertyName) const
 {
@@ -22,12 +25,6 @@ void FPUIngredientBase::SetPropertyValue(const FName& PropertyName, float Value)
             return;
         }
     }
-    // If property doesn't exist, create it
-    FIngredientProperty NewProperty;
-    NewProperty.PropertyType = EIngredientPropertyType::Custom;
-    NewProperty.CustomPropertyName = PropertyName;
-    NewProperty.Value = Value;
-    NaturalProperties.Add(NewProperty);
 }
 
 bool FPUIngredientBase::HasProperty(const FName& PropertyName) const
@@ -80,82 +77,93 @@ float FPUIngredientBase::GetTotalValueForTag(const FGameplayTag& Tag) const
     return TotalValue;
 }
 
-void FPUIngredientBase::ApplyPreparation(const FName& PreparationName)
-{
-    // Check if preparation is already applied
-    if (CurrentPreparations.Contains(PreparationName))
-    {
-        return;
-    }
-
-    // Find the preparation modifier
-    for (const FPreparationModifier& Modifier : AvailablePreparations)
-    {
-        if (Modifier.ModifierName == PreparationName)
-        {
-            // Apply the preparation
-            CurrentPreparations.Add(PreparationName);
-
-            // Apply property modifiers
-            for (const auto& PropertyModifier : Modifier.PropertyModifiers)
-            {
-                float CurrentValue = GetPropertyValue(PropertyModifier.Key);
-                SetPropertyValue(PropertyModifier.Key, CurrentValue + PropertyModifier.Value);
-            }
-            return;
-        }
-    }
-}
-
-void FPUIngredientBase::RemovePreparation(const FName& PreparationName)
-{
-    // Check if preparation is applied
-    if (!CurrentPreparations.Contains(PreparationName))
-    {
-        return;
-    }
-
-    // Find the preparation modifier
-    for (const FPreparationModifier& Modifier : AvailablePreparations)
-    {
-        if (Modifier.ModifierName == PreparationName)
-        {
-            // Remove the preparation
-            CurrentPreparations.Remove(PreparationName);
-
-            // Remove property modifiers
-            for (const auto& PropertyModifier : Modifier.PropertyModifiers)
-            {
-                float CurrentValue = GetPropertyValue(PropertyModifier.Key);
-                SetPropertyValue(PropertyModifier.Key, CurrentValue - PropertyModifier.Value);
-            }
-            return;
-        }
-    }
-}
-
-TArray<FName> FPUIngredientBase::GetAvailablePreparations() const
-{
-    TArray<FName> AvailableNames;
-    for (const FPreparationModifier& Modifier : AvailablePreparations)
-    {
-        AvailableNames.Add(Modifier.ModifierName);
-    }
-    return AvailableNames;
-}
-
 TArray<FGameplayTag> FPUIngredientBase::GetEffectsAtQuantity(int32 Quantity) const
 {
-    TArray<FGameplayTag> ActiveEffects;
-    for (const auto& EffectPair : QuantitySpecialEffects)
+    TArray<FGameplayTag> Effects;
+    if (QuantitySpecialEffects.Contains(Quantity))
     {
-        if (Quantity >= EffectPair.Key)
+        const FGameplayTagContainer& Tags = QuantitySpecialEffects[Quantity];
+        Tags.GetGameplayTagArray(Effects);
+    }
+    return Effects;
+}
+
+bool FPUIngredientBase::ApplyPreparation(const FPUPreparationBase& Preparation)
+{
+    // Check if preparation is already applied
+    if (ActivePreparations.HasTag(Preparation.PreparationTag))
+    {
+        return false;
+    }
+
+    // Check if preparation can be applied
+    if (!Preparation.CanApplyToIngredient(ActivePreparations))
+    {
+        return false;
+    }
+
+    // Apply the preparation
+    ActivePreparations.AddTag(Preparation.PreparationTag);
+    Preparation.ApplyModifiers(NaturalProperties);
+    return true;
+}
+
+bool FPUIngredientBase::RemovePreparation(const FPUPreparationBase& Preparation)
+{
+    // Check if preparation is actually applied
+    if (!ActivePreparations.HasTag(Preparation.PreparationTag))
+    {
+        return false;
+    }
+
+    // Remove the preparation
+    ActivePreparations.RemoveTag(Preparation.PreparationTag);
+    Preparation.RemoveModifiers(NaturalProperties);
+    return true;
+}
+
+bool FPUIngredientBase::HasPreparation(const FGameplayTag& PreparationTag) const
+{
+    return ActivePreparations.HasTag(PreparationTag);
+}
+
+FText FPUIngredientBase::GetCurrentDisplayName() const
+{
+    FText CurrentName = DisplayName;
+    
+    if (!PreparationDataTable)
+    {
+        return CurrentName;
+    }
+    
+    // Get all active preparation tags
+    TArray<FGameplayTag> ActiveTags;
+    ActivePreparations.GetGameplayTagArray(ActiveTags);
+    
+    // Sort preparations by their tag to ensure consistent order
+    ActiveTags.Sort([](const FGameplayTag& A, const FGameplayTag& B) {
+        return A.ToString() < B.ToString();
+    });
+    
+    // Apply name modifications in order
+    for (const FGameplayTag& Tag : ActiveTags)
+    {
+        // Get the full tag string and split at the last period
+        FString FullTag = Tag.ToString();
+        int32 LastPeriodIndex;
+        if (FullTag.FindLastChar('.', LastPeriodIndex))
         {
-            // Convert GameplayTagContainer to array of tags
-            TArray<FGameplayTag> Tags;
-            EffectPair.Value.GetGameplayTagArray(Tags);
-            ActiveEffects.Append(Tags);
+            // Get everything after the last period and convert to lowercase
+            FString TagName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
+            FName RowName = FName(*TagName);
+            FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(RowName, TEXT("GetCurrentDisplayName"));
+            
+            if (Preparation)
+            {
+                CurrentName = Preparation->GetModifiedName(CurrentName);
+            }
         }
     }
-    return ActiveEffects;
+    
+    return CurrentName;
 } 
