@@ -97,6 +97,8 @@ struct FPUPreparationBase : public FTableRowBase
     GENERATED_BODY()
 
 public:
+    FPUPreparationBase();
+
     // Basic Identification
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Basic")
     FGameplayTag PreparationTag;

@@ -1,14 +1,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Components/ActorComponent.h"
-#include "PUDishCustomizationData.h"
+#include "Components/SceneComponent.h"
+#include "PUDishBase.h"
 #include "PUDishCustomizationComponent.generated.h"
 
 class UUserWidget;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
-class PROJECTUMEOWMI_API UPUDishCustomizationComponent : public UActorComponent
+class PROJECTUMEOWMI_API UPUDishCustomizationComponent : public USceneComponent
 {
     GENERATED_BODY()
 
@@ -34,7 +34,7 @@ public:
 
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
-    FDishCustomizationData CurrentDishData;
+    FPUDishBase CurrentDishData;
 
 protected:
     // Internal state management

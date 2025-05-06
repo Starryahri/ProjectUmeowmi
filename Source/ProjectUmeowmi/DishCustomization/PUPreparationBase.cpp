@@ -1,6 +1,16 @@
 #include "PUPreparationBase.h"
 #include "GameplayTagsManager.h"
 
+FPUPreparationBase::FPUPreparationBase()
+    : DisplayName(FText::GetEmpty())
+    , Description(FText::GetEmpty())
+    , NamePrefix(FText::GetEmpty())
+    , NameSuffix(FText::GetEmpty())
+    , OverridesBaseName(false)
+    , SpecialName(FText::GetEmpty())
+{
+}
+
 bool FPUPreparationBase::CanApplyToIngredient(const FGameplayTagContainer& IngredientTags) const
 {
     // Check if ingredient has incompatible tags

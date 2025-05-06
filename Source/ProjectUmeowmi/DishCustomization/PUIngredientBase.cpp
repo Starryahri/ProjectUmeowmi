@@ -3,6 +3,16 @@
 #include "GameplayTagsManager.h"
 #include "PUPreparationBase.h"
 
+FPUIngredientBase::FPUIngredientBase()
+    : IngredientName(NAME_None)
+    , DisplayName(FText::GetEmpty())
+    , MinQuantity(0)
+    , MaxQuantity(5)
+    , CurrentQuantity(0)
+    , PreparationDataTable(nullptr)
+{
+}
+
 float FPUIngredientBase::GetPropertyValue(const FName& PropertyName) const
 {
     for (const FIngredientProperty& Property : NaturalProperties)

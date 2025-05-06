@@ -92,7 +92,12 @@ struct FPUIngredientBase : public FTableRowBase
     GENERATED_BODY()
 
 public:
+    FPUIngredientBase();
+
     // Basic Identification
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic")
+    FGameplayTag IngredientTag;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic")
     FName IngredientName;
 

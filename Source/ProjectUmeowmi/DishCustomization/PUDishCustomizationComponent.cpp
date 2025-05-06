@@ -24,15 +24,43 @@ void UPUDishCustomizationComponent::StartCustomization()
         UE_LOG(LogTemp, Error, TEXT("Failed to get Character in StartCustomization"));
         return;
     }
+    UE_LOG(LogTemp, Log, TEXT("Successfully got Character: %s"), *OwnerCharacter->GetName());
 
-    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
+    // Try to get the controller, with a fallback to getting it from the game instance
+    APlayerController* PC = nullptr;
+    
+    // First try: Get from character's controller
+    PC = Cast<APlayerController>(OwnerCharacter->GetController());
+    if (PC)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Got Player Controller from Character's controller: %s"), *PC->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("Failed to get Player Controller from Character's controller, trying Game Instance..."));
+    }
+    
+    // Second try: Get from game instance if first attempt failed
+    if (!PC)
+    {
+        PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+        if (PC)
+        {
+            UE_LOG(LogTemp, Log, TEXT("Got Player Controller from Game Instance: %s"), *PC->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Log, TEXT("Failed to get Player Controller from Game Instance"));
+        }
+    }
+
     if (!PC)
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to get Player Controller in StartCustomization"));
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Starting Dish Customization"));
+    UE_LOG(LogTemp, Log, TEXT("Starting Dish Customization with Player Controller: %s"), *PC->GetName());
 
     // Disable movement
     PC->SetIgnoreMoveInput(true);
