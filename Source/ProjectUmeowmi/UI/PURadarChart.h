@@ -2,13 +2,16 @@
 
 #include "CoreMinimal.h"
 #include "RadarChart.h"
+#include "RadarChartStyle.h"
+#include "RadarChartTypes.h"
+#include "../DishCustomization/PUIngredientBase.h"
 #include "PURadarChart.generated.h"
 
 /**
- * Custom Radar Chart widget that extends the base URadarChart functionality.
- * Allows for dynamic modification of segment amounts and provides additional customization options.
+ * Custom radar chart widget that extends URadarChart with additional functionality
+ * for managing segments and values.
  */
-UCLASS(Blueprintable, BlueprintType)
+UCLASS(BlueprintType, meta = (DisableNativeTick, ShortTooltip = "Project Umeowmi Radar Chart", ToolTip = "A radar chart widget that can display ingredient properties"))
 class PROJECTUMEOWMI_API UPURadarChart : public URadarChart
 {
     GENERATED_BODY()
@@ -31,16 +34,36 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Radar Chart")
     int32 GetSegmentCount() const;
 
+    /**
+     * Sets the values of the radar chart from an array.
+     * @param InValues - The array of values to set
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    void SetValues(const TArray<float>& InValues);
+
+    /**
+     * Sets the names of the segments from an array of strings.
+     * @param InNames - The array of names to set
+     * @return True if the names were successfully set
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetSegmentNames(const TArray<FString>& InNames);
+
+    /**
+     * Sets values from an ingredient's properties.
+     * @param Ingredient - The ingredient to get values from
+     * @return True if the values were successfully set
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetValuesFromIngredient(const FPUIngredientBase& Ingredient);
+
 protected:
     /** Minimum number of segments allowed in the radar chart */
-    UPROPERTY(EditDefaultsOnly, Category = "Radar Chart")
-    int32 MinSegmentCount = 3;
+    static constexpr int32 MinSegmentCount = 3;
 
     /** Maximum number of segments allowed in the radar chart */
-    UPROPERTY(EditDefaultsOnly, Category = "Radar Chart")
-    int32 MaxSegmentCount = 32;
+    static constexpr int32 MaxSegmentCount = 12;
 
-private:
     /** Initializes default segments with the current segment count */
     void InitializeSegments();
 

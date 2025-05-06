@@ -1,6 +1,8 @@
 #include "PURadarChart.h"
 #include "RadarChartStyle.h"
 #include "RadarChartTypes.h"
+#include "Engine/DataTable.h"
+#include "../DishCustomization/PUIngredientBase.h"
 
 UPURadarChart::UPURadarChart()
 {
@@ -39,6 +41,84 @@ bool UPURadarChart::SetSegmentCount(int32 NewSegmentCount)
 int32 UPURadarChart::GetSegmentCount() const
 {
     return ChartStyle.Segments.Num();
+}
+
+void UPURadarChart::SetValues(const TArray<float>& InValues)
+{
+    // Validate input array size matches segment count
+    if (InValues.Num() != ChartStyle.Segments.Num())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValues: Input array size (%d) does not match segment count (%d)"), 
+            InValues.Num(), ChartStyle.Segments.Num());
+        return;
+    }
+
+    // Ensure we have at least one value layer
+    if (ValueLayers.Num() == 0)
+    {
+        ValueLayers.AddZeroed();
+    }
+
+    // Set the values for the first layer
+    SetValuesForLayer(0, InValues);
+}
+
+bool UPURadarChart::SetSegmentNames(const TArray<FString>& InNames)
+{
+    // Validate that we have enough segments
+    if (InNames.Num() != ChartStyle.Segments.Num())
+    {
+        return false;
+    }
+
+    // Update segment names
+    for (int32 i = 0; i < InNames.Num(); ++i)
+    {
+        ChartStyle.Segments[i].Name = FText::FromString(InNames[i]);
+    }
+
+    // Force a rebuild of the chart
+    ForceRebuild();
+
+    return true;
+}
+
+bool UPURadarChart::SetValuesFromIngredient(const FPUIngredientBase& Ingredient)
+{
+    // Set the number of segments based on the number of natural properties
+    if (!SetSegmentCount(Ingredient.NaturalProperties.Num()))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromIngredient: Failed to set segment count"));
+        return false;
+    }
+
+    // Get the values and display names from the ingredient's properties
+    TArray<float> Values;
+    TArray<FString> DisplayNames;
+    
+    for (const FIngredientProperty& Property : Ingredient.NaturalProperties)
+    {
+        // Get the display name from the property type
+        FString DisplayName;
+        if (Property.PropertyType == EIngredientPropertyType::Custom)
+        {
+            DisplayName = Property.CustomPropertyName.ToString();
+        }
+        else
+        {
+            DisplayName = UEnum::GetDisplayValueAsText(Property.PropertyType).ToString();
+        }
+        
+        DisplayNames.Add(DisplayName);
+        Values.Add(Property.Value);
+    }
+
+    // Set the segment names using the display names
+    SetSegmentNames(DisplayNames);
+
+    // Set the values
+    SetValues(Values);
+    return true;
 }
 
 void UPURadarChart::InitializeSegments()
