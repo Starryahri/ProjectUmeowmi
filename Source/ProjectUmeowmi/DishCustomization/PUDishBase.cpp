@@ -39,10 +39,10 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
 TArray<FPUIngredientBase> FPUDishBase::GetAllIngredients() const
 {
     TArray<FPUIngredientBase> Ingredients;
-    for (const FGameplayTag& Tag : IngredientTags)
+    for (const FIngredientInstance& Instance : IngredientInstances)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(Tag, Ingredient))
+        if (GetIngredient(Instance.IngredientTag, Ingredient))
         {
             Ingredients.Add(Ingredient);
         }
@@ -55,10 +55,10 @@ float FPUDishBase::GetTotalValueForProperty(const FName& PropertyName) const
     float TotalValue = 0.0f;
     
     // Sum up values from all ingredients (including their preparation modifications)
-    for (const FGameplayTag& Tag : IngredientTags)
+    for (const FIngredientInstance& Instance : IngredientInstances)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(Tag, Ingredient))
+        if (GetIngredient(Instance.IngredientTag, Ingredient))
         {
             TotalValue += Ingredient.GetPropertyValue(PropertyName);
         }
@@ -72,10 +72,10 @@ TArray<FIngredientProperty> FPUDishBase::GetPropertiesWithTag(const FGameplayTag
     TArray<FIngredientProperty> Properties;
     
     // Collect properties from all ingredients
-    for (const FGameplayTag& IngredientTag : IngredientTags)
+    for (const FIngredientInstance& Instance : IngredientInstances)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(IngredientTag, Ingredient) && Ingredient.HasPropertiesWithTag(Tag))
+        if (GetIngredient(Instance.IngredientTag, Ingredient) && Ingredient.HasPropertiesWithTag(Tag))
         {
             // Add all properties with matching tag
             for (const FIngredientProperty& Property : Ingredient.NaturalProperties)
@@ -96,10 +96,10 @@ float FPUDishBase::GetTotalValueForTag(const FGameplayTag& Tag) const
     float TotalValue = 0.0f;
     
     // Sum up values from all ingredients (including their preparation modifications)
-    for (const FGameplayTag& IngredientTag : IngredientTags)
+    for (const FIngredientInstance& Instance : IngredientInstances)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(IngredientTag, Ingredient))
+        if (GetIngredient(Instance.IngredientTag, Ingredient))
         {
             TotalValue += Ingredient.GetTotalValueForTag(Tag);
         }
@@ -110,7 +110,14 @@ float FPUDishBase::GetTotalValueForTag(const FGameplayTag& Tag) const
 
 bool FPUDishBase::HasIngredient(const FGameplayTag& IngredientTag) const
 {
-    return IngredientTags.Contains(IngredientTag);
+    for (const FIngredientInstance& Instance : IngredientInstances)
+    {
+        if (Instance.IngredientTag == IngredientTag)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 FText FPUDishBase::GetCurrentDisplayName() const
@@ -123,9 +130,9 @@ FText FPUDishBase::GetCurrentDisplayName() const
     
     // Count occurrences of each ingredient
     TMap<FGameplayTag, int32> IngredientCounts;
-    for (const FGameplayTag& Tag : IngredientTags)
+    for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        IngredientCounts.FindOrAdd(Tag)++;
+        IngredientCounts.FindOrAdd(Instance.IngredientTag)++;
     }
 
     // Find the most common ingredient
@@ -146,6 +153,17 @@ FText FPUDishBase::GetCurrentDisplayName() const
         FPUIngredientBase MostCommonIngredient;
         if (GetIngredient(MostCommonTag, MostCommonIngredient))
         {
+            // Find the first instance of the most common ingredient to get its preparations
+            for (const FIngredientInstance& Instance : IngredientInstances)
+            {
+                if (Instance.IngredientTag == MostCommonTag)
+                {
+                    // Apply the preparations from this instance
+                    MostCommonIngredient.ActivePreparations = Instance.Preparations;
+                    break;
+                }
+            }
+            
             FString IngredientName = MostCommonIngredient.GetCurrentDisplayName().ToString();
             FString BaseDishName = DisplayName.ToString();
             

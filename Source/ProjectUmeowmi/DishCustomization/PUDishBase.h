@@ -6,6 +6,28 @@
 #include "PUIngredientBase.h"
 #include "PUDishBase.generated.h"
 
+// Internal struct to track ingredient instances
+USTRUCT(BlueprintType)
+struct FIngredientInstance
+{
+    GENERATED_BODY()
+
+    // The base ingredient tag
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    FGameplayTag IngredientTag;
+
+    // The preparations applied to this specific instance
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    FGameplayTagContainer Preparations;
+
+    // Optional: Placement data for this instance
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    FVector PlacementPosition;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    FRotator PlacementRotation;
+};
+
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUDishBase : public FTableRowBase
 {
@@ -32,9 +54,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Data")
     UDataTable* IngredientDataTable;
 
-    // Array of ingredient tags in the dish
+    // Array of ingredient instances in the dish
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Ingredients")
-    TArray<FGameplayTag> IngredientTags;
+    TArray<FIngredientInstance> IngredientInstances;
 
     // Tags associated with this dish
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Tags")

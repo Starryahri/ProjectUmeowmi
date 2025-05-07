@@ -20,6 +20,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static bool RemoveIngredient(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag);
 
+    // Apply a preparation to an ingredient in the dish
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool ApplyPreparation(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag);
+
+    // Remove a preparation from an ingredient in the dish
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool RemovePreparation(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag);
+
     // Get the total value for a specific property
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static float GetTotalValueForProperty(const FPUDishBase& Dish, const FName& PropertyName);

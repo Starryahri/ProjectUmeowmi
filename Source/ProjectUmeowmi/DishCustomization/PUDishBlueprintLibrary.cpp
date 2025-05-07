@@ -5,17 +5,45 @@
 
 bool UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag)
 {
-    if (!Dish.HasIngredient(IngredientTag))
-    {
-        Dish.IngredientTags.Add(IngredientTag);
-        return true;
-    }
-    return false;
+    FIngredientInstance NewInstance;
+    NewInstance.IngredientTag = IngredientTag;
+    Dish.IngredientInstances.Add(NewInstance);
+    return true;
 }
 
 bool UPUDishBlueprintLibrary::RemoveIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag)
 {
-    return Dish.IngredientTags.Remove(IngredientTag) > 0;
+    return Dish.IngredientInstances.RemoveAll([&](const FIngredientInstance& Instance) {
+        return Instance.IngredientTag == IngredientTag;
+    }) > 0;
+}
+
+bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag)
+{
+    bool bApplied = false;
+    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        if (Instance.IngredientTag == IngredientTag)
+        {
+            Instance.Preparations.AddTag(PreparationTag);
+            bApplied = true;
+        }
+    }
+    return bApplied;
+}
+
+bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag)
+{
+    bool bRemoved = false;
+    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        if (Instance.IngredientTag == IngredientTag)
+        {
+            Instance.Preparations.RemoveTag(PreparationTag);
+            bRemoved = true;
+        }
+    }
+    return bRemoved;
 }
 
 float UPUDishBlueprintLibrary::GetTotalValueForProperty(const FPUDishBase& Dish, const FName& PropertyName)

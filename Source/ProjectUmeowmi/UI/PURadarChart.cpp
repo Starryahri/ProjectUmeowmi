@@ -3,6 +3,7 @@
 #include "RadarChartTypes.h"
 #include "Engine/DataTable.h"
 #include "../DishCustomization/PUIngredientBase.h"
+#include "../DishCustomization/PUDishBase.h"
 
 UPURadarChart::UPURadarChart()
 {
@@ -116,6 +117,54 @@ bool UPURadarChart::SetValuesFromIngredient(const FPUIngredientBase& Ingredient)
     // Set the segment names using the display names
     SetSegmentNames(DisplayNames);
 
+    // Set the values
+    SetValues(Values);
+    return true;
+}
+
+bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
+{
+    // Count unique ingredients and their quantities
+    TMap<FGameplayTag, int32> IngredientCounts;
+    TMap<FGameplayTag, FString> IngredientNames;
+    
+    for (const FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        // Increment count for this ingredient
+        IngredientCounts.FindOrAdd(Instance.IngredientTag)++;
+        
+        // Get the display name if we haven't already
+        if (!IngredientNames.Contains(Instance.IngredientTag))
+        {
+            FPUIngredientBase Ingredient;
+            if (Dish.GetIngredient(Instance.IngredientTag, Ingredient))
+            {
+                IngredientNames.Add(Instance.IngredientTag, Ingredient.DisplayName.ToString());
+            }
+        }
+    }
+    
+    // Set the number of segments based on unique ingredients
+    if (!SetSegmentCount(IngredientCounts.Num()))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to set segment count"));
+        return false;
+    }
+    
+    // Prepare arrays for values and names
+    TArray<float> Values;
+    TArray<FString> DisplayNames;
+    
+    // Add values and names for each unique ingredient
+    for (const auto& Pair : IngredientCounts)
+    {
+        Values.Add(static_cast<float>(Pair.Value));
+        DisplayNames.Add(IngredientNames[Pair.Key]);
+    }
+    
+    // Set the segment names
+    SetSegmentNames(DisplayNames);
+    
     // Set the values
     SetValues(Values);
     return true;

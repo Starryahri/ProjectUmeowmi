@@ -5,6 +5,7 @@
 #include "RadarChartStyle.h"
 #include "RadarChartTypes.h"
 #include "../DishCustomization/PUIngredientBase.h"
+#include "../DishCustomization/PUDishBase.h"
 #include "PURadarChart.generated.h"
 
 /**
@@ -56,6 +57,14 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "Radar Chart")
     bool SetValuesFromIngredient(const FPUIngredientBase& Ingredient);
+
+    /**
+     * Sets values from a dish's ingredient quantities.
+     * @param Dish - The dish to get ingredient quantities from
+     * @return True if the values were successfully set
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetValuesFromDishIngredients(const FPUDishBase& Dish);
 
 protected:
     /** Minimum number of segments allowed in the radar chart */
