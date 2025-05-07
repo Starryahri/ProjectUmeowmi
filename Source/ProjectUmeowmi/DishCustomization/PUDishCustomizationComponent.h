@@ -6,6 +6,8 @@
 #include "PUDishCustomizationComponent.generated.h"
 
 class UUserWidget;
+class UInputAction;
+class UEnhancedInputComponent;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class PROJECTUMEOWMI_API UPUDishCustomizationComponent : public USceneComponent
@@ -27,6 +29,10 @@ public:
     // UI Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     TSubclassOf<UUserWidget> CustomizationWidgetClass;
+
+    // Input Action for exiting customization
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputAction* ExitCustomizationAction;
 
     // Camera Management
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization")

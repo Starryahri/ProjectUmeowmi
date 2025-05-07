@@ -168,7 +168,10 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
             if (Dish.GetIngredient(Instance.IngredientTag, Ingredient))
             {
                 IngredientNames.Add(Instance.IngredientTag, Ingredient.DisplayName.ToString());
-                IngredientTextures.Add(Instance.IngredientTag, Ingredient.PreviewTexture);
+                if (Ingredient.PreviewTexture)
+                {
+                    IngredientTextures.Add(Instance.IngredientTag, Ingredient.PreviewTexture);
+                }
                 UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found ingredient %s with texture %p"), 
                     *Ingredient.DisplayName.ToString(), 
                     Ingredient.PreviewTexture);
@@ -194,13 +197,23 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     for (const auto& Pair : IngredientCounts)
     {
         Values.Add(static_cast<float>(Pair.Value));
-        DisplayNames.Add(IngredientNames[Pair.Key]);
+        
+        // Get the display name, defaulting to the tag name if not found
+        FString DisplayName;
+        if (const FString* FoundName = IngredientNames.Find(Pair.Key))
+        {
+            DisplayName = *FoundName;
+        }
+        else
+        {
+            DisplayName = Pair.Key.ToString();
+        }
+        DisplayNames.Add(DisplayName);
         
         // Set the segment's icon if we have a texture
-        if (IngredientTextures.Contains(Pair.Key))
+        if (UTexture2D* const* FoundTexture = IngredientTextures.Find(Pair.Key))
         {
-            UTexture2D* Texture = IngredientTextures[Pair.Key];
-            if (Texture)
+            if (UTexture2D* Texture = *FoundTexture)
             {
                 // Set up the icon and its brush
                 ChartStyle.Segments[SegmentIndex].Icon = Texture;
@@ -209,12 +222,12 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
                 ChartStyle.Segments[SegmentIndex].IconBrush.TintColor = FSlateColor(FLinearColor::White);
                 
                 UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set icon for segment %d (%s) with texture %p"), 
-                    SegmentIndex, *DisplayNames.Last(), Texture);
+                    SegmentIndex, *DisplayName, Texture);
             }
             else
             {
-                UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to load texture for segment %d (%s)"), 
-                    SegmentIndex, *DisplayNames.Last());
+                UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Null texture for segment %d (%s)"), 
+                    SegmentIndex, *DisplayName);
             }
         }
         

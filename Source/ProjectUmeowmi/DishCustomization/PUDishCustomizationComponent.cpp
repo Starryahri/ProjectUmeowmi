@@ -1,4 +1,7 @@
 #include "PUDishCustomizationComponent.h"
+#include "EnhancedInputComponent.h"
+#include "InputAction.h"
+#include "InputActionValue.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Character.h"
 #include "Blueprint/UserWidget.h"
@@ -66,6 +69,14 @@ void UPUDishCustomizationComponent::StartCustomization()
     PC->SetIgnoreMoveInput(true);
     UE_LOG(LogTemp, Log, TEXT("Player movement disabled"));
 
+    // Show mouse cursor and set input mode to Game and UI
+    PC->bShowMouseCursor = true;
+    FInputModeGameAndUI InputMode;
+    InputMode.SetWidgetToFocus(nullptr);
+    InputMode.SetHideCursorDuringCapture(false);
+    PC->SetInputMode(InputMode);
+    UE_LOG(LogTemp, Log, TEXT("Mouse cursor shown and input mode set to Game and UI"));
+
     // Setup camera
     SetupCustomizationCamera();
 
@@ -122,6 +133,11 @@ void UPUDishCustomizationComponent::EndCustomization()
     PC->SetIgnoreMoveInput(false);
     UE_LOG(LogTemp, Log, TEXT("Player movement re-enabled"));
 
+    // Hide mouse cursor and set input mode back to game
+    PC->bShowMouseCursor = false;
+    PC->SetInputMode(FInputModeGameOnly());
+    UE_LOG(LogTemp, Log, TEXT("Mouse cursor hidden and input mode set to game"));
+
     // Remove UI
     if (CustomizationWidget)
     {
@@ -136,11 +152,29 @@ void UPUDishCustomizationComponent::EndCustomization()
 
 void UPUDishCustomizationComponent::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-    if (!PlayerInputComponent) return;
+    if (!PlayerInputComponent) 
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PlayerInputComponent is null in SetupPlayerInputComponent"));
+        return;
+    }
 
     // Bind exit input
-    PlayerInputComponent->BindAction("ExitCustomization", IE_Pressed, this, &UPUDishCustomizationComponent::HandleExitInput);
-    UE_LOG(LogTemp, Log, TEXT("Exit input bound"));
+    if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        if (ExitCustomizationAction)
+        {
+            EnhancedInputComponent->BindAction(ExitCustomizationAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleExitInput);
+            UE_LOG(LogTemp, Log, TEXT("Successfully bound ExitCustomizationAction"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ExitCustomizationAction not set in SetupPlayerInputComponent"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Failed to cast to EnhancedInputComponent in SetupPlayerInputComponent"));
+    }
 }
 
 void UPUDishCustomizationComponent::HandleExitInput()

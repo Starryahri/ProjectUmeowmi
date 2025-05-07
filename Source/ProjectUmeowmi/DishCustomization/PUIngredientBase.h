@@ -95,7 +95,7 @@ public:
     FPUIngredientBase();
 
     // Basic Identification
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic", meta = (Categories = "Ingredient"))
     FGameplayTag IngredientTag;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic")
@@ -133,7 +133,7 @@ public:
     TArray<FRotator> DefaultPlacementRotations;
 
     // Active Preparations
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation", meta = (Categories = "Preparation"))
     FGameplayTagContainer ActivePreparations;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation")
