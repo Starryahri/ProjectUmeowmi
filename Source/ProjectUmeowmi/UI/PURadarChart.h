@@ -21,6 +21,13 @@ public:
     UPURadarChart();
 
     /**
+     * Shows or hides the icons in the radar chart.
+     * @param bShow - Whether to show the icons
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    void ShowIcons(bool bShow = true);
+
+    /**
      * Sets the number of segments in the radar chart.
      * @param NewSegmentCount - The new number of segments (minimum 3)
      * @return True if the segment count was successfully changed

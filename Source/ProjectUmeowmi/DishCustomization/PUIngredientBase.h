@@ -106,10 +106,10 @@ public:
 
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    TSoftObjectPtr<UTexture2D> PreviewTexture;
+    UTexture2D* PreviewTexture;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    TSoftObjectPtr<UMaterialInterface> MaterialInstance;
+    UMaterialInterface* MaterialInstance;
 
     // Natural Properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Properties")

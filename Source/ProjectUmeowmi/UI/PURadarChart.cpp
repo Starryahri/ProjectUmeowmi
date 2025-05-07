@@ -9,6 +9,31 @@ UPURadarChart::UPURadarChart()
 {
     // Initialize with default segment count
     InitializeSegments();
+
+    // Show icons by default
+    ShowIcons(true);
+}
+
+void UPURadarChart::ShowIcons(bool bShow)
+{
+    // Enable/disable icon display
+    ChartStyle.bShowIcons = bShow;
+    
+    if (bShow)
+    {
+        // Configure icon settings
+        ChartStyle.IconSize = FVector2D(32.0f, 32.0f);  // Set a reasonable icon size
+        
+        // Configure icon color
+        ChartStyle.IconColor.Method = ERadarChartColorOverride::None;
+        ChartStyle.IconColor.Color = FLinearColor::White;
+        
+        ChartStyle.IconPadding = FVector2D(5.0f, 5.0f);  // Add some padding around icons
+        ChartStyle.bAlwaysUprightIcon = true;  // Keep icons upright for better readability
+    }
+    
+    // Force a rebuild of the chart to apply changes
+    ForceRebuild();
 }
 
 bool UPURadarChart::SetSegmentCount(int32 NewSegmentCount)
@@ -127,19 +152,26 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     // Count unique ingredients and their quantities
     TMap<FGameplayTag, int32> IngredientCounts;
     TMap<FGameplayTag, FString> IngredientNames;
+    TMap<FGameplayTag, UTexture2D*> IngredientTextures;
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Starting with %d ingredient instances"), Dish.IngredientInstances.Num());
     
     for (const FIngredientInstance& Instance : Dish.IngredientInstances)
     {
         // Increment count for this ingredient
         IngredientCounts.FindOrAdd(Instance.IngredientTag)++;
         
-        // Get the display name if we haven't already
+        // Get the display name and texture if we haven't already
         if (!IngredientNames.Contains(Instance.IngredientTag))
         {
             FPUIngredientBase Ingredient;
             if (Dish.GetIngredient(Instance.IngredientTag, Ingredient))
             {
                 IngredientNames.Add(Instance.IngredientTag, Ingredient.DisplayName.ToString());
+                IngredientTextures.Add(Instance.IngredientTag, Ingredient.PreviewTexture);
+                UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found ingredient %s with texture %p"), 
+                    *Ingredient.DisplayName.ToString(), 
+                    Ingredient.PreviewTexture);
             }
         }
     }
@@ -151,15 +183,42 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
         return false;
     }
     
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set up %d segments"), IngredientCounts.Num());
+    
     // Prepare arrays for values and names
     TArray<float> Values;
     TArray<FString> DisplayNames;
     
     // Add values and names for each unique ingredient
+    int32 SegmentIndex = 0;
     for (const auto& Pair : IngredientCounts)
     {
         Values.Add(static_cast<float>(Pair.Value));
         DisplayNames.Add(IngredientNames[Pair.Key]);
+        
+        // Set the segment's icon if we have a texture
+        if (IngredientTextures.Contains(Pair.Key))
+        {
+            UTexture2D* Texture = IngredientTextures[Pair.Key];
+            if (Texture)
+            {
+                // Set up the icon and its brush
+                ChartStyle.Segments[SegmentIndex].Icon = Texture;
+                ChartStyle.Segments[SegmentIndex].IconBrush.SetResourceObject(Texture);
+                ChartStyle.Segments[SegmentIndex].IconBrush.DrawAs = ESlateBrushDrawType::Image;
+                ChartStyle.Segments[SegmentIndex].IconBrush.TintColor = FSlateColor(FLinearColor::White);
+                
+                UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set icon for segment %d (%s) with texture %p"), 
+                    SegmentIndex, *DisplayNames.Last(), Texture);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to load texture for segment %d (%s)"), 
+                    SegmentIndex, *DisplayNames.Last());
+            }
+        }
+        
+        SegmentIndex++;
     }
     
     // Set the segment names
@@ -167,6 +226,15 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     
     // Set the values
     SetValues(Values);
+    
+    // Make sure icons are enabled
+    ShowIcons(true);
+    
+    // Force a rebuild of the chart to show the new icons
+    ForceRebuild();
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Completed setup"));
+    
     return true;
 }
 

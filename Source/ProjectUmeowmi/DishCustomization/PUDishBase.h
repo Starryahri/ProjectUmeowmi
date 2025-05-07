@@ -48,7 +48,7 @@ public:
 
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
-    TSoftObjectPtr<UTexture2D> PreviewTexture;
+    UTexture2D* PreviewTexture;
 
     // Data Tables
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Data")
