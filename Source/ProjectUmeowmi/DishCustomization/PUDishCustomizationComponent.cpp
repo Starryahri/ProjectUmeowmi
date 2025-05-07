@@ -20,6 +20,13 @@ void UPUDishCustomizationComponent::BeginPlay()
 
 void UPUDishCustomizationComponent::StartCustomization()
 {
+    // Check if customization is already active
+    if (CustomizationWidget)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Dish customization is already active"));
+        return;
+    }
+
     // Get player controller from the character
     ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
     if (!OwnerCharacter)
