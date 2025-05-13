@@ -34,7 +34,6 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 700.f;
 	GetCharacterMovement()->AirControl = 0.35f;
 	GetCharacterMovement()->MaxWalkSpeed = 500.f;
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
@@ -85,10 +84,6 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
-
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Move);
 
@@ -330,13 +325,13 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
-	// Check if we have a talking object available
-	if (CurrentTalkingObject)
+	// Check if we have a talking object available and it can interact
+	if (CurrentTalkingObject && CurrentTalkingObject->CanInteract())
 	{
 		// Start the interaction with the talking object
 		CurrentTalkingObject->StartInteraction();
 	}
-	// Check if we have a dish customization component and start customization
+	// Only start dish customization if there's no talking object interaction
 	else if (CustomizationComponent)
 	{
 		CustomizationComponent->StartCustomization();
