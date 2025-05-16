@@ -51,6 +51,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* InteractAction;
 
+	//Todo: Add input for cancel action
+	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	// UInputAction* CancelAction;
+
 
 	////////////////////////////////////////////////////////////
 	// Camera Configuration
