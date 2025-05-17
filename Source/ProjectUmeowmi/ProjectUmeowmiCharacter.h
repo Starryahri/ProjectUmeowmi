@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
+#include "Interfaces/PUInteractableInterface.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -15,7 +16,6 @@ class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
 class UPUDialogueBox;
-class UPUDishCustomizationComponent;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -169,9 +169,9 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
 	UPUDialogueBox* DialogueBox;
 
-	/** Reference to the customization component */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Customization", meta = (AllowPrivateAccess = "true"))
-	UPUDishCustomizationComponent* CustomizationComponent;
+	/** Current interactable object that can be interacted with */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Interactable", meta = (AllowPrivateAccess = "true"))
+	TScriptInterface<IPUInteractableInterface> CurrentInteractable;
 
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }
@@ -203,6 +203,16 @@ protected:
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+	// Interaction event handlers
+	UFUNCTION()
+	void OnInteractionStarted();
+
+	UFUNCTION()
+	void OnInteractionEnded();
+
+	UFUNCTION()
+	void OnInteractionFailed();
+
 public:
 	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
@@ -228,5 +238,9 @@ public:
 	/** Get the current talking object */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	ATalkingObject* GetCurrentTalkingObject() const { return CurrentTalkingObject; }
+
+	void RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
+	void UnregisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
+	bool HasInteractableAvailable() const { return CurrentInteractable != nullptr; }
 
 };

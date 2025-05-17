@@ -12,6 +12,7 @@
 #include "InputActionValue.h"
 #include "Dialogue/TalkingObject.h"
 #include "DishCustomization/PUDishCustomizationComponent.h"
+#include "Interfaces/PUInteractableInterface.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -53,10 +54,6 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
-
-	// Create the dish customization component
-	CustomizationComponent = CreateDefaultSubobject<UPUDishCustomizationComponent>(TEXT("DishCustomizationComponent"));
-	CustomizationComponent->SetupAttachment(RootComponent);
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -325,16 +322,13 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
-	// Check if we have a talking object available and it can interact
-	if (CurrentTalkingObject && CurrentTalkingObject->CanInteract())
+	if (CurrentTalkingObject)
 	{
-		// Start the interaction with the talking object
 		CurrentTalkingObject->StartInteraction();
 	}
-	// Only start dish customization if there's no talking object interaction
-	else if (CustomizationComponent)
+	else if (CurrentInteractable)
 	{
-		CustomizationComponent->StartCustomization();
+		CurrentInteractable->StartInteraction();
 	}
 }
 
@@ -360,6 +354,53 @@ void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingOb
 	}
 }
 
+void AProjectUmeowmiCharacter::RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable)
+{
+	if (Interactable)
+	{
+		CurrentInteractable = Interactable;
+		
+		// Bind to interaction events
+		Interactable->OnInteractionStarted().AddUObject(this, &AProjectUmeowmiCharacter::OnInteractionStarted);
+		Interactable->OnInteractionEnded().AddUObject(this, &AProjectUmeowmiCharacter::OnInteractionEnded);
+		Interactable->OnInteractionFailed().AddUObject(this, &AProjectUmeowmiCharacter::OnInteractionFailed);
+	}
+}
+
+void AProjectUmeowmiCharacter::UnregisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable)
+{
+	if (CurrentInteractable == Interactable)
+	{
+		// Unbind from interaction events
+		if (Interactable)
+		{
+			Interactable->OnInteractionStarted().RemoveAll(this);
+			Interactable->OnInteractionEnded().RemoveAll(this);
+			Interactable->OnInteractionFailed().RemoveAll(this);
+		}
+		
+		CurrentInteractable = nullptr;
+	}
+}
+
+void AProjectUmeowmiCharacter::OnInteractionStarted()
+{
+	// Handle interaction started
+	UE_LOG(LogTemp, Log, TEXT("Interaction started"));
+}
+
+void AProjectUmeowmiCharacter::OnInteractionEnded()
+{
+	// Handle interaction ended
+	UE_LOG(LogTemp, Log, TEXT("Interaction ended"));
+}
+
+void AProjectUmeowmiCharacter::OnInteractionFailed()
+{
+	// Handle interaction failed
+	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
+}
+
 //void AProjectUmeowmiCharacter::BeginPlay()
 //{
 //	Super::BeginPlay();
@@ -377,3 +418,4 @@ void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingOb
 //		UE_LOG(LogTemp, Warning, TEXT("DialogueBox is null!"));
 //	}
 //}
+

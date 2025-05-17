@@ -3,11 +3,15 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "PUDishBase.h"
+#include "../ProjectUmeowmiCharacter.h"
 #include "PUDishCustomizationComponent.generated.h"
 
+// Forward declarations
 class UUserWidget;
 class UInputAction;
 class UEnhancedInputComponent;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomizationEnded);
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class PROJECTUMEOWMI_API UPUDishCustomizationComponent : public USceneComponent
@@ -21,10 +25,14 @@ public:
 
     // Activation/Deactivation
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
-    void StartCustomization();
+    void StartCustomization(AProjectUmeowmiCharacter* Character);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     void EndCustomization();
+
+    // Events
+    UPROPERTY(BlueprintAssignable, Category = "Dish Customization")
+    FOnCustomizationEnded OnCustomizationEnded;
 
     // UI Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
@@ -39,7 +47,7 @@ public:
     void SetupCustomizationCamera();
 
     // Current dish being customized
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
     FPUDishBase CurrentDishData;
 
 protected:
@@ -47,7 +55,9 @@ protected:
     UPROPERTY()
     UUserWidget* CustomizationWidget;
 
+    UPROPERTY()
+    AProjectUmeowmiCharacter* CurrentCharacter;
+
     // Input handling
-    virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent);
     void HandleExitInput();
 }; 

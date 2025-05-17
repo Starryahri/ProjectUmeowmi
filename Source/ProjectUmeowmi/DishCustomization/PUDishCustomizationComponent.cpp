@@ -6,91 +6,52 @@
 #include "GameFramework/Character.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
+#include "../ProjectUmeowmiCharacter.h"
+#include "EnhancedInputSubsystems.h"
 
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
-    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bCanEverTick = false;
 }
 
 void UPUDishCustomizationComponent::BeginPlay()
 {
     Super::BeginPlay();
-    UE_LOG(LogTemp, Log, TEXT("Dish Customization Component Initialized"));
 }
 
-void UPUDishCustomizationComponent::StartCustomization()
+void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter* Character)
 {
-    // Check if customization is already active
-    if (CustomizationWidget)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Dish customization is already active"));
-        return;
-    }
-
-    // Get player controller from the character
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter)
+    if (!Character)
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to get Character in StartCustomization"));
         return;
     }
-    UE_LOG(LogTemp, Log, TEXT("Successfully got Character: %s"), *OwnerCharacter->GetName());
 
-    // Try to get the controller, with a fallback to getting it from the game instance
-    APlayerController* PC = nullptr;
-    
-    // First try: Get from character's controller
-    PC = Cast<APlayerController>(OwnerCharacter->GetController());
-    if (PC)
-    {
-        UE_LOG(LogTemp, Log, TEXT("Got Player Controller from Character's controller: %s"), *PC->GetName());
-    }
-    else
-    {
-        UE_LOG(LogTemp, Log, TEXT("Failed to get Player Controller from Character's controller, trying Game Instance..."));
-    }
-    
-    // Second try: Get from game instance if first attempt failed
-    if (!PC)
-    {
-        PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-        if (PC)
-        {
-            UE_LOG(LogTemp, Log, TEXT("Got Player Controller from Game Instance: %s"), *PC->GetName());
-        }
-        else
-        {
-            UE_LOG(LogTemp, Log, TEXT("Failed to get Player Controller from Game Instance"));
-        }
-    }
+    CurrentCharacter = Character;
 
-    if (!PC)
+    // Get the player controller
+    APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
+    if (!PlayerController)
     {
         UE_LOG(LogTemp, Error, TEXT("Failed to get Player Controller in StartCustomization"));
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Starting Dish Customization with Player Controller: %s"), *PC->GetName());
+    // Disable movement and show mouse cursor
+    PlayerController->SetIgnoreMoveInput(true);
+    PlayerController->SetIgnoreLookInput(true);
+    PlayerController->bShowMouseCursor = true;
 
-    // Disable movement
-    PC->SetIgnoreMoveInput(true);
-    UE_LOG(LogTemp, Log, TEXT("Player movement disabled"));
-
-    // Show mouse cursor and set input mode to Game and UI
-    PC->bShowMouseCursor = true;
+    // Set input mode to Game and UI
     FInputModeGameAndUI InputMode;
     InputMode.SetWidgetToFocus(nullptr);
     InputMode.SetHideCursorDuringCapture(false);
-    PC->SetInputMode(InputMode);
-    UE_LOG(LogTemp, Log, TEXT("Mouse cursor shown and input mode set to Game and UI"));
+    PlayerController->SetInputMode(InputMode);
 
-    // Setup camera
-    SetupCustomizationCamera();
-
-    // Create and show UI
+    // Create and show the customization widget
     if (CustomizationWidgetClass)
     {
-        CustomizationWidget = CreateWidget<UUserWidget>(PC, CustomizationWidgetClass);
+        CustomizationWidget = CreateWidget<UUserWidget>(GetWorld(), CustomizationWidgetClass);
         if (CustomizationWidget)
         {
             CustomizationWidget->AddToViewport();
@@ -106,46 +67,46 @@ void UPUDishCustomizationComponent::StartCustomization()
         UE_LOG(LogTemp, Warning, TEXT("No CustomizationWidgetClass set"));
     }
 
-    // Setup input
-    if (PC->InputComponent)
+    // Setup input handling
+    if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerController->InputComponent))
     {
-        SetupPlayerInputComponent(PC->InputComponent);
+        if (ExitCustomizationAction)
+        {
+            EnhancedInputComponent->BindAction(ExitCustomizationAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleExitInput);
+            UE_LOG(LogTemp, Log, TEXT("Exit action bound"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("No ExitCustomizationAction set"));
+        }
     }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("No InputComponent found on Player Controller"));
-    }
+
+    // Setup camera
+    SetupCustomizationCamera();
 }
 
 void UPUDishCustomizationComponent::EndCustomization()
 {
-    // Get player controller from the character
-    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-    if (!OwnerCharacter)
+    if (!CurrentCharacter)
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get Character in EndCustomization"));
+        UE_LOG(LogTemp, Warning, TEXT("No current character in EndCustomization"));
         return;
     }
 
-    APlayerController* PC = Cast<APlayerController>(OwnerCharacter->GetController());
-    if (!PC)
+    // Get the player controller
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (PlayerController)
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get Player Controller in EndCustomization"));
-        return;
+        // Re-enable movement and hide mouse cursor
+        PlayerController->SetIgnoreMoveInput(false);
+        PlayerController->SetIgnoreLookInput(false);
+        PlayerController->bShowMouseCursor = false;
+
+        // Set input mode back to game only
+        PlayerController->SetInputMode(FInputModeGameOnly());
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Ending Dish Customization"));
-
-    // Re-enable movement
-    PC->SetIgnoreMoveInput(false);
-    UE_LOG(LogTemp, Log, TEXT("Player movement re-enabled"));
-
-    // Hide mouse cursor and set input mode back to game
-    PC->bShowMouseCursor = false;
-    PC->SetInputMode(FInputModeGameOnly());
-    UE_LOG(LogTemp, Log, TEXT("Mouse cursor hidden and input mode set to game"));
-
-    // Remove UI
+    // Clean up the widget
     if (CustomizationWidget)
     {
         CustomizationWidget->RemoveFromParent();
@@ -153,35 +114,11 @@ void UPUDishCustomizationComponent::EndCustomization()
         UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Removed"));
     }
 
-    // Reset camera
-    // (Implement camera reset)
-}
+    // Clear the character reference
+    CurrentCharacter = nullptr;
 
-void UPUDishCustomizationComponent::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-    if (!PlayerInputComponent) 
-    {
-        UE_LOG(LogTemp, Warning, TEXT("PlayerInputComponent is null in SetupPlayerInputComponent"));
-        return;
-    }
-
-    // Bind exit input
-    if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
-    {
-        if (ExitCustomizationAction)
-        {
-            EnhancedInputComponent->BindAction(ExitCustomizationAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleExitInput);
-            UE_LOG(LogTemp, Log, TEXT("Successfully bound ExitCustomizationAction"));
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("ExitCustomizationAction not set in SetupPlayerInputComponent"));
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Failed to cast to EnhancedInputComponent in SetupPlayerInputComponent"));
-    }
+    // Broadcast the end event
+    OnCustomizationEnded.Broadcast();
 }
 
 void UPUDishCustomizationComponent::HandleExitInput()
