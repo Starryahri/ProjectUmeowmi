@@ -4,6 +4,7 @@
 #include "PUInteractableBase.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "Components/BoxComponent.h"
+#include "Components/WidgetComponent.h"
 #include "PUCookingStation.generated.h"
 
 UCLASS()
@@ -32,6 +33,9 @@ protected:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UPUDishCustomizationComponent* DishCustomizationComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    UWidgetComponent* InteractionWidget;
 
     // Interaction properties
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")

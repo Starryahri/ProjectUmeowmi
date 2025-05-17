@@ -30,6 +30,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     void EndCustomization();
 
+    // Check if currently customizing
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization")
+    bool IsCustomizing() const { return CurrentCharacter != nullptr; }
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Dish Customization")
     FOnCustomizationEnded OnCustomizationEnded;

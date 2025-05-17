@@ -17,6 +17,12 @@ APUCookingStation::APUCookingStation()
     DishCustomizationComponent = CreateDefaultSubobject<UPUDishCustomizationComponent>(TEXT("DishCustomizationComponent"));
     DishCustomizationComponent->SetupAttachment(RootComponent);
 
+    // Create and setup the interaction widget
+    InteractionWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidget"));
+    InteractionWidget->SetupAttachment(RootComponent);
+    InteractionWidget->SetWidgetSpace(EWidgetSpace::Screen);
+    InteractionWidget->SetVisibility(false);
+
     // Set default values
     StationName = FText::FromString(TEXT("Cooking Station"));
     StationDescription = FText::FromString(TEXT("A station for customizing dishes"));
@@ -44,24 +50,42 @@ void APUCookingStation::BeginPlay()
 
 void APUCookingStation::StartInteraction()
 {
+    UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Attempting to start interaction"));
     if (CanInteract() && DishCustomizationComponent)
     {
         // Get the character that triggered the interaction
         AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
         if (Character)
         {
+            UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Got character reference"));
+            
+            // Check if we're already in customization mode
+            if (DishCustomizationComponent->IsCustomizing())
+            {
+                UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Already in customization mode, ignoring interaction"));
+                return;
+            }
+
+            // Hide the interaction widget
+            if (InteractionWidget)
+            {
+                InteractionWidget->SetVisibility(false);
+            }
+
             // Start dish customization with the character reference
             DishCustomizationComponent->StartCustomization(Character);
             BroadcastInteractionStarted();
         }
         else
         {
-            UE_LOG(LogTemp, Error, TEXT("Failed to get Character in StartInteraction"));
+            UE_LOG(LogTemp, Error, TEXT("CookingStation::StartInteraction - Failed to get Character reference"));
             BroadcastInteractionFailed();
         }
     }
     else
     {
+        UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Cannot interact: CanInteract=%d, HasDishComponent=%d"), 
+            CanInteract(), DishCustomizationComponent != nullptr);
         BroadcastInteractionFailed();
     }
 }
@@ -72,6 +96,13 @@ void APUCookingStation::EndInteraction()
     {
         DishCustomizationComponent->EndCustomization();
     }
+
+    // Show the interaction widget again
+    if (InteractionWidget)
+    {
+        InteractionWidget->SetVisibility(true);
+    }
+
     BroadcastInteractionEnded();
 }
 
@@ -94,8 +125,15 @@ void APUCookingStation::OnInteractionBoxBeginOverlap(UPrimitiveComponent* Overla
 {
     if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(OtherActor))
     {
+        UE_LOG(LogTemp, Log, TEXT("CookingStation::OnInteractionBoxBeginOverlap - Player entered range"));
         Character->RegisterInteractable(this);
         BroadcastInteractionRangeEntered();
+
+        // Show the interaction widget
+        if (InteractionWidget)
+        {
+            InteractionWidget->SetVisibility(true);
+        }
     }
 }
 
@@ -103,7 +141,14 @@ void APUCookingStation::OnInteractionBoxEndOverlap(UPrimitiveComponent* Overlapp
 {
     if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(OtherActor))
     {
+        UE_LOG(LogTemp, Log, TEXT("CookingStation::OnInteractionBoxEndOverlap - Player exited range"));
         Character->UnregisterInteractable(this);
         BroadcastInteractionRangeExited();
+
+        // Hide the interaction widget
+        if (InteractionWidget)
+        {
+            InteractionWidget->SetVisibility(false);
+        }
     }
 } 
