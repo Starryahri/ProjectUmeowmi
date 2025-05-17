@@ -188,6 +188,13 @@ public:
 	/** Called every frame to update camera position */
 	virtual void Tick(float DeltaTime) override;
 	
+	// Camera getters
+	FORCEINLINE float GetCameraOffset() const { return CameraOffset; }
+	FORCEINLINE int32 GetCameraPositionIndex() const { return CameraPositionIndex; }
+	FORCEINLINE UInputAction* GetRotateCameraAction() const { return RotateCameraAction; }
+	FORCEINLINE void SetCameraOffset(float NewOffset) { CameraOffset = NewOffset; }
+	FORCEINLINE void SetCameraPositionIndex(int32 NewIndex) { CameraPositionIndex = NewIndex; }
+	
 protected:
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);

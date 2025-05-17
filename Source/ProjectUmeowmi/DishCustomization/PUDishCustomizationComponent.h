@@ -22,6 +22,7 @@ public:
     UPUDishCustomizationComponent();
 
     virtual void BeginPlay() override;
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
     // Activation/Deactivation
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
@@ -47,8 +48,17 @@ public:
     class UInputAction* ExitCustomizationAction;
 
     // Camera Management
-    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization")
-    void SetupCustomizationCamera();
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
+    float CustomizationCameraDistance = 200.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
+    float CustomizationCameraPitch = -25.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
+    float CameraTransitionSpeed = 2.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
+    float CustomizationOrthoWidth = 500.0f;
 
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
@@ -62,6 +72,25 @@ protected:
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;
 
+    // Camera transition state
+    bool bIsTransitioningCamera = false;
+    float OriginalCameraDistance = 0.0f;
+    float OriginalCameraPitch = 0.0f;
+    float OriginalCameraYaw = 0.0f;
+    float OriginalOrthoWidth = 0.0f;
+    float OriginalCameraOffset = 0.0f;
+    int32 OriginalCameraPositionIndex = 0;
+    float TargetCameraDistance = 0.0f;
+    float TargetCameraPitch = 0.0f;
+    float TargetCameraYaw = 0.0f;
+    float TargetOrthoWidth = 0.0f;
+    float TargetCameraOffset = 0.0f;
+    int32 TargetCameraPositionIndex = 0;
+
     // Input handling
     void HandleExitInput();
+
+    // Camera handling
+    void StartCameraTransition(bool bToCustomization);
+    void UpdateCameraTransition(float DeltaTime);
 }; 
