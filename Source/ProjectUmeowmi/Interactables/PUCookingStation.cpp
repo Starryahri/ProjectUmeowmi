@@ -5,9 +5,12 @@ APUCookingStation::APUCookingStation()
 {
     PrimaryActorTick.bCanEverTick = false;
 
+    // Create and setup the root component
+    RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
+
     // Create and setup components
     StationMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StationMesh"));
-    RootComponent = StationMesh;
+    StationMesh->SetupAttachment(RootComponent);
 
     InteractionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("InteractionBox"));
     InteractionBox->SetupAttachment(RootComponent);
