@@ -120,11 +120,22 @@ void ATalkingObject::StartInteraction()
 
 void ATalkingObject::EndInteraction()
 {
-    UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Ending interaction"));
+    UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Ending interaction for %s"), *GetName());
     bIsInteracting = false;
     if (CurrentDialogueContext)
     {
         CurrentDialogueContext = nullptr;
+    }
+
+    // Get the player character and clear the talking object reference
+    if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn()))
+    {
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Unregistering talking object from character"));
+        Character->UnregisterTalkingObject(this);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("TalkingObject::EndInteraction - Failed to get character reference"));
     }
 }
 
@@ -250,7 +261,7 @@ void ATalkingObject::OnInteractionSphereBeginOverlap(UPrimitiveComponent* Overla
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
     if (OtherActor == PlayerCharacter)
     {
-        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Player entered range"));
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Player entered range of %s"), *GetName());
         bPlayerInRange = true;
         UpdateInteractionWidget();
         OnPlayerEnteredInteractionSphere.Broadcast(this);
@@ -262,10 +273,20 @@ void ATalkingObject::OnInteractionSphereEndOverlap(UPrimitiveComponent* Overlapp
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
     if (OtherActor == PlayerCharacter)
     {
-        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereEndOverlap - Player exited range"));
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereEndOverlap - Player exited range of %s"), *GetName());
         bPlayerInRange = false;
         UpdateInteractionWidget();
         OnPlayerExitedInteractionSphere.Broadcast(this);
+
+        // If we're not currently interacting, unregister from the character
+        if (!bIsInteracting)
+        {
+            if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PlayerCharacter))
+            {
+                UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereEndOverlap - Unregistering talking object from character (no interaction occurred)"));
+                Character->UnregisterTalkingObject(this);
+            }
+        }
     }
 }
 

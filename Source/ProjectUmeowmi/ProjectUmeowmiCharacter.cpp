@@ -11,6 +11,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Dialogue/TalkingObject.h"
+#include "DishCustomization/PUDishCustomizationComponent.h"
+#include "Interfaces/PUInteractableInterface.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -33,7 +35,6 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 700.f;
 	GetCharacterMovement()->AirControl = 0.35f;
 	GetCharacterMovement()->MaxWalkSpeed = 500.f;
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
@@ -80,10 +81,6 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
 	{
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
-
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Move);
 
@@ -325,11 +322,13 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
-	// Check if we have a talking object available
 	if (CurrentTalkingObject)
 	{
-		// Start the interaction with the talking object
 		CurrentTalkingObject->StartInteraction();
+	}
+	else if (CurrentInteractable)
+	{
+		CurrentInteractable->StartInteraction();
 	}
 }
 
@@ -355,6 +354,53 @@ void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingOb
 	}
 }
 
+void AProjectUmeowmiCharacter::RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable)
+{
+	if (Interactable)
+	{
+		CurrentInteractable = Interactable;
+		
+		// Bind to interaction events
+		Interactable->OnInteractionStarted().AddUObject(this, &AProjectUmeowmiCharacter::OnInteractionStarted);
+		Interactable->OnInteractionEnded().AddUObject(this, &AProjectUmeowmiCharacter::OnInteractionEnded);
+		Interactable->OnInteractionFailed().AddUObject(this, &AProjectUmeowmiCharacter::OnInteractionFailed);
+	}
+}
+
+void AProjectUmeowmiCharacter::UnregisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable)
+{
+	if (CurrentInteractable == Interactable)
+	{
+		// Unbind from interaction events
+		if (Interactable)
+		{
+			Interactable->OnInteractionStarted().RemoveAll(this);
+			Interactable->OnInteractionEnded().RemoveAll(this);
+			Interactable->OnInteractionFailed().RemoveAll(this);
+		}
+		
+		CurrentInteractable = nullptr;
+	}
+}
+
+void AProjectUmeowmiCharacter::OnInteractionStarted()
+{
+	// Handle interaction started
+	UE_LOG(LogTemp, Log, TEXT("Interaction started"));
+}
+
+void AProjectUmeowmiCharacter::OnInteractionEnded()
+{
+	// Handle interaction ended
+	UE_LOG(LogTemp, Log, TEXT("Interaction ended"));
+}
+
+void AProjectUmeowmiCharacter::OnInteractionFailed()
+{
+	// Handle interaction failed
+	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
+}
+
 //void AProjectUmeowmiCharacter::BeginPlay()
 //{
 //	Super::BeginPlay();
@@ -372,3 +418,4 @@ void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingOb
 //		UE_LOG(LogTemp, Warning, TEXT("DialogueBox is null!"));
 //	}
 //}
+

@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
+#include "Interfaces/PUInteractableInterface.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -30,11 +31,6 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
 
-	// Todo: Marked for deletion
-	/** Jump Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
-	UInputAction* JumpAction;
-
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* MoveAction;
@@ -54,6 +50,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** Interact Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* InteractAction;
+
+	//Todo: Add input for cancel action
+	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	// UInputAction* CancelAction;
 
 
 	////////////////////////////////////////////////////////////
@@ -169,6 +169,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
 	UPUDialogueBox* DialogueBox;
 
+	/** Current interactable object that can be interacted with */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Interactable", meta = (AllowPrivateAccess = "true"))
+	TScriptInterface<IPUInteractableInterface> CurrentInteractable;
+
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }
     FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override { return DisplayName; }
@@ -184,6 +188,13 @@ public:
 	/** Called every frame to update camera position */
 	virtual void Tick(float DeltaTime) override;
 	
+	// Camera getters
+	FORCEINLINE float GetCameraOffset() const { return CameraOffset; }
+	FORCEINLINE int32 GetCameraPositionIndex() const { return CameraPositionIndex; }
+	FORCEINLINE UInputAction* GetRotateCameraAction() const { return RotateCameraAction; }
+	FORCEINLINE void SetCameraOffset(float NewOffset) { CameraOffset = NewOffset; }
+	FORCEINLINE void SetCameraPositionIndex(int32 NewIndex) { CameraPositionIndex = NewIndex; }
+	
 protected:
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
@@ -198,6 +209,16 @@ protected:
 	virtual void NotifyControllerChanged() override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	// Interaction event handlers
+	UFUNCTION()
+	void OnInteractionStarted();
+
+	UFUNCTION()
+	void OnInteractionEnded();
+
+	UFUNCTION()
+	void OnInteractionFailed();
 
 public:
 	/** Returns CameraBoom subobject **/
@@ -225,6 +246,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	ATalkingObject* GetCurrentTalkingObject() const { return CurrentTalkingObject; }
 
-private:
-	// ... existing private members ...
+	void RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
+	void UnregisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
+	bool HasInteractableAvailable() const { return CurrentInteractable != nullptr; }
+
 };
