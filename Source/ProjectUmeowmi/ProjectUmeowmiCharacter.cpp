@@ -69,10 +69,30 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 	// Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
+		UE_LOG(LogTemp, Log, TEXT("Controller changed - PlayerController found"));
+		
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
-			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+			UE_LOG(LogTemp, Log, TEXT("Enhanced Input Subsystem found"));
+			
+			if (DefaultMappingContext)
+			{
+				Subsystem->AddMappingContext(DefaultMappingContext, 0);
+				UE_LOG(LogTemp, Log, TEXT("Default mapping context added successfully"));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Default mapping context is null!"));
+			}
 		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Enhanced Input Subsystem not found!"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Controller changed - No PlayerController found!"));
 	}
 }
 
@@ -107,8 +127,9 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 {
-	// input is a Vector2D
+	// Log the input value
 	FVector2D MovementVector = Value.Get<FVector2D>();
+	UE_LOG(LogTemp, Log, TEXT("Move input received - X: %f, Y: %f"), MovementVector.X, MovementVector.Y);
 
 	if (Controller != nullptr)
 	{

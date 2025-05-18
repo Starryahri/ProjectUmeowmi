@@ -12,7 +12,7 @@ APUIngredientMesh::APUIngredientMesh()
     // Enable mouse interaction
     MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     MeshComponent->SetCollisionProfileName(TEXT("UI"));
-    MeshComponent->bGenerateOverlapEvents = true;
+    MeshComponent->SetGenerateOverlapEvents(true);
 
     // Initialize state
     bIsHovered = false;
