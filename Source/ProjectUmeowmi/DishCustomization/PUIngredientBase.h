@@ -9,6 +9,7 @@
 class UTexture2D;
 class UMaterialInterface;
 class UDataTable;
+class UStaticMesh;
 struct FPUPreparationBase;
 
 // Property types enum
@@ -110,6 +111,9 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     UMaterialInterface* MaterialInstance;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    UStaticMesh* IngredientMesh;
 
     // Natural Properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Properties")

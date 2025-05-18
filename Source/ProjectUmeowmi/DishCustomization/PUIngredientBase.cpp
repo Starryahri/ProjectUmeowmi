@@ -10,6 +10,9 @@ FPUIngredientBase::FPUIngredientBase()
     , MaxQuantity(5)
     , CurrentQuantity(0)
     , PreparationDataTable(nullptr)
+    , PreviewTexture(nullptr)
+    , MaterialInstance(nullptr)
+    , IngredientMesh(nullptr)
 {
 }
 
