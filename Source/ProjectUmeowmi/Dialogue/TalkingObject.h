@@ -37,6 +37,7 @@ public:
     ATalkingObject();
 
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     
     // We'll keep Tick for now but mark it as virtual so we can override it in derived classes if needed
     virtual void Tick(float DeltaTime) override;
@@ -137,6 +138,9 @@ protected:
     // Dialogue context
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
+
+    // Timer handle for cursor management
+    FTimerHandle CursorCheckTimer;
     
 private:
     // Internal state
@@ -151,4 +155,5 @@ private:
     UDlgDialogue* GetRandomDialogue() const;
     void ResetUsedDialogues();
     void DrawDebugRange() const;
+    void CheckCursorVisibility();
 }; 

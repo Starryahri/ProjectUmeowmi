@@ -7,10 +7,31 @@
 #include "Components/VerticalBox.h"
 #include "Components/Button.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameViewportClient.h"
+
+UPUDialogueBox::UPUDialogueBox(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer)
+{
+}
+
+void UPUDialogueBox::Open(UDlgContext* ActiveContext)
+{
+    Open_Implementation(ActiveContext);
+}
+
+void UPUDialogueBox::Close()
+{
+    Close_Implementation();
+}
+
+void UPUDialogueBox::Update(UDlgContext* ActiveContext)
+{
+    Update_Implementation(ActiveContext);
+}
 
 void UPUDialogueBox::NativeConstruct()
 {
@@ -30,7 +51,6 @@ void UPUDialogueBox::NativeConstruct()
 void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
 {
     UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Open_Implementation called"));
-    
     // Debug logging for widget state
     UE_LOG(LogTemp, Log, TEXT("DialogueBox pointer: %p"), this);
     UE_LOG(LogTemp, Log, TEXT("Current visibility: %d"), (int32)GetVisibility());
@@ -61,7 +81,6 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
     if (PC)
     {
         UE_LOG(LogTemp, Log, TEXT("PlayerController found: %p"), PC);
-        UE_LOG(LogTemp, Log, TEXT("Current mouse cursor visibility: %d"), PC->bShowMouseCursor);
         
         // Get the local player
         ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
@@ -74,21 +93,22 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
         // Get the game viewport
         if (UGameViewportClient* ViewportClient = GetWorld()->GetGameViewport())
         {
-            // Check if we're using a controller by checking for any gamepad button press
-            bool bIsUsingController = PC->IsInputKeyDown(EKeys::Gamepad_LeftThumbstick) || 
-                                    PC->IsInputKeyDown(EKeys::Gamepad_RightThumbstick) ||
-                                    PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Bottom) ||
-                                    PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Right) ||
-                                    PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Left) ||
-                                    PC->IsInputKeyDown(EKeys::Gamepad_FaceButton_Top);
+            // Disable player movement and input
+            PC->SetIgnoreMoveInput(true);
+            PC->SetIgnoreLookInput(true);
 
-            // Set up input mode first
-            FInputModeUIOnly InputMode;
-            InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockOnCapture);
-            PC->SetInputMode(InputMode);
-            
-            // Only show mouse cursor if not using controller
-            PC->bShowMouseCursor = !bIsUsingController;
+            // Disable player movement
+            if (APawn* Pawn = PC->GetPawn())
+            {
+                if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
+                {
+                    if (UCharacterMovementComponent* MovementComponent = PlayerCharacter->GetCharacterMovement())
+                    {
+                        MovementComponent->DisableMovement();
+                        MovementComponent->StopMovementImmediately();
+                    }
+                }
+            }
             
             // Wait a frame before setting focus to ensure everything is properly initialized
             FTimerHandle TimerHandle;
@@ -127,8 +147,6 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
                     }
                 }
             });
-            
-            UE_LOG(LogTemp, Log, TEXT("New mouse cursor visibility: %d"), PC->bShowMouseCursor);
         }
         else
         {
@@ -167,15 +185,22 @@ void UPUDialogueBox::Close_Implementation()
     if (PC)
     {
         UE_LOG(LogTemp, Log, TEXT("Found player controller: %p"), PC);
-        UE_LOG(LogTemp, Log, TEXT("Current mouse cursor state: %d"), PC->bShowMouseCursor);
         
-        // Always hide mouse cursor when closing dialogue
-        PC->bShowMouseCursor = false;
-        UE_LOG(LogTemp, Log, TEXT("Mouse cursor hidden. New state: %d"), PC->bShowMouseCursor);
+        // Re-enable player movement and input
+        PC->SetIgnoreMoveInput(false);
+        PC->SetIgnoreLookInput(false);
         
-        FInputModeGameOnly InputMode;
-        PC->SetInputMode(InputMode);
-        UE_LOG(LogTemp, Log, TEXT("Input mode set to game only"));
+        // Re-enable player movement
+        if (APawn* Pawn = PC->GetPawn())
+        {
+            if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
+            {
+                if (UCharacterMovementComponent* MovementComponent = PlayerCharacter->GetCharacterMovement())
+                {
+                    MovementComponent->SetMovementMode(MOVE_Walking);
+                }
+            }
+        }
     }
     else
     {

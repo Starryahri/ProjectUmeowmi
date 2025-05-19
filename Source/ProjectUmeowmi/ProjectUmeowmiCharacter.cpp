@@ -408,18 +408,42 @@ void AProjectUmeowmiCharacter::OnInteractionStarted()
 {
 	// Handle interaction started
 	UE_LOG(LogTemp, Log, TEXT("Interaction started"));
+	
+	// Hide cursor and set input mode
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->bShowMouseCursor = false;
+		FInputModeGameAndUI InputMode;
+		InputMode.SetWidgetToFocus(nullptr);
+		InputMode.SetHideCursorDuringCapture(true);
+		PC->SetInputMode(InputMode);
+	}
 }
 
 void AProjectUmeowmiCharacter::OnInteractionEnded()
 {
 	// Handle interaction ended
 	UE_LOG(LogTemp, Log, TEXT("Interaction ended"));
+	
+	// Ensure cursor is hidden and set game-only input mode
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->bShowMouseCursor = false;
+		PC->SetInputMode(FInputModeGameOnly());
+	}
 }
 
 void AProjectUmeowmiCharacter::OnInteractionFailed()
 {
 	// Handle interaction failed
 	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
+	
+	// Ensure cursor is hidden and set game-only input mode
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->bShowMouseCursor = false;
+		PC->SetInputMode(FInputModeGameOnly());
+	}
 }
 
 //void AProjectUmeowmiCharacter::BeginPlay()

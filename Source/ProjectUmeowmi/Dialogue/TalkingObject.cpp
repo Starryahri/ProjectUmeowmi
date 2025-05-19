@@ -122,6 +122,7 @@ void ATalkingObject::EndInteraction()
 {
     UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Ending interaction for %s"), *GetName());
     bIsInteracting = false;
+    
     if (CurrentDialogueContext)
     {
         CurrentDialogueContext = nullptr;
@@ -249,7 +250,7 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
             UPUDialogueBox* DialogueBox = ProjectCharacter->GetDialogueBox();
             if (DialogueBox)
             {
-                DialogueBox->Open_Implementation(CurrentDialogueContext);
+                DialogueBox->Open(CurrentDialogueContext);
             }
             else
             {
@@ -407,4 +408,27 @@ void ATalkingObject::DrawDebugRange() const
         DepthPriority,
         Thickness
     );
+}
+
+void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    Super::EndPlay(EndPlayReason);
+    
+    // Clear any active timers
+    if (GetWorld())
+    {
+        GetWorld()->GetTimerManager().ClearTimer(CursorCheckTimer);
+    }
+}
+
+void ATalkingObject::CheckCursorVisibility()
+{
+    if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+    {
+        if (PC->bShowMouseCursor)
+        {
+            PC->bShowMouseCursor = false;
+            UE_LOG(LogTemp, Log, TEXT("TalkingObject::CheckCursorVisibility - Forced cursor to be hidden"));
+        }
+    }
 } 
