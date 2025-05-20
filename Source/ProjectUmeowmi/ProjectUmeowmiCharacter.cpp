@@ -55,6 +55,13 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
 
+	// Always show mouse cursor
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->bShowMouseCursor = true;
+		PC->CurrentMouseCursor = EMouseCursor::Default;
+	}
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -69,10 +76,34 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 	// Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
+		UE_LOG(LogTemp, Log, TEXT("Controller changed - PlayerController found"));
+		
+		// Always show mouse cursor
+		PlayerController->bShowMouseCursor = true;
+		PlayerController->CurrentMouseCursor = EMouseCursor::Default;
+		
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
-			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+			UE_LOG(LogTemp, Log, TEXT("Enhanced Input Subsystem found"));
+			
+			if (DefaultMappingContext)
+			{
+				Subsystem->AddMappingContext(DefaultMappingContext, 0);
+				UE_LOG(LogTemp, Log, TEXT("Default mapping context added successfully"));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Default mapping context is null!"));
+			}
 		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Enhanced Input Subsystem not found!"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Controller changed - No PlayerController found!"));
 	}
 }
 
@@ -107,8 +138,9 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 {
-	// input is a Vector2D
+	// Log the input value
 	FVector2D MovementVector = Value.Get<FVector2D>();
+	UE_LOG(LogTemp, Log, TEXT("Move input received - X: %f, Y: %f"), MovementVector.X, MovementVector.Y);
 
 	if (Controller != nullptr)
 	{
@@ -399,6 +431,38 @@ void AProjectUmeowmiCharacter::OnInteractionFailed()
 {
 	// Handle interaction failed
 	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
+}
+
+void AProjectUmeowmiCharacter::ShowMouseCursor()
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->bShowMouseCursor = true;
+		PC->CurrentMouseCursor = EMouseCursor::Default;
+	}
+}
+
+void AProjectUmeowmiCharacter::HideMouseCursor()
+{
+	// Do nothing - we want the cursor to always be visible
+}
+
+void AProjectUmeowmiCharacter::SetMousePosition(int32 X, int32 Y)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->SetMouseLocation(X, Y);
+	}
+}
+
+void AProjectUmeowmiCharacter::CenterMouseCursor()
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		int32 ViewportSizeX, ViewportSizeY;
+		PC->GetViewportSize(ViewportSizeX, ViewportSizeY);
+		PC->SetMouseLocation(ViewportSizeX / 2, ViewportSizeY / 2);
+	}
 }
 
 //void AProjectUmeowmiCharacter::BeginPlay()

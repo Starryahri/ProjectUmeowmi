@@ -10,6 +10,7 @@
 class UUserWidget;
 class UInputAction;
 class UEnhancedInputComponent;
+class UInputMappingContext;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomizationEnded);
 
@@ -43,9 +44,23 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     TSubclassOf<UUserWidget> CustomizationWidgetClass;
 
-    // Input Action for exiting customization
+    // Input Actions
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     class UInputAction* ExitCustomizationAction;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputAction* ControllerMouseAction;
+
+    // Input Mapping Context for customization mode
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputMappingContext* CustomizationMappingContext;
+
+    // Controller Mouse Settings
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Controller Mouse")
+    float ControllerMouseSensitivity = 50.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Controller Mouse")
+    float ControllerMouseDeadzone = 0.2f;
 
     // Camera Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
@@ -72,6 +87,14 @@ protected:
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;
 
+    // Input context management
+    UPROPERTY()
+    UInputMappingContext* OriginalMappingContext;
+
+    // Input binding handles
+    uint32 ExitActionBindingHandle;
+    uint32 ControllerMouseBindingHandle;
+
     // Camera transition state
     bool bIsTransitioningCamera = false;
     float OriginalCameraDistance = 0.0f;
@@ -89,6 +112,7 @@ protected:
 
     // Input handling
     void HandleExitInput();
+    void HandleControllerMouse(const FInputActionValue& Value);
 
     // Camera handling
     void StartCameraTransition(bool bToCustomization);
