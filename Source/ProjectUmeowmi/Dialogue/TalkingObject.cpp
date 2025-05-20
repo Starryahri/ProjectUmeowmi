@@ -413,22 +413,4 @@ void ATalkingObject::DrawDebugRange() const
 void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     Super::EndPlay(EndPlayReason);
-    
-    // Clear any active timers
-    if (GetWorld())
-    {
-        GetWorld()->GetTimerManager().ClearTimer(CursorCheckTimer);
-    }
-}
-
-void ATalkingObject::CheckCursorVisibility()
-{
-    if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
-    {
-        if (PC->bShowMouseCursor)
-        {
-            PC->bShowMouseCursor = false;
-            UE_LOG(LogTemp, Log, TEXT("TalkingObject::CheckCursorVisibility - Forced cursor to be hidden"));
-        }
-    }
 } 

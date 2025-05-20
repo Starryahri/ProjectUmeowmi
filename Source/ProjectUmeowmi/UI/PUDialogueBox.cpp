@@ -110,43 +110,39 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
                 }
             }
             
-            // Wait a frame before setting focus to ensure everything is properly initialized
-            FTimerHandle TimerHandle;
-            GetWorld()->GetTimerManager().SetTimerForNextTick([this, PC, LocalPlayer]()
+            // Set focus immediately
+            if (IsValid(this) && IsValid(PC) && IsValid(LocalPlayer))
             {
-                if (IsValid(this) && IsValid(PC) && IsValid(LocalPlayer))
+                // Make sure we're still in the viewport
+                if (!IsInViewport())
                 {
-                    // Make sure we're still in the viewport
-                    if (!IsInViewport())
-                    {
-                        AddToViewport();
-                    }
+                    AddToViewport();
+                }
 
-                    // Get the widget's slate widget
-                    TSharedPtr<SWidget> SlateWidget = GetCachedWidget();
-                    if (SlateWidget.IsValid())
+                // Get the widget's slate widget
+                TSharedPtr<SWidget> SlateWidget = GetCachedWidget();
+                if (SlateWidget.IsValid())
+                {
+                    // Set focus to this widget
+                    FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
+                    
+                    // If we have dialogue options, set focus to the first option
+                    if (IsValid(DialogueOptions) && DialogueOptions->GetChildrenCount() > 0)
                     {
-                        // Set focus to this widget
-                        FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
-                        
-                        // If we have dialogue options, set focus to the first option
-                        if (IsValid(DialogueOptions) && DialogueOptions->GetChildrenCount() > 0)
+                        if (UPUDialogueOption* FirstOption = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(0)))
                         {
-                            if (UPUDialogueOption* FirstOption = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(0)))
+                            if (FirstOption->OptionButton)
                             {
-                                if (FirstOption->OptionButton)
+                                TSharedPtr<SWidget> ButtonSlateWidget = FirstOption->OptionButton->GetCachedWidget();
+                                if (ButtonSlateWidget.IsValid())
                                 {
-                                    TSharedPtr<SWidget> ButtonSlateWidget = FirstOption->OptionButton->GetCachedWidget();
-                                    if (ButtonSlateWidget.IsValid())
-                                    {
-                                        FSlateApplication::Get().SetKeyboardFocus(ButtonSlateWidget);
-                                    }
+                                    FSlateApplication::Get().SetKeyboardFocus(ButtonSlateWidget);
                                 }
                             }
                         }
                     }
                 }
-            });
+            }
         }
         else
         {

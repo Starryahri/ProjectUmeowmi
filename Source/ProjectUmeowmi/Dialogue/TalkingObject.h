@@ -138,9 +138,6 @@ protected:
     // Dialogue context
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
-
-    // Timer handle for cursor management
-    FTimerHandle CursorCheckTimer;
     
 private:
     // Internal state
@@ -155,5 +152,4 @@ private:
     UDlgDialogue* GetRandomDialogue() const;
     void ResetUsedDialogues();
     void DrawDebugRange() const;
-    void CheckCursorVisibility();
 }; 

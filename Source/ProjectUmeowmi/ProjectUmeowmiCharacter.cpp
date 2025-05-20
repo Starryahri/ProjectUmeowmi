@@ -55,6 +55,13 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
 
+	// Always show mouse cursor
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->bShowMouseCursor = true;
+		PC->CurrentMouseCursor = EMouseCursor::Default;
+	}
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -70,6 +77,10 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
 		UE_LOG(LogTemp, Log, TEXT("Controller changed - PlayerController found"));
+		
+		// Always show mouse cursor
+		PlayerController->bShowMouseCursor = true;
+		PlayerController->CurrentMouseCursor = EMouseCursor::Default;
 		
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
@@ -408,41 +419,49 @@ void AProjectUmeowmiCharacter::OnInteractionStarted()
 {
 	// Handle interaction started
 	UE_LOG(LogTemp, Log, TEXT("Interaction started"));
-	
-	// Hide cursor and set input mode
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		PC->bShowMouseCursor = false;
-		FInputModeGameAndUI InputMode;
-		InputMode.SetWidgetToFocus(nullptr);
-		InputMode.SetHideCursorDuringCapture(true);
-		PC->SetInputMode(InputMode);
-	}
 }
 
 void AProjectUmeowmiCharacter::OnInteractionEnded()
 {
 	// Handle interaction ended
 	UE_LOG(LogTemp, Log, TEXT("Interaction ended"));
-	
-	// Ensure cursor is hidden and set game-only input mode
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		PC->bShowMouseCursor = false;
-		PC->SetInputMode(FInputModeGameOnly());
-	}
 }
 
 void AProjectUmeowmiCharacter::OnInteractionFailed()
 {
 	// Handle interaction failed
 	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
-	
-	// Ensure cursor is hidden and set game-only input mode
+}
+
+void AProjectUmeowmiCharacter::ShowMouseCursor()
+{
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
-		PC->bShowMouseCursor = false;
-		PC->SetInputMode(FInputModeGameOnly());
+		PC->bShowMouseCursor = true;
+		PC->CurrentMouseCursor = EMouseCursor::Default;
+	}
+}
+
+void AProjectUmeowmiCharacter::HideMouseCursor()
+{
+	// Do nothing - we want the cursor to always be visible
+}
+
+void AProjectUmeowmiCharacter::SetMousePosition(int32 X, int32 Y)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		PC->SetMouseLocation(X, Y);
+	}
+}
+
+void AProjectUmeowmiCharacter::CenterMouseCursor()
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		int32 ViewportSizeX, ViewportSizeY;
+		PC->GetViewportSize(ViewportSizeX, ViewportSizeY);
+		PC->SetMouseLocation(ViewportSizeX / 2, ViewportSizeY / 2);
 	}
 }
 

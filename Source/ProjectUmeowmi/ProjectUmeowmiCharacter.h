@@ -185,6 +185,10 @@ public:
 	void ZoomCamera(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
 	
+	// Public wrappers for protected functions
+	void HandleMove(const FInputActionValue& Value) { Move(Value); }
+	void HandleLook(const FInputActionValue& Value) { Look(Value); }
+	
 	/** Called every frame to update camera position */
 	virtual void Tick(float DeltaTime) override;
 	
@@ -194,6 +198,20 @@ public:
 	FORCEINLINE UInputAction* GetRotateCameraAction() const { return RotateCameraAction; }
 	FORCEINLINE void SetCameraOffset(float NewOffset) { CameraOffset = NewOffset; }
 	FORCEINLINE void SetCameraPositionIndex(int32 NewIndex) { CameraPositionIndex = NewIndex; }
+	
+	// Input action getters
+	FORCEINLINE UInputAction* GetZoomAction() const { return ZoomAction; }
+	FORCEINLINE UInputAction* GetMoveAction() const { return MoveAction; }
+	FORCEINLINE UInputAction* GetLookAction() const { return LookAction; }
+	FORCEINLINE UInputAction* GetInteractAction() const { return InteractAction; }
+	FORCEINLINE UInputAction* GetToggleGridMovementAction() const { return ToggleGridMovementAction; }
+	FORCEINLINE UInputMappingContext* GetDefaultMappingContext() const { return DefaultMappingContext; }
+	
+	// Mouse visibility control
+	void ShowMouseCursor();
+	void HideMouseCursor();
+	void SetMousePosition(int32 X, int32 Y);
+	void CenterMouseCursor();
 	
 protected:
 	/** Called for movement input */

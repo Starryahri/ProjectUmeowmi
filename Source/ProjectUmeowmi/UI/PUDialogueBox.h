@@ -63,8 +63,5 @@ public:
     virtual void Update_Implementation(UDlgContext* ActiveContext);
 
 private:
-    // Timer handles for cursor management
-    FTimerHandle OpenCursorCheckTimer;
-    FTimerHandle CloseCursorCheckTimer;
-    FTimerHandle CloseFrameCheckTimer;
+    // No timer handles needed
 };
