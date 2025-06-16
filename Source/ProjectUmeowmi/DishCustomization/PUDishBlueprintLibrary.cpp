@@ -5,8 +5,21 @@
 
 bool UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag)
 {
+    // Check if we already have this ingredient
+    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        if (Instance.IngredientTag == IngredientTag)
+        {
+            // If we already have this ingredient, increment its quantity
+            Instance.Quantity++;
+            return true;
+        }
+    }
+
+    // If we don't have this ingredient, create a new instance
     FIngredientInstance NewInstance;
     NewInstance.IngredientTag = IngredientTag;
+    NewInstance.Quantity = 1;
     Dish.IngredientInstances.Add(NewInstance);
     return true;
 }
@@ -16,6 +29,74 @@ bool UPUDishBlueprintLibrary::RemoveIngredient(FPUDishBase& Dish, const FGamepla
     return Dish.IngredientInstances.RemoveAll([&](const FIngredientInstance& Instance) {
         return Instance.IngredientTag == IngredientTag;
     }) > 0;
+}
+
+bool UPUDishBlueprintLibrary::IncrementIngredientAmount(FPUDishBase& Dish, const FGameplayTag& IngredientTag, int32 Amount)
+{
+    if (Amount <= 0)
+    {
+        return false;
+    }
+
+    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        if (Instance.IngredientTag == IngredientTag)
+        {
+            // Get the base ingredient to check max quantity
+            FPUIngredientBase BaseIngredient;
+            if (Dish.GetIngredient(IngredientTag, BaseIngredient))
+            {
+                // Check if we're within the max quantity
+                if (Instance.Quantity + Amount <= BaseIngredient.MaxQuantity)
+                {
+                    Instance.Quantity += Amount;
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+bool UPUDishBlueprintLibrary::DecrementIngredientAmount(FPUDishBase& Dish, const FGameplayTag& IngredientTag, int32 Amount)
+{
+    if (Amount <= 0)
+    {
+        return false;
+    }
+
+    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        if (Instance.IngredientTag == IngredientTag)
+        {
+            // Get the base ingredient to check min quantity
+            FPUIngredientBase BaseIngredient;
+            if (Dish.GetIngredient(IngredientTag, BaseIngredient))
+            {
+                // Check if we're within the min quantity
+                if (Instance.Quantity - Amount >= BaseIngredient.MinQuantity)
+                {
+                    Instance.Quantity -= Amount;
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+int32 UPUDishBlueprintLibrary::GetIngredientQuantity(const FPUDishBase& Dish, const FGameplayTag& IngredientTag)
+{
+    for (const FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        if (Instance.IngredientTag == IngredientTag)
+        {
+            return Instance.Quantity;
+        }
+    }
+    return 0;
 }
 
 bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag)

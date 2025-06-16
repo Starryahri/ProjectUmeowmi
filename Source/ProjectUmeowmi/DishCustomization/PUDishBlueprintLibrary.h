@@ -20,6 +20,18 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static bool RemoveIngredient(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag);
 
+    // Increment the quantity of an ingredient in the dish
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool IncrementIngredientAmount(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, int32 Amount = 1);
+
+    // Decrement the quantity of an ingredient in the dish
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool DecrementIngredientAmount(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, int32 Amount = 1);
+
+    // Get the current quantity of an ingredient in the dish
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static int32 GetIngredientQuantity(const FPUDishBase& Dish, const FGameplayTag& IngredientTag);
+
     // Apply a preparation to an ingredient in the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static bool ApplyPreparation(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag);

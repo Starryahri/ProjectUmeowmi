@@ -100,7 +100,7 @@ public:
     FPUPreparationBase();
 
     // Basic Identification
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Basic")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Basic", meta = (Categories = "Prep"))
     FGameplayTag PreparationTag;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Basic")

@@ -12,13 +12,21 @@ struct FIngredientInstance
 {
     GENERATED_BODY()
 
+    FIngredientInstance()
+        : Quantity(1)
+    {}
+
     // The base ingredient tag
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Ingredient"))
     FGameplayTag IngredientTag;
 
     // The preparations applied to this specific instance
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Prep"))
     FGameplayTagContainer Preparations;
+
+    // The quantity of this ingredient
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    int32 Quantity;
 
     // Optional: Placement data for this instance
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
@@ -37,7 +45,7 @@ public:
     FPUDishBase();
 
     // Basic Identification
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic", meta = (Categories = "Dish"))
     FGameplayTag DishTag;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
@@ -59,7 +67,7 @@ public:
     TArray<FIngredientInstance> IngredientInstances;
 
     // Tags associated with this dish
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Tags")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Tags", meta = (Categories = "Dish"))
     FGameplayTagContainer DishTags;
 
     // Custom name for the dish

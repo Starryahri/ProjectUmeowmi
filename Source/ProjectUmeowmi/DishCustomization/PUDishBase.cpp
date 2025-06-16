@@ -11,6 +11,7 @@ FPUDishBase::FPUDishBase()
 {
 }
 
+// realizing that get ingredient and logically the get all ingredient is not applying the preparations when called here.
 bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredientBase& OutIngredient) const
 {
     if (!IngredientDataTable)
@@ -29,7 +30,43 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
         
         if (FPUIngredientBase* FoundIngredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
         {
+            // Create a copy of the base ingredient
             OutIngredient = *FoundIngredient;
+
+            // Find the first instance of this ingredient to get its preparations
+            for (const FIngredientInstance& Instance : IngredientInstances)
+            {
+                if (Instance.IngredientTag == IngredientTag)
+                {
+                    // Apply the preparations from this instance
+                    OutIngredient.ActivePreparations = Instance.Preparations;
+
+                    // Apply each preparation's modifiers
+                    if (OutIngredient.PreparationDataTable)
+                    {
+                        TArray<FGameplayTag> PreparationTags;
+                        Instance.Preparations.GetGameplayTagArray(PreparationTags);
+
+                        for (const FGameplayTag& PrepTag : PreparationTags)
+                        {
+                            // Get the preparation data
+                            FString PrepTagName = PrepTag.ToString();
+                            if (PrepTagName.FindLastChar('.', LastPeriodIndex))
+                            {
+                                FString PrepName = PrepTagName.RightChop(LastPeriodIndex + 1).ToLower();
+                                FName PrepRowName = FName(*PrepName);
+                                
+                                if (FPUPreparationBase* Preparation = OutIngredient.PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
+                                {
+                                    // Apply the preparation's modifiers to the ingredient's properties
+                                    Preparation->ApplyModifiers(OutIngredient.NaturalProperties);
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
             return true;
         }
     }
@@ -128,27 +165,27 @@ FText FPUDishBase::GetCurrentDisplayName() const
         return CustomName;
     }
     
-    // Count occurrences of each ingredient
-    TMap<FGameplayTag, int32> IngredientCounts;
+    // Track quantities of each ingredient
+    TMap<FGameplayTag, int32> IngredientQuantities;
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        IngredientCounts.FindOrAdd(Instance.IngredientTag)++;
+        IngredientQuantities.FindOrAdd(Instance.IngredientTag) += Instance.Quantity;
     }
 
-    // Find the most common ingredient
+    // Find the ingredient with the highest quantity
     FGameplayTag MostCommonTag;
-    int32 MaxCount = 0;
-    for (const auto& Pair : IngredientCounts)
+    int32 MaxQuantity = 0;
+    for (const auto& Pair : IngredientQuantities)
     {
-        if (Pair.Value > MaxCount)
+        if (Pair.Value > MaxQuantity)
         {
-            MaxCount = Pair.Value;
+            MaxQuantity = Pair.Value;
             MostCommonTag = Pair.Key;
         }
     }
 
-    // If we have a most common ingredient, get its name and prefix it
-    if (MaxCount > 0)
+    // If we have an ingredient with the highest quantity, get its name and prefix it
+    if (MaxQuantity > 0)
     {
         FPUIngredientBase MostCommonIngredient;
         if (GetIngredient(MostCommonTag, MostCommonIngredient))

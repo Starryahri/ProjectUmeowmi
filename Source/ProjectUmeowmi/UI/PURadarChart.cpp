@@ -149,8 +149,8 @@ bool UPURadarChart::SetValuesFromIngredient(const FPUIngredientBase& Ingredient)
 
 bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
 {
-    // Count unique ingredients and their quantities
-    TMap<FGameplayTag, int32> IngredientCounts;
+    // Track unique ingredients and their quantities
+    TMap<FGameplayTag, int32> IngredientQuantities;
     TMap<FGameplayTag, FString> IngredientNames;
     TMap<FGameplayTag, UTexture2D*> IngredientTextures;
     
@@ -158,8 +158,8 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     
     for (const FIngredientInstance& Instance : Dish.IngredientInstances)
     {
-        // Increment count for this ingredient
-        IngredientCounts.FindOrAdd(Instance.IngredientTag)++;
+        // Add or update quantity for this ingredient
+        IngredientQuantities.FindOrAdd(Instance.IngredientTag) += Instance.Quantity;
         
         // Get the display name and texture if we haven't already
         if (!IngredientNames.Contains(Instance.IngredientTag))
@@ -180,13 +180,13 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     }
     
     // Set the number of segments based on unique ingredients
-    if (!SetSegmentCount(IngredientCounts.Num()))
+    if (!SetSegmentCount(IngredientQuantities.Num()))
     {
         UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to set segment count"));
         return false;
     }
     
-    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set up %d segments"), IngredientCounts.Num());
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set up %d segments"), IngredientQuantities.Num());
     
     // Prepare arrays for values and names
     TArray<float> Values;
@@ -194,7 +194,7 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     
     // Add values and names for each unique ingredient
     int32 SegmentIndex = 0;
-    for (const auto& Pair : IngredientCounts)
+    for (const auto& Pair : IngredientQuantities)
     {
         Values.Add(static_cast<float>(Pair.Value));
         

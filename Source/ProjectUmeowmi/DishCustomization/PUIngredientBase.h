@@ -50,7 +50,7 @@ struct FIngredientProperty
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
     FText Description;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property", meta = (Categories = "Profile"))
     FGameplayTagContainer PropertyTags;
 
     // Helper function to get the property name
