@@ -98,8 +98,8 @@ bool ATalkingObject::OnDialogueEvent(UDlgContext* Context, FName EventName)
 // Interaction methods
 bool ATalkingObject::CanInteract() const
 {
-    UE_LOG(LogTemp, Log, TEXT("TalkingObject::CanInteract - bPlayerInRange: %d, bIsInteracting: %d, AvailableDialogues.Num(): %d"), 
-        bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
+    UE_LOG(LogTemp, Display, TEXT("TalkingObject::CanInteract - %s: bPlayerInRange=%d, bIsInteracting=%d, AvailableDialogues=%d"), 
+        *GetName(), bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
     return bPlayerInRange && !bIsInteracting && AvailableDialogues.Num() > 0;
 }
 
@@ -274,10 +274,22 @@ void ATalkingObject::OnInteractionSphereBeginOverlap(UPrimitiveComponent* Overla
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
     if (OtherActor == PlayerCharacter)
     {
-        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Player entered range of %s"), *GetName());
+        UE_LOG(LogTemp, Display, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Player entered range of %s (Class: %s)"), 
+            *GetName(), *GetClass()->GetName());
         bPlayerInRange = true;
         UpdateInteractionWidget();
         OnPlayerEnteredInteractionSphere.Broadcast(this);
+        
+        // Register this talking object with the player character
+        if (AProjectUmeowmiCharacter* ProjectCharacter = Cast<AProjectUmeowmiCharacter>(PlayerCharacter))
+        {
+            UE_LOG(LogTemp, Display, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Registering talking object with character"));
+            ProjectCharacter->RegisterTalkingObject(this);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Failed to cast player character to ProjectUmeowmiCharacter"));
+        }
     }
 }
 

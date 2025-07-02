@@ -9,7 +9,8 @@ APUDishGiver::APUDishGiver()
     // Create the order component
     OrderComponent = CreateDefaultSubobject<UPUOrderComponent>(TEXT("OrderComponent"));
     
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::APUDishGiver - Dish giver created with order component"));
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::APUDishGiver - Dish giver created with order component: %s"), 
+        OrderComponent ? TEXT("SUCCESS") : TEXT("FAILED"));
 }
 
 void APUDishGiver::BeginPlay()

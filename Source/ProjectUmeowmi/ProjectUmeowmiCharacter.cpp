@@ -355,6 +355,10 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::Interact - CurrentTalkingObject: %s, CurrentInteractable: %s"), 
+		CurrentTalkingObject ? *CurrentTalkingObject->GetName() : TEXT("NULL"),
+		CurrentInteractable ? TEXT("Valid") : TEXT("NULL"));
+		
 	if (CurrentTalkingObject)
 	{
 		CurrentTalkingObject->StartInteraction();

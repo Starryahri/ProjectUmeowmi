@@ -38,7 +38,6 @@ FPUOrderBase UPUOrderBlueprintLibrary::CreateSimpleOrder(FName OrderID, FText De
     NewOrder.OrderDialogueText = DialogueText;
     
     UE_LOG(LogTemp, Log, TEXT("UPUOrderBlueprintLibrary::CreateSimpleOrder - Order created successfully"));
-    NewOrder.LogOrderDetails();
     
     return NewOrder;
 }
