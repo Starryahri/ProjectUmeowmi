@@ -2,6 +2,7 @@
 
 #include "ProjectUmeowmiGameMode.h"
 #include "ProjectUmeowmiCharacter.h"
+
 #include "UObject/ConstructorHelpers.h"
 
 AProjectUmeowmiGameMode::AProjectUmeowmiGameMode()
@@ -13,3 +14,5 @@ AProjectUmeowmiGameMode::AProjectUmeowmiGameMode()
 		DefaultPawnClass = PlayerPawnBPClass.Class;
 	}
 }
+
+

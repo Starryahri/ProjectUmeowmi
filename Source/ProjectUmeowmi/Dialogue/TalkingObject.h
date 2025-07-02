@@ -55,8 +55,8 @@ public:
 
     // Interaction methods
     bool CanInteract() const;
-    void StartInteraction();
-    void EndInteraction();
+    virtual void StartInteraction();
+    virtual void EndInteraction();
 
     // Dialogue methods
     void StartRandomDialogue();
