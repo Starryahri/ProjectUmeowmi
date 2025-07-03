@@ -56,6 +56,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static bool HasIngredient(const FPUDishBase& Dish, const FGameplayTag& IngredientTag);
 
+    // Get a dish from a data table by tag
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool GetDishFromDataTable(UDataTable* DishDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish);
+
+    // Get a random dish tag from available dishes
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static FGameplayTag GetRandomDishTag();
+
     // Get the current display name of the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static FText GetCurrentDisplayName(const FPUDishBase& Dish);

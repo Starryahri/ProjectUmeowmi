@@ -34,6 +34,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Dialogue")
     FText OrderDialogueText;
 
+    // Base dish for this order
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Dish")
+    FPUDishBase BaseDish;
+
     // Validation methods
     bool ValidateDish(const FPUDishBase& Dish) const;
 

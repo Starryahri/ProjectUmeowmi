@@ -45,6 +45,7 @@ protected:
     FText StationDescription;
 
     // Helper functions
+    UFUNCTION()
     void OnCustomizationEnded();
 
     // Order validation
@@ -53,6 +54,10 @@ protected:
 
     UFUNCTION(BlueprintCallable, Category = "Cooking Station|Orders")
     float CalculateSatisfactionScore(const FPUDishBase& Dish, const FPUOrderBase& Order) const;
+
+    // UI access
+    UFUNCTION(BlueprintCallable, Category = "Cooking Station|UI")
+    UPUDishCustomizationComponent* GetDishCustomizationComponent() const { return DishCustomizationComponent; }
 
     // Interaction range events
     UFUNCTION()

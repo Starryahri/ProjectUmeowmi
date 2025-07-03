@@ -147,6 +147,83 @@ bool UPUDishBlueprintLibrary::HasIngredient(const FPUDishBase& Dish, const FGame
     return Dish.HasIngredient(IngredientTag);
 }
 
+bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish)
+{
+    if (!DishDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - DishDataTable is null"));
+        return false;
+    }
+
+    if (!DishTag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - DishTag is invalid"));
+        return false;
+    }
+
+    // Get the dish name from the tag (everything after the last period) and convert to lowercase
+    FString FullTag = DishTag.ToString();
+    int32 LastPeriodIndex;
+    if (FullTag.FindLastChar('.', LastPeriodIndex))
+    {
+        FString DishName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
+        FName RowName = FName(*DishName);
+        
+        UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"), 
+            *DishTag.ToString(), *RowName.ToString());
+        
+        if (FPUDishBase* FoundDish = DishDataTable->FindRow<FPUDishBase>(RowName, TEXT("GetDishFromDataTable")))
+        {
+            OutDish = *FoundDish;
+            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Found dish: %s with %d default ingredients"), 
+                *OutDish.DisplayName.ToString(), OutDish.IngredientInstances.Num());
+            return true;
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s"), *RowName.ToString());
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Invalid dish tag format: %s"), *DishTag.ToString());
+    }
+    
+    return false;
+}
+
+FGameplayTag UPUDishBlueprintLibrary::GetRandomDishTag()
+{
+    // Define available dish tags
+    TArray<FGameplayTag> AvailableDishTags = {
+        FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee")),
+        FGameplayTag::RequestGameplayTag(TEXT("Dish.ChiFan")),
+        FGameplayTag::RequestGameplayTag(TEXT("Dish.HaloHalo"))
+    };
+    
+    // Filter out invalid tags
+    TArray<FGameplayTag> ValidDishTags;
+    for (const FGameplayTag& Tag : AvailableDishTags)
+    {
+        if (Tag.IsValid())
+        {
+            ValidDishTags.Add(Tag);
+        }
+    }
+    
+    if (ValidDishTags.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetRandomDishTag - No valid dish tags found"));
+        return FGameplayTag::EmptyTag;
+    }
+    
+    // Return a random dish tag
+    FGameplayTag RandomTag = ValidDishTags[FMath::RandRange(0, ValidDishTags.Num() - 1)];
+    UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetRandomDishTag - Selected dish: %s"), *RandomTag.ToString());
+    
+    return RandomTag;
+}
+
 FText UPUDishBlueprintLibrary::GetCurrentDisplayName(const FPUDishBase& Dish)
 {
     return Dish.GetCurrentDisplayName();

@@ -62,6 +62,10 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation")
     FText DefaultOrderDescription = FText::FromString(TEXT("Make me congee with {0} ingredients. Make it {1}."));
 
+    // Dish data table for generating base dishes
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation")
+    UDataTable* DishDataTable;
+
 protected:
     // Current order data
     UPROPERTY(BlueprintReadOnly, Category = "Order System")

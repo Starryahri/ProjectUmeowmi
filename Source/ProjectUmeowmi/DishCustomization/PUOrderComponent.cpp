@@ -1,5 +1,6 @@
 #include "PUOrderComponent.h"
 #include "PUOrderBlueprintLibrary.h"
+#include "PUDishBlueprintLibrary.h"
 #include "Engine/Engine.h"
 
 UPUOrderComponent::UPUOrderComponent()
@@ -85,27 +86,55 @@ void UPUOrderComponent::GenerateSimpleOrder()
 {
     UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Generating simple order"));
     
+    // Get a random dish tag
+    FGameplayTag DishTag = UPUDishBlueprintLibrary::GetRandomDishTag();
+    if (!DishTag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get valid dish tag, using default"));
+        DishTag = FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee"));
+    }
+    
+    // Get the base dish from the data table
+    FPUDishBase BaseDish;
+    bool bGotBaseDish = false;
+    if (DishDataTable)
+    {
+        bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, DishTag, BaseDish);
+    }
+    
+    if (!bGotBaseDish)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get base dish, creating empty dish"));
+        BaseDish.DishTag = DishTag;
+        BaseDish.DisplayName = FText::FromString(DishTag.ToString());
+    }
+    
     // Create a unique order ID
     FName OrderID = FName(*FString::Printf(TEXT("Order_%d"), FMath::RandRange(1000, 9999)));
     
-    // Create the dialogue text
+    // Create the dialogue text with the specific dish name
     FText DialogueText = FText::Format(
         DefaultOrderDescription,
         FText::AsNumber(DefaultMinIngredients),
         FText::FromString(DefaultTargetFlavor.ToString())
     );
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Creating order with ID: %s"), *OrderID.ToString());
+    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Creating order with ID: %s for dish: %s"), 
+        *OrderID.ToString(), *DishTag.ToString());
     
     // Create the order using the Blueprint Library
     CurrentOrder = UPUOrderBlueprintLibrary::CreateSimpleOrder(
         OrderID,
-        FText::FromString(TEXT("Simple congee order")),
+        FText::FromString(FString::Printf(TEXT("Simple %s order"), *DishTag.ToString())),
         DefaultMinIngredients,
         DefaultTargetFlavor,
         DefaultMinFlavorValue,
         DialogueText
     );
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Order created successfully"));
+    // Set the base dish in the order
+    CurrentOrder.BaseDish = BaseDish;
+    
+    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Order created successfully with base dish: %s (%d ingredients)"), 
+        *BaseDish.DisplayName.ToString(), BaseDish.IngredientInstances.Num());
 } 

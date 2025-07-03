@@ -43,6 +43,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
     float GetSatisfactionScore(const FPUDishBase& Dish) const;
 
+    // Order completion feedback
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    void HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharacter);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    FText GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerCharacter) const;
+
 protected:
     // Order component - only dish givers have this
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Giver|Components")

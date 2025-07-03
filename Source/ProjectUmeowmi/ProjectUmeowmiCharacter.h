@@ -293,6 +293,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	float GetOrderSatisfaction() const { return CurrentOrderSatisfaction; }
 
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	bool IsCurrentOrderCompleted() const { return bCurrentOrderCompleted; }
+
+	// Order feedback and results
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void DisplayOrderResult();
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void ClearCompletedOrder();
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	FText GetOrderResultText() const;
+
+	// Order completion events (for Blueprint use)
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void OnOrderCompleted();
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void OnOrderFailed();
+
 	// Order System Storage
 	UPROPERTY(BlueprintReadWrite, Category = "Order System")
 	FPUOrderBase CurrentOrder;

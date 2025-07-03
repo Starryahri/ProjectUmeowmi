@@ -156,4 +156,87 @@ float APUDishGiver::GetSatisfactionScore(const FPUDishBase& Dish) const
     
     UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GetSatisfactionScore - Order component is null!"));
     return 0.0f;
-} 
+}
+
+void APUDishGiver::HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharacter)
+{
+    if (!PlayerCharacter)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::HandleOrderCompletion - Player character is null"));
+        return;
+    }
+
+    if (!PlayerCharacter->HasCurrentOrder() || !PlayerCharacter->IsCurrentOrderCompleted())
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - No completed order to handle"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Handling order completion"));
+    
+    // Get the order result
+    float SatisfactionScore = PlayerCharacter->GetOrderSatisfaction();
+    bool bOrderCompleted = PlayerCharacter->IsCurrentOrderCompleted();
+    
+    if (bOrderCompleted)
+    {
+        // Determine feedback based on satisfaction
+        FString FeedbackText;
+        if (SatisfactionScore >= 0.9f)
+        {
+            FeedbackText = TEXT("Wow! This is absolutely perfect! You've exceeded my expectations!");
+        }
+        else if (SatisfactionScore >= 0.7f)
+        {
+            FeedbackText = TEXT("Excellent work! This is exactly what I was looking for!");
+        }
+        else if (SatisfactionScore >= 0.5f)
+        {
+            FeedbackText = TEXT("Good job! This meets my requirements nicely.");
+        }
+        else
+        {
+            FeedbackText = TEXT("Well, it's acceptable. Could be better, but I'll take it.");
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Customer feedback: %s"), *FeedbackText);
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Satisfaction: %.1f%%"), SatisfactionScore * 100.0f);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Order was not completed successfully"));
+    }
+    
+    // Clear the completed order from the player
+    PlayerCharacter->ClearCompletedOrder();
+}
+
+FText APUDishGiver::GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerCharacter) const
+{
+    if (!PlayerCharacter || !PlayerCharacter->HasCurrentOrder() || !PlayerCharacter->IsCurrentOrderCompleted())
+    {
+        return FText::FromString(TEXT("I don't see any completed orders."));
+    }
+    
+    float SatisfactionScore = PlayerCharacter->GetOrderSatisfaction();
+    
+    FString FeedbackText;
+    if (SatisfactionScore >= 0.9f)
+    {
+        FeedbackText = TEXT("Wow! This is absolutely perfect! You've exceeded my expectations!");
+    }
+    else if (SatisfactionScore >= 0.7f)
+    {
+        FeedbackText = TEXT("Excellent work! This is exactly what I was looking for!");
+    }
+    else if (SatisfactionScore >= 0.5f)
+    {
+        FeedbackText = TEXT("Good job! This meets my requirements nicely.");
+    }
+    else
+    {
+        FeedbackText = TEXT("Well, it's acceptable. Could be better, but I'll take it.");
+    }
+    
+    return FText::FromString(FeedbackText);
+}

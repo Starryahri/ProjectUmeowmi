@@ -160,6 +160,9 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         {
             CustomizationWidget->AddToViewport();
             UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Added to Viewport"));
+            
+            // Set the dish customization component reference on the widget
+            SetDishCustomizationComponentOnWidget(CustomizationWidget);
         }
         else
         {
@@ -234,6 +237,8 @@ void UPUDishCustomizationComponent::EndCustomization()
         PlayerController->SetInputMode(FInputModeGameOnly());
     }
 
+
+
     // Clean up the widget
     if (CustomizationWidget)
     {
@@ -271,8 +276,7 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
         OriginalCameraOffset = CurrentCharacter->GetCameraOffset();
         OriginalCameraPositionIndex = CurrentCharacter->GetCameraPositionIndex();
 
-        UE_LOG(LogTemp, Log, TEXT("Storing original ortho width: %f"), OriginalOrthoWidth);
-        UE_LOG(LogTemp, Log, TEXT("Storing original camera position index: %d"), OriginalCameraPositionIndex);
+
 
         // Set target values for customization view
         TargetCameraDistance = CustomizationCameraDistance;
@@ -282,7 +286,7 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
         TargetCameraOffset = OriginalCameraOffset; // Keep the same offset
         TargetCameraPositionIndex = OriginalCameraPositionIndex; // Keep the same position index
 
-        UE_LOG(LogTemp, Log, TEXT("Setting target ortho width to: %f"), TargetOrthoWidth);
+
     }
     else
     {
@@ -294,8 +298,7 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
         TargetCameraOffset = OriginalCameraOffset;
         TargetCameraPositionIndex = OriginalCameraPositionIndex;
 
-        UE_LOG(LogTemp, Log, TEXT("Restoring to original ortho width: %f"), TargetOrthoWidth);
-        UE_LOG(LogTemp, Log, TEXT("Restoring to original camera position index: %d"), TargetCameraPositionIndex);
+
     }
 
     bIsTransitioningCamera = true;
@@ -337,8 +340,7 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     CurrentCharacter->SetCameraOffset(NewCameraOffset);
     CurrentCharacter->SetCameraPositionIndex(TargetCameraPositionIndex);
 
-    UE_LOG(LogTemp, Log, TEXT("Current ortho width: %f, Target: %f"), NewOrthoWidth, TargetOrthoWidth);
-    UE_LOG(LogTemp, Log, TEXT("Current camera position index: %d, Target: %d"), CurrentCameraPositionIndex, TargetCameraPositionIndex);
+
 
     // Check if we've reached the target
     if (FMath::IsNearlyEqual(NewDistance, TargetCameraDistance, 1.0f) &&
@@ -348,7 +350,6 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
         FMath::IsNearlyEqual(NewCameraOffset, TargetCameraOffset, 1.0f))
     {
         bIsTransitioningCamera = false;
-        UE_LOG(LogTemp, Log, TEXT("Camera transition complete. Final ortho width: %f"), NewOrthoWidth);
 
         // If we're exiting customization, clear the character reference and broadcast the end event
         if (TargetOrthoWidth == OriginalOrthoWidth)
@@ -432,4 +433,62 @@ void UPUDishCustomizationComponent::HandleControllerMouse(const FInputActionValu
     float VerifyX, VerifyY;
     PlayerController->GetMousePosition(VerifyX, VerifyY);
     UE_LOG(LogTemp, Log, TEXT("HandleControllerMouse - Verified mouse position: X=%.2f, Y=%.2f"), VerifyX, VerifyY);
-} 
+}
+
+void UPUDishCustomizationComponent::UpdateCurrentDishData(const FPUDishBase& NewDishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::UpdateCurrentDishData - Updating dish data with %d ingredients"), 
+        NewDishData.IngredientInstances.Num());
+    
+    CurrentDishData = NewDishData;
+    
+    // Log the ingredients for debugging
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    {
+        const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::UpdateCurrentDishData - Ingredient %d: %s (Qty: %d)"), 
+            i, *Instance.IngredientTag.ToString(), Instance.Quantity);
+    }
+}
+
+void UPUDishCustomizationComponent::SyncDishDataFromUI(const FPUDishBase& DishDataFromUI)
+{
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SyncDishDataFromUI - Syncing dish data from UI with %d ingredients"), 
+        DishDataFromUI.IngredientInstances.Num());
+    
+    // Update the current dish data with the data from the UI
+    UpdateCurrentDishData(DishDataFromUI);
+    
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SyncDishDataFromUI - Dish data synced successfully"));
+}
+
+void UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget(UUserWidget* Widget)
+{
+    if (!Widget)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Widget is null"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Setting component reference on widget"));
+    
+    // For now, skip the Blueprint function call to avoid crashes
+    // The widget can get the component reference through other means if needed
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Skipping Blueprint function call to avoid crashes"));
+    
+    // TODO: Fix the Blueprint function signature issue
+    // The function should take exactly: UPUDishCustomizationComponent* Component
+}
+
+void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& InitialDishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Setting initial dish data: %s with %d ingredients"), 
+        *InitialDishData.DisplayName.ToString(), InitialDishData.IngredientInstances.Num());
+    
+    // Set the initial dish data
+    UpdateCurrentDishData(InitialDishData);
+    
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Initial dish data set successfully"));
+}
+
+ 

@@ -139,9 +139,8 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 {
-	// Log the input value
+	// Get the input value
 	FVector2D MovementVector = Value.Get<FVector2D>();
-	UE_LOG(LogTemp, Log, TEXT("Move input received - X: %f, Y: %f"), MovementVector.X, MovementVector.Y);
 
 	if (Controller != nullptr)
 	{
@@ -348,9 +347,6 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 	
 	// Apply the new orthographic width
 	FollowCamera->OrthoWidth = NewOrthoWidth;
-	
-	// Log the zoom change for debugging
-	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Ortho Width: %f (Input: %f)"), NewOrthoWidth, ZoomValue);
 }
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
@@ -468,6 +464,124 @@ void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float Satisfactio
 	
 	bCurrentOrderCompleted = bCompleted;
 	CurrentOrderSatisfaction = SatisfactionScore;
+	
+	// Display the order result immediately
+	DisplayOrderResult();
+}
+
+void AProjectUmeowmiCharacter::DisplayOrderResult()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::DisplayOrderResult - Displaying order result"));
+	
+	if (bCurrentOrderCompleted)
+	{
+		// Determine satisfaction level
+		FString SatisfactionLevel;
+		if (CurrentOrderSatisfaction >= 0.9f)
+		{
+			SatisfactionLevel = TEXT("Perfect!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.7f)
+		{
+			SatisfactionLevel = TEXT("Great!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.5f)
+		{
+			SatisfactionLevel = TEXT("Good!");
+		}
+		else
+		{
+			SatisfactionLevel = TEXT("Okay.");
+		}
+		
+		UE_LOG(LogTemp, Display, TEXT("=== ORDER COMPLETED ==="));
+		UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
+		UE_LOG(LogTemp, Display, TEXT("Satisfaction: %s (%.1f%%)"), *SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
+		UE_LOG(LogTemp, Display, TEXT("====================="));
+		
+		// Call the order completed event
+		OnOrderCompleted();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Display, TEXT("=== ORDER FAILED ==="));
+		UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
+		UE_LOG(LogTemp, Display, TEXT("The dish didn't meet the requirements."));
+		UE_LOG(LogTemp, Display, TEXT("==================="));
+		
+		// Call the order failed event
+		OnOrderFailed();
+	}
+}
+
+void AProjectUmeowmiCharacter::ClearCompletedOrder()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::ClearCompletedOrder - Clearing completed order"));
+	
+	CurrentOrder = FPUOrderBase();
+	bHasCurrentOrder = false;
+	bCurrentOrderCompleted = false;
+	CurrentOrderSatisfaction = 0.0f;
+}
+
+FText AProjectUmeowmiCharacter::GetOrderResultText() const
+{
+	if (!bCurrentOrderCompleted)
+	{
+		return FText::FromString(TEXT("No order completed yet."));
+	}
+	
+	FString ResultText;
+	if (bCurrentOrderCompleted)
+	{
+		// Determine satisfaction level
+		FString SatisfactionLevel;
+		if (CurrentOrderSatisfaction >= 0.9f)
+		{
+			SatisfactionLevel = TEXT("Perfect!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.7f)
+		{
+			SatisfactionLevel = TEXT("Great!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.5f)
+		{
+			SatisfactionLevel = TEXT("Good!");
+		}
+		else
+		{
+			SatisfactionLevel = TEXT("Okay.");
+		}
+		
+		ResultText = FString::Printf(TEXT("Order Completed!\nSatisfaction: %s (%.1f%%)"), 
+			*SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
+	}
+	else
+	{
+		ResultText = TEXT("Order Failed!\nThe dish didn't meet the requirements.");
+	}
+	
+	return FText::FromString(ResultText);
+}
+
+void AProjectUmeowmiCharacter::OnOrderCompleted()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderCompleted - Order completed successfully!"));
+	
+	// This function can be overridden in Blueprints to add visual/audio feedback
+	// For now, just log the completion
+	UE_LOG(LogTemp, Display, TEXT("🎉 ORDER COMPLETED! 🎉"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %.1f%%"), CurrentOrderSatisfaction * 100.0f);
+}
+
+void AProjectUmeowmiCharacter::OnOrderFailed()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderFailed - Order failed"));
+	
+	// This function can be overridden in Blueprints to add visual/audio feedback
+	// For now, just log the failure
+	UE_LOG(LogTemp, Display, TEXT("❌ ORDER FAILED ❌"));
+	UE_LOG(LogTemp, Display, TEXT("Try again with different ingredients or preparation!"));
 }
 
 void AProjectUmeowmiCharacter::ShowMouseCursor()

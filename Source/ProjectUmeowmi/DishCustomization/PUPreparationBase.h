@@ -48,7 +48,15 @@ struct FPropertyModifier
         {
             return CustomPropertyName;
         }
-        return FName(*UEnum::GetValueAsString(PropertyType));
+        
+        // Get the enum string and extract just the value name (remove "EIngredientPropertyType::" prefix)
+        FString EnumString = UEnum::GetValueAsString(PropertyType);
+        FString ValueName;
+        if (EnumString.Split(TEXT("::"), nullptr, &ValueName))
+        {
+            return FName(*ValueName);
+        }
+        return FName(*EnumString);
     }
 
     // Helper function to apply the modification

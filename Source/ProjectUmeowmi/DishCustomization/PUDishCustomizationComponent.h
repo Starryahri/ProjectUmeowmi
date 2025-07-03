@@ -36,6 +36,25 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     bool IsCustomizing() const { return CurrentCharacter != nullptr; }
 
+    // Dish data management
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization")
+    void UpdateCurrentDishData(const FPUDishBase& NewDishData);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization")
+    const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
+
+    // Blueprint-callable function for UI to sync dish data
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
+    void SyncDishDataFromUI(const FPUDishBase& DishDataFromUI);
+
+    // Function to set the dish customization component reference on the widget
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
+    void SetDishCustomizationComponentOnWidget(UUserWidget* Widget);
+
+    // Function to set the initial dish data from an order
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Orders")
+    void SetInitialDishData(const FPUDishBase& InitialDishData);
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Dish Customization")
     FOnCustomizationEnded OnCustomizationEnded;

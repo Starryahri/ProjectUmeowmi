@@ -41,7 +41,13 @@ void APUCookingStation::BeginPlay()
     // Bind to dish customization events
     if (DishCustomizationComponent)
     {
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::BeginPlay - Binding to OnCustomizationEnded event"));
         DishCustomizationComponent->OnCustomizationEnded.AddDynamic(this, &APUCookingStation::OnCustomizationEnded);
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::BeginPlay - Event binding completed"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("CookingStation::BeginPlay - DishCustomizationComponent is null, cannot bind events"));
     }
 
     // Bind to interaction box events
@@ -73,8 +79,21 @@ void APUCookingStation::StartInteraction()
             // Check if player has a current order
             if (Character->HasCurrentOrder())
             {
+                const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
                 UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has active order: %s"), 
-                    *Character->GetCurrentOrder().OrderID.ToString());
+                    *CurrentOrder.OrderID.ToString());
+                
+                // Set the initial dish data from the order
+                if (CurrentOrder.BaseDish.DishTag.IsValid())
+                {
+                    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Setting initial dish data from order: %s"), 
+                        *CurrentOrder.BaseDish.DisplayName.ToString());
+                    DishCustomizationComponent->SetInitialDishData(CurrentOrder.BaseDish);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
+                }
             }
             else
             {
@@ -133,7 +152,7 @@ FText APUCookingStation::GetInteractionDescription() const
 
 void APUCookingStation::OnCustomizationEnded()
 {
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Dish customization completed"));
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - FUNCTION CALLED! Dish customization completed"));
     
     // Get the player character
     AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
@@ -147,6 +166,17 @@ void APUCookingStation::OnCustomizationEnded()
             
             UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Validating dish against order: %s"), 
                 *CurrentOrder.OrderID.ToString());
+            
+            // Debug: Log the dish data
+            UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Dish data: %d ingredients"), 
+                CompletedDish.IngredientInstances.Num());
+            
+            for (int32 i = 0; i < CompletedDish.IngredientInstances.Num(); i++)
+            {
+                const FIngredientInstance& Instance = CompletedDish.IngredientInstances[i];
+                UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Ingredient %d: %s (Qty: %d)"), 
+                    i, *Instance.IngredientTag.ToString(), Instance.Quantity);
+            }
             
             // Validate the dish against the current order using helper function
             float SatisfactionScore = 0.0f;
@@ -183,9 +213,33 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
     bool bMeetsFlavorRequirement = true;
     if (!Order.TargetFlavorProperty.IsNone())
     {
-        // Convert FName to FGameplayTag for the dish validation
-        FGameplayTag FlavorTag = FGameplayTag::RequestGameplayTag(FName(*Order.TargetFlavorProperty.ToString()));
-        float FlavorValue = Dish.GetTotalValueForTag(FlavorTag);
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Looking for flavor property: %s"), *Order.TargetFlavorProperty.ToString());
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish has %d ingredients"), Dish.IngredientInstances.Num());
+        
+        // Debug each ingredient's flavor contribution
+        for (const FIngredientInstance& Instance : Dish.IngredientInstances)
+        {
+            FPUIngredientBase Ingredient;
+            if (Dish.GetIngredient(Instance.IngredientTag, Ingredient))
+            {
+                float IngredientFlavor = Ingredient.GetPropertyValue(Order.TargetFlavorProperty);
+                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s has flavor value: %.2f"), 
+                    *Instance.IngredientTag.ToString(), IngredientFlavor);
+                
+                // Debug the ingredient's properties
+                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s has %d natural properties"), 
+                    *Instance.IngredientTag.ToString(), Ingredient.NaturalProperties.Num());
+                
+                for (int32 i = 0; i < Ingredient.NaturalProperties.Num(); i++)
+                {
+                    const FIngredientProperty& Property = Ingredient.NaturalProperties[i];
+                    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Property %d: %s = %.2f"), 
+                        i, *Property.GetPropertyName().ToString(), Property.Value);
+                }
+            }
+        }
+        
+        float FlavorValue = Dish.GetTotalValueForProperty(Order.TargetFlavorProperty);
         bMeetsFlavorRequirement = FlavorValue >= Order.MinFlavorValue;
         
         UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish flavor value: %.2f, minimum required: %.2f"), 
@@ -212,9 +266,7 @@ float APUCookingStation::CalculateSatisfactionScore(const FPUDishBase& Dish, con
     
     if (!Order.TargetFlavorProperty.IsNone())
     {
-        // Convert FName to FGameplayTag for the dish validation
-        FGameplayTag FlavorTag = FGameplayTag::RequestGameplayTag(FName(*Order.TargetFlavorProperty.ToString()));
-        float FlavorValue = Dish.GetTotalValueForTag(FlavorTag);
+        float FlavorValue = Dish.GetTotalValueForProperty(Order.TargetFlavorProperty);
         FlavorScore = FMath::Min(1.0f, FlavorValue / Order.MinFlavorValue);
     }
     
