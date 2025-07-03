@@ -31,7 +31,6 @@ APUCookingStation::APUCookingStation()
     StationName = FText::FromString(TEXT("Cooking Station"));
     StationDescription = FText::FromString(TEXT("A station for customizing dishes"));
     InteractionRange = 200.0f;
-    bIsInteractable = true;
 }
 
 void APUCookingStation::BeginPlay()
@@ -83,12 +82,14 @@ void APUCookingStation::StartInteraction()
                 UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has active order: %s"), 
                     *CurrentOrder.OrderID.ToString());
                 
-                // Set the initial dish data from the order
+                // Use event-driven data passing
                 if (CurrentOrder.BaseDish.DishTag.IsValid())
                 {
-                    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Setting initial dish data from order: %s"), 
+                    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Broadcasting initial dish data from order: %s"), 
                         *CurrentOrder.BaseDish.DisplayName.ToString());
-                    DishCustomizationComponent->SetInitialDishData(CurrentOrder.BaseDish);
+                    
+                    // Use the event-driven approach
+                    DishCustomizationComponent->BroadcastInitialDishData(CurrentOrder.BaseDish);
                 }
                 else
                 {
@@ -161,7 +162,7 @@ void APUCookingStation::OnCustomizationEnded()
         // Get the completed dish data
         if (DishCustomizationComponent)
         {
-            const FPUDishBase& CompletedDish = DishCustomizationComponent->CurrentDishData;
+            const FPUDishBase& CompletedDish = DishCustomizationComponent->GetCurrentDishData();
             const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
             
             UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Validating dish against order: %s"), 

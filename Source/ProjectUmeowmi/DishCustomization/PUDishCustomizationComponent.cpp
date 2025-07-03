@@ -12,6 +12,7 @@
 #include "Camera/CameraComponent.h"
 #include "InputMappingContext.h"
 #include "Engine/GameViewportClient.h"
+#include "../UI/PUDishCustomizationWidget.h"
 
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
@@ -158,11 +159,30 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         CustomizationWidget = CreateWidget<UUserWidget>(GetWorld(), CustomizationWidgetClass);
         if (CustomizationWidget)
         {
+            // Try to cast to our custom widget class and set up the connection
+            if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+            {
+                UE_LOG(LogTemp, Log, TEXT("UPUDishCustomizationComponent::StartCustomization - Connecting widget to component"));
+                DishWidget->SetCustomizationComponent(this);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("UPUDishCustomizationComponent::StartCustomization - Widget is not a PUDishCustomizationWidget, manual connection may be needed"));
+            }
+            
+            // Pass the initial dish data to the widget during creation
+            // The widget can access this data in its construction script or BeginPlay
+            UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Created - Initial dish data available"));
+            
             CustomizationWidget->AddToViewport();
             UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Added to Viewport"));
             
-            // Set the dish customization component reference on the widget
-            SetDishCustomizationComponentOnWidget(CustomizationWidget);
+            // Broadcast the initial dish data now that the widget is created and subscribed
+            if (CurrentDishData.DishTag.IsValid())
+            {
+                UE_LOG(LogTemp, Log, TEXT("UPUDishCustomizationComponent::StartCustomization - Broadcasting initial dish data to newly created widget"));
+                BroadcastInitialDishData(CurrentDishData);
+            }
         }
         else
         {
@@ -237,8 +257,6 @@ void UPUDishCustomizationComponent::EndCustomization()
         PlayerController->SetInputMode(FInputModeGameOnly());
     }
 
-
-
     // Clean up the widget
     if (CustomizationWidget)
     {
@@ -276,8 +294,6 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
         OriginalCameraOffset = CurrentCharacter->GetCameraOffset();
         OriginalCameraPositionIndex = CurrentCharacter->GetCameraPositionIndex();
 
-
-
         // Set target values for customization view
         TargetCameraDistance = CustomizationCameraDistance;
         TargetCameraPitch = CustomizationCameraPitch;
@@ -285,8 +301,6 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
         TargetOrthoWidth = CustomizationOrthoWidth;
         TargetCameraOffset = OriginalCameraOffset; // Keep the same offset
         TargetCameraPositionIndex = OriginalCameraPositionIndex; // Keep the same position index
-
-
     }
     else
     {
@@ -297,8 +311,6 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
         TargetOrthoWidth = OriginalOrthoWidth;
         TargetCameraOffset = OriginalCameraOffset;
         TargetCameraPositionIndex = OriginalCameraPositionIndex;
-
-
     }
 
     bIsTransitioningCamera = true;
@@ -339,8 +351,6 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     FollowCamera->OrthoWidth = NewOrthoWidth;
     CurrentCharacter->SetCameraOffset(NewCameraOffset);
     CurrentCharacter->SetCameraPositionIndex(TargetCameraPositionIndex);
-
-
 
     // Check if we've reached the target
     if (FMath::IsNearlyEqual(NewDistance, TargetCameraDistance, 1.0f) &&
@@ -459,25 +469,17 @@ void UPUDishCustomizationComponent::SyncDishDataFromUI(const FPUDishBase& DishDa
     // Update the current dish data with the data from the UI
     UpdateCurrentDishData(DishDataFromUI);
     
-    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SyncDishDataFromUI - Dish data synced successfully"));
+    // Broadcast the updated dish data to all subscribers
+    OnDishDataUpdated.Broadcast(DishDataFromUI);
+    
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SyncDishDataFromUI - Dish data synced and broadcasted successfully"));
 }
 
+// This function is no longer needed - we'll use a different approach
 void UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget(UUserWidget* Widget)
 {
-    if (!Widget)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Widget is null"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Setting component reference on widget"));
-    
-    // For now, skip the Blueprint function call to avoid crashes
-    // The widget can get the component reference through other means if needed
-    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Skipping Blueprint function call to avoid crashes"));
-    
-    // TODO: Fix the Blueprint function signature issue
-    // The function should take exactly: UPUDishCustomizationComponent* Component
+    // Removed to avoid crashes - using alternative data passing methods
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Function disabled, using alternative approach"));
 }
 
 void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& InitialDishData)
@@ -490,5 +492,32 @@ void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& Initia
     
     UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Initial dish data set successfully"));
 }
+
+// New event-driven data passing methods
+void UPUDishCustomizationComponent::BroadcastDishDataUpdate(const FPUDishBase& NewDishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::BroadcastDishDataUpdate - Broadcasting dish data update with %d ingredients"), 
+        NewDishData.IngredientInstances.Num());
+    
+    // Update internal data
+    UpdateCurrentDishData(NewDishData);
+    
+    // Broadcast the update to all subscribers
+    OnDishDataUpdated.Broadcast(NewDishData);
+}
+
+void UPUDishCustomizationComponent::BroadcastInitialDishData(const FPUDishBase& InitialDishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s with %d ingredients"), 
+        *InitialDishData.DisplayName.ToString(), InitialDishData.IngredientInstances.Num());
+    
+    // Set the initial dish data
+    UpdateCurrentDishData(InitialDishData);
+    
+    // Broadcast the initial data to all subscribers
+    OnInitialDishDataReceived.Broadcast(InitialDishData);
+}
+
+
 
  

@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "PUInteractableBase.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
+#include "../DishCustomization/PUDishBase.h"
+#include "../DishCustomization/PUOrderBase.h"
 #include "Components/BoxComponent.h"
 #include "Components/WidgetComponent.h"
 #include "PUCookingStation.generated.h"
@@ -52,17 +54,14 @@ protected:
     UFUNCTION(BlueprintCallable, Category = "Cooking Station|Orders")
     bool ValidateDishAgainstOrder(const FPUDishBase& Dish, const FPUOrderBase& Order, float& OutSatisfactionScore) const;
 
-    UFUNCTION(BlueprintCallable, Category = "Cooking Station|Orders")
-    float CalculateSatisfactionScore(const FPUDishBase& Dish, const FPUOrderBase& Order) const;
-
-    // UI access
-    UFUNCTION(BlueprintCallable, Category = "Cooking Station|UI")
-    UPUDishCustomizationComponent* GetDishCustomizationComponent() const { return DishCustomizationComponent; }
-
     // Interaction range events
     UFUNCTION()
     void OnInteractionBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
     UFUNCTION()
     void OnInteractionBoxEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+private:
+    // Calculate satisfaction score for order completion
+    float CalculateSatisfactionScore(const FPUDishBase& Dish, const FPUOrderBase& Order) const;
 }; 

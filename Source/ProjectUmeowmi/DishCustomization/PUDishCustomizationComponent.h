@@ -13,6 +13,8 @@ class UEnhancedInputComponent;
 class UInputMappingContext;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomizationEnded);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDishDataUpdated, const FPUDishBase&, NewDishData);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInitialDishDataReceived, const FPUDishBase&, InitialDishData);
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class PROJECTUMEOWMI_API UPUDishCustomizationComponent : public USceneComponent
@@ -58,6 +60,19 @@ public:
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Dish Customization")
     FOnCustomizationEnded OnCustomizationEnded;
+
+    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Data")
+    FOnDishDataUpdated OnDishDataUpdated;
+
+    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Data")
+    FOnInitialDishDataReceived OnInitialDishDataReceived;
+
+    // Alternative data passing methods
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data")
+    void BroadcastDishDataUpdate(const FPUDishBase& NewDishData);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data")
+    void BroadcastInitialDishData(const FPUDishBase& InitialDishData);
 
     // UI Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
