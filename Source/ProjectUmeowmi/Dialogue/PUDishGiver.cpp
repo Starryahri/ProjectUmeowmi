@@ -1,5 +1,6 @@
 #include "PUDishGiver.h"
 #include "Engine/Engine.h"
+#include "../ProjectUmeowmiCharacter.h"
 
 APUDishGiver::APUDishGiver()
 {
@@ -26,6 +27,40 @@ void APUDishGiver::StartInteraction()
     
     // Generate order before starting dialogue
     GenerateOrderForDialogue();
+    
+    // Pass the order to the player character
+    if (OrderComponent && OrderComponent->HasActiveOrder())
+    {
+        // Find the player character
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+                {
+                    const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
+                    PlayerChar->SetCurrentOrder(Order);
+                    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Order passed to player character: %s"), *Order.OrderID.ToString());
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - Could not cast to ProjectUmeowmiCharacter"));
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - Could not find PlayerController"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - Could not get World"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - No active order to pass to player"));
+    }
     
     // Call parent implementation to start dialogue
     Super::StartInteraction();

@@ -438,6 +438,38 @@ void AProjectUmeowmiCharacter::OnInteractionFailed()
 	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
 }
 
+// Order System Integration
+void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Setting current order: %s"), *Order.OrderID.ToString());
+	
+	CurrentOrder = Order;
+	bHasCurrentOrder = true;
+	bCurrentOrderCompleted = false;
+	CurrentOrderSatisfaction = 0.0f;
+	
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Order set successfully"));
+}
+
+void AProjectUmeowmiCharacter::ClearCurrentOrder()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::ClearCurrentOrder - Clearing current order"));
+	
+	CurrentOrder = FPUOrderBase();
+	bHasCurrentOrder = false;
+	bCurrentOrderCompleted = false;
+	CurrentOrderSatisfaction = 0.0f;
+}
+
+void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float SatisfactionScore)
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetOrderResult - Order completed: %s, Satisfaction: %.2f"), 
+		bCompleted ? TEXT("YES") : TEXT("NO"), SatisfactionScore);
+	
+	bCurrentOrderCompleted = bCompleted;
+	CurrentOrderSatisfaction = SatisfactionScore;
+}
+
 void AProjectUmeowmiCharacter::ShowMouseCursor()
 {
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
