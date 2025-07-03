@@ -3,23 +3,24 @@
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
 
-bool UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag)
+bool UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations)
 {
-    // Check if we already have this ingredient
+    // Check if we already have an instance with this exact ingredient tag and preparations
     for (FIngredientInstance& Instance : Dish.IngredientInstances)
     {
-        if (Instance.IngredientTag == IngredientTag)
+        if (Instance.IngredientTag == IngredientTag && Instance.Preparations == Preparations)
         {
-            // If we already have this ingredient, increment its quantity
+            // If we already have this exact combination, increment its quantity
             Instance.Quantity++;
             return true;
         }
     }
 
-    // If we don't have this ingredient, create a new instance
+    // If we don't have this combination, create a new instance
     FIngredientInstance NewInstance;
     NewInstance.IngredientTag = IngredientTag;
     NewInstance.Quantity = 1;
+    NewInstance.Preparations = Preparations;
     Dish.IngredientInstances.Add(NewInstance);
     return true;
 }
@@ -31,6 +32,56 @@ bool UPUDishBlueprintLibrary::RemoveIngredient(FPUDishBase& Dish, const FGamepla
     }) > 0;
 }
 
+bool UPUDishBlueprintLibrary::RemoveIngredientInstance(FPUDishBase& Dish, int32 InstanceIndex)
+{
+    // Check if the instance index is valid
+    if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstance - Invalid instance index: %d"), InstanceIndex);
+        return false;
+    }
+
+    // Remove the instance
+    Dish.IngredientInstances.RemoveAt(InstanceIndex);
+    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstance - Removed instance at index %d"), InstanceIndex);
+    
+    return true;
+}
+
+bool UPUDishBlueprintLibrary::RemoveIngredientQuantity(FPUDishBase& Dish, int32 InstanceIndex, int32 Quantity)
+{
+    // Check if the instance index is valid
+    if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Invalid instance index: %d"), InstanceIndex);
+        return false;
+    }
+
+    FIngredientInstance& Instance = Dish.IngredientInstances[InstanceIndex];
+    
+    // Check if we have enough quantity to remove
+    if (Instance.Quantity < Quantity)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Not enough quantity. Have: %d, Requested: %d"), 
+            Instance.Quantity, Quantity);
+        return false;
+    }
+
+    // Remove the quantity
+    Instance.Quantity -= Quantity;
+    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Removed %d from instance %d. Remaining: %d"), 
+        Quantity, InstanceIndex, Instance.Quantity);
+
+    // Auto-cleanup: Remove instance if quantity reaches 0
+    if (Instance.Quantity <= 0)
+    {
+        Dish.IngredientInstances.RemoveAt(InstanceIndex);
+        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Auto-removed empty instance at index %d"), InstanceIndex);
+    }
+    
+    return true;
+}
+
 bool UPUDishBlueprintLibrary::IncrementIngredientAmount(FPUDishBase& Dish, const FGameplayTag& IngredientTag, int32 Amount)
 {
     if (Amount <= 0)
@@ -38,8 +89,10 @@ bool UPUDishBlueprintLibrary::IncrementIngredientAmount(FPUDishBase& Dish, const
         return false;
     }
 
-    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    // Find the first instance of this ingredient (preferably one without preparations for simplicity)
+    for (int32 i = 0; i < Dish.IngredientInstances.Num(); ++i)
     {
+        FIngredientInstance& Instance = Dish.IngredientInstances[i];
         if (Instance.IngredientTag == IngredientTag)
         {
             // Get the base ingredient to check max quantity
@@ -50,6 +103,8 @@ bool UPUDishBlueprintLibrary::IncrementIngredientAmount(FPUDishBase& Dish, const
                 if (Instance.Quantity + Amount <= BaseIngredient.MaxQuantity)
                 {
                     Instance.Quantity += Amount;
+                    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::IncrementIngredientAmount - Added %d to instance %d. New quantity: %d"), 
+                        Amount, i, Instance.Quantity);
                     return true;
                 }
             }
@@ -66,8 +121,10 @@ bool UPUDishBlueprintLibrary::DecrementIngredientAmount(FPUDishBase& Dish, const
         return false;
     }
 
-    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    // Find the first instance of this ingredient
+    for (int32 i = 0; i < Dish.IngredientInstances.Num(); ++i)
     {
+        FIngredientInstance& Instance = Dish.IngredientInstances[i];
         if (Instance.IngredientTag == IngredientTag)
         {
             // Get the base ingredient to check min quantity
@@ -78,6 +135,16 @@ bool UPUDishBlueprintLibrary::DecrementIngredientAmount(FPUDishBase& Dish, const
                 if (Instance.Quantity - Amount >= BaseIngredient.MinQuantity)
                 {
                     Instance.Quantity -= Amount;
+                    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientAmount - Removed %d from instance %d. New quantity: %d"), 
+                        Amount, i, Instance.Quantity);
+
+                    // Auto-cleanup: Remove instance if quantity reaches 0
+                    if (Instance.Quantity <= 0)
+                    {
+                        Dish.IngredientInstances.RemoveAt(i);
+                        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientAmount - Auto-removed empty instance at index %d"), i);
+                    }
+                    
                     return true;
                 }
             }
@@ -89,42 +156,95 @@ bool UPUDishBlueprintLibrary::DecrementIngredientAmount(FPUDishBase& Dish, const
 
 int32 UPUDishBlueprintLibrary::GetIngredientQuantity(const FPUDishBase& Dish, const FGameplayTag& IngredientTag)
 {
+    int32 TotalQuantity = 0;
     for (const FIngredientInstance& Instance : Dish.IngredientInstances)
     {
         if (Instance.IngredientTag == IngredientTag)
         {
-            return Instance.Quantity;
+            TotalQuantity += Instance.Quantity;
         }
     }
-    return 0;
+    return TotalQuantity;
 }
 
-bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag)
+int32 UPUDishBlueprintLibrary::GetIngredientInstanceCount(const FPUDishBase& Dish, const FGameplayTag& IngredientTag)
 {
-    bool bApplied = false;
-    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    int32 Count = 0;
+    for (const FIngredientInstance& Instance : Dish.IngredientInstances)
     {
         if (Instance.IngredientTag == IngredientTag)
         {
-            Instance.Preparations.AddTag(PreparationTag);
-            bApplied = true;
+            Count++;
         }
     }
-    return bApplied;
+    return Count;
 }
 
-bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTag& PreparationTag)
+TArray<int32> UPUDishBlueprintLibrary::GetInstanceIndicesForIngredient(const FPUDishBase& Dish, const FGameplayTag& IngredientTag)
 {
-    bool bRemoved = false;
-    for (FIngredientInstance& Instance : Dish.IngredientInstances)
+    TArray<int32> Indices;
+    for (int32 i = 0; i < Dish.IngredientInstances.Num(); ++i)
     {
-        if (Instance.IngredientTag == IngredientTag)
+        if (Dish.IngredientInstances[i].IngredientTag == IngredientTag)
         {
-            Instance.Preparations.RemoveTag(PreparationTag);
-            bRemoved = true;
+            Indices.Add(i);
         }
     }
-    return bRemoved;
+    return Indices;
+}
+
+bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 InstanceIndex, const FGameplayTag& PreparationTag)
+{
+    // Check if the instance index is valid
+    if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Invalid instance index: %d"), InstanceIndex);
+        return false;
+    }
+
+    FIngredientInstance& Instance = Dish.IngredientInstances[InstanceIndex];
+    
+    // Check if this preparation is already applied
+    if (Instance.Preparations.HasTag(PreparationTag))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Preparation %s already applied to instance %d"), 
+            *PreparationTag.ToString(), InstanceIndex);
+        return false;
+    }
+
+    // Apply the preparation
+    Instance.Preparations.AddTag(PreparationTag);
+    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Applied %s to instance %d"), 
+        *PreparationTag.ToString(), InstanceIndex);
+    
+    return true;
+}
+
+bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 InstanceIndex, const FGameplayTag& PreparationTag)
+{
+    // Check if the instance index is valid
+    if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Invalid instance index: %d"), InstanceIndex);
+        return false;
+    }
+
+    FIngredientInstance& Instance = Dish.IngredientInstances[InstanceIndex];
+    
+    // Check if this preparation is actually applied
+    if (!Instance.Preparations.HasTag(PreparationTag))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Preparation %s not applied to instance %d"), 
+            *PreparationTag.ToString(), InstanceIndex);
+        return false;
+    }
+
+    // Remove the preparation
+    Instance.Preparations.RemoveTag(PreparationTag);
+    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Removed %s from instance %d"), 
+        *PreparationTag.ToString(), InstanceIndex);
+    
+    return true;
 }
 
 float UPUDishBlueprintLibrary::GetTotalValueForProperty(const FPUDishBase& Dish, const FName& PropertyName)
@@ -237,4 +357,9 @@ TArray<FPUIngredientBase> UPUDishBlueprintLibrary::GetAllIngredients(const FPUDi
 bool UPUDishBlueprintLibrary::GetIngredient(const FPUDishBase& Dish, const FGameplayTag& IngredientTag, FPUIngredientBase& OutIngredient)
 {
     return Dish.GetIngredient(IngredientTag, OutIngredient);
+}
+
+int32 UPUDishBlueprintLibrary::GetTotalIngredientQuantity(const FPUDishBase& Dish)
+{
+    return Dish.GetTotalIngredientQuantity();
 } 

@@ -73,13 +73,68 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
     return false;
 }
 
+bool FPUDishBase::GetIngredientForInstance(int32 InstanceIndex, FPUIngredientBase& OutIngredient) const
+{
+    if (!IngredientDataTable || !IngredientInstances.IsValidIndex(InstanceIndex))
+    {
+        return false;
+    }
+
+    const FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
+    
+    // Get the full tag string and split at the last period
+    FString FullTag = Instance.IngredientTag.ToString();
+    int32 LastPeriodIndex;
+    if (FullTag.FindLastChar('.', LastPeriodIndex))
+    {
+        // Get everything after the last period and convert to lowercase
+        FString TagName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
+        FName RowName = FName(*TagName);
+        
+        if (FPUIngredientBase* FoundIngredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredientForInstance")))
+        {
+            // Create a copy of the base ingredient
+            OutIngredient = *FoundIngredient;
+
+            // Apply the preparations from this specific instance
+            OutIngredient.ActivePreparations = Instance.Preparations;
+
+            // Apply each preparation's modifiers
+            if (OutIngredient.PreparationDataTable)
+            {
+                TArray<FGameplayTag> PreparationTags;
+                Instance.Preparations.GetGameplayTagArray(PreparationTags);
+
+                for (const FGameplayTag& PrepTag : PreparationTags)
+                {
+                    // Get the preparation data
+                    FString PrepTagName = PrepTag.ToString();
+                    if (PrepTagName.FindLastChar('.', LastPeriodIndex))
+                    {
+                        FString PrepName = PrepTagName.RightChop(LastPeriodIndex + 1).ToLower();
+                        FName PrepRowName = FName(*PrepName);
+                        
+                        if (FPUPreparationBase* Preparation = OutIngredient.PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredientForInstance")))
+                        {
+                            // Apply the preparation's modifiers to the ingredient's properties
+                            Preparation->ApplyModifiers(OutIngredient.NaturalProperties);
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 TArray<FPUIngredientBase> FPUDishBase::GetAllIngredients() const
 {
     TArray<FPUIngredientBase> Ingredients;
-    for (const FIngredientInstance& Instance : IngredientInstances)
+    for (int32 i = 0; i < IngredientInstances.Num(); ++i)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient))
+        if (GetIngredientForInstance(i, Ingredient))
         {
             Ingredients.Add(Ingredient);
         }
@@ -87,17 +142,28 @@ TArray<FPUIngredientBase> FPUDishBase::GetAllIngredients() const
     return Ingredients;
 }
 
+int32 FPUDishBase::GetTotalIngredientQuantity() const
+{
+    int32 TotalQuantity = 0;
+    for (const FIngredientInstance& Instance : IngredientInstances)
+    {
+        TotalQuantity += Instance.Quantity;
+    }
+    return TotalQuantity;
+}
+
 float FPUDishBase::GetTotalValueForProperty(const FName& PropertyName) const
 {
     float TotalValue = 0.0f;
     
     // Sum up values from all ingredients (including their preparation modifications)
-    for (const FIngredientInstance& Instance : IngredientInstances)
+    for (int32 i = 0; i < IngredientInstances.Num(); ++i)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient))
+        if (GetIngredientForInstance(i, Ingredient))
         {
-            TotalValue += Ingredient.GetPropertyValue(PropertyName);
+            // Multiply the property value by the quantity of this ingredient
+            TotalValue += Ingredient.GetPropertyValue(PropertyName) * IngredientInstances[i].Quantity;
         }
     }
     
@@ -109,17 +175,20 @@ TArray<FIngredientProperty> FPUDishBase::GetPropertiesWithTag(const FGameplayTag
     TArray<FIngredientProperty> Properties;
     
     // Collect properties from all ingredients
-    for (const FIngredientInstance& Instance : IngredientInstances)
+    for (int32 i = 0; i < IngredientInstances.Num(); ++i)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient) && Ingredient.HasPropertiesWithTag(Tag))
+        if (GetIngredientForInstance(i, Ingredient) && Ingredient.HasPropertiesWithTag(Tag))
         {
-            // Add all properties with matching tag
+            // Add all properties with matching tag, multiplied by quantity
             for (const FIngredientProperty& Property : Ingredient.NaturalProperties)
             {
                 if (Property.PropertyTags.HasTag(Tag))
                 {
-                    Properties.Add(Property);
+                    // Create a copy of the property with the value multiplied by quantity
+                    FIngredientProperty QuantityAdjustedProperty = Property;
+                    QuantityAdjustedProperty.Value = Property.Value * IngredientInstances[i].Quantity;
+                    Properties.Add(QuantityAdjustedProperty);
                 }
             }
         }
@@ -133,12 +202,13 @@ float FPUDishBase::GetTotalValueForTag(const FGameplayTag& Tag) const
     float TotalValue = 0.0f;
     
     // Sum up values from all ingredients (including their preparation modifications)
-    for (const FIngredientInstance& Instance : IngredientInstances)
+    for (int32 i = 0; i < IngredientInstances.Num(); ++i)
     {
         FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient))
+        if (GetIngredientForInstance(i, Ingredient))
         {
-            TotalValue += Ingredient.GetTotalValueForTag(Tag);
+            // Multiply the total value for the tag by the quantity of this ingredient
+            TotalValue += Ingredient.GetTotalValueForTag(Tag) * IngredientInstances[i].Quantity;
         }
     }
     

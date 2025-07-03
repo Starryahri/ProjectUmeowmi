@@ -92,6 +92,12 @@ public:
     // Helper function to get an ingredient from the data table
     bool GetIngredient(const FGameplayTag& IngredientTag, FPUIngredientBase& OutIngredient) const;
 
+    // Helper function to get ingredient data for a specific instance
+    bool GetIngredientForInstance(int32 InstanceIndex, FPUIngredientBase& OutIngredient) const;
+
     // Helper function to get all ingredients in the dish
     TArray<FPUIngredientBase> GetAllIngredients() const;
+
+    // Helper function to get the total quantity of all ingredients
+    int32 GetTotalIngredientQuantity() const;
 }; 

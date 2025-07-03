@@ -218,24 +218,42 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
         UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish has %d ingredients"), Dish.IngredientInstances.Num());
         
         // Debug each ingredient's flavor contribution
-        for (const FIngredientInstance& Instance : Dish.IngredientInstances)
+        for (int32 i = 0; i < Dish.IngredientInstances.Num(); ++i)
         {
+            const FIngredientInstance& Instance = Dish.IngredientInstances[i];
             FPUIngredientBase Ingredient;
-            if (Dish.GetIngredient(Instance.IngredientTag, Ingredient))
+            if (Dish.GetIngredientForInstance(i, Ingredient))
             {
                 float IngredientFlavor = Ingredient.GetPropertyValue(Order.TargetFlavorProperty);
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s has flavor value: %.2f"), 
-                    *Instance.IngredientTag.ToString(), IngredientFlavor);
+                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %d (%s) has flavor value: %.2f"), 
+                    i, *Instance.IngredientTag.ToString(), IngredientFlavor);
+                
+                // Log preparations for this instance
+                if (Instance.Preparations.Num() > 0)
+                {
+                    TArray<FGameplayTag> PreparationTags;
+                    Instance.Preparations.GetGameplayTagArray(PreparationTags);
+                    FString PrepString = TEXT("Preparations: ");
+                    for (const FGameplayTag& PrepTag : PreparationTags)
+                    {
+                        PrepString += PrepTag.ToString() + TEXT(", ");
+                    }
+                    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - %s"), *PrepString);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - No preparations applied"));
+                }
                 
                 // Debug the ingredient's properties
                 UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s has %d natural properties"), 
                     *Instance.IngredientTag.ToString(), Ingredient.NaturalProperties.Num());
                 
-                for (int32 i = 0; i < Ingredient.NaturalProperties.Num(); i++)
+                for (int32 j = 0; j < Ingredient.NaturalProperties.Num(); j++)
                 {
-                    const FIngredientProperty& Property = Ingredient.NaturalProperties[i];
+                    const FIngredientProperty& Property = Ingredient.NaturalProperties[j];
                     UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Property %d: %s = %.2f"), 
-                        i, *Property.GetPropertyName().ToString(), Property.Value);
+                        j, *Property.GetPropertyName().ToString(), Property.Value);
                 }
             }
         }

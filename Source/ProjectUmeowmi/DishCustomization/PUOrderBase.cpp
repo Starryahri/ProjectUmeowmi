@@ -15,8 +15,8 @@ bool FPUOrderBase::ValidateDish(const FPUDishBase& Dish) const
 {
     UE_LOG(LogTemp, Log, TEXT("FPUOrderBase::ValidateDish - Starting validation for order: %s"), *OrderID.ToString());
     
-    // Check ingredient count
-    int32 CurrentIngredientCount = Dish.IngredientInstances.Num();
+    // Check ingredient count - sum up all quantities, not just unique types
+    int32 CurrentIngredientCount = Dish.GetTotalIngredientQuantity();
     bool bIngredientCountValid = CurrentIngredientCount >= MinIngredientCount;
     
     UE_LOG(LogTemp, Log, TEXT("FPUOrderBase::ValidateDish - Ingredient count: %d/%d (Required: %d) - Valid: %s"), 
@@ -42,8 +42,8 @@ float FPUOrderBase::GetSatisfactionScore(const FPUDishBase& Dish) const
     
     float Score = 0.0f;
     
-    // Ingredient count satisfaction (50% of score)
-    int32 CurrentIngredientCount = Dish.IngredientInstances.Num();
+    // Ingredient count satisfaction (50% of score) - sum up all quantities
+    int32 CurrentIngredientCount = Dish.GetTotalIngredientQuantity();
     float IngredientScore = FMath::Clamp(static_cast<float>(CurrentIngredientCount) / static_cast<float>(MinIngredientCount), 0.0f, 1.0f);
     Score += IngredientScore * 0.5f;
     
@@ -82,8 +82,9 @@ void FPUOrderBase::LogValidationResults(const FPUDishBase& Dish) const
     // Log order details
     LogOrderDetails();
     
-    // Log dish details
-    UE_LOG(LogTemp, Display, TEXT("Dish Ingredients: %d"), Dish.IngredientInstances.Num());
+    // Log dish details - calculate total ingredient count
+    int32 TotalIngredientCount = Dish.GetTotalIngredientQuantity();
+    UE_LOG(LogTemp, Display, TEXT("Dish Ingredients: %d (Total Quantity: %d)"), Dish.IngredientInstances.Num(), TotalIngredientCount);
     UE_LOG(LogTemp, Display, TEXT("Dish Flavor %s: %.2f"), *TargetFlavorProperty.ToString(), Dish.GetTotalValueForProperty(TargetFlavorProperty));
     
     // Log validation results
