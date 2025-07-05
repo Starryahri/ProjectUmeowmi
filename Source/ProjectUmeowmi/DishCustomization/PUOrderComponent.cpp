@@ -97,9 +97,20 @@ void UPUOrderComponent::GenerateSimpleOrder()
     // Get the base dish from the data table
     FPUDishBase BaseDish;
     bool bGotBaseDish = false;
+    
+    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is %s"), 
+        DishDataTable ? TEXT("valid") : TEXT("NULL"));
+    
     if (DishDataTable)
     {
+        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Attempting to get dish from data table"));
         bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, DishTag, BaseDish);
+        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - GetDishFromDataTable result: %s"), 
+            bGotBaseDish ? TEXT("SUCCESS") : TEXT("FAILED"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is not set! This will cause issues."));
     }
     
     if (!bGotBaseDish)
@@ -107,6 +118,13 @@ void UPUOrderComponent::GenerateSimpleOrder()
         UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get base dish, creating empty dish"));
         BaseDish.DishTag = DishTag;
         BaseDish.DisplayName = FText::FromString(DishTag.ToString());
+        BaseDish.IngredientDataTable = nullptr; // Ensure no ingredient data table
+        BaseDish.IngredientInstances.Empty(); // Ensure no ingredient instances
+        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Created fallback dish: %s"), *BaseDish.DisplayName.ToString());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Successfully got base dish: %s"), *BaseDish.DisplayName.ToString());
     }
     
     // Create a unique order ID
@@ -137,4 +155,20 @@ void UPUOrderComponent::GenerateSimpleOrder()
     
     UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Order created successfully with base dish: %s (%d ingredients)"), 
         *BaseDish.DisplayName.ToString(), BaseDish.IngredientInstances.Num());
+    
+    // Debug: Log the base dish details
+    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Base dish details:"));
+    UE_LOG(LogTemp, Log, TEXT("  - Dish Tag: %s"), *BaseDish.DishTag.ToString());
+    UE_LOG(LogTemp, Log, TEXT("  - Display Name: %s"), *BaseDish.DisplayName.ToString());
+    UE_LOG(LogTemp, Log, TEXT("  - Ingredient Data Table: %s"), BaseDish.IngredientDataTable ? TEXT("Valid") : TEXT("NULL"));
+    UE_LOG(LogTemp, Log, TEXT("  - Ingredient Instances: %d"), BaseDish.IngredientInstances.Num());
+    
+    for (int32 i = 0; i < BaseDish.IngredientInstances.Num(); i++)
+    {
+        const FIngredientInstance& Instance = BaseDish.IngredientInstances[i];
+        // Use convenient field if available, fallback to data field
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        UE_LOG(LogTemp, Log, TEXT("    - Instance %d: %s (Qty: %d)"), 
+            i, *InstanceTag.ToString(), Instance.Quantity);
+    }
 } 

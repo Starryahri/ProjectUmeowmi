@@ -13,20 +13,29 @@ struct FIngredientInstance
     GENERATED_BODY()
 
     FIngredientInstance()
-        : Quantity(1)
+        : InstanceID(0)
+        , Quantity(1)
     {}
 
-    // The base ingredient tag
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Ingredient"))
-    FGameplayTag IngredientTag;
-
-    // The preparations applied to this specific instance
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Prep"))
-    FGameplayTagContainer Preparations;
+    // Unique identifier for this instance (never changes)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    int32 InstanceID;
 
     // The quantity of this ingredient
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
     int32 Quantity;
+
+    // The ingredient data with preparations already applied
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
+    FPUIngredientBase IngredientData;
+
+    // Ingredient tag for easy template creation (redundant with IngredientData.IngredientTag but convenient)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Ingredient"))
+    FGameplayTag IngredientTag;
+
+    // Preparations for easy template creation (redundant with IngredientData.ActivePreparations but convenient)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Preparation"))
+    FGameplayTagContainer Preparations;
 
     // Optional: Placement data for this instance
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
@@ -98,6 +107,34 @@ public:
     // Helper function to get all ingredients in the dish
     TArray<FPUIngredientBase> GetAllIngredients() const;
 
+    // Helper function to get all ingredient instances (including IDs)
+    TArray<FIngredientInstance> GetAllIngredientInstances() const;
+
     // Helper function to get the total quantity of all ingredients
     int32 GetTotalIngredientQuantity() const;
+
+    // Helper function to get ingredient data for a specific instance ID
+    bool GetIngredientForInstanceID(int32 InstanceID, FPUIngredientBase& OutIngredient) const;
+
+    // Helper function to get ingredient instance by ID
+    bool GetIngredientInstanceByID(int32 InstanceID, FIngredientInstance& OutInstance) const;
+
+    // Helper function to find instance index by ID
+    int32 FindInstanceIndexByID(int32 InstanceID) const;
+
+    // Helper functions for easy access to common properties
+    FGameplayTag GetIngredientTag(int32 InstanceID) const;
+    FGameplayTagContainer GetPreparations(int32 InstanceID) const;
+    int32 GetQuantity(int32 InstanceID) const;
+
+    // Helper function to generate a new unique instance ID
+    int32 GenerateNewInstanceID() const;
+
+private:
+    // Static counter for generating unique instance IDs
+    static std::atomic<int32> GlobalInstanceCounter;
+
+public:
+    // Generate a globally unique instance ID
+    static int32 GenerateUniqueInstanceID();
 }; 

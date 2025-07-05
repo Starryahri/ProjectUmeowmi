@@ -88,6 +88,22 @@ void APUCookingStation::StartInteraction()
                     UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Broadcasting initial dish data from order: %s"), 
                         *CurrentOrder.BaseDish.DisplayName.ToString());
                     
+                    // Debug: Log the base dish details
+                    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Base dish details:"));
+                    UE_LOG(LogTemp, Display, TEXT("  - Dish Tag: %s"), *CurrentOrder.BaseDish.DishTag.ToString());
+                    UE_LOG(LogTemp, Display, TEXT("  - Display Name: %s"), *CurrentOrder.BaseDish.DisplayName.ToString());
+                    UE_LOG(LogTemp, Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable ? TEXT("Valid") : TEXT("NULL"));
+                    UE_LOG(LogTemp, Display, TEXT("  - Ingredient Instances: %d"), CurrentOrder.BaseDish.IngredientInstances.Num());
+                    
+                    for (int32 i = 0; i < CurrentOrder.BaseDish.IngredientInstances.Num(); i++)
+                    {
+                        const FIngredientInstance& Instance = CurrentOrder.BaseDish.IngredientInstances[i];
+                        // Use convenient field if available, fallback to data field
+                        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+                        UE_LOG(LogTemp, Display, TEXT("    - Instance %d: %s (Qty: %d)"), 
+                            i, *InstanceTag.ToString(), Instance.Quantity);
+                    }
+                    
                     // Use the event-driven approach
                     DishCustomizationComponent->BroadcastInitialDishData(CurrentOrder.BaseDish);
                 }
@@ -176,7 +192,7 @@ void APUCookingStation::OnCustomizationEnded()
             {
                 const FIngredientInstance& Instance = CompletedDish.IngredientInstances[i];
                 UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Ingredient %d: %s (Qty: %d)"), 
-                    i, *Instance.IngredientTag.ToString(), Instance.Quantity);
+                    i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity);
             }
             
             // Validate the dish against the current order using helper function
@@ -226,13 +242,13 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
             {
                 float IngredientFlavor = Ingredient.GetPropertyValue(Order.TargetFlavorProperty);
                 UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %d (%s) has flavor value: %.2f"), 
-                    i, *Instance.IngredientTag.ToString(), IngredientFlavor);
+                    i, *Instance.IngredientData.IngredientTag.ToString(), IngredientFlavor);
                 
                 // Log preparations for this instance
-                if (Instance.Preparations.Num() > 0)
+                if (Instance.IngredientData.ActivePreparations.Num() > 0)
                 {
                     TArray<FGameplayTag> PreparationTags;
-                    Instance.Preparations.GetGameplayTagArray(PreparationTags);
+                    Instance.IngredientData.ActivePreparations.GetGameplayTagArray(PreparationTags);
                     FString PrepString = TEXT("Preparations: ");
                     for (const FGameplayTag& PrepTag : PreparationTags)
                     {
@@ -247,7 +263,7 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
                 
                 // Debug the ingredient's properties
                 UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s has %d natural properties"), 
-                    *Instance.IngredientTag.ToString(), Ingredient.NaturalProperties.Num());
+                    *Instance.IngredientData.IngredientTag.ToString(), Ingredient.NaturalProperties.Num());
                 
                 for (int32 j = 0; j < Ingredient.NaturalProperties.Num(); j++)
                 {

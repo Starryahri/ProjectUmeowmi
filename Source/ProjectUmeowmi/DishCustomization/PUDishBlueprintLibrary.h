@@ -14,7 +14,7 @@ class PROJECTUMEOWMI_API UPUDishBlueprintLibrary : public UBlueprintFunctionLibr
 public:
     // Add an ingredient to the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static bool AddIngredient(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations = FGameplayTagContainer());
+    static FIngredientInstance AddIngredient(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations = FGameplayTagContainer());
 
     // Remove an ingredient from the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
@@ -56,6 +56,34 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static TArray<int32> GetInstanceIndicesForIngredient(const FPUDishBase& Dish, const FGameplayTag& IngredientTag);
 
+    // Get all instance IDs for a specific ingredient
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static TArray<int32> GetInstanceIDsForIngredient(const FPUDishBase& Dish, const FGameplayTag& IngredientTag);
+
+    // Apply a preparation to a specific ingredient instance by ID
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool ApplyPreparationByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, const FGameplayTag& PreparationTag);
+
+    // Remove a preparation from a specific ingredient instance by ID
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool RemovePreparationByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, const FGameplayTag& PreparationTag);
+
+    // Remove a specific ingredient instance by ID
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool RemoveIngredientInstanceByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID);
+
+    // Remove a specific quantity from an ingredient instance by ID
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool RemoveIngredientQuantityByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, int32 Quantity);
+
+    // Increment the quantity of a specific ingredient instance by ID
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool IncrementIngredientQuantityByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, int32 Amount = 1);
+
+    // Decrement the quantity of a specific ingredient instance by ID
+    UFUNCTION(BlueprintCallable, Category = "Dish")
+    static bool DecrementIngredientQuantityByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, int32 Amount = 1);
+
     // Get the total value for a specific property
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static float GetTotalValueForProperty(const FPUDishBase& Dish, const FName& PropertyName);
@@ -88,6 +116,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static TArray<FPUIngredientBase> GetAllIngredients(const FPUDishBase& Dish);
 
+    // Get all ingredient instances in the dish (including instance IDs)
+    UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
+    static TArray<FIngredientInstance> GetAllIngredientInstances(const FPUDishBase& Dish);
+
     // Get a specific ingredient from the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static bool GetIngredient(const FPUDishBase& Dish, const FGameplayTag& IngredientTag, FPUIngredientBase& OutIngredient);
@@ -95,4 +127,12 @@ public:
     // Get the total quantity of all ingredients in the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static int32 GetTotalIngredientQuantity(const FPUDishBase& Dish);
+
+    // Get ingredient data for a specific instance
+    UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
+    static bool GetIngredientForInstance(const FPUDishBase& Dish, int32 InstanceIndex, FPUIngredientBase& OutIngredient);
+
+    // Get ingredient data for a specific instance ID
+    UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
+    static bool GetIngredientForInstanceID(const FPUDishBase& Dish, int32 InstanceID, FPUIngredientBase& OutIngredient);
 }; 

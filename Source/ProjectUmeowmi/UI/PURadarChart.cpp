@@ -158,35 +158,62 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     
     for (const FIngredientInstance& Instance : Dish.IngredientInstances)
     {
+        // Use convenient field if available, fallback to data field
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Processing instance with tag: %s, quantity: %d"), 
+            *InstanceTag.ToString(), Instance.Quantity);
+        
         // Add or update quantity for this ingredient
-        IngredientQuantities.FindOrAdd(Instance.IngredientTag) += Instance.Quantity;
+        IngredientQuantities.FindOrAdd(InstanceTag) += Instance.Quantity;
         
         // Get the display name and texture if we haven't already
-        if (!IngredientNames.Contains(Instance.IngredientTag))
+        if (!IngredientNames.Contains(InstanceTag))
         {
             FPUIngredientBase Ingredient;
-            if (Dish.GetIngredient(Instance.IngredientTag, Ingredient))
+            if (Dish.GetIngredient(InstanceTag, Ingredient))
             {
-                IngredientNames.Add(Instance.IngredientTag, Ingredient.DisplayName.ToString());
+                IngredientNames.Add(InstanceTag, Ingredient.DisplayName.ToString());
                 if (Ingredient.PreviewTexture)
                 {
-                    IngredientTextures.Add(Instance.IngredientTag, Ingredient.PreviewTexture);
+                    IngredientTextures.Add(InstanceTag, Ingredient.PreviewTexture);
                 }
                 UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found ingredient %s with texture %p"), 
                     *Ingredient.DisplayName.ToString(), 
                     Ingredient.PreviewTexture);
             }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to get ingredient data for tag: %s"), 
+                    *InstanceTag.ToString());
+            }
         }
     }
     
-    // Set the number of segments based on unique ingredients
-    if (!SetSegmentCount(IngredientQuantities.Num()))
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found %d unique ingredients"), IngredientQuantities.Num());
+    
+    // Debug: Log all unique ingredients
+    for (const auto& Pair : IngredientQuantities)
     {
-        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to set segment count"));
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Unique ingredient: %s (Qty: %d)"), 
+            *Pair.Key.ToString(), Pair.Value);
+    }
+    
+    // Set the number of segments based on unique ingredients
+    int32 UniqueIngredientCount = IngredientQuantities.Num();
+    if (UniqueIngredientCount == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: No valid ingredients found, using default segment count"));
+        UniqueIngredientCount = 1; // Use at least 1 segment
+    }
+    
+    if (!SetSegmentCount(UniqueIngredientCount))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to set segment count for %d ingredients"), UniqueIngredientCount);
         return false;
     }
     
-    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set up %d segments"), IngredientQuantities.Num());
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set up %d segments"), UniqueIngredientCount);
     
     // Prepare arrays for values and names
     TArray<float> Values;
@@ -232,6 +259,14 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
         }
         
         SegmentIndex++;
+    }
+    
+    // If we have no valid ingredients, add a default segment
+    if (Values.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: No valid ingredients, adding default segment"));
+        Values.Add(0.0f);
+        DisplayNames.Add(TEXT("No Ingredients"));
     }
     
     // Set the segment names

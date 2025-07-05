@@ -457,7 +457,7 @@ void UPUDishCustomizationComponent::UpdateCurrentDishData(const FPUDishBase& New
     {
         const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
         UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::UpdateCurrentDishData - Ingredient %d: %s (Qty: %d)"), 
-            i, *Instance.IngredientTag.ToString(), Instance.Quantity);
+            i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity);
     }
 }
 
