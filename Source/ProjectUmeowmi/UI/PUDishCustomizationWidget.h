@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "../DishCustomization/PUDishBase.h"
+#include "PUIngredientButton.h"
+#include "PUIngredientQuantityControl.h"
 #include "PUDishCustomizationWidget.generated.h"
 
 class UPUDishCustomizationComponent;
@@ -40,6 +42,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void UpdateDishData(const FPUDishBase& NewDishData);
 
+    // Ingredient management functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void CreateIngredientButtons();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void OnIngredientButtonClicked(const FPUIngredientBase& IngredientData);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void OnQuantityControlChanged(const FIngredientInstance& IngredientInstance);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void OnQuantityControlRemoved(int32 InstanceID);
+
 protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")
@@ -48,6 +63,13 @@ protected:
     // Reference to the customization component
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UPUDishCustomizationComponent* CustomizationComponent;
+
+    // Widget class references
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<UPUIngredientButton> IngredientButtonClass;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<UPUIngredientQuantityControl> QuantityControlClass;
 
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
@@ -59,7 +81,19 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
     void OnCustomizationModeEnded();
 
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
+    void OnIngredientButtonCreated(class UPUIngredientButton* IngredientButton);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
+    void OnQuantityControlCreated(class UPUIngredientQuantityControl* QuantityControl);
+
 private:
     void SubscribeToEvents();
     void UnsubscribeFromEvents();
+
+    // Helper functions
+    void CreateIngredientInstance(const FPUIngredientBase& IngredientData);
+    void UpdateIngredientInstance(const FIngredientInstance& IngredientInstance);
+    void RemoveIngredientInstance(int32 InstanceID);
+    void RefreshQuantityControls();
 }; 

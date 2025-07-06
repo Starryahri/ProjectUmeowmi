@@ -1,5 +1,8 @@
 #include "PUDishCustomizationWidget.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
+#include "../DishCustomization/PUDishBlueprintLibrary.h"
+#include "PUIngredientButton.h"
+#include "PUIngredientQuantityControl.h"
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -94,6 +97,126 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
     {
         UE_LOG(LogTemp, Warning, TEXT("PUDishCustomizationWidget::UpdateDishData - No customization component reference"));
     }
+}
+
+void UPUDishCustomizationWidget::CreateIngredientButtons()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating ingredient buttons"));
+    
+    if (!CurrentDishData.IngredientDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PUDishCustomizationWidget::CreateIngredientButtons - No ingredient data table available"));
+        return;
+    }
+    
+    // Get all rows from the ingredient data table
+    TArray<FName> RowNames = CurrentDishData.IngredientDataTable->GetRowNames();
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Found %d ingredients in data table"), RowNames.Num());
+    
+    for (const FName& RowName : RowNames)
+    {
+        if (FPUIngredientBase* IngredientData = CurrentDishData.IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("CreateIngredientButtons")))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating button for ingredient: %s"), 
+                *IngredientData->DisplayName.ToString());
+            
+            // Call Blueprint event to create the button
+            OnIngredientButtonCreated(nullptr); // Blueprint will handle the actual creation
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Ingredient button creation complete"));
+}
+
+void UPUDishCustomizationWidget::OnIngredientButtonClicked(const FPUIngredientBase& IngredientData)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Ingredient button clicked: %s"), 
+        *IngredientData.DisplayName.ToString());
+    
+    // Create a new ingredient instance
+    CreateIngredientInstance(IngredientData);
+}
+
+void UPUDishCustomizationWidget::OnQuantityControlChanged(const FIngredientInstance& IngredientInstance)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnQuantityControlChanged - Quantity control changed for instance: %d"), 
+        IngredientInstance.InstanceID);
+    
+    // Update the ingredient instance in the dish data
+    UpdateIngredientInstance(IngredientInstance);
+}
+
+void UPUDishCustomizationWidget::OnQuantityControlRemoved(int32 InstanceID)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnQuantityControlRemoved - Quantity control removed for instance: %d"), InstanceID);
+    
+    // Remove the ingredient instance from the dish data
+    RemoveIngredientInstance(InstanceID);
+}
+
+void UPUDishCustomizationWidget::CreateIngredientInstance(const FPUIngredientBase& IngredientData)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientInstance - Creating ingredient instance: %s"), 
+        *IngredientData.DisplayName.ToString());
+    
+    // Create a new ingredient instance using the blueprint library
+    FIngredientInstance NewInstance = UPUDishBlueprintLibrary::AddIngredient(CurrentDishData, IngredientData.IngredientTag);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientInstance - Created instance with ID: %d"), NewInstance.InstanceID);
+    
+    // Update the dish data
+    UpdateDishData(CurrentDishData);
+    
+    // Call Blueprint event to create quantity control
+    OnQuantityControlCreated(nullptr); // Blueprint will handle the actual creation
+}
+
+void UPUDishCustomizationWidget::UpdateIngredientInstance(const FIngredientInstance& IngredientInstance)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance - Updating ingredient instance: %d"), 
+        IngredientInstance.InstanceID);
+    
+    // Find and update the ingredient instance in the dish data
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    {
+        if (CurrentDishData.IngredientInstances[i].InstanceID == IngredientInstance.InstanceID)
+        {
+            CurrentDishData.IngredientInstances[i] = IngredientInstance;
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance - Instance updated successfully"));
+            break;
+        }
+    }
+    
+    // Update the dish data
+    UpdateDishData(CurrentDishData);
+}
+
+void UPUDishCustomizationWidget::RemoveIngredientInstance(int32 InstanceID)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RemoveIngredientInstance - Removing ingredient instance: %d"), InstanceID);
+    
+    // Find and remove the ingredient instance from the dish data
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    {
+        if (CurrentDishData.IngredientInstances[i].InstanceID == InstanceID)
+        {
+            CurrentDishData.IngredientInstances.RemoveAt(i);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RemoveIngredientInstance - Instance removed successfully"));
+            break;
+        }
+    }
+    
+    // Update the dish data
+    UpdateDishData(CurrentDishData);
+}
+
+void UPUDishCustomizationWidget::RefreshQuantityControls()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RefreshQuantityControls - Refreshing quantity controls"));
+    
+    // This will be called when dish data is updated to refresh all quantity controls
+    // Blueprint can override this to handle the UI updates
 }
 
 void UPUDishCustomizationWidget::SubscribeToEvents()
