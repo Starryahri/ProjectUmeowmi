@@ -5,20 +5,9 @@
 
 FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations)
 {
-    // Check if we already have an instance with this exact ingredient tag and preparations
-    for (FIngredientInstance& Instance : Dish.IngredientInstances)
-    {
-        if (Instance.IngredientData.IngredientTag == IngredientTag && Instance.IngredientData.ActivePreparations == Preparations)
-        {
-            // If we already have this exact combination, increment its quantity
-            Instance.Quantity++;
-            return Instance;
-        }
-    }
-
-    // If we don't have this combination, create a new instance
+    // Always create a new instance with a unique ID
     FIngredientInstance NewInstance;
-    NewInstance.InstanceID = FPUDishBase::GenerateUniqueInstanceID();
+    NewInstance.InstanceID = Dish.GenerateNewInstanceID();
     NewInstance.Quantity = 1;
     
     // Get the base ingredient data and apply preparations
@@ -569,8 +558,8 @@ FGameplayTag UPUDishBlueprintLibrary::GetRandomDishTag()
     // Define available dish tags
     TArray<FGameplayTag> AvailableDishTags = {
         FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee")),
-        FGameplayTag::RequestGameplayTag(TEXT("Dish.ChiFan")),
-        FGameplayTag::RequestGameplayTag(TEXT("Dish.HaloHalo"))
+        //FGameplayTag::RequestGameplayTag(TEXT("Dish.ChiFan")),
+        //FGameplayTag::RequestGameplayTag(TEXT("Dish.HaloHalo"))
     };
     
     // Filter out invalid tags
