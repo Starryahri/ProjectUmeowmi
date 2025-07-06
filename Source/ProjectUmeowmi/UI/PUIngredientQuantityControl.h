@@ -13,7 +13,7 @@ class UCheckBox;
 class USpinBox;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnQuantityControlChanged, const FIngredientInstance&, IngredientInstance);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnQuantityControlRemoved, int32, InstanceID);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnQuantityControlRemoved, int32, InstanceID, class UPUIngredientQuantityControl*, QuantityControlWidget);
 
 UCLASS(BlueprintType, Blueprintable)
 class PROJECTUMEOWMI_API UPUIngredientQuantityControl : public UUserWidget

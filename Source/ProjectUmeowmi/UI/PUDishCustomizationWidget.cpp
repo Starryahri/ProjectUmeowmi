@@ -121,8 +121,8 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
             UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating button for ingredient: %s"), 
                 *IngredientData->DisplayName.ToString());
             
-            // Call Blueprint event to create the button
-            OnIngredientButtonCreated(nullptr); // Blueprint will handle the actual creation
+            // Call Blueprint event to create the button with ingredient data
+            OnIngredientButtonCreated(nullptr, *IngredientData); // Pass the ingredient data
         }
     }
     
@@ -147,12 +147,19 @@ void UPUDishCustomizationWidget::OnQuantityControlChanged(const FIngredientInsta
     UpdateIngredientInstance(IngredientInstance);
 }
 
-void UPUDishCustomizationWidget::OnQuantityControlRemoved(int32 InstanceID)
+void UPUDishCustomizationWidget::OnQuantityControlRemoved(int32 InstanceID, UPUIngredientQuantityControl* QuantityControlWidget)
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnQuantityControlRemoved - Quantity control removed for instance: %d"), InstanceID);
     
     // Remove the ingredient instance from the dish data
     RemoveIngredientInstance(InstanceID);
+    
+    // Remove the widget from viewport
+    if (QuantityControlWidget)
+    {
+        QuantityControlWidget->RemoveFromViewport();
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnQuantityControlRemoved - Widget removed from viewport"));
+    }
 }
 
 void UPUDishCustomizationWidget::CreateIngredientInstance(const FPUIngredientBase& IngredientData)
@@ -168,8 +175,8 @@ void UPUDishCustomizationWidget::CreateIngredientInstance(const FPUIngredientBas
     // Update the dish data
     UpdateDishData(CurrentDishData);
     
-    // Call Blueprint event to create quantity control
-    OnQuantityControlCreated(nullptr); // Blueprint will handle the actual creation
+    // Call Blueprint event to create quantity control with ingredient instance data
+    OnQuantityControlCreated(nullptr, NewInstance); // Pass the ingredient instance data
 }
 
 void UPUDishCustomizationWidget::UpdateIngredientInstance(const FIngredientInstance& IngredientInstance)

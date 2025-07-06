@@ -157,8 +157,8 @@ void UPUIngredientQuantityControl::RemoveIngredientInstance()
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Removing ingredient instance: %d"), 
         IngredientInstance.InstanceID);
     
-    // Broadcast removal event
-    OnQuantityControlRemoved.Broadcast(IngredientInstance.InstanceID);
+    // Broadcast removal event with widget reference
+    OnQuantityControlRemoved.Broadcast(IngredientInstance.InstanceID, this);
     
     // Call Blueprint event
     OnIngredientRemoved();

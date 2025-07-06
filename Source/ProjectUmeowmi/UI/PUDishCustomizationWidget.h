@@ -53,7 +53,7 @@ public:
     void OnQuantityControlChanged(const FIngredientInstance& IngredientInstance);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
-    void OnQuantityControlRemoved(int32 InstanceID);
+    void OnQuantityControlRemoved(int32 InstanceID, class UPUIngredientQuantityControl* QuantityControlWidget);
 
 protected:
     // Current dish data
@@ -82,10 +82,10 @@ protected:
     void OnCustomizationModeEnded();
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
-    void OnIngredientButtonCreated(class UPUIngredientButton* IngredientButton);
+    void OnIngredientButtonCreated(class UPUIngredientButton* IngredientButton, const FPUIngredientBase& IngredientData);
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
-    void OnQuantityControlCreated(class UPUIngredientQuantityControl* QuantityControl);
+    void OnQuantityControlCreated(class UPUIngredientQuantityControl* QuantityControl, const FIngredientInstance& IngredientInstance);
 
 private:
     void SubscribeToEvents();
