@@ -4,6 +4,8 @@
 #include "Components/Image.h"
 #include "Components/ScrollBox.h"
 #include "Components/CheckBox.h"
+#include "PUPreparationCheckbox.h"
+#include "../DishCustomization/PUPreparationBase.h"
 
 
 UPUIngredientQuantityControl::UPUIngredientQuantityControl(const FObjectInitializer& ObjectInitializer)
@@ -36,8 +38,6 @@ void UPUIngredientQuantityControl::NativeConstruct()
         UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Remove button event bound"));
     }
     
-
-    
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Widget setup complete"));
 }
 
@@ -61,7 +61,8 @@ void UPUIngredientQuantityControl::NativeDestruct()
         RemoveButton->OnClicked.RemoveDynamic(this, &UPUIngredientQuantityControl::OnRemoveButtonClicked);
     }
     
-
+    // Clear preparation checkboxes
+    ClearPreparationCheckboxes();
     
     Super::NativeDestruct();
 }
@@ -75,11 +76,7 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     IngredientInstance = InIngredientInstance;
     
     // Update UI components
-    if (IngredientNameText)
-    {
-        IngredientNameText->SetText(IngredientInstance.IngredientData.DisplayName);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Updated ingredient name text"));
-    }
+    UpdateIngredientDisplay();
     
     if (IngredientIcon && IngredientInstance.IngredientData.PreviewTexture)
     {
@@ -97,6 +94,19 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     OnIngredientInstanceSet(IngredientInstance);
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Ingredient instance set successfully"));
+}
+
+void UPUIngredientQuantityControl::SetPreparationCheckboxClass(TSubclassOf<UPUPreparationCheckbox> InPreparationCheckboxClass)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetPreparationCheckboxClass - Setting preparation checkbox class"));
+    
+    PreparationCheckboxClass = InPreparationCheckboxClass;
+    
+    // If we already have an ingredient instance, update the preparation checkboxes
+    if (IngredientInstance.InstanceID != 0)
+    {
+        UpdatePreparationCheckboxes();
+    }
 }
 
 void UPUIngredientQuantityControl::SetQuantity(int32 NewQuantity)
@@ -123,6 +133,23 @@ void UPUIngredientQuantityControl::AddPreparation(const FGameplayTag& Preparatio
             *PreparationTag.ToString());
         
         IngredientInstance.Preparations.AddTag(PreparationTag);
+        
+        // Update the ingredient data with the new preparation
+        IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
+        
+        // Log the current preparation state
+        TArray<FGameplayTag> CurrentPreparations;
+        IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation - Current preparations for instance %d: %d total"), 
+            IngredientInstance.InstanceID, CurrentPreparations.Num());
+        for (const FGameplayTag& Prep : CurrentPreparations)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation -   - %s"), *Prep.ToString());
+        }
+        
+        // Update the UI to reflect the new name
+        UpdateIngredientDisplay();
+        
         UpdatePreparationCheckboxes();
         BroadcastChange();
         
@@ -139,6 +166,23 @@ void UPUIngredientQuantityControl::RemovePreparation(const FGameplayTag& Prepara
             *PreparationTag.ToString());
         
         IngredientInstance.Preparations.RemoveTag(PreparationTag);
+        
+        // Update the ingredient data with the new preparation state
+        IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
+        
+        // Log the current preparation state
+        TArray<FGameplayTag> CurrentPreparations;
+        IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation - Current preparations for instance %d: %d total"), 
+            IngredientInstance.InstanceID, CurrentPreparations.Num());
+        for (const FGameplayTag& Prep : CurrentPreparations)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation -   - %s"), *Prep.ToString());
+        }
+        
+        // Update the UI to reflect the new name
+        UpdateIngredientDisplay();
+        
         UpdatePreparationCheckboxes();
         BroadcastChange();
         
@@ -187,6 +231,21 @@ void UPUIngredientQuantityControl::OnRemoveButtonClicked()
     RemoveIngredientInstance();
 }
 
+void UPUIngredientQuantityControl::OnPreparationCheckboxChanged(const FGameplayTag& PreparationTag, bool bIsChecked)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::OnPreparationCheckboxChanged - Preparation %s %s"), 
+        *PreparationTag.ToString(), bIsChecked ? TEXT("added") : TEXT("removed"));
+    
+    if (bIsChecked)
+    {
+        AddPreparation(PreparationTag);
+    }
+    else
+    {
+        RemovePreparation(PreparationTag);
+    }
+}
+
 
 
 void UPUIngredientQuantityControl::UpdateQuantityControls()
@@ -210,16 +269,122 @@ void UPUIngredientQuantityControl::UpdateQuantityControls()
 
 void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
 {
-    // This will be implemented when we add preparation checkboxes
-    // For now, just log that preparations were updated
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Preparations updated (count: %d)"), 
-        IngredientInstance.Preparations.Num());
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Updating preparation checkboxes"));
+    
+    // Clear existing checkboxes
+    ClearPreparationCheckboxes();
+    
+    // Check if we have a preparation data table
+    if (!IngredientInstance.IngredientData.PreparationDataTable)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
+        return;
+    }
+    
+    // Get all rows from the preparation data table
+    TArray<FPUPreparationBase*> PreparationRows;
+    IngredientInstance.IngredientData.PreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("UpdatePreparationCheckboxes"), PreparationRows);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Found %d preparation options"), PreparationRows.Num());
+    
+    // Create checkboxes for each available preparation
+    for (FPUPreparationBase* PreparationData : PreparationRows)
+    {
+        if (PreparationData && PreparationData->PreparationTag.IsValid())
+        {
+            // Check if this preparation is currently applied
+            bool bIsCurrentlyApplied = IngredientInstance.Preparations.HasTag(PreparationData->PreparationTag);
+            
+            // Create the checkbox
+            CreatePreparationCheckbox(*PreparationData, bIsCurrentlyApplied);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Preparation checkboxes updated successfully"));
+}
+
+void UPUIngredientQuantityControl::UpdateIngredientDisplay()
+{
+    // Get the current display name (which includes preparation modifications)
+    FText CurrentDisplayName = IngredientInstance.IngredientData.GetCurrentDisplayName();
+    
+    // Update the ingredient name text
+    if (IngredientNameText)
+    {
+        IngredientNameText->SetText(CurrentDisplayName);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdateIngredientDisplay - Updated ingredient name to: %s"), 
+            *CurrentDisplayName.ToString());
+    }
 }
 
 void UPUIngredientQuantityControl::BroadcastChange()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange - Broadcasting ingredient instance change"));
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange - Broadcasting ingredient instance change for instance %d"), 
+        IngredientInstance.InstanceID);
+    
+    // Log the current state of the ingredient instance being broadcast
+    TArray<FGameplayTag> CurrentPreparations;
+    IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange - Instance %d has %d preparations:"), 
+        IngredientInstance.InstanceID, CurrentPreparations.Num());
+    for (const FGameplayTag& Prep : CurrentPreparations)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange -   - %s"), *Prep.ToString());
+    }
     
     // Broadcast the change event with updated ingredient instance
     OnQuantityControlChanged.Broadcast(IngredientInstance);
+}
+
+void UPUIngredientQuantityControl::ClearPreparationCheckboxes()
+{
+    if (PreparationsScrollBox)
+    {
+        PreparationsScrollBox->ClearChildren();
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::ClearPreparationCheckboxes - Cleared preparation checkboxes"));
+    }
+}
+
+void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparationBase& PreparationData, bool bIsCurrentlyApplied)
+{
+    if (!PreparationCheckboxClass || !PreparationsScrollBox)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Missing checkbox class or scroll box"));
+        return;
+    }
+    
+    // Create the preparation checkbox widget
+    UPUPreparationCheckbox* PreparationCheckbox = CreateWidget<UPUPreparationCheckbox>(this, PreparationCheckboxClass);
+    if (!PreparationCheckbox)
+    {
+        UE_LOG(LogTemp, Error, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Failed to create preparation checkbox widget"));
+        return;
+    }
+    
+    // Load the preview texture if it's a soft reference
+    UTexture2D* PreviewTexture = nullptr;
+    if (PreparationData.PreviewTexture.IsValid())
+    {
+        PreviewTexture = PreparationData.PreviewTexture.LoadSynchronous();
+    }
+    
+    // Set the preparation data
+    PreparationCheckbox->SetPreparationData(
+        PreparationData.PreparationTag,
+        PreparationData.DisplayName,
+        PreparationData.Description,
+        PreviewTexture
+    );
+    
+    // Set the initial checked state
+    PreparationCheckbox->SetChecked(bIsCurrentlyApplied);
+    
+    // Bind the checkbox change event
+    PreparationCheckbox->OnPreparationCheckboxChanged.AddDynamic(this, &UPUIngredientQuantityControl::OnPreparationCheckboxChanged);
+    
+    // Add the checkbox to the scroll box
+    PreparationsScrollBox->AddChild(PreparationCheckbox);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Created checkbox for preparation: %s (applied: %s)"), 
+        *PreparationData.DisplayName.ToString(), bIsCurrentlyApplied ? TEXT("true") : TEXT("false"));
 } 

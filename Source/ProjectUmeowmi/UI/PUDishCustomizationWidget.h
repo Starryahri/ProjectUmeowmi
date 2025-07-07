@@ -5,6 +5,7 @@
 #include "../DishCustomization/PUDishBase.h"
 #include "PUIngredientButton.h"
 #include "PUIngredientQuantityControl.h"
+#include "PUPreparationCheckbox.h"
 #include "PUDishCustomizationWidget.generated.h"
 
 class UPUDishCustomizationComponent;
@@ -70,6 +71,9 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUIngredientQuantityControl> QuantityControlClass;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<UPUPreparationCheckbox> PreparationCheckboxClass;
 
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")

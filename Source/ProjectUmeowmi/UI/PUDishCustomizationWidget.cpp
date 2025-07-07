@@ -143,6 +143,16 @@ void UPUDishCustomizationWidget::OnQuantityControlChanged(const FIngredientInsta
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnQuantityControlChanged - Quantity control changed for instance: %d"), 
         IngredientInstance.InstanceID);
     
+    // Log the preparations in the received ingredient instance
+    TArray<FGameplayTag> CurrentPreparations;
+    IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnQuantityControlChanged - Received instance %d with %d preparations:"), 
+        IngredientInstance.InstanceID, CurrentPreparations.Num());
+    for (const FGameplayTag& Prep : CurrentPreparations)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnQuantityControlChanged -   - %s"), *Prep.ToString());
+    }
+    
     // Update the ingredient instance in the dish data
     UpdateIngredientInstance(IngredientInstance);
 }
@@ -184,12 +194,40 @@ void UPUDishCustomizationWidget::UpdateIngredientInstance(const FIngredientInsta
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance - Updating ingredient instance: %d"), 
         IngredientInstance.InstanceID);
     
+    // Log the preparations before updating
+    TArray<FGameplayTag> PreparationsBefore;
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    {
+        if (CurrentDishData.IngredientInstances[i].InstanceID == IngredientInstance.InstanceID)
+        {
+            CurrentDishData.IngredientInstances[i].Preparations.GetGameplayTagArray(PreparationsBefore);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance - Instance %d had %d preparations before update:"), 
+                IngredientInstance.InstanceID, PreparationsBefore.Num());
+            for (const FGameplayTag& Prep : PreparationsBefore)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance -   - %s"), *Prep.ToString());
+            }
+            break;
+        }
+    }
+    
     // Find and update the ingredient instance in the dish data
     for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
     {
         if (CurrentDishData.IngredientInstances[i].InstanceID == IngredientInstance.InstanceID)
         {
             CurrentDishData.IngredientInstances[i] = IngredientInstance;
+            
+            // Log the preparations after updating
+            TArray<FGameplayTag> PreparationsAfter;
+            IngredientInstance.Preparations.GetGameplayTagArray(PreparationsAfter);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance - Instance %d now has %d preparations after update:"), 
+                IngredientInstance.InstanceID, PreparationsAfter.Num());
+            for (const FGameplayTag& Prep : PreparationsAfter)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance -   - %s"), *Prep.ToString());
+            }
+            
             UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateIngredientInstance - Instance updated successfully"));
             break;
         }

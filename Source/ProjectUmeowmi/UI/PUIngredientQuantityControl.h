@@ -11,6 +11,7 @@ class UImage;
 class UScrollBox;
 class UCheckBox;
 class USpinBox;
+class UPUPreparationCheckbox;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnQuantityControlChanged, const FIngredientInstance&, IngredientInstance);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnQuantityControlRemoved, int32, InstanceID, class UPUIngredientQuantityControl*, QuantityControlWidget);
@@ -29,6 +30,10 @@ public:
     // Set the ingredient instance data for this control
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void SetIngredientInstance(const FIngredientInstance& InIngredientInstance);
+
+    // Set the preparation checkbox class
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control")
+    void SetPreparationCheckboxClass(TSubclassOf<UPUPreparationCheckbox> InPreparationCheckboxClass);
 
     // Get the current ingredient instance data
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
@@ -89,6 +94,10 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UScrollBox* PreparationsScrollBox;
 
+    // Preparation checkbox class reference
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<UPUPreparationCheckbox> PreparationCheckboxClass;
+
     // Get UI components (Blueprint accessible)
     UFUNCTION(BlueprintCallable, Category = "Quantity Control|Components")
     UTextBlock* GetIngredientNameText() const { return IngredientNameText; }
@@ -134,10 +143,17 @@ private:
     UFUNCTION()
     void OnRemoveButtonClicked();
 
-
+    // Preparation checkbox event handler
+    UFUNCTION()
+    void OnPreparationCheckboxChanged(const FGameplayTag& PreparationTag, bool bIsChecked);
 
     // Helper functions
     void UpdateQuantityControls();
     void UpdatePreparationCheckboxes();
+    void UpdateIngredientDisplay();
     void BroadcastChange();
+    
+    // Preparation management
+    void ClearPreparationCheckboxes();
+    void CreatePreparationCheckbox(const FPUPreparationBase& PreparationData, bool bIsCurrentlyApplied);
 }; 
