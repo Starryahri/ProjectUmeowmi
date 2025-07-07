@@ -25,9 +25,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
     FText GetOrderDialogueText() const;
 
+    // Dialogue-controlled order generation
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    void GenerateAndGiveOrderToPlayer();
+
     // Override dialogue participant methods to include order data
-    virtual bool CheckCondition(const UDlgContext* Context, FName ConditionName) const override;
+    virtual bool CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const override;
     virtual FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override;
+    virtual bool GetBoolValue_Implementation(FName ValueName) const override;
+    
+    // Available dialogue conditions for order system:
+    // - "HasActiveOrder": Returns true if player has an active order
+    // - "OrderCompleted": Returns true if player has a completed order
+    // - "NoActiveOrder": Returns true if player has no active order
 
     // Order access
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
@@ -54,6 +64,10 @@ protected:
     // Order component - only dish givers have this
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Giver|Components")
     UPUOrderComponent* OrderComponent;
+
+    // Test boolean for dialogue conditions
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Giver|Test")
+    bool bTestCondition = true;
 
     // Override interaction to generate order
     virtual void StartInteraction() override;

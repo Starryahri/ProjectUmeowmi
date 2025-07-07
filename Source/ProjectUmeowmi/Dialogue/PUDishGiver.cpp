@@ -25,44 +25,32 @@ void APUDishGiver::StartInteraction()
 {
     UE_LOG(LogTemp, Log, TEXT("APUDishGiver::StartInteraction - Starting interaction with dish giver: %s"), *GetTalkingObjectDisplayName().ToString());
     
-    // Generate order before starting dialogue
-    GenerateOrderForDialogue();
-    
-    // Pass the order to the player character
-    if (OrderComponent && OrderComponent->HasActiveOrder())
+    // Find the player character first to check their current order status
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (UWorld* World = GetWorld())
     {
-        // Find the player character
-        if (UWorld* World = GetWorld())
+        if (APlayerController* PC = World->GetFirstPlayerController())
         {
-            if (APlayerController* PC = World->GetFirstPlayerController())
-            {
-                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
-                {
-                    const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
-                    PlayerChar->SetCurrentOrder(Order);
-                    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Order passed to player character: %s"), *Order.OrderID.ToString());
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - Could not cast to ProjectUmeowmiCharacter"));
-                }
-            }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - Could not find PlayerController"));
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - Could not get World"));
+            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
         }
     }
-    else
+    
+    // Check if player already has an active order
+    if (PlayerChar && PlayerChar->HasCurrentOrder())
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::StartInteraction - No active order to pass to player"));
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
+            *PlayerChar->GetCurrentOrder().OrderID.ToString());
+        
+        // Check if the order is completed
+        if (PlayerChar->IsCurrentOrderCompleted())
+        {
+            UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
+            HandleOrderCompletion(PlayerChar);
+        }
     }
     
-    // Call parent implementation to start dialogue
+    // Don't generate orders automatically - let dialogue control this
+    // Just start the dialogue system
     Super::StartInteraction();
 }
 
@@ -81,6 +69,49 @@ void APUDishGiver::GenerateOrderForDialogue()
     }
 }
 
+void APUDishGiver::GenerateAndGiveOrderToPlayer()
+{
+    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generating and giving order to player"));
+    
+    // Find the player character
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+        }
+    }
+    
+    if (!PlayerChar)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Could not find player character"));
+        return;
+    }
+    
+    // Check if player already has an active order
+    if (PlayerChar->HasCurrentOrder())
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Player already has an active order, not generating new one"));
+        return;
+    }
+    
+    // Generate the order
+    GenerateOrderForDialogue();
+    
+    // Pass the order to the player character
+    if (OrderComponent && OrderComponent->HasActiveOrder())
+    {
+        const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
+        PlayerChar->SetCurrentOrder(Order);
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order passed to player character: %s"), *Order.OrderID.ToString());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Failed to generate order"));
+    }
+}
+
 FText APUDishGiver::GetOrderDialogueText() const
 {
     if (OrderComponent && OrderComponent->HasActiveOrder())
@@ -94,13 +125,72 @@ FText APUDishGiver::GetOrderDialogueText() const
     return FText::FromString(TEXT("I don't have any orders right now."));
 }
 
-bool APUDishGiver::CheckCondition(const UDlgContext* Context, FName ConditionName) const
+bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - Checking condition: %s"), *ConditionName.ToString());
+    UE_LOG(LogTemp, Display, TEXT("=== APUDishGiver::CheckCondition CALLED ==="));
+    UE_LOG(LogTemp, Display, TEXT("Condition Name: %s"), *ConditionName.ToString());
+    UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
     
-    // Add order-specific conditions here if needed
-    // For now, just call the parent implementation
-    return Super::CheckCondition(Context, ConditionName);
+    // Check for order-related conditions
+    if (ConditionName == TEXT("HasActiveOrder"))
+    {
+        // Find the player character to check their order status
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+                {
+                    bool bHasOrder = PlayerChar->HasCurrentOrder();
+                    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: %s"), bHasOrder ? TEXT("TRUE") : TEXT("FALSE"));
+                    return bHasOrder;
+                }
+            }
+        }
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: Could not find player character, returning FALSE"));
+        return false;
+    }
+    else if (ConditionName == TEXT("OrderCompleted"))
+    {
+        // Find the player character to check if their order is completed
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+                {
+                    bool bOrderCompleted = PlayerChar->HasCurrentOrder() && PlayerChar->IsCurrentOrderCompleted();
+                    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - OrderCompleted: %s"), bOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+                    return bOrderCompleted;
+                }
+            }
+        }
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - OrderCompleted: Could not find player character, returning FALSE"));
+        return false;
+    }
+    else if (ConditionName == TEXT("NoActiveOrder"))
+    {
+        // Find the player character to check if they have no active order
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+                {
+                    bool bNoOrder = !PlayerChar->HasCurrentOrder();
+                    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: %s"), bNoOrder ? TEXT("TRUE") : TEXT("FALSE"));
+                    return bNoOrder;
+                }
+            }
+        }
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: Could not find player character, returning TRUE"));
+        return true; // Default to true if we can't find the player
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - Unknown condition: %s, calling parent"), *ConditionName.ToString());
+    // For other conditions, call the parent implementation
+    return Super::CheckCondition_Implementation(Context, ConditionName);
 }
 
 FText APUDishGiver::GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const
@@ -110,6 +200,27 @@ FText APUDishGiver::GetParticipantDisplayName_Implementation(FName ActiveSpeaker
     // For now, just return the base display name
     // In the future, this could be modified based on order state
     return Super::GetParticipantDisplayName_Implementation(ActiveSpeaker);
+}
+
+// Add a simple test condition that always returns true to verify conditions are being called
+bool APUDishGiver::GetBoolValue_Implementation(FName ValueName) const
+{
+    UE_LOG(LogTemp, Display, TEXT("=== APUDishGiver::GetBoolValue CALLED ==="));
+    UE_LOG(LogTemp, Display, TEXT("Value Name: %s"), *ValueName.ToString());
+    
+    if (ValueName == TEXT("TestCondition"))
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GetBoolValue - TestCondition returning TRUE"));
+        return true;
+    }
+    else if (ValueName == TEXT("bTestCondition"))
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GetBoolValue - bTestCondition returning: %s"), bTestCondition ? TEXT("TRUE") : TEXT("FALSE"));
+        return bTestCondition;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GetBoolValue - Unknown value, calling parent"));
+    return Super::GetBoolValue_Implementation(ValueName);
 }
 
 const FPUOrderBase& APUDishGiver::GetCurrentOrder() const

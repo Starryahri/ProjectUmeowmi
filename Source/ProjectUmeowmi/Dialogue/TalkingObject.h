@@ -46,12 +46,12 @@ public:
     FName GetParticipantName_Implementation() const override { return ParticipantName; }
     FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override { return DisplayName; }
     UTexture2D* GetParticipantIcon_Implementation(FName ActiveSpeaker, FName ActiveSpeakerState) const override { return ParticipantIcon; }
-    virtual bool CheckCondition(const UDlgContext* Context, FName ConditionName) const;
-    virtual float GetFloatValue(FName ValueName) const;
-    virtual int32 GetIntValue(FName ValueName) const;
-    virtual bool GetBoolValue(FName ValueName) const;
-    virtual FName GetNameValue(FName ValueName) const;
-    virtual bool OnDialogueEvent(UDlgContext* Context, FName EventName);
+    virtual bool CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const;
+    virtual float GetFloatValue_Implementation(FName ValueName) const;
+    virtual int32 GetIntValue_Implementation(FName ValueName) const;
+    virtual bool GetBoolValue_Implementation(FName ValueName) const;
+    virtual FName GetNameValue_Implementation(FName ValueName) const;
+    virtual bool OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName);
 
     // Interaction methods
     bool CanInteract() const;
