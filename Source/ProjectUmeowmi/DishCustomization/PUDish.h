@@ -19,7 +19,7 @@ public:
 
     // Ingredient management
     UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
-    bool AddIngredient(const FGameplayTag& IngredientTag);
+    FIngredientInstance AddIngredient(const FGameplayTag& IngredientTag);
 
     UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
     bool RemoveIngredient(const FGameplayTag& IngredientTag);
@@ -44,6 +44,10 @@ public:
     // Get all ingredients in the dish
     UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
     TArray<FPUIngredientBase> GetAllIngredients() const;
+
+    // Get all ingredient instances in the dish (including instance IDs)
+    UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
+    TArray<FIngredientInstance> GetAllIngredientInstances() const;
 
     // Get a specific ingredient from the dish
     UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")

@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "PUInteractableBase.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
+#include "../DishCustomization/PUDishBase.h"
+#include "../DishCustomization/PUOrderBase.h"
 #include "Components/BoxComponent.h"
 #include "Components/WidgetComponent.h"
 #include "PUCookingStation.generated.h"
@@ -45,7 +47,12 @@ protected:
     FText StationDescription;
 
     // Helper functions
+    UFUNCTION()
     void OnCustomizationEnded();
+
+    // Order validation
+    UFUNCTION(BlueprintCallable, Category = "Cooking Station|Orders")
+    bool ValidateDishAgainstOrder(const FPUDishBase& Dish, const FPUOrderBase& Order, float& OutSatisfactionScore) const;
 
     // Interaction range events
     UFUNCTION()
@@ -53,4 +60,8 @@ protected:
 
     UFUNCTION()
     void OnInteractionBoxEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
+private:
+    // Calculate satisfaction score for order completion
+    float CalculateSatisfactionScore(const FPUDishBase& Dish, const FPUOrderBase& Order) const;
 }; 

@@ -9,14 +9,11 @@ APUDish::APUDish()
     PrimaryActorTick.bCanEverTick = false;
 }
 
-bool APUDish::AddIngredient(const FGameplayTag& IngredientTag)
+FIngredientInstance APUDish::AddIngredient(const FGameplayTag& IngredientTag)
 {
-    if (UPUDishBlueprintLibrary::AddIngredient(DishData, IngredientTag))
-    {
-        OnIngredientAdded.Broadcast(IngredientTag);
-        return true;
-    }
-    return false;
+    FIngredientInstance NewInstance = UPUDishBlueprintLibrary::AddIngredient(DishData, IngredientTag);
+    OnIngredientAdded.Broadcast(IngredientTag);
+    return NewInstance;
 }
 
 bool APUDish::RemoveIngredient(const FGameplayTag& IngredientTag)
@@ -57,6 +54,11 @@ FText APUDish::GetCurrentDisplayName() const
 TArray<FPUIngredientBase> APUDish::GetAllIngredients() const
 {
     return UPUDishBlueprintLibrary::GetAllIngredients(DishData);
+}
+
+TArray<FIngredientInstance> APUDish::GetAllIngredientInstances() const
+{
+    return UPUDishBlueprintLibrary::GetAllIngredientInstances(DishData);
 }
 
 bool APUDish::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredientBase& OutIngredient) const

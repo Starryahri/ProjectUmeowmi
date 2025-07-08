@@ -3,6 +3,9 @@
 #include "PUPreparationBase.h"
 #include "Engine/DataTable.h"
 
+// Initialize the static counter
+std::atomic<int32> FPUDishBase::GlobalInstanceCounter(0);
+
 FPUDishBase::FPUDishBase()
     : DishName(NAME_None)
     , DisplayName(FText::GetEmpty())
@@ -11,6 +14,7 @@ FPUDishBase::FPUDishBase()
 {
 }
 
+// realizing that get ingredient and logically the get all ingredient is not applying the preparations when called here.
 bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredientBase& OutIngredient) const
 {
     if (!IngredientDataTable)
@@ -29,11 +33,61 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
         
         if (FPUIngredientBase* FoundIngredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
         {
+            // Create a copy of the base ingredient
             OutIngredient = *FoundIngredient;
+
+            // Find the first instance of this ingredient to get its preparations
+            for (const FIngredientInstance& Instance : IngredientInstances)
+            {
+                // Check both the convenient field and the data field for compatibility
+                FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+                if (InstanceTag == IngredientTag)
+                {
+                    // Apply the preparations from this instance (prefer convenient field, fallback to data field)
+                    OutIngredient.ActivePreparations = Instance.Preparations.Num() > 0 ? Instance.Preparations : Instance.IngredientData.ActivePreparations;
+
+                    // Apply each preparation's modifiers
+                    if (OutIngredient.PreparationDataTable)
+                    {
+                        TArray<FGameplayTag> PreparationTags;
+                        Instance.IngredientData.ActivePreparations.GetGameplayTagArray(PreparationTags);
+
+                        for (const FGameplayTag& PrepTag : PreparationTags)
+                        {
+                            // Get the preparation data
+                            FString PrepTagName = PrepTag.ToString();
+                            if (PrepTagName.FindLastChar('.', LastPeriodIndex))
+                            {
+                                FString PrepName = PrepTagName.RightChop(LastPeriodIndex + 1).ToLower();
+                                FName PrepRowName = FName(*PrepName);
+                                
+                                if (FPUPreparationBase* Preparation = OutIngredient.PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
+                                {
+                                    // Apply the preparation's modifiers to the ingredient's properties
+                                    Preparation->ApplyModifiers(OutIngredient.NaturalProperties);
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
             return true;
         }
     }
     return false;
+}
+
+bool FPUDishBase::GetIngredientForInstance(int32 InstanceIndex, FPUIngredientBase& OutIngredient) const
+{
+    if (!IngredientInstances.IsValidIndex(InstanceIndex))
+    {
+        return false;
+    }
+
+    // Simply return the ingredient data that's already stored in the instance
+    OutIngredient = IngredientInstances[InstanceIndex].IngredientData;
+    return true;
 }
 
 TArray<FPUIngredientBase> FPUDishBase::GetAllIngredients() const
@@ -41,13 +95,24 @@ TArray<FPUIngredientBase> FPUDishBase::GetAllIngredients() const
     TArray<FPUIngredientBase> Ingredients;
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient))
-        {
-            Ingredients.Add(Ingredient);
-        }
+        Ingredients.Add(Instance.IngredientData);
     }
     return Ingredients;
+}
+
+TArray<FIngredientInstance> FPUDishBase::GetAllIngredientInstances() const
+{
+    return IngredientInstances;
+}
+
+int32 FPUDishBase::GetTotalIngredientQuantity() const
+{
+    int32 TotalQuantity = 0;
+    for (const FIngredientInstance& Instance : IngredientInstances)
+    {
+        TotalQuantity += Instance.Quantity;
+    }
+    return TotalQuantity;
 }
 
 float FPUDishBase::GetTotalValueForProperty(const FName& PropertyName) const
@@ -57,11 +122,8 @@ float FPUDishBase::GetTotalValueForProperty(const FName& PropertyName) const
     // Sum up values from all ingredients (including their preparation modifications)
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient))
-        {
-            TotalValue += Ingredient.GetPropertyValue(PropertyName);
-        }
+        // Multiply the property value by the quantity of this ingredient
+        TotalValue += Instance.IngredientData.GetPropertyValue(PropertyName) * Instance.Quantity;
     }
     
     return TotalValue;
@@ -74,15 +136,17 @@ TArray<FIngredientProperty> FPUDishBase::GetPropertiesWithTag(const FGameplayTag
     // Collect properties from all ingredients
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient) && Ingredient.HasPropertiesWithTag(Tag))
+        if (Instance.IngredientData.HasPropertiesWithTag(Tag))
         {
-            // Add all properties with matching tag
-            for (const FIngredientProperty& Property : Ingredient.NaturalProperties)
+            // Add all properties with matching tag, multiplied by quantity
+            for (const FIngredientProperty& Property : Instance.IngredientData.NaturalProperties)
             {
                 if (Property.PropertyTags.HasTag(Tag))
                 {
-                    Properties.Add(Property);
+                    // Create a copy of the property with the value multiplied by quantity
+                    FIngredientProperty QuantityAdjustedProperty = Property;
+                    QuantityAdjustedProperty.Value = Property.Value * Instance.Quantity;
+                    Properties.Add(QuantityAdjustedProperty);
                 }
             }
         }
@@ -98,11 +162,8 @@ float FPUDishBase::GetTotalValueForTag(const FGameplayTag& Tag) const
     // Sum up values from all ingredients (including their preparation modifications)
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        FPUIngredientBase Ingredient;
-        if (GetIngredient(Instance.IngredientTag, Ingredient))
-        {
-            TotalValue += Ingredient.GetTotalValueForTag(Tag);
-        }
+        // Multiply the total value for the tag by the quantity of this ingredient
+        TotalValue += Instance.IngredientData.GetTotalValueForTag(Tag) * Instance.Quantity;
     }
     
     return TotalValue;
@@ -112,7 +173,9 @@ bool FPUDishBase::HasIngredient(const FGameplayTag& IngredientTag) const
 {
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        if (Instance.IngredientTag == IngredientTag)
+        // Check both the convenient field and the data field for compatibility
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        if (InstanceTag == IngredientTag)
         {
             return true;
         }
@@ -128,27 +191,29 @@ FText FPUDishBase::GetCurrentDisplayName() const
         return CustomName;
     }
     
-    // Count occurrences of each ingredient
-    TMap<FGameplayTag, int32> IngredientCounts;
+    // Track quantities of each ingredient
+    TMap<FGameplayTag, int32> IngredientQuantities;
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        IngredientCounts.FindOrAdd(Instance.IngredientTag)++;
+        // Use convenient field if available, fallback to data field
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        IngredientQuantities.FindOrAdd(InstanceTag) += Instance.Quantity;
     }
 
-    // Find the most common ingredient
+    // Find the ingredient with the highest quantity
     FGameplayTag MostCommonTag;
-    int32 MaxCount = 0;
-    for (const auto& Pair : IngredientCounts)
+    int32 MaxQuantity = 0;
+    for (const auto& Pair : IngredientQuantities)
     {
-        if (Pair.Value > MaxCount)
+        if (Pair.Value > MaxQuantity)
         {
-            MaxCount = Pair.Value;
+            MaxQuantity = Pair.Value;
             MostCommonTag = Pair.Key;
         }
     }
 
-    // If we have a most common ingredient, get its name and prefix it
-    if (MaxCount > 0)
+    // If we have an ingredient with the highest quantity, get its name and prefix it
+    if (MaxQuantity > 0)
     {
         FPUIngredientBase MostCommonIngredient;
         if (GetIngredient(MostCommonTag, MostCommonIngredient))
@@ -156,10 +221,12 @@ FText FPUDishBase::GetCurrentDisplayName() const
             // Find the first instance of the most common ingredient to get its preparations
             for (const FIngredientInstance& Instance : IngredientInstances)
             {
-                if (Instance.IngredientTag == MostCommonTag)
+                // Use convenient field if available, fallback to data field
+                FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+                if (InstanceTag == MostCommonTag)
                 {
-                    // Apply the preparations from this instance
-                    MostCommonIngredient.ActivePreparations = Instance.Preparations;
+                    // Apply the preparations from this instance (prefer convenient field, fallback to data field)
+                    MostCommonIngredient.ActivePreparations = Instance.Preparations.Num() > 0 ? Instance.Preparations : Instance.IngredientData.ActivePreparations;
                     break;
                 }
             }
@@ -177,4 +244,87 @@ FText FPUDishBase::GetCurrentDisplayName() const
     
     // If no ingredients or no most common ingredient found, return base dish name
     return DisplayName;
+}
+
+int32 FPUDishBase::FindInstanceIndexByID(int32 InstanceID) const
+{
+    for (int32 i = 0; i < IngredientInstances.Num(); ++i)
+    {
+        if (IngredientInstances[i].InstanceID == InstanceID)
+        {
+            return i;
+        }
+    }
+    return INDEX_NONE;
+}
+
+int32 FPUDishBase::GenerateNewInstanceID() const
+{
+    int32 MaxID = 0;
+    for (const FIngredientInstance& Instance : IngredientInstances)
+    {
+        MaxID = FMath::Max(MaxID, Instance.InstanceID);
+    }
+    return MaxID + 1;
+}
+
+int32 FPUDishBase::GenerateUniqueInstanceID()
+{
+    return ++GlobalInstanceCounter;
+}
+
+bool FPUDishBase::GetIngredientForInstanceID(int32 InstanceID, FPUIngredientBase& OutIngredient) const
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        OutIngredient = IngredientInstances[InstanceIndex].IngredientData;
+        return true;
+    }
+    return false;
+}
+
+bool FPUDishBase::GetIngredientInstanceByID(int32 InstanceID, FIngredientInstance& OutInstance) const
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        OutInstance = IngredientInstances[InstanceIndex];
+        return true;
+    }
+    return false;
+}
+
+FGameplayTag FPUDishBase::GetIngredientTag(int32 InstanceID) const
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        const FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
+        // Use convenient field if available, fallback to data field
+        return Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+    }
+    return FGameplayTag();
+}
+
+FGameplayTagContainer FPUDishBase::GetPreparations(int32 InstanceID) const
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        const FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
+        // Use convenient field if available, fallback to data field
+        return Instance.Preparations.Num() > 0 ? Instance.Preparations : Instance.IngredientData.ActivePreparations;
+    }
+    return FGameplayTagContainer();
+}
+
+int32 FPUDishBase::GetQuantity(int32 InstanceID) const
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        return IngredientInstances[InstanceIndex].Quantity;
+    }
+    return 0;
 } 

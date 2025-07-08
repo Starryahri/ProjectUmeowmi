@@ -13,6 +13,8 @@ class AProjectUmeowmiGameMode : public AGameModeBase
 
 public:
 	AProjectUmeowmiGameMode();
+
+
 };
 
 

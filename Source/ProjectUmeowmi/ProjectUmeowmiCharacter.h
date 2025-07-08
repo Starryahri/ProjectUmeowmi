@@ -7,6 +7,7 @@
 #include "Logging/LogMacros.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "Interfaces/PUInteractableInterface.h"
+#include "DishCustomization/PUOrderBase.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -173,6 +174,8 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Interactable", meta = (AllowPrivateAccess = "true"))
 	TScriptInterface<IPUInteractableInterface> CurrentInteractable;
 
+
+
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }
     FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override { return DisplayName; }
@@ -267,5 +270,61 @@ public:
 	void RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
 	void UnregisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
 	bool HasInteractableAvailable() const { return CurrentInteractable != nullptr; }
+
+	// Order System Integration
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void SetCurrentOrder(const FPUOrderBase& Order);
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	const FPUOrderBase& GetCurrentOrder() const { return CurrentOrder; }
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	bool HasCurrentOrder() const { return bHasCurrentOrder; }
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void ClearCurrentOrder();
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void SetOrderResult(bool bCompleted, float SatisfactionScore);
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	bool GetOrderCompleted() const { return bCurrentOrderCompleted; }
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	float GetOrderSatisfaction() const { return CurrentOrderSatisfaction; }
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	bool IsCurrentOrderCompleted() const { return bCurrentOrderCompleted; }
+
+	// Order feedback and results
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void DisplayOrderResult();
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void ClearCompletedOrder();
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	FText GetOrderResultText() const;
+
+	// Order completion events (for Blueprint use)
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void OnOrderCompleted();
+
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void OnOrderFailed();
+
+	// Order System Storage
+	UPROPERTY(BlueprintReadWrite, Category = "Order System")
+	FPUOrderBase CurrentOrder;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Order System")
+	bool bHasCurrentOrder = false;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Order System")
+	bool bCurrentOrderCompleted = false;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Order System")
+	float CurrentOrderSatisfaction = 0.0f;
+
 
 };

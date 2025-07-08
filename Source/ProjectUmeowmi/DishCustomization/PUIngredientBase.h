@@ -50,7 +50,7 @@ struct FIngredientProperty
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
     FText Description;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property", meta = (Categories = "Profile"))
     FGameplayTagContainer PropertyTags;
 
     // Helper function to get the property name
@@ -60,7 +60,15 @@ struct FIngredientProperty
         {
             return CustomPropertyName;
         }
-        return FName(*UEnum::GetValueAsString(PropertyType));
+        
+        // Get the enum string and extract just the value name (remove "EIngredientPropertyType::" prefix)
+        FString EnumString = UEnum::GetValueAsString(PropertyType);
+        FString ValueName;
+        if (EnumString.Split(TEXT("::"), nullptr, &ValueName))
+        {
+            return FName(*ValueName);
+        }
+        return FName(*EnumString);
     }
 };
 

@@ -6,6 +6,7 @@
 #include "DlgSystem/DlgDialogue.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/UI/PUDialogueBox.h"
+#include "PUDishGiver.h"
 //#include "DlgSystem/DlgDialogueParticipant.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -64,33 +65,63 @@ void ATalkingObject::Tick(float DeltaTime)
     }
 }
 
-bool ATalkingObject::CheckCondition(const UDlgContext* Context, FName ConditionName) const
+bool ATalkingObject::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
 {
+    UE_LOG(LogTemp, Display, TEXT("=== TalkingObject::CheckCondition CALLED ==="));
+    UE_LOG(LogTemp, Display, TEXT("Condition Name: %s"), *ConditionName.ToString());
+    UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
+    UE_LOG(LogTemp, Display, TEXT("TalkingObject::CheckCondition - Returning FALSE (default behavior)"));
     return false;
 }
 
-float ATalkingObject::GetFloatValue(FName ValueName) const
+float ATalkingObject::GetFloatValue_Implementation(FName ValueName) const
 {
     return 0.0f;
 }
 
-int32 ATalkingObject::GetIntValue(FName ValueName) const
+int32 ATalkingObject::GetIntValue_Implementation(FName ValueName) const
 {
     return 0;
 }
 
-bool ATalkingObject::GetBoolValue(FName ValueName) const
+bool ATalkingObject::GetBoolValue_Implementation(FName ValueName) const
 {
     return false;
 }
 
-FName ATalkingObject::GetNameValue(FName ValueName) const
+FName ATalkingObject::GetNameValue_Implementation(FName ValueName) const
 {
     return NAME_None;
 }
 
-bool ATalkingObject::OnDialogueEvent(UDlgContext* Context, FName EventName)
+bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName)
 {
+    UE_LOG(LogTemp, Display, TEXT("=== ATalkingObject::OnDialogueEvent CALLED ==="));
+    UE_LOG(LogTemp, Display, TEXT("Event Name: %s"), *EventName.ToString());
+    UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
+    
+    // Handle order generation event
+    if (EventName == TEXT("GenerateOrder"))
+    {
+        UE_LOG(LogTemp, Display, TEXT("ATalkingObject::OnDialogueEvent - Handling GenerateOrder event"));
+        
+        // Check if this is a dish giver
+        if (APUDishGiver* DishGiver = Cast<APUDishGiver>(this))
+        {
+            UE_LOG(LogTemp, Display, TEXT("ATalkingObject::OnDialogueEvent - Cast to APUDishGiver successful, calling GenerateAndGiveOrderToPlayer"));
+            DishGiver->GenerateAndGiveOrderToPlayer();
+            return true;
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::OnDialogueEvent - GenerateOrder event called on non-dish-giver object: %s"), *GetName());
+            return false;
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("ATalkingObject::OnDialogueEvent - Unknown event: %s"), *EventName.ToString());
     return false;
 }
 
@@ -98,8 +129,8 @@ bool ATalkingObject::OnDialogueEvent(UDlgContext* Context, FName EventName)
 // Interaction methods
 bool ATalkingObject::CanInteract() const
 {
-    UE_LOG(LogTemp, Log, TEXT("TalkingObject::CanInteract - bPlayerInRange: %d, bIsInteracting: %d, AvailableDialogues.Num(): %d"), 
-        bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
+    UE_LOG(LogTemp, Display, TEXT("TalkingObject::CanInteract - %s: bPlayerInRange=%d, bIsInteracting=%d, AvailableDialogues=%d"), 
+        *GetName(), bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
     return bPlayerInRange && !bIsInteracting && AvailableDialogues.Num() > 0;
 }
 
@@ -274,10 +305,22 @@ void ATalkingObject::OnInteractionSphereBeginOverlap(UPrimitiveComponent* Overla
     ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0);
     if (OtherActor == PlayerCharacter)
     {
-        UE_LOG(LogTemp, Log, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Player entered range of %s"), *GetName());
+        UE_LOG(LogTemp, Display, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Player entered range of %s (Class: %s)"), 
+            *GetName(), *GetClass()->GetName());
         bPlayerInRange = true;
         UpdateInteractionWidget();
         OnPlayerEnteredInteractionSphere.Broadcast(this);
+        
+        // Register this talking object with the player character
+        if (AProjectUmeowmiCharacter* ProjectCharacter = Cast<AProjectUmeowmiCharacter>(PlayerCharacter))
+        {
+            UE_LOG(LogTemp, Display, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Registering talking object with character"));
+            ProjectCharacter->RegisterTalkingObject(this);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("TalkingObject::OnInteractionSphereBeginOverlap - Failed to cast player character to ProjectUmeowmiCharacter"));
+        }
     }
 }
 

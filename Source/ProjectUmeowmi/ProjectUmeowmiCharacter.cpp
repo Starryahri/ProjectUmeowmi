@@ -12,6 +12,7 @@
 #include "InputActionValue.h"
 #include "Dialogue/TalkingObject.h"
 #include "DishCustomization/PUDishCustomizationComponent.h"
+
 #include "Interfaces/PUInteractableInterface.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
@@ -138,9 +139,8 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 {
-	// Log the input value
+	// Get the input value
 	FVector2D MovementVector = Value.Get<FVector2D>();
-	UE_LOG(LogTemp, Log, TEXT("Move input received - X: %f, Y: %f"), MovementVector.X, MovementVector.Y);
 
 	if (Controller != nullptr)
 	{
@@ -347,13 +347,14 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 	
 	// Apply the new orthographic width
 	FollowCamera->OrthoWidth = NewOrthoWidth;
-	
-	// Log the zoom change for debugging
-	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Ortho Width: %f (Input: %f)"), NewOrthoWidth, ZoomValue);
 }
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::Interact - CurrentTalkingObject: %s, CurrentInteractable: %s"), 
+		CurrentTalkingObject ? *CurrentTalkingObject->GetName() : TEXT("NULL"),
+		CurrentInteractable ? TEXT("Valid") : TEXT("NULL"));
+		
 	if (CurrentTalkingObject)
 	{
 		CurrentTalkingObject->StartInteraction();
@@ -433,6 +434,187 @@ void AProjectUmeowmiCharacter::OnInteractionFailed()
 	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
 }
 
+// Order System Integration
+void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Setting current order: %s"), *Order.OrderID.ToString());
+	
+	CurrentOrder = Order;
+	bHasCurrentOrder = true;
+	bCurrentOrderCompleted = false;
+	CurrentOrderSatisfaction = 0.0f;
+	
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Order set successfully"));
+}
+
+void AProjectUmeowmiCharacter::ClearCurrentOrder()
+{
+	UE_LOG(LogTemp, Display, TEXT("=== CLEARING CURRENT ORDER ==="));
+	UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	
+	CurrentOrder = FPUOrderBase();
+	bHasCurrentOrder = false;
+	bCurrentOrderCompleted = false;
+	CurrentOrderSatisfaction = 0.0f;
+	
+	UE_LOG(LogTemp, Display, TEXT("=== ORDER CLEARED ==="));
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	UE_LOG(LogTemp, Display, TEXT("========================="));
+}
+
+void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float SatisfactionScore)
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetOrderResult - Order completed: %s, Satisfaction: %.2f"), 
+		bCompleted ? TEXT("YES") : TEXT("NO"), SatisfactionScore);
+	
+	if (bCompleted)
+	{
+		bHasCurrentOrder = false;      // Clear active flag
+		bCurrentOrderCompleted = true; // Set completed flag
+	}
+	else
+	{
+		bHasCurrentOrder = true;       // Keep active flag
+		bCurrentOrderCompleted = false; // Clear completed flag
+	}
+	CurrentOrderSatisfaction = SatisfactionScore;
+	
+	// Display the order result immediately
+	DisplayOrderResult();
+}
+
+void AProjectUmeowmiCharacter::DisplayOrderResult()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::DisplayOrderResult - Displaying order result"));
+	
+	if (bCurrentOrderCompleted)
+	{
+		// Determine satisfaction level
+		FString SatisfactionLevel;
+		if (CurrentOrderSatisfaction >= 0.9f)
+		{
+			SatisfactionLevel = TEXT("Perfect!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.7f)
+		{
+			SatisfactionLevel = TEXT("Great!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.5f)
+		{
+			SatisfactionLevel = TEXT("Good!");
+		}
+		else
+		{
+			SatisfactionLevel = TEXT("Okay.");
+		}
+		
+		UE_LOG(LogTemp, Display, TEXT("=== ORDER COMPLETED ==="));
+		UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
+		UE_LOG(LogTemp, Display, TEXT("Satisfaction: %s (%.1f%%)"), *SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
+		UE_LOG(LogTemp, Display, TEXT("====================="));
+		
+		// Call the order completed event
+		OnOrderCompleted();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Display, TEXT("=== ORDER FAILED ==="));
+		UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
+		UE_LOG(LogTemp, Display, TEXT("The dish didn't meet the requirements."));
+		UE_LOG(LogTemp, Display, TEXT("==================="));
+		
+		// Call the order failed event
+		OnOrderFailed();
+	}
+}
+
+void AProjectUmeowmiCharacter::ClearCompletedOrder()
+{
+	UE_LOG(LogTemp, Display, TEXT("=== CLEARING COMPLETED ORDER ==="));
+	UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	
+	CurrentOrder = FPUOrderBase();
+	bHasCurrentOrder = false;
+	bCurrentOrderCompleted = false;
+	CurrentOrderSatisfaction = 0.0f;
+	
+	UE_LOG(LogTemp, Display, TEXT("=== COMPLETED ORDER CLEARED ==="));
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	UE_LOG(LogTemp, Display, TEXT("================================="));
+}
+
+FText AProjectUmeowmiCharacter::GetOrderResultText() const
+{
+	if (!bCurrentOrderCompleted)
+	{
+		return FText::FromString(TEXT("No order completed yet."));
+	}
+	
+	FString ResultText;
+	if (bCurrentOrderCompleted)
+	{
+		// Determine satisfaction level
+		FString SatisfactionLevel;
+		if (CurrentOrderSatisfaction >= 0.9f)
+		{
+			SatisfactionLevel = TEXT("Perfect!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.7f)
+		{
+			SatisfactionLevel = TEXT("Great!");
+		}
+		else if (CurrentOrderSatisfaction >= 0.5f)
+		{
+			SatisfactionLevel = TEXT("Good!");
+		}
+		else
+		{
+			SatisfactionLevel = TEXT("Okay.");
+		}
+		
+		ResultText = FString::Printf(TEXT("Order Completed!\nSatisfaction: %s (%.1f%%)"), 
+			*SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
+	}
+	else
+	{
+		ResultText = TEXT("Order Failed!\nThe dish didn't meet the requirements.");
+	}
+	
+	return FText::FromString(ResultText);
+}
+
+void AProjectUmeowmiCharacter::OnOrderCompleted()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderCompleted - Order completed successfully!"));
+	
+	// This function can be overridden in Blueprints to add visual/audio feedback
+	// For now, just log the completion
+	UE_LOG(LogTemp, Display, TEXT("🎉 ORDER COMPLETED! 🎉"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %.1f%%"), CurrentOrderSatisfaction * 100.0f);
+}
+
+void AProjectUmeowmiCharacter::OnOrderFailed()
+{
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderFailed - Order failed"));
+	
+	// This function can be overridden in Blueprints to add visual/audio feedback
+	// For now, just log the failure
+	UE_LOG(LogTemp, Display, TEXT("❌ ORDER FAILED ❌"));
+	UE_LOG(LogTemp, Display, TEXT("Try again with different ingredients or preparation!"));
+}
+
 void AProjectUmeowmiCharacter::ShowMouseCursor()
 {
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -482,4 +664,6 @@ void AProjectUmeowmiCharacter::CenterMouseCursor()
 //		UE_LOG(LogTemp, Warning, TEXT("DialogueBox is null!"));
 //	}
 //}
+
+
 
