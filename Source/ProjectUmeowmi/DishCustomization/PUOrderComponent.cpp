@@ -2,6 +2,7 @@
 #include "PUOrderBlueprintLibrary.h"
 #include "PUDishBlueprintLibrary.h"
 #include "Engine/Engine.h"
+#include "../ProjectUmeowmiCharacter.h"
 
 UPUOrderComponent::UPUOrderComponent()
 {
@@ -27,7 +28,23 @@ void UPUOrderComponent::GenerateNewOrder()
 {
     UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateNewOrder - Starting order generation"));
     
-    // Clear any existing order
+    // Check if player has a completed order - if so, don't generate a new one
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+        }
+    }
+    
+    if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateNewOrder - Player has completed order, refusing to generate new order"));
+        return;
+    }
+    
+    // Clear any existing order (only if no completed order)
     if (bHasActiveOrder)
     {
         UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateNewOrder - Clearing existing order"));

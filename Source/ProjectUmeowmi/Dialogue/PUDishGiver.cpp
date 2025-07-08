@@ -35,18 +35,17 @@ void APUDishGiver::StartInteraction()
         }
     }
     
+    // Check if player has a completed order first
+    if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
+        HandleOrderCompletion(PlayerChar);
+    }
     // Check if player already has an active order
-    if (PlayerChar && PlayerChar->HasCurrentOrder())
+    else if (PlayerChar && PlayerChar->HasCurrentOrder())
     {
         UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
             *PlayerChar->GetCurrentOrder().OrderID.ToString());
-        
-        // Check if the order is completed
-        if (PlayerChar->IsCurrentOrderCompleted())
-        {
-            UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
-            HandleOrderCompletion(PlayerChar);
-        }
     }
     
     // Don't generate orders automatically - let dialogue control this
@@ -132,65 +131,86 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
     UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
     UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
     
-    // Check for order-related conditions
-    if (ConditionName == TEXT("HasActiveOrder"))
+    // Helper function to get player character
+    auto GetPlayerCharacter = [this]() -> AProjectUmeowmiCharacter*
     {
-        // Find the player character to check their order status
         if (UWorld* World = GetWorld())
         {
             if (APlayerController* PC = World->GetFirstPlayerController())
             {
-                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
-                {
-                    bool bHasOrder = PlayerChar->HasCurrentOrder();
-                    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: %s"), bHasOrder ? TEXT("TRUE") : TEXT("FALSE"));
-                    return bHasOrder;
-                }
+                return Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
             }
         }
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: Could not find player character, returning FALSE"));
-        return false;
+        return nullptr;
+    };
+    
+    // Use switch statement for better performance and maintainability
+    const FString ConditionNameStr = ConditionName.ToString();
+    
+    // Convert string to integer for switch statement
+    int32 ConditionType = 0;
+    if (ConditionNameStr == TEXT("HasActiveOrder"))
+    {
+        ConditionType = 1;
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - Matched HasActiveOrder condition"));
     }
-    else if (ConditionName == TEXT("OrderCompleted"))
+    else if (ConditionNameStr == TEXT("OrderCompleted"))
     {
-        // Find the player character to check if their order is completed
-        if (UWorld* World = GetWorld())
-        {
-            if (APlayerController* PC = World->GetFirstPlayerController())
-            {
-                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
-                {
-                    bool bOrderCompleted = PlayerChar->HasCurrentOrder() && PlayerChar->IsCurrentOrderCompleted();
-                    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - OrderCompleted: %s"), bOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
-                    return bOrderCompleted;
-                }
-            }
-        }
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - OrderCompleted: Could not find player character, returning FALSE"));
-        return false;
+        ConditionType = 2;
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - Matched OrderCompleted condition"));
     }
-    else if (ConditionName == TEXT("NoActiveOrder"))
+    else if (ConditionNameStr == TEXT("NoActiveOrder"))
     {
-        // Find the player character to check if they have no active order
-        if (UWorld* World = GetWorld())
-        {
-            if (APlayerController* PC = World->GetFirstPlayerController())
-            {
-                if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
-                {
-                    bool bNoOrder = !PlayerChar->HasCurrentOrder();
-                    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: %s"), bNoOrder ? TEXT("TRUE") : TEXT("FALSE"));
-                    return bNoOrder;
-                }
-            }
-        }
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: Could not find player character, returning TRUE"));
-        return true; // Default to true if we can't find the player
+        ConditionType = 3;
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - Matched NoActiveOrder condition"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - No match for condition: '%s'"), *ConditionNameStr);
     }
     
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - Unknown condition: %s, calling parent"), *ConditionName.ToString());
-    // For other conditions, call the parent implementation
-    return Super::CheckCondition_Implementation(Context, ConditionName);
+    switch (ConditionType)
+    {
+        case 1: // HasActiveOrder
+        {
+            if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
+            {
+                bool bHasOrder = PlayerChar->HasCurrentOrder();
+                UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: %s"), bHasOrder ? TEXT("TRUE") : TEXT("FALSE"));
+                return bHasOrder;
+            }
+            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: Could not find player character, returning FALSE"));
+            return false;
+        }
+        
+        case 2: // OrderCompleted
+        {
+            if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
+            {
+                bool bOrderCompleted = PlayerChar->IsCurrentOrderCompleted();
+                UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - OrderCompleted: %s"), bOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+                return bOrderCompleted;
+            }
+            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - OrderCompleted: Could not find player character, returning FALSE"));
+            return false;
+        }
+        
+        case 3: // NoActiveOrder
+        {
+            if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
+            {
+                bool bNoOrder = !PlayerChar->HasCurrentOrder();
+                UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: %s"), bNoOrder ? TEXT("TRUE") : TEXT("FALSE"));
+                return bNoOrder;
+            }
+            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: Could not find player character, returning TRUE"));
+            return true; // Default to true if we can't find the player
+        }
+        
+        default:
+            UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - Unknown condition: %s, calling parent"), *ConditionName.ToString());
+            return Super::CheckCondition_Implementation(Context, ConditionName);
+    }
 }
 
 FText APUDishGiver::GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const
@@ -277,7 +297,7 @@ void APUDishGiver::HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharact
         return;
     }
 
-    if (!PlayerCharacter->HasCurrentOrder() || !PlayerCharacter->IsCurrentOrderCompleted())
+    if (!PlayerCharacter->IsCurrentOrderCompleted())
     {
         UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - No completed order to handle"));
         return;
@@ -318,13 +338,13 @@ void APUDishGiver::HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharact
         UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Order was not completed successfully"));
     }
     
-    // Clear the completed order from the player
-    PlayerCharacter->ClearCompletedOrder();
+    // Note: Order clearing is now controlled by dialogue system
+    // Use ClearCompletedOrderFromPlayer dialogue event to clear when ready
 }
 
 FText APUDishGiver::GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerCharacter) const
 {
-    if (!PlayerCharacter || !PlayerCharacter->HasCurrentOrder() || !PlayerCharacter->IsCurrentOrderCompleted())
+    if (!PlayerCharacter || !PlayerCharacter->IsCurrentOrderCompleted())
     {
         return FText::FromString(TEXT("I don't see any completed orders."));
     }
@@ -350,4 +370,35 @@ FText APUDishGiver::GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerC
     }
     
     return FText::FromString(FeedbackText);
+}
+
+void APUDishGiver::ClearCompletedOrderFromPlayer()
+{
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Clearing completed order from player"));
+    
+    // Find the player character
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+        }
+    }
+    
+    if (!PlayerChar)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Could not find player character"));
+        return;
+    }
+    
+    if (!PlayerChar->IsCurrentOrderCompleted())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Player has no completed order to clear"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - About to clear completed order"));
+    PlayerChar->ClearCompletedOrder();
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Completed order cleared successfully"));
 }

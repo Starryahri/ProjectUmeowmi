@@ -449,12 +449,23 @@ void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 
 void AProjectUmeowmiCharacter::ClearCurrentOrder()
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::ClearCurrentOrder - Clearing current order"));
+	UE_LOG(LogTemp, Display, TEXT("=== CLEARING CURRENT ORDER ==="));
+	UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
 	CurrentOrder = FPUOrderBase();
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+	
+	UE_LOG(LogTemp, Display, TEXT("=== ORDER CLEARED ==="));
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	UE_LOG(LogTemp, Display, TEXT("========================="));
 }
 
 void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float SatisfactionScore)
@@ -462,7 +473,16 @@ void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float Satisfactio
 	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetOrderResult - Order completed: %s, Satisfaction: %.2f"), 
 		bCompleted ? TEXT("YES") : TEXT("NO"), SatisfactionScore);
 	
-	bCurrentOrderCompleted = bCompleted;
+	if (bCompleted)
+	{
+		bHasCurrentOrder = false;      // Clear active flag
+		bCurrentOrderCompleted = true; // Set completed flag
+	}
+	else
+	{
+		bHasCurrentOrder = true;       // Keep active flag
+		bCurrentOrderCompleted = false; // Clear completed flag
+	}
 	CurrentOrderSatisfaction = SatisfactionScore;
 	
 	// Display the order result immediately
@@ -516,12 +536,23 @@ void AProjectUmeowmiCharacter::DisplayOrderResult()
 
 void AProjectUmeowmiCharacter::ClearCompletedOrder()
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::ClearCompletedOrder - Clearing completed order"));
+	UE_LOG(LogTemp, Display, TEXT("=== CLEARING COMPLETED ORDER ==="));
+	UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
 	CurrentOrder = FPUOrderBase();
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+	
+	UE_LOG(LogTemp, Display, TEXT("=== COMPLETED ORDER CLEARED ==="));
+	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	UE_LOG(LogTemp, Display, TEXT("================================="));
 }
 
 FText AProjectUmeowmiCharacter::GetOrderResultText() const

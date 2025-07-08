@@ -60,6 +60,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
     FText GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerCharacter) const;
 
+    // Order clearing (for dialogue control)
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    void ClearCompletedOrderFromPlayer();
+
 protected:
     // Order component - only dish givers have this
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Giver|Components")
