@@ -251,10 +251,14 @@ void UPUDishCustomizationComponent::EndCustomization()
         // Re-enable movement and hide mouse cursor
         PlayerController->SetIgnoreMoveInput(false);
         PlayerController->SetIgnoreLookInput(false);
-        PlayerController->bShowMouseCursor = false;
+        PlayerController->bShowMouseCursor = true;
 
-        // Set input mode back to game only
-        PlayerController->SetInputMode(FInputModeGameOnly());
+        // Set input mode back to game and UI to keep mouse visible
+        FInputModeGameAndUI InputMode;
+        InputMode.SetWidgetToFocus(nullptr);
+        InputMode.SetHideCursorDuringCapture(false);
+        InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        PlayerController->SetInputMode(InputMode);
     }
 
     // Clean up the widget

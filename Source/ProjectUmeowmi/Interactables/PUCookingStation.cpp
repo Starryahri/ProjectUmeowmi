@@ -199,6 +199,14 @@ void APUCookingStation::OnCustomizationEnded()
             float SatisfactionScore = 0.0f;
             bool bOrderCompleted = ValidateDishAgainstOrder(CompletedDish, CurrentOrder, SatisfactionScore);
             
+            // Store the completed dish data in the order
+            FPUOrderBase UpdatedOrder = CurrentOrder;
+            UpdatedOrder.CompletedDish = CompletedDish;
+            UpdatedOrder.FinalSatisfactionScore = SatisfactionScore;
+            
+            // Update the order with completion data
+            Character->SetCurrentOrder(UpdatedOrder);
+            
             // Set the order result on the player character
             Character->SetOrderResult(bOrderCompleted, SatisfactionScore);
         }
@@ -281,14 +289,14 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
             FlavorValue, Order.MinFlavorValue);
     }
     
-    // Determine if order is completed
-    bool bOrderCompleted = bMeetsMinIngredients && bMeetsFlavorRequirement;
-    
     // Calculate satisfaction score
     OutSatisfactionScore = CalculateSatisfactionScore(Dish, Order);
     
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Order completed: %s, Satisfaction: %.2f"), 
-        bOrderCompleted ? TEXT("YES") : TEXT("NO"), OutSatisfactionScore);
+    // Order is always completed when submitted - satisfaction score indicates quality
+    bool bOrderCompleted = true;
+    
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Order completed: YES, Satisfaction: %.2f"), 
+        OutSatisfactionScore);
     
     return bOrderCompleted;
 }
