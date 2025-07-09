@@ -7,10 +7,12 @@
 #include "../DishCustomization/PUOrderBase.h"
 #include "Components/BoxComponent.h"
 #include "Components/WidgetComponent.h"
+#include "DlgSystem/DlgDialogue.h"
+#include "DlgSystem/DlgDialogueParticipant.h"
 #include "PUCookingStation.generated.h"
 
 UCLASS()
-class PROJECTUMEOWMI_API APUCookingStation : public APUInteractableBase
+class PROJECTUMEOWMI_API APUCookingStation : public APUInteractableBase, public IDlgDialogueParticipant
 {
     GENERATED_BODY()
 
@@ -46,9 +48,30 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
     FText StationDescription;
 
+    // Dialogue for no active order
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dialogue")
+    UDlgDialogue* NoOrderDialogue;
+
+    // Dialogue participant name
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dialogue")
+    FName ParticipantName = TEXT("CookingStation");
+
     // Helper functions
     UFUNCTION()
     void OnCustomizationEnded();
+
+    // Dialogue methods
+    UFUNCTION(BlueprintCallable, Category = "Cooking Station|Dialogue")
+    void StartNoOrderDialogue();
+
+    // IDlgDialogueParticipant interface
+    virtual FName GetParticipantName_Implementation() const override;
+    virtual bool CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const override;
+    virtual float GetFloatValue_Implementation(FName ValueName) const override;
+    virtual int32 GetIntValue_Implementation(FName ValueName) const override;
+    virtual bool GetBoolValue_Implementation(FName ValueName) const override;
+    virtual FName GetNameValue_Implementation(FName ValueName) const override;
+    virtual bool OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName) override;
 
     // Order validation
     UFUNCTION(BlueprintCallable, Category = "Cooking Station|Orders")

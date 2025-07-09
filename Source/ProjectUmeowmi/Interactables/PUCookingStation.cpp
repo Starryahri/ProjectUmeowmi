@@ -1,6 +1,10 @@
 #include "PUCookingStation.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../UI/PUDialogueBox.h"
 #include "GameplayTagContainer.h"
+#include "DlgSystem/DlgManager.h"
+#include "DlgSystem/DlgContext.h"
+#include "Kismet/GameplayStatics.h"
 
 APUCookingStation::APUCookingStation()
 {
@@ -111,21 +115,27 @@ void APUCookingStation::StartInteraction()
                 {
                     UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
                 }
+
+                // Hide the interaction widget
+                if (InteractionWidget)
+                {
+                    InteractionWidget->SetVisibility(false);
+                }
+
+                // Start dish customization with the character reference
+                DishCustomizationComponent->StartCustomization(Character);
+                BroadcastInteractionStarted();
             }
             else
             {
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has no active order"));
+                UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has no active order, starting dialogue"));
+                
+                // Start dialogue instead of dish customization
+                StartNoOrderDialogue();
+                
+                // Broadcast interaction started for dialogue
+                BroadcastInteractionStarted();
             }
-
-            // Hide the interaction widget
-            if (InteractionWidget)
-            {
-                InteractionWidget->SetVisibility(false);
-            }
-
-            // Start dish customization with the character reference
-            DishCustomizationComponent->StartCustomization(Character);
-            BroadcastInteractionStarted();
         }
         else
         {
@@ -352,4 +362,108 @@ void APUCookingStation::OnInteractionBoxEndOverlap(UPrimitiveComponent* Overlapp
             InteractionWidget->SetVisibility(false);
         }
     }
-} 
+}
+
+void APUCookingStation::StartNoOrderDialogue()
+{
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Starting no order dialogue"));
+    
+    if (!NoOrderDialogue)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartNoOrderDialogue - No dialogue asset assigned"));
+        return;
+    }
+    
+    // Get the player controller
+    APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to get player controller"));
+        return;
+    }
+    
+    // Get the player character
+    AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PlayerController->GetPawn());
+    if (!Character)
+    {
+        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to get player character"));
+        return;
+    }
+    
+    // Create participants array - just the cooking station and the player character
+    TArray<UObject*> Participants;
+    Participants.Add(this);
+    Participants.Add(Character);
+    
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Starting dialogue with %d participants"), Participants.Num());
+    
+    // Start the dialogue
+    UDlgContext* DialogueContext = UDlgManager::StartDialogue(NoOrderDialogue, Participants);
+    
+    if (DialogueContext)
+    {
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Dialogue context created successfully"));
+        
+        // Get the dialogue box from the character and open it
+        UPUDialogueBox* DialogueBox = Character->GetDialogueBox();
+        if (DialogueBox)
+        {
+            DialogueBox->Open(DialogueContext);
+            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Dialogue box opened"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to get dialogue box from character"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to create dialogue context"));
+    }
+}
+
+// IDlgDialogueParticipant interface implementation
+FName APUCookingStation::GetParticipantName_Implementation() const
+{
+    return ParticipantName;
+}
+
+bool APUCookingStation::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
+{
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::CheckCondition - Condition: %s"), *ConditionName.ToString());
+    
+    // Add any cooking station specific conditions here
+    return false;
+}
+
+float APUCookingStation::GetFloatValue_Implementation(FName ValueName) const
+{
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetFloatValue - Value: %s"), *ValueName.ToString());
+    return 0.0f;
+}
+
+int32 APUCookingStation::GetIntValue_Implementation(FName ValueName) const
+{
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetIntValue - Value: %s"), *ValueName.ToString());
+    return 0;
+}
+
+bool APUCookingStation::GetBoolValue_Implementation(FName ValueName) const
+{
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetBoolValue - Value: %s"), *ValueName.ToString());
+    return false;
+}
+
+FName APUCookingStation::GetNameValue_Implementation(FName ValueName) const
+{
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetNameValue - Value: %s"), *ValueName.ToString());
+    return NAME_None;
+}
+
+bool APUCookingStation::OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName)
+{
+    UE_LOG(LogTemp, Display, TEXT("CookingStation::OnDialogueEvent - Event: %s"), *EventName.ToString());
+    
+    // Handle any cooking station specific dialogue events here
+    return false;
+}
