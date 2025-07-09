@@ -17,64 +17,66 @@ FPUDishBase::FPUDishBase()
 // realizing that get ingredient and logically the get all ingredient is not applying the preparations when called here.
 bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredientBase& OutIngredient) const
 {
-    if (!IngredientDataTable)
+    if (!IngredientDataTable.IsValid())
     {
         return false;
     }
-
-    // Get the full tag string and split at the last period
+    
+    UDataTable* LoadedIngredientDataTable = IngredientDataTable.LoadSynchronous();
+    if (!LoadedIngredientDataTable)
+    {
+        return false;
+    }
+    
+    // Get the ingredient name from the tag (everything after the last period) and convert to lowercase
     FString FullTag = IngredientTag.ToString();
     int32 LastPeriodIndex;
     if (FullTag.FindLastChar('.', LastPeriodIndex))
     {
-        // Get everything after the last period and convert to lowercase
-        FString TagName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-        FName RowName = FName(*TagName);
+        FString IngredientName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
+        FName RowName = FName(*IngredientName);
         
-        if (FPUIngredientBase* FoundIngredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
+        if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
         {
-            // Create a copy of the base ingredient
             OutIngredient = *FoundIngredient;
-
-            // Find the first instance of this ingredient to get its preparations
-            for (const FIngredientInstance& Instance : IngredientInstances)
+            
+            // Load preparation data if available
+            if (OutIngredient.PreparationDataTable.IsValid())
             {
-                // Check both the convenient field and the data field for compatibility
-                FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
-                if (InstanceTag == IngredientTag)
+                UDataTable* LoadedPreparationDataTable = OutIngredient.PreparationDataTable.LoadSynchronous();
+                if (LoadedPreparationDataTable)
                 {
-                    // Apply the preparations from this instance (prefer convenient field, fallback to data field)
-                    OutIngredient.ActivePreparations = Instance.Preparations.Num() > 0 ? Instance.Preparations : Instance.IngredientData.ActivePreparations;
-
-                    // Apply each preparation's modifiers
-                    if (OutIngredient.PreparationDataTable)
+                    // Apply any active preparations to the ingredient
+                    for (const FGameplayTag& PrepTag : OutIngredient.ActivePreparations)
                     {
-                        TArray<FGameplayTag> PreparationTags;
-                        Instance.IngredientData.ActivePreparations.GetGameplayTagArray(PreparationTags);
-
-                        for (const FGameplayTag& PrepTag : PreparationTags)
+                        // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+                        FString PrepFullTag = PrepTag.ToString();
+                        int32 PrepLastPeriodIndex;
+                        if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
                         {
-                            // Get the preparation data
-                            FString PrepTagName = PrepTag.ToString();
-                            if (PrepTagName.FindLastChar('.', LastPeriodIndex))
+                            FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                            FName PrepRowName = FName(*PrepName);
+                            
+                            if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
                             {
-                                FString PrepName = PrepTagName.RightChop(LastPeriodIndex + 1).ToLower();
-                                FName PrepRowName = FName(*PrepName);
-                                
-                                if (FPUPreparationBase* Preparation = OutIngredient.PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
+                                // Apply preparation modifiers
+                                for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
                                 {
-                                    // Apply the preparation's modifiers to the ingredient's properties
-                                    Preparation->ApplyModifiers(OutIngredient.NaturalProperties);
+                                    FName PropertyName = Modifier.GetPropertyName();
+                                    float CurrentValue = OutIngredient.GetPropertyValue(PropertyName);
+                                    float NewValue = Modifier.ApplyModification(CurrentValue);
+                                    OutIngredient.SetPropertyValue(PropertyName, NewValue);
                                 }
                             }
                         }
                     }
-                    break;
                 }
             }
+            
             return true;
         }
     }
+    
     return false;
 }
 

@@ -142,41 +142,43 @@ bool FPUIngredientBase::HasPreparation(const FGameplayTag& PreparationTag) const
 
 FText FPUIngredientBase::GetCurrentDisplayName() const
 {
-    FText CurrentName = DisplayName;
-    
-    if (!PreparationDataTable)
+    // If we have active preparations, try to get a modified name
+    if (ActivePreparations.Num() > 0 && PreparationDataTable.IsValid())
     {
-        return CurrentName;
-    }
-    
-    // Get all active preparation tags
-    TArray<FGameplayTag> ActiveTags;
-    ActivePreparations.GetGameplayTagArray(ActiveTags);
-    
-    // Sort preparations by their tag to ensure consistent order
-    ActiveTags.Sort([](const FGameplayTag& A, const FGameplayTag& B) {
-        return A.ToString() < B.ToString();
-    });
-    
-    // Apply name modifications in order
-    for (const FGameplayTag& Tag : ActiveTags)
-    {
-        // Get the full tag string and split at the last period
-        FString FullTag = Tag.ToString();
-        int32 LastPeriodIndex;
-        if (FullTag.FindLastChar('.', LastPeriodIndex))
+        UDataTable* LoadedPreparationDataTable = PreparationDataTable.LoadSynchronous();
+        if (LoadedPreparationDataTable)
         {
-            // Get everything after the last period and convert to lowercase
-            FString TagName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-            FName RowName = FName(*TagName);
-            FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(RowName, TEXT("GetCurrentDisplayName"));
+            // Get the first preparation to modify the name
+            TArray<FGameplayTag> PrepTags;
+            ActivePreparations.GetGameplayTagArray(PrepTags);
             
-            if (Preparation)
+            if (PrepTags.Num() > 0)
             {
-                CurrentName = Preparation->GetModifiedName(CurrentName);
+                // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+                FString PrepFullTag = PrepTags[0].ToString();
+                int32 PrepLastPeriodIndex;
+                if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                {
+                    FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                    FName PrepRowName = FName(*PrepName);
+                    
+                    if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetCurrentDisplayName")))
+                    {
+                        // If the preparation overrides the base name, use the special name
+                        if (Preparation->OverridesBaseName)
+                        {
+                            return Preparation->SpecialName;
+                        }
+                        
+                        // Otherwise, apply prefix and suffix
+                        FString ModifiedName = Preparation->NamePrefix.ToString() + DisplayName.ToString() + Preparation->NameSuffix.ToString();
+                        return FText::FromString(ModifiedName);
+                    }
+                }
             }
         }
     }
     
-    return CurrentName;
+    // Return the base display name if no preparations or no data table
+    return DisplayName;
 } 

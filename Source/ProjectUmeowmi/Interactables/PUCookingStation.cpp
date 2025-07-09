@@ -95,7 +95,7 @@ void APUCookingStation::StartInteraction()
             UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Base dish details:"));
             UE_LOG(LogTemp, Display, TEXT("  - Dish Tag: %s"), *CurrentOrder.BaseDish.DishTag.ToString());
             UE_LOG(LogTemp, Display, TEXT("  - Display Name: %s"), *CurrentOrder.BaseDish.DisplayName.ToString());
-            UE_LOG(LogTemp, Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable ? TEXT("Valid") : TEXT("NULL"));
+            UE_LOG(LogTemp, Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable.IsValid() ? TEXT("Valid") : TEXT("NULL"));
             UE_LOG(LogTemp, Display, TEXT("  - Ingredient Instances: %d"), CurrentOrder.BaseDish.IngredientInstances.Num());
             
             for (int32 i = 0; i < CurrentOrder.BaseDish.IngredientInstances.Num(); i++)

@@ -103,20 +103,26 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating ingredient buttons"));
     
-    if (!CurrentDishData.IngredientDataTable)
+    // Check if we have a valid ingredient data table
+    if (!CurrentDishData.IngredientDataTable.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("PUDishCustomizationWidget::CreateIngredientButtons - No ingredient data table available"));
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - No ingredient data table available"));
         return;
     }
     
-    // Get all rows from the ingredient data table
-    TArray<FName> RowNames = CurrentDishData.IngredientDataTable->GetRowNames();
+    UDataTable* LoadedIngredientDataTable = CurrentDishData.IngredientDataTable.LoadSynchronous();
+    if (!LoadedIngredientDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Failed to load ingredient data table"));
+        return;
+    }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Found %d ingredients in data table"), RowNames.Num());
+    TArray<FName> RowNames = LoadedIngredientDataTable->GetRowNames();
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Found %d ingredient rows"), RowNames.Num());
     
     for (const FName& RowName : RowNames)
     {
-        if (FPUIngredientBase* IngredientData = CurrentDishData.IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("CreateIngredientButtons")))
+        if (FPUIngredientBase* IngredientData = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("CreateIngredientButtons")))
         {
             UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating button for ingredient: %s"), 
                 *IngredientData->DisplayName.ToString());

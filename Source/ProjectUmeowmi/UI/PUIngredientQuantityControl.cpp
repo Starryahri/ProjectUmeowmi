@@ -78,10 +78,17 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     // Update UI components
     UpdateIngredientDisplay();
     
-    if (IngredientIcon && IngredientInstance.IngredientData.PreviewTexture)
+    if (IngredientIcon && IngredientInstance.IngredientData.PreviewTexture.IsValid())
     {
-        IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Updated ingredient icon"));
+        if (UTexture2D* LoadedTexture = IngredientInstance.IngredientData.PreviewTexture.LoadSynchronous())
+        {
+            IngredientIcon->SetBrushFromTexture(LoadedTexture);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Updated ingredient icon"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Failed to load texture"));
+        }
     }
     
     // Update quantity controls
@@ -275,15 +282,21 @@ void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
     ClearPreparationCheckboxes();
     
     // Check if we have a preparation data table
-    if (!IngredientInstance.IngredientData.PreparationDataTable)
+    if (!IngredientInstance.IngredientData.PreparationDataTable.IsValid())
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
         return;
     }
     
-    // Get all rows from the preparation data table
+    UDataTable* LoadedPreparationDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
+    if (!LoadedPreparationDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Failed to load preparation data table"));
+        return;
+    }
+    
     TArray<FPUPreparationBase*> PreparationRows;
-    IngredientInstance.IngredientData.PreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("UpdatePreparationCheckboxes"), PreparationRows);
+    LoadedPreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("UpdatePreparationCheckboxes"), PreparationRows);
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Found %d preparation options"), PreparationRows.Num());
     

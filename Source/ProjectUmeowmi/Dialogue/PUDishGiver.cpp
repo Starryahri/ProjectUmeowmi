@@ -23,30 +23,30 @@ void APUDishGiver::BeginPlay()
 
 void APUDishGiver::StartInteraction()
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::StartInteraction - Starting interaction with dish giver: %s"), *GetTalkingObjectDisplayName().ToString());
-    
-    // Find the player character first to check their current order status
-    AProjectUmeowmiCharacter* PlayerChar = nullptr;
-    if (UWorld* World = GetWorld())
-    {
-        if (APlayerController* PC = World->GetFirstPlayerController())
-        {
-            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
-        }
-    }
-    
-    // Check if player has a completed order first
-    if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
-    {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
-        HandleOrderCompletion(PlayerChar);
-    }
-    // Check if player already has an active order
-    else if (PlayerChar && PlayerChar->HasCurrentOrder())
-    {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
-            *PlayerChar->GetCurrentOrder().OrderID.ToString());
-    }
+    //UE_LOG(LogTemp, Log, TEXT("APUDishGiver::StartInteraction - Starting interaction with dish giver: %s"), *GetTalkingObjectDisplayName().ToString());
+    //
+    //// Find the player character first to check their current order status
+    //AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    //if (UWorld* World = GetWorld())
+    //{
+    //    if (APlayerController* PC = World->GetFirstPlayerController())
+    //    {
+    //        PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+    //    }
+    //}
+    //
+    //// Check if player has a completed order first
+    //if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
+    //{
+    //    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
+    //    HandleOrderCompletion(PlayerChar);
+    //}
+    //// Check if player already has an active order
+    //else if (PlayerChar && PlayerChar->HasCurrentOrder())
+    //{
+    //    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
+    //        *PlayerChar->GetCurrentOrder().OrderID.ToString());
+    //}
     
     // Don't generate orders automatically - let dialogue control this
     // Just start the dialogue system
@@ -57,20 +57,40 @@ void APUDishGiver::GenerateOrderForDialogue()
 {
     UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Generating order for dialogue"));
     
-    if (OrderComponent)
+    if (!IsValid(OrderComponent))
+    {
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Order component is null!"));
+        return;
+    }
+    
+    // Add safety check for the world
+    if (!GetWorld())
+    {
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - No valid world!"));
+        return;
+    }
+    
+    try
     {
         OrderComponent->GenerateNewOrder();
         UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Order generated successfully"));
     }
-    else
+    catch (...)
     {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Order component is null!"));
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Exception occurred during order generation!"));
     }
 }
 
 void APUDishGiver::GenerateAndGiveOrderToPlayer()
 {
     UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generating and giving order to player"));
+    
+    // Validate the order component first
+    if (!IsValid(OrderComponent))
+    {
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order component is not valid!"));
+        return;
+    }
     
     // Find the player character
     AProjectUmeowmiCharacter* PlayerChar = nullptr;
@@ -82,9 +102,9 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
         }
     }
     
-    if (!PlayerChar)
+    if (!IsValid(PlayerChar))
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Could not find player character"));
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Could not find valid player character"));
         return;
     }
     
@@ -95,24 +115,40 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
         return;
     }
     
-    // Generate the order
-    GenerateOrderForDialogue();
+    // Generate the order with safety checks
+    try
+    {
+        UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Calling GenerateOrderForDialogue"));
+        GenerateOrderForDialogue();
+    }
+    catch (...)
+    {
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Exception occurred during order generation!"));
+        return;
+    }
     
-    // Pass the order to the player character and set dialogue variables
-    if (OrderComponent && OrderComponent->HasActiveOrder())
+    // Validate that the order was generated successfully
+    if (!OrderComponent->HasActiveOrder())
     {
-        const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
-        PlayerChar->SetCurrentOrder(Order);
-        
-        // Set dialogue variables using helper function
-        SetDialogueVariablesFromOrder(Order);
-        
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order passed to player character: %s"), *Order.OrderID.ToString());
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order generation failed - no active order"));
+        return;
     }
-    else
+    
+    // Get the order with validation
+    const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
+    if (!Order.OrderID.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Failed to generate order"));
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generated order has invalid ID"));
+        return;
     }
+    
+    // Pass the order to the player character
+    PlayerChar->SetCurrentOrder(Order);
+    
+    // Set dialogue variables using helper function
+    SetDialogueVariablesFromOrder(Order);
+    
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order passed to player character: %s"), *Order.OrderID.ToString());
 }
 
 FText APUDishGiver::GetOrderDialogueText() const
@@ -135,9 +171,17 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
     UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
     UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
     
-    // Helper function to get player character
+    // Helper function to get player character using weak reference first
     auto GetPlayerCharacter = [this]() -> AProjectUmeowmiCharacter*
     {
+        // Try cached weak reference first
+        AProjectUmeowmiCharacter* PlayerChar = CachedPlayerCharacter.Get();
+        if (IsValid(PlayerChar))
+        {
+            return PlayerChar;
+        }
+        
+        // Fallback: Find the player character
         if (UWorld* World = GetWorld())
         {
             if (APlayerController* PC = World->GetFirstPlayerController())
@@ -295,7 +339,7 @@ float APUDishGiver::GetSatisfactionScore(const FPUDishBase& Dish) const
 
 void APUDishGiver::HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharacter)
 {
-    if (!PlayerCharacter)
+    if (!IsValid(PlayerCharacter))
     {
         UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::HandleOrderCompletion - Player character is null"));
         return;
@@ -308,6 +352,9 @@ void APUDishGiver::HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharact
     }
 
     UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Handling order completion"));
+    
+    // Cache the player character using weak reference
+    CachedPlayerCharacter = PlayerCharacter;
     
     // Get the completed order with all the dish data
     const FPUOrderBase& CompletedOrder = PlayerCharacter->GetCurrentOrder();
@@ -357,33 +404,72 @@ FText APUDishGiver::GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerC
 
 void APUDishGiver::ClearCompletedOrderFromPlayer()
 {
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Clearing completed order from player"));
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Marking order for delayed clearing"));
     
-    // Find the player character
-    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    // Instead of clearing immediately, mark it for delayed clearing
+    MarkOrderForClearing();
+}
+
+void APUDishGiver::MarkOrderForClearing()
+{
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::MarkOrderForClearing - Marking order for delayed clearing"));
+    
+    // Mark the order for clearing
+    bOrderMarkedForClearing = true;
+    
+    // Set a timer to clear the order after a short delay (after dialogue processing is complete)
     if (UWorld* World = GetWorld())
     {
-        if (APlayerController* PC = World->GetFirstPlayerController())
-        {
-            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
-        }
+        World->GetTimerManager().SetTimer(
+            DelayedClearingTimerHandle,
+            this,
+            &APUDishGiver::ExecuteDelayedOrderClearing,
+            0.1f, // 100ms delay
+            false  // Don't repeat
+        );
     }
+}
+
+void APUDishGiver::ExecuteDelayedOrderClearing()
+{
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Executing delayed order clearing"));
+    
+    // Use the cached weak reference first, then fall back to finding the player
+    AProjectUmeowmiCharacter* PlayerChar = CachedPlayerCharacter.Get();
     
     if (!PlayerChar)
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Could not find player character"));
+        // Fallback: Find the player character
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+            }
+        }
+    }
+    
+    if (!IsValid(PlayerChar))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Could not find valid player character"));
+        bOrderMarkedForClearing = false;
         return;
     }
     
     if (!PlayerChar->IsCurrentOrderCompleted())
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Player has no completed order to clear"));
+        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Player has no completed order to clear"));
+        bOrderMarkedForClearing = false;
         return;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - About to clear completed order"));
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - About to clear completed order"));
     PlayerChar->ClearCompletedOrder();
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Completed order cleared successfully"));
+    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Completed order cleared successfully"));
+    
+    // Clear the cached reference after successful clearing
+    CachedPlayerCharacter = nullptr;
+    bOrderMarkedForClearing = false;
 }
 
 void APUDishGiver::SetDialogueVariablesFromOrder(const FPUOrderBase& Order)
@@ -492,4 +578,21 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
     UE_LOG(LogTemp, Display, TEXT("  Most Used: %s"), *MostUsedIngredient.ToString());
     UE_LOG(LogTemp, Display, TEXT("  Preparations: %d"), PreparationCount);
     UE_LOG(LogTemp, Display, TEXT("  Quality: %s"), *QualityLevel.ToString());
+}
+
+void APUDishGiver::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::EndPlay - Cleaning up dish giver: %s"), *GetName());
+    
+    // Clear any pending timers
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(DelayedClearingTimerHandle);
+    }
+    
+    // Clear the cached player reference
+    CachedPlayerCharacter = nullptr;
+    bOrderMarkedForClearing = false;
+    
+    Super::EndPlay(EndPlayReason);
 }

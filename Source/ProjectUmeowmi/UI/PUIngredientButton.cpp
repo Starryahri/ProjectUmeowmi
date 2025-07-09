@@ -60,10 +60,17 @@ void UPUIngredientButton::SetIngredientData(const FPUIngredientBase& InIngredien
         UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Updated ingredient name text"));
     }
     
-    if (IngredientIcon && IngredientData.PreviewTexture)
+    if (IngredientIcon && IngredientData.PreviewTexture.IsValid())
     {
-        IngredientIcon->SetBrushFromTexture(IngredientData.PreviewTexture);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Updated ingredient icon"));
+        if (UTexture2D* LoadedTexture = IngredientData.PreviewTexture.LoadSynchronous())
+        {
+            IngredientIcon->SetBrushFromTexture(LoadedTexture);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Updated ingredient icon"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientButton::SetIngredientData - Failed to load texture"));
+        }
     }
     
     // Call Blueprint event

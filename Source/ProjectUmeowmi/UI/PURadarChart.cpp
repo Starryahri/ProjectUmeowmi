@@ -174,13 +174,21 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
             if (Dish.GetIngredient(InstanceTag, Ingredient))
             {
                 IngredientNames.Add(InstanceTag, Ingredient.DisplayName.ToString());
-                if (Ingredient.PreviewTexture)
+                if (Ingredient.PreviewTexture.IsValid())
                 {
-                    IngredientTextures.Add(InstanceTag, Ingredient.PreviewTexture);
+                    if (UTexture2D* LoadedTexture = Ingredient.PreviewTexture.LoadSynchronous())
+                    {
+                        IngredientTextures.Add(InstanceTag, LoadedTexture);
+                        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found ingredient %s with texture %p"), 
+                            *Ingredient.DisplayName.ToString(), 
+                            LoadedTexture);
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to load texture for ingredient %s"), 
+                            *Ingredient.DisplayName.ToString());
+                    }
                 }
-                UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found ingredient %s with texture %p"), 
-                    *Ingredient.DisplayName.ToString(), 
-                    Ingredient.PreviewTexture);
             }
             else
             {

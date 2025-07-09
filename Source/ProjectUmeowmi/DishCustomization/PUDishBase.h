@@ -65,11 +65,11 @@ public:
 
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
-    UTexture2D* PreviewTexture;
+    TSoftObjectPtr<UTexture2D> PreviewTexture;
 
     // Data Tables
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Data")
-    UDataTable* IngredientDataTable;
+    TSoftObjectPtr<UDataTable> IngredientDataTable;
 
     // Array of ingredient instances in the dish
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Ingredients")

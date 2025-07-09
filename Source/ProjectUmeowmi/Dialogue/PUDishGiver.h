@@ -18,6 +18,8 @@ public:
 
     virtual void BeginPlay() override;
 
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
     // Order-related dialogue methods
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
     void GenerateOrderForDialogue();
@@ -57,13 +59,21 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
     void HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharacter);
 
+    // Clear completed order from player (called from dialogue)
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    void ClearCompletedOrderFromPlayer();
+
+    // Delayed clearing mechanism to prevent race conditions
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    void MarkOrderForClearing();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    void ExecuteDelayedOrderClearing();
+
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
     FText GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerCharacter) const;
 
     // Order clearing (for dialogue control)
-    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
-    void ClearCompletedOrderFromPlayer();
-
     // Helper function to set dialogue variables from order
     void SetDialogueVariablesFromOrder(const FPUOrderBase& Order);
 
@@ -74,6 +84,10 @@ protected:
     // Order component - only dish givers have this
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Giver|Components")
     UPUOrderComponent* OrderComponent;
+
+    // Weak reference to player character to prevent dangling references
+    UPROPERTY()
+    TWeakObjectPtr<AProjectUmeowmiCharacter> CachedPlayerCharacter;
 
     // Test boolean for dialogue conditions
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Giver|Test")
@@ -134,4 +148,9 @@ protected:
 
     // Override interaction to generate order
     virtual void StartInteraction() override;
+
+private:
+    // Delayed clearing state
+    bool bOrderMarkedForClearing = false;
+    FTimerHandle DelayedClearingTimerHandle;
 }; 

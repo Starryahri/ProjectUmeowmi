@@ -115,13 +115,13 @@ public:
 
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    UTexture2D* PreviewTexture;
+    TSoftObjectPtr<UTexture2D> PreviewTexture;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    UMaterialInterface* MaterialInstance;
+    TSoftObjectPtr<UMaterialInterface> MaterialInstance;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    UStaticMesh* IngredientMesh;
+    TSoftObjectPtr<UStaticMesh> IngredientMesh;
 
     // Natural Properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Properties")
@@ -148,8 +148,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation", meta = (Categories = "Preparation"))
     FGameplayTagContainer ActivePreparations;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation")
-    UDataTable* PreparationDataTable;
+    // Data Tables
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Data")
+    TSoftObjectPtr<UDataTable> PreparationDataTable;
 
     // Special Effects
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Effects")

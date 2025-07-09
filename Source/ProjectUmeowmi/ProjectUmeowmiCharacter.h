@@ -231,6 +231,8 @@ protected:
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	// Interaction event handlers
 	UFUNCTION()
 	void OnInteractionStarted();
@@ -326,5 +328,8 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Order System")
 	float CurrentOrderSatisfaction = 0.0f;
 
+private:
+	// Helper function to clean up UObject references in orders
+	void CleanupOrderUObjectReferences(FPUOrderBase& Order);
 
 };

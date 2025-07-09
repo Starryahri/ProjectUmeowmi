@@ -439,6 +439,13 @@ void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 {
 	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Setting current order: %s"), *Order.OrderID.ToString());
 	
+	// Clean up any existing UObject references before setting new order
+	if (bHasCurrentOrder)
+	{
+		UE_LOG(LogTemp, Display, TEXT("SetCurrentOrder - Cleaning up existing UObject references"));
+		CleanupOrderUObjectReferences(CurrentOrder);
+	}
+	
 	CurrentOrder = Order;
 	bHasCurrentOrder = true;
 	bCurrentOrderCompleted = false;
@@ -456,6 +463,11 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
 	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
+	// Properly clean up UObject references before clearing
+	UE_LOG(LogTemp, Display, TEXT("ClearCurrentOrder - Cleaning up UObject references"));
+	CleanupOrderUObjectReferences(CurrentOrder);
+	
+	// Now safely clear the order data
 	CurrentOrder = FPUOrderBase();
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
@@ -524,6 +536,18 @@ void AProjectUmeowmiCharacter::ClearCompletedOrder()
 	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
 	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
+	// Validate that we can safely clear the order
+	if (!bCurrentOrderCompleted)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ClearCompletedOrder - Cannot clear: order not completed"));
+		return;
+	}
+	
+	// Properly clean up UObject references before clearing
+	UE_LOG(LogTemp, Display, TEXT("ClearCompletedOrder - Cleaning up UObject references"));
+	CleanupOrderUObjectReferences(CurrentOrder);
+	
+	// Now safely clear the order data
 	CurrentOrder = FPUOrderBase();
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
@@ -589,6 +613,71 @@ void AProjectUmeowmiCharacter::OnOrderFailed()
 	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %.1f%% - Try again for better results!"), CurrentOrderSatisfaction * 100.0f);
 }
 
+void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order)
+{
+	// Clear UObject references in the completed dish
+	if (Order.CompletedDish.PreviewTexture.IsValid())
+	{
+		Order.CompletedDish.PreviewTexture = nullptr;
+	}
+	if (Order.CompletedDish.IngredientDataTable.IsValid())
+	{
+		Order.CompletedDish.IngredientDataTable = nullptr;
+	}
+	
+	// Clear UObject references in all ingredient instances
+	for (FIngredientInstance& Instance : Order.CompletedDish.IngredientInstances)
+	{
+		if (Instance.IngredientData.PreviewTexture.IsValid())
+		{
+			Instance.IngredientData.PreviewTexture = nullptr;
+		}
+		if (Instance.IngredientData.MaterialInstance.IsValid())
+		{
+			Instance.IngredientData.MaterialInstance = nullptr;
+		}
+		if (Instance.IngredientData.IngredientMesh.IsValid())
+		{
+			Instance.IngredientData.IngredientMesh = nullptr;
+		}
+		if (Instance.IngredientData.PreparationDataTable.IsValid())
+		{
+			Instance.IngredientData.PreparationDataTable = nullptr;
+		}
+	}
+	
+	// Clear UObject references in the base dish
+	if (Order.BaseDish.PreviewTexture.IsValid())
+	{
+		Order.BaseDish.PreviewTexture = nullptr;
+	}
+	if (Order.BaseDish.IngredientDataTable.IsValid())
+	{
+		Order.BaseDish.IngredientDataTable = nullptr;
+	}
+	
+	// Clear UObject references in base dish ingredient instances
+	for (FIngredientInstance& Instance : Order.BaseDish.IngredientInstances)
+	{
+		if (Instance.IngredientData.PreviewTexture.IsValid())
+		{
+			Instance.IngredientData.PreviewTexture = nullptr;
+		}
+		if (Instance.IngredientData.MaterialInstance.IsValid())
+		{
+			Instance.IngredientData.MaterialInstance = nullptr;
+		}
+		if (Instance.IngredientData.IngredientMesh.IsValid())
+		{
+			Instance.IngredientData.IngredientMesh = nullptr;
+		}
+		if (Instance.IngredientData.PreparationDataTable.IsValid())
+		{
+			Instance.IngredientData.PreparationDataTable = nullptr;
+		}
+	}
+}
+
 void AProjectUmeowmiCharacter::ShowMouseCursor()
 {
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -601,6 +690,47 @@ void AProjectUmeowmiCharacter::ShowMouseCursor()
 void AProjectUmeowmiCharacter::HideMouseCursor()
 {
 	// Do nothing - we want the cursor to always be visible
+}
+
+void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up character: %s"), *GetName());
+	
+	// Clear order UObject references to prevent garbage collection issues
+	if (bHasCurrentOrder || bCurrentOrderCompleted)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up order UObject references"));
+		CleanupOrderUObjectReferences(CurrentOrder);
+		
+		// Clear the order data
+		CurrentOrder = FPUOrderBase();
+		bHasCurrentOrder = false;
+		bCurrentOrderCompleted = false;
+		CurrentOrderSatisfaction = 0.0f;
+	}
+	
+	// Clear talking object reference to prevent dangling references
+	if (CurrentTalkingObject)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing talking object reference"));
+		CurrentTalkingObject = nullptr;
+	}
+	
+	// Clear interactable reference
+	if (CurrentInteractable)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing interactable reference"));
+		CurrentInteractable = nullptr;
+	}
+	
+	// Clear dialogue box reference
+	if (DialogueBox)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing dialogue box reference"));
+		DialogueBox = nullptr;
+	}
+	
+	Super::EndPlay(EndPlayReason);
 }
 
 void AProjectUmeowmiCharacter::SetMousePosition(int32 X, int32 Y)
