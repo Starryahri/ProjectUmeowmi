@@ -118,8 +118,14 @@ void APUCookingStation::StartInteraction()
         // Start dish customization with the character reference
         DishCustomizationComponent->StartCustomization(Character);
         
-        // Call parent to handle interaction state
-        Super::StartInteraction();
+        // Hide the interaction widget since we're in dish customization mode
+        if (InteractionWidget)
+        {
+            InteractionWidget->SetVisibility(false);
+        }
+        
+        // Don't call Super::StartInteraction() to avoid triggering dialogue
+        // The dish customization component will handle its own state
     }
     else
     {
@@ -141,6 +147,8 @@ void APUCookingStation::EndInteraction()
     // Call parent to handle interaction state and dialogue cleanup
     Super::EndInteraction();
 }
+
+
 
 
 
@@ -324,14 +332,21 @@ bool APUCookingStation::CheckCondition_Implementation(const UDlgContext* Context
     // Call parent implementation first
     bool bParentResult = Super::CheckCondition_Implementation(Context, ConditionName);
     
-    // Add any cooking station specific conditions here
-    // For example, you could check if the player has an active order
-    if (ConditionName == TEXT("HasActiveOrder"))
+    // Add cooking station specific conditions
+    if (ConditionName == TEXT("HasCompletedOrder"))
     {
         AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
         if (Character)
         {
-            return Character->HasCurrentOrder();
+            return Character->GetOrderCompleted();
+        }
+    }
+    else if (ConditionName == TEXT("NoOrder"))
+    {
+        AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
+        if (Character)
+        {
+            return !Character->HasCurrentOrder();
         }
     }
     
