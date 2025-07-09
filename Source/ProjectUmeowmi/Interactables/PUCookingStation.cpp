@@ -1,40 +1,43 @@
 #include "PUCookingStation.h"
 #include "../ProjectUmeowmiCharacter.h"
-#include "../UI/PUDialogueBox.h"
 #include "GameplayTagContainer.h"
-#include "DlgSystem/DlgManager.h"
-#include "DlgSystem/DlgContext.h"
 #include "Kismet/GameplayStatics.h"
 
 APUCookingStation::APUCookingStation()
 {
     PrimaryActorTick.bCanEverTick = false;
 
-    // Create and setup the root component
-    RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
+    // Set TalkingObject defaults first
+    ParticipantName = TEXT("CookingStation");
+    DisplayName = FText::FromString(TEXT("Cooking Station"));
+    ObjectType = ETalkingObjectType::NPC; // Use NPC type to get proper dialogue handling
+    InteractionRange = 200.0f;
 
-    // Create and setup components
-    StationMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StationMesh"));
-    StationMesh->SetupAttachment(RootComponent);
-
-    InteractionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("InteractionBox"));
-    InteractionBox->SetupAttachment(RootComponent);
-    InteractionBox->SetCollisionProfileName(TEXT("Trigger"));
-    InteractionBox->SetBoxExtent(FVector(InteractionRange));
-
-    DishCustomizationComponent = CreateDefaultSubobject<UPUDishCustomizationComponent>(TEXT("DishCustomizationComponent"));
-    DishCustomizationComponent->SetupAttachment(RootComponent);
-
-    // Create and setup the interaction widget
-    InteractionWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidget"));
-    InteractionWidget->SetupAttachment(RootComponent);
-    InteractionWidget->SetWidgetSpace(EWidgetSpace::Screen);
-    InteractionWidget->SetVisibility(false);
-
-    // Set default values
+    // Set cooking station specific defaults
     StationName = FText::FromString(TEXT("Cooking Station"));
     StationDescription = FText::FromString(TEXT("A station for customizing dishes"));
-    InteractionRange = 200.0f;
+
+    // Create and setup cooking station specific components
+    // Note: RootComponent is created by TalkingObject constructor
+    StationMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StationMesh"));
+    if (StationMesh)
+    {
+        StationMesh->SetupAttachment(GetRootComponent());
+    }
+
+    InteractionBox = CreateDefaultSubobject<UBoxComponent>(TEXT("InteractionBox"));
+    if (InteractionBox)
+    {
+        InteractionBox->SetupAttachment(GetRootComponent());
+        InteractionBox->SetCollisionProfileName(TEXT("Trigger"));
+        InteractionBox->SetBoxExtent(FVector(200.0f)); // Use fixed range for now
+    }
+
+    DishCustomizationComponent = CreateDefaultSubobject<UPUDishCustomizationComponent>(TEXT("DishCustomizationComponent"));
+    if (DishCustomizationComponent)
+    {
+        DishCustomizationComponent->SetupAttachment(GetRootComponent());
+    }
 }
 
 void APUCookingStation::BeginPlay()
@@ -42,7 +45,7 @@ void APUCookingStation::BeginPlay()
     Super::BeginPlay();
 
     // Bind to dish customization events
-    if (DishCustomizationComponent)
+    if (IsValid(DishCustomizationComponent))
     {
         UE_LOG(LogTemp, Display, TEXT("CookingStation::BeginPlay - Binding to OnCustomizationEnded event"));
         DishCustomizationComponent->OnCustomizationEnded.AddDynamic(this, &APUCookingStation::OnCustomizationEnded);
@@ -52,130 +55,94 @@ void APUCookingStation::BeginPlay()
     {
         UE_LOG(LogTemp, Warning, TEXT("CookingStation::BeginPlay - DishCustomizationComponent is null, cannot bind events"));
     }
-
-    // Bind to interaction box events
-    if (InteractionBox)
-    {
-        InteractionBox->OnComponentBeginOverlap.AddDynamic(this, &APUCookingStation::OnInteractionBoxBeginOverlap);
-        InteractionBox->OnComponentEndOverlap.AddDynamic(this, &APUCookingStation::OnInteractionBoxEndOverlap);
-    }
 }
 
 void APUCookingStation::StartInteraction()
 {
     UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Attempting to start interaction"));
-    if (CanInteract() && DishCustomizationComponent)
+    
+    // Get the character that triggered the interaction
+    AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
+    if (!Character)
     {
-        // Get the character that triggered the interaction
-        AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
-        if (Character)
+        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartInteraction - Failed to get Character reference"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Got character reference"));
+    
+    // Check if we're already in customization mode
+    if (IsValid(DishCustomizationComponent) && DishCustomizationComponent->IsCustomizing())
+    {
+        UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Already in customization mode, ignoring interaction"));
+        return;
+    }
+
+    // Check if player has a current order
+    if (Character->HasCurrentOrder())
+    {
+        const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has active order: %s"), 
+            *CurrentOrder.OrderID.ToString());
+        
+        // Use event-driven data passing
+        if (CurrentOrder.BaseDish.DishTag.IsValid())
         {
-            UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Got character reference"));
+            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Broadcasting initial dish data from order: %s"), 
+                *CurrentOrder.BaseDish.DisplayName.ToString());
             
-            // Check if we're already in customization mode
-            if (DishCustomizationComponent->IsCustomizing())
+            // Debug: Log the base dish details
+            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Base dish details:"));
+            UE_LOG(LogTemp, Display, TEXT("  - Dish Tag: %s"), *CurrentOrder.BaseDish.DishTag.ToString());
+            UE_LOG(LogTemp, Display, TEXT("  - Display Name: %s"), *CurrentOrder.BaseDish.DisplayName.ToString());
+            UE_LOG(LogTemp, Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable ? TEXT("Valid") : TEXT("NULL"));
+            UE_LOG(LogTemp, Display, TEXT("  - Ingredient Instances: %d"), CurrentOrder.BaseDish.IngredientInstances.Num());
+            
+            for (int32 i = 0; i < CurrentOrder.BaseDish.IngredientInstances.Num(); i++)
             {
-                UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Already in customization mode, ignoring interaction"));
-                return;
+                const FIngredientInstance& Instance = CurrentOrder.BaseDish.IngredientInstances[i];
+                // Use convenient field if available, fallback to data field
+                FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+                UE_LOG(LogTemp, Display, TEXT("    - Instance %d: %s (Qty: %d)"), 
+                    i, *InstanceTag.ToString(), Instance.Quantity);
             }
-
-            // Check if player has a current order
-            if (Character->HasCurrentOrder())
-            {
-                const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has active order: %s"), 
-                    *CurrentOrder.OrderID.ToString());
-                
-                // Use event-driven data passing
-                if (CurrentOrder.BaseDish.DishTag.IsValid())
-                {
-                    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Broadcasting initial dish data from order: %s"), 
-                        *CurrentOrder.BaseDish.DisplayName.ToString());
-                    
-                    // Debug: Log the base dish details
-                    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Base dish details:"));
-                    UE_LOG(LogTemp, Display, TEXT("  - Dish Tag: %s"), *CurrentOrder.BaseDish.DishTag.ToString());
-                    UE_LOG(LogTemp, Display, TEXT("  - Display Name: %s"), *CurrentOrder.BaseDish.DisplayName.ToString());
-                    UE_LOG(LogTemp, Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable ? TEXT("Valid") : TEXT("NULL"));
-                    UE_LOG(LogTemp, Display, TEXT("  - Ingredient Instances: %d"), CurrentOrder.BaseDish.IngredientInstances.Num());
-                    
-                    for (int32 i = 0; i < CurrentOrder.BaseDish.IngredientInstances.Num(); i++)
-                    {
-                        const FIngredientInstance& Instance = CurrentOrder.BaseDish.IngredientInstances[i];
-                        // Use convenient field if available, fallback to data field
-                        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
-                        UE_LOG(LogTemp, Display, TEXT("    - Instance %d: %s (Qty: %d)"), 
-                            i, *InstanceTag.ToString(), Instance.Quantity);
-                    }
-                    
-                    // Use the event-driven approach
-                    DishCustomizationComponent->BroadcastInitialDishData(CurrentOrder.BaseDish);
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
-                }
-
-                // Hide the interaction widget
-                if (InteractionWidget)
-                {
-                    InteractionWidget->SetVisibility(false);
-                }
-
-                // Start dish customization with the character reference
-                DishCustomizationComponent->StartCustomization(Character);
-                BroadcastInteractionStarted();
-            }
-            else
-            {
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has no active order, starting dialogue"));
-                
-                // Start dialogue instead of dish customization
-                StartNoOrderDialogue();
-                
-                // Broadcast interaction started for dialogue
-                BroadcastInteractionStarted();
-            }
+            
+            // Use the event-driven approach
+            DishCustomizationComponent->BroadcastInitialDishData(CurrentOrder.BaseDish);
         }
         else
         {
-            UE_LOG(LogTemp, Error, TEXT("CookingStation::StartInteraction - Failed to get Character reference"));
-            BroadcastInteractionFailed();
+            UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
         }
+
+        // Start dish customization with the character reference
+        DishCustomizationComponent->StartCustomization(Character);
+        
+        // Call parent to handle interaction state
+        Super::StartInteraction();
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Cannot interact: CanInteract=%d, HasDishComponent=%d"), 
-            CanInteract(), DishCustomizationComponent != nullptr);
-        BroadcastInteractionFailed();
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has no active order, starting dialogue"));
+        
+        // Let parent handle dialogue creation and interaction state
+        Super::StartInteraction();
     }
 }
 
 void APUCookingStation::EndInteraction()
 {
-    if (DishCustomizationComponent)
+    // End dish customization if active
+    if (IsValid(DishCustomizationComponent))
     {
         DishCustomizationComponent->EndCustomization();
     }
 
-    // Show the interaction widget again
-    if (InteractionWidget)
-    {
-        InteractionWidget->SetVisibility(true);
-    }
-
-    BroadcastInteractionEnded();
+    // Call parent to handle interaction state and dialogue cleanup
+    Super::EndInteraction();
 }
 
-FText APUCookingStation::GetInteractionText() const
-{
-    return StationName;
-}
 
-FText APUCookingStation::GetInteractionDescription() const
-{
-    return StationDescription;
-}
 
 void APUCookingStation::OnCustomizationEnded()
 {
@@ -185,10 +152,10 @@ void APUCookingStation::OnCustomizationEnded()
     AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
     if (Character && Character->HasCurrentOrder())
     {
-        // Get the completed dish data
-        if (DishCustomizationComponent)
-        {
-            const FPUDishBase& CompletedDish = DishCustomizationComponent->GetCurrentDishData();
+            // Get the completed dish data
+    if (IsValid(DishCustomizationComponent))
+    {
+        const FPUDishBase& CompletedDish = DishCustomizationComponent->GetCurrentDishData();
             const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
             
             UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Validating dish against order: %s"), 
@@ -332,138 +299,59 @@ float APUCookingStation::CalculateSatisfactionScore(const FPUDishBase& Dish, con
     return SatisfactionScore;
 }
 
-void APUCookingStation::OnInteractionBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
-{
-    if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(OtherActor))
-    {
-        UE_LOG(LogTemp, Log, TEXT("CookingStation::OnInteractionBoxBeginOverlap - Player entered range"));
-        Character->RegisterInteractable(this);
-        BroadcastInteractionRangeEntered();
 
-        // Show the interaction widget
-        if (InteractionWidget)
-        {
-            InteractionWidget->SetVisibility(true);
-        }
-    }
-}
-
-void APUCookingStation::OnInteractionBoxEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-    if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(OtherActor))
-    {
-        UE_LOG(LogTemp, Log, TEXT("CookingStation::OnInteractionBoxEndOverlap - Player exited range"));
-        Character->UnregisterInteractable(this);
-        BroadcastInteractionRangeExited();
-
-        // Hide the interaction widget
-        if (InteractionWidget)
-        {
-            InteractionWidget->SetVisibility(false);
-        }
-    }
-}
 
 void APUCookingStation::StartNoOrderDialogue()
 {
     UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Starting no order dialogue"));
     
-    if (!NoOrderDialogue)
+    // Use TalkingObject's built-in dialogue system
+    if (AvailableDialogues.Num() > 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartNoOrderDialogue - No dialogue asset assigned"));
-        return;
-    }
-    
-    // Get the player controller
-    APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
-    if (!PlayerController)
-    {
-        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to get player controller"));
-        return;
-    }
-    
-    // Get the player character
-    AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PlayerController->GetPawn());
-    if (!Character)
-    {
-        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to get player character"));
-        return;
-    }
-    
-    // Create participants array - just the cooking station and the player character
-    TArray<UObject*> Participants;
-    Participants.Add(this);
-    Participants.Add(Character);
-    
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Starting dialogue with %d participants"), Participants.Num());
-    
-    // Start the dialogue
-    UDlgContext* DialogueContext = UDlgManager::StartDialogue(NoOrderDialogue, Participants);
-    
-    if (DialogueContext)
-    {
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Dialogue context created successfully"));
-        
-        // Get the dialogue box from the character and open it
-        UPUDialogueBox* DialogueBox = Character->GetDialogueBox();
-        if (DialogueBox)
-        {
-            DialogueBox->Open(DialogueContext);
-            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Dialogue box opened"));
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to get dialogue box from character"));
-        }
+        StartRandomDialogue();
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartNoOrderDialogue - Failed to create dialogue context"));
+        UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartNoOrderDialogue - No dialogue available"));
     }
 }
 
-// IDlgDialogueParticipant interface implementation
-FName APUCookingStation::GetParticipantName_Implementation() const
-{
-    return ParticipantName;
-}
-
+// Override dialogue participant methods for cooking station specific logic
 bool APUCookingStation::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
 {
     UE_LOG(LogTemp, Display, TEXT("CookingStation::CheckCondition - Condition: %s"), *ConditionName.ToString());
     
+    // Call parent implementation first
+    bool bParentResult = Super::CheckCondition_Implementation(Context, ConditionName);
+    
     // Add any cooking station specific conditions here
-    return false;
-}
-
-float APUCookingStation::GetFloatValue_Implementation(FName ValueName) const
-{
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetFloatValue - Value: %s"), *ValueName.ToString());
-    return 0.0f;
-}
-
-int32 APUCookingStation::GetIntValue_Implementation(FName ValueName) const
-{
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetIntValue - Value: %s"), *ValueName.ToString());
-    return 0;
-}
-
-bool APUCookingStation::GetBoolValue_Implementation(FName ValueName) const
-{
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetBoolValue - Value: %s"), *ValueName.ToString());
-    return false;
-}
-
-FName APUCookingStation::GetNameValue_Implementation(FName ValueName) const
-{
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::GetNameValue - Value: %s"), *ValueName.ToString());
-    return NAME_None;
+    // For example, you could check if the player has an active order
+    if (ConditionName == TEXT("HasActiveOrder"))
+    {
+        AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
+        if (Character)
+        {
+            return Character->HasCurrentOrder();
+        }
+    }
+    
+    return bParentResult;
 }
 
 bool APUCookingStation::OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName)
 {
     UE_LOG(LogTemp, Display, TEXT("CookingStation::OnDialogueEvent - Event: %s"), *EventName.ToString());
     
-    // Handle any cooking station specific dialogue events here
-    return false;
+    // Call parent implementation first
+    bool bParentResult = Super::OnDialogueEvent_Implementation(Context, EventName);
+    
+    // Handle cooking station specific dialogue events
+    if (EventName == TEXT("EndDialogue"))
+    {
+        UE_LOG(LogTemp, Display, TEXT("CookingStation::OnDialogueEvent - Ending dialogue"));
+        EndInteraction();
+        return true;
+    }
+    
+    return bParentResult;
 }
