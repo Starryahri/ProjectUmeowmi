@@ -102,7 +102,7 @@ public:
 
     // Get a dish from a data table by tag
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static bool GetDishFromDataTable(UDataTable* DishDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish);
+    static bool GetDishFromDataTable(UDataTable* DishDataTable, UDataTable* IngredientDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish);
 
     // Get a random dish tag from available dishes
     UFUNCTION(BlueprintCallable, Category = "Dish")

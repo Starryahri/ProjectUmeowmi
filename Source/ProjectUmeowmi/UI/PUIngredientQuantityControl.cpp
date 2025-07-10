@@ -78,17 +78,10 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     // Update UI components
     UpdateIngredientDisplay();
     
-    if (IngredientIcon && IngredientInstance.IngredientData.PreviewTexture.IsValid())
+    if (IngredientIcon && IngredientInstance.IngredientData.PreviewTexture)
     {
-        if (UTexture2D* LoadedTexture = IngredientInstance.IngredientData.PreviewTexture.LoadSynchronous())
-        {
-            IngredientIcon->SetBrushFromTexture(LoadedTexture);
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Updated ingredient icon"));
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Failed to load texture"));
-        }
+        IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Updated ingredient icon"));
     }
     
     // Update quantity controls
@@ -374,12 +367,8 @@ void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparatio
         return;
     }
     
-    // Load the preview texture if it's a soft reference
-    UTexture2D* PreviewTexture = nullptr;
-    if (PreparationData.PreviewTexture.IsValid())
-    {
-        PreviewTexture = PreparationData.PreviewTexture.LoadSynchronous();
-    }
+    // Get the preview texture
+    UTexture2D* PreviewTexture = PreparationData.PreviewTexture;
     
     // Set the preparation data
     PreparationCheckbox->SetPreparationData(

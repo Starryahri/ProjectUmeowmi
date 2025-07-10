@@ -616,7 +616,7 @@ void AProjectUmeowmiCharacter::OnOrderFailed()
 void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order)
 {
 	// Clear UObject references in the completed dish
-	if (Order.CompletedDish.PreviewTexture.IsValid())
+	if (Order.CompletedDish.PreviewTexture)
 	{
 		Order.CompletedDish.PreviewTexture = nullptr;
 	}
@@ -628,7 +628,7 @@ void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order
 	// Clear UObject references in all ingredient instances
 	for (FIngredientInstance& Instance : Order.CompletedDish.IngredientInstances)
 	{
-		if (Instance.IngredientData.PreviewTexture.IsValid())
+		if (Instance.IngredientData.PreviewTexture)
 		{
 			Instance.IngredientData.PreviewTexture = nullptr;
 		}
@@ -647,7 +647,7 @@ void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order
 	}
 	
 	// Clear UObject references in the base dish
-	if (Order.BaseDish.PreviewTexture.IsValid())
+	if (Order.BaseDish.PreviewTexture)
 	{
 		Order.BaseDish.PreviewTexture = nullptr;
 	}
@@ -659,7 +659,7 @@ void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order
 	// Clear UObject references in base dish ingredient instances
 	for (FIngredientInstance& Instance : Order.BaseDish.IngredientInstances)
 	{
-		if (Instance.IngredientData.PreviewTexture.IsValid())
+		if (Instance.IngredientData.PreviewTexture)
 		{
 			Instance.IngredientData.PreviewTexture = nullptr;
 		}

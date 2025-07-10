@@ -60,17 +60,25 @@ void UPUIngredientButton::SetIngredientData(const FPUIngredientBase& InIngredien
         UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Updated ingredient name text"));
     }
     
-    if (IngredientIcon && IngredientData.PreviewTexture.IsValid())
+    if (IngredientIcon)
     {
-        if (UTexture2D* LoadedTexture = IngredientData.PreviewTexture.LoadSynchronous())
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Ingredient icon component found"));
+        
+        if (IngredientData.PreviewTexture)
         {
-            IngredientIcon->SetBrushFromTexture(LoadedTexture);
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Updated ingredient icon"));
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Preview texture found, setting icon"));
+            IngredientIcon->SetBrushFromTexture(IngredientData.PreviewTexture);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Successfully set texture: %p"), IngredientData.PreviewTexture);
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientButton::SetIngredientData - Failed to load texture"));
+            UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientButton::SetIngredientData - Preview texture is null for ingredient: %s"), 
+                *IngredientData.DisplayName.ToString());
         }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientButton::SetIngredientData - Ingredient icon component not found"));
     }
     
     // Call Blueprint event

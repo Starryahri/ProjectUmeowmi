@@ -59,15 +59,7 @@ void UPUOrderComponent::GenerateNewOrder()
     }
     
     // Generate a simple order with safety checks
-    try
-    {
-        GenerateSimpleOrder();
-    }
-    catch (...)
-    {
-        UE_LOG(LogTemp, Error, TEXT("UPUOrderComponent::GenerateNewOrder - Exception occurred during simple order generation!"));
-        return;
-    }
+    GenerateSimpleOrder();
     
     // Set active flag
     bHasActiveOrder = true;
@@ -87,7 +79,7 @@ void UPUOrderComponent::ClearCurrentOrder()
     UE_LOG(LogTemp, Display, TEXT("UPUOrderComponent::ClearCurrentOrder - Cleaning up UObject references"));
     
     // Clear UObject references in the completed dish
-    if (CurrentOrder.CompletedDish.PreviewTexture.IsValid())
+    if (CurrentOrder.CompletedDish.PreviewTexture)
     {
         CurrentOrder.CompletedDish.PreviewTexture = nullptr;
     }
@@ -99,7 +91,7 @@ void UPUOrderComponent::ClearCurrentOrder()
     // Clear UObject references in all ingredient instances
     for (FIngredientInstance& Instance : CurrentOrder.CompletedDish.IngredientInstances)
     {
-        if (Instance.IngredientData.PreviewTexture.IsValid())
+        if (Instance.IngredientData.PreviewTexture)
         {
             Instance.IngredientData.PreviewTexture = nullptr;
         }
@@ -118,7 +110,7 @@ void UPUOrderComponent::ClearCurrentOrder()
     }
     
     // Clear UObject references in the base dish
-    if (CurrentOrder.BaseDish.PreviewTexture.IsValid())
+    if (CurrentOrder.BaseDish.PreviewTexture)
     {
         CurrentOrder.BaseDish.PreviewTexture = nullptr;
     }
@@ -130,7 +122,7 @@ void UPUOrderComponent::ClearCurrentOrder()
     // Clear UObject references in base dish ingredient instances
     for (FIngredientInstance& Instance : CurrentOrder.BaseDish.IngredientInstances)
     {
-        if (Instance.IngredientData.PreviewTexture.IsValid())
+        if (Instance.IngredientData.PreviewTexture)
         {
             Instance.IngredientData.PreviewTexture = nullptr;
         }
@@ -185,15 +177,7 @@ void UPUOrderComponent::GenerateSimpleOrder()
     
     // Get a random dish tag with safety check
     FGameplayTag DishTag;
-    try
-    {
-        DishTag = UPUDishBlueprintLibrary::GetRandomDishTag();
-    }
-    catch (...)
-    {
-        UE_LOG(LogTemp, Error, TEXT("UPUOrderComponent::GenerateSimpleOrder - Exception occurred getting random dish tag!"));
-        DishTag = FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee"));
-    }
+    DishTag = UPUDishBlueprintLibrary::GetRandomDishTag();
     
     if (!DishTag.IsValid())
     {
@@ -211,15 +195,7 @@ void UPUOrderComponent::GenerateSimpleOrder()
     if (DishDataTable && IsValid(DishDataTable))
     {
         UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Attempting to get dish from data table"));
-        try
-        {
-            bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, DishTag, BaseDish);
-        }
-        catch (...)
-        {
-            UE_LOG(LogTemp, Error, TEXT("UPUOrderComponent::GenerateSimpleOrder - Exception occurred during data table access!"));
-            bGotBaseDish = false;
-        }
+        bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, BaseDish);
         UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - GetDishFromDataTable result: %s"), 
             bGotBaseDish ? TEXT("SUCCESS") : TEXT("FAILED"));
     }
@@ -256,93 +232,14 @@ void UPUOrderComponent::GenerateSimpleOrder()
         *OrderID.ToString(), *DishTag.ToString());
     
     // Create the order using the Blueprint Library with safety check
-    try
-    {
-        // Clean up any existing UObject references before setting new order
-        if (bHasActiveOrder)
-        {
-            UE_LOG(LogTemp, Display, TEXT("UPUOrderComponent::GenerateSimpleOrder - Cleaning up existing UObject references"));
-            
-            // Clear UObject references in the completed dish
-            if (CurrentOrder.CompletedDish.PreviewTexture.IsValid())
-            {
-                CurrentOrder.CompletedDish.PreviewTexture = nullptr;
-            }
-            if (CurrentOrder.CompletedDish.IngredientDataTable.IsValid())
-            {
-                CurrentOrder.CompletedDish.IngredientDataTable = nullptr;
-            }
-            
-            // Clear UObject references in all ingredient instances
-            for (FIngredientInstance& Instance : CurrentOrder.CompletedDish.IngredientInstances)
-            {
-                if (Instance.IngredientData.PreviewTexture.IsValid())
-                {
-                    Instance.IngredientData.PreviewTexture = nullptr;
-                }
-                if (Instance.IngredientData.MaterialInstance.IsValid())
-                {
-                    Instance.IngredientData.MaterialInstance = nullptr;
-                }
-                if (Instance.IngredientData.IngredientMesh.IsValid())
-                {
-                    Instance.IngredientData.IngredientMesh = nullptr;
-                }
-                if (Instance.IngredientData.PreparationDataTable.IsValid())
-                {
-                    Instance.IngredientData.PreparationDataTable = nullptr;
-                }
-            }
-            
-            // Clear UObject references in the base dish
-            if (CurrentOrder.BaseDish.PreviewTexture.IsValid())
-            {
-                CurrentOrder.BaseDish.PreviewTexture = nullptr;
-            }
-            if (CurrentOrder.BaseDish.IngredientDataTable.IsValid())
-            {
-                CurrentOrder.BaseDish.IngredientDataTable = nullptr;
-            }
-            
-            // Clear UObject references in base dish ingredient instances
-            for (FIngredientInstance& Instance : CurrentOrder.BaseDish.IngredientInstances)
-            {
-                if (Instance.IngredientData.PreviewTexture.IsValid())
-                {
-                    Instance.IngredientData.PreviewTexture = nullptr;
-                }
-                if (Instance.IngredientData.MaterialInstance.IsValid())
-                {
-                    Instance.IngredientData.MaterialInstance = nullptr;
-                }
-                if (Instance.IngredientData.IngredientMesh.IsValid())
-                {
-                    Instance.IngredientData.IngredientMesh = nullptr;
-                }
-                if (Instance.IngredientData.PreparationDataTable.IsValid())
-                {
-                    Instance.IngredientData.PreparationDataTable = nullptr;
-                }
-            }
-        }
-        
-        CurrentOrder = UPUOrderBlueprintLibrary::CreateSimpleOrder(
-            OrderID,
-            FText::FromString(FString::Printf(TEXT("Simple %s order"), *DishTag.ToString())),
-            DefaultMinIngredients,
-            DefaultTargetFlavor,
-            DefaultMinFlavorValue,
-            DialogueText
-        );
-    }
-    catch (...)
-    {
-        UE_LOG(LogTemp, Error, TEXT("UPUOrderComponent::GenerateSimpleOrder - Exception occurred creating simple order!"));
-        // Create a fallback order
-        CurrentOrder.OrderID = OrderID;
-        CurrentOrder.OrderDescription = FText::FromString(FString::Printf(TEXT("Simple %s order"), *DishTag.ToString()));
-        CurrentOrder.OrderDialogueText = DialogueText;
-    }
+    CurrentOrder = UPUOrderBlueprintLibrary::CreateSimpleOrder(
+        OrderID,
+        FText::FromString(FString::Printf(TEXT("Simple %s order"), *DishTag.ToString())),
+        DefaultMinIngredients,
+        DefaultTargetFlavor,
+        DefaultMinFlavorValue,
+        DialogueText
+    );
     
     // Set the base dish in the order
     CurrentOrder.BaseDish = BaseDish;

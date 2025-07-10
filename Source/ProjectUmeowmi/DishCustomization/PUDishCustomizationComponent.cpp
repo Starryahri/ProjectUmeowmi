@@ -36,21 +36,26 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
 
 void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter* Character)
 {
+    UE_LOG(LogTemp, Display, TEXT("🚀 UPUDishCustomizationComponent::StartCustomization - STARTING CUSTOMIZATION"));
+    
     if (!Character)
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get Character in StartCustomization"));
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to get Character"));
         return;
     }
 
+    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
     CurrentCharacter = Character;
 
     // Get the player controller
     APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
     if (!PlayerController)
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get Player Controller in StartCustomization"));
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to get Player Controller"));
         return;
     }
+
+    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Player Controller valid: %s"), *PlayerController->GetName());
 
     // Set input mode first to ensure the input system is ready
     FInputModeGameAndUI InputMode;
@@ -72,130 +77,172 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
     PlayerController->SetMouseLocation(ViewportSizeX / 2, ViewportSizeY / 2);
 
+    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Input mode set, viewport size: %dx%d"), ViewportSizeX, ViewportSizeY);
+
     // Handle mapping contexts
     if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
     {
-        UE_LOG(LogTemp, Log, TEXT("Found Enhanced Input Subsystem"));
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Found Enhanced Input Subsystem"));
         
         // Store the original mapping context
         OriginalMappingContext = Character->GetDefaultMappingContext();
-        UE_LOG(LogTemp, Log, TEXT("Original mapping context: %s"), OriginalMappingContext ? *OriginalMappingContext->GetName() : TEXT("None"));
+        UE_LOG(LogTemp, Display, TEXT("📋 UPUDishCustomizationComponent::StartCustomization - Original mapping context: %s"), 
+            OriginalMappingContext ? *OriginalMappingContext->GetName() : TEXT("None"));
         
         // Remove the original mapping context
         if (OriginalMappingContext)
         {
             Subsystem->RemoveMappingContext(OriginalMappingContext);
-            UE_LOG(LogTemp, Log, TEXT("Removed original mapping context"));
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Removed original mapping context"));
         }
 
         // Add the customization mapping context
         if (CustomizationMappingContext)
         {
-            UE_LOG(LogTemp, Log, TEXT("Adding customization mapping context: %s"), *CustomizationMappingContext->GetName());
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Adding customization mapping context: %s"), *CustomizationMappingContext->GetName());
             Subsystem->AddMappingContext(CustomizationMappingContext, 0);
-            UE_LOG(LogTemp, Log, TEXT("Added customization mapping context"));
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Added customization mapping context"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("No CustomizationMappingContext set"));
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No CustomizationMappingContext set"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get Enhanced Input Subsystem"));
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to get Enhanced Input Subsystem"));
     }
 
     // Setup input handling for exit action and controller mouse
     if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerController->InputComponent))
     {
-        UE_LOG(LogTemp, Log, TEXT("Found Enhanced Input Component"));
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Found Enhanced Input Component"));
         
         // First unbind any existing bindings to ensure clean state
         if (ControllerMouseAction)
         {
             EnhancedInputComponent->RemoveBindingByHandle(ControllerMouseBindingHandle);
-            UE_LOG(LogTemp, Log, TEXT("Removed existing controller mouse binding"));
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Removed existing controller mouse binding"));
         }
         
         if (ExitCustomizationAction)
         {
             EnhancedInputComponent->RemoveBindingByHandle(ExitActionBindingHandle);
-            UE_LOG(LogTemp, Log, TEXT("Removed existing exit action binding"));
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Removed existing exit action binding"));
         }
 
         // Now set up new bindings
         if (ExitCustomizationAction)
         {
-            UE_LOG(LogTemp, Log, TEXT("Binding exit action: %s"), *ExitCustomizationAction->GetName());
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Binding exit action: %s"), *ExitCustomizationAction->GetName());
             ExitActionBindingHandle = EnhancedInputComponent->BindAction(ExitCustomizationAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleExitInput).GetHandle();
-            UE_LOG(LogTemp, Log, TEXT("Exit action bound with handle: %d"), ExitActionBindingHandle);
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Exit action bound with handle: %d"), ExitActionBindingHandle);
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("No ExitCustomizationAction set"));
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No ExitCustomizationAction set"));
         }
 
         if (ControllerMouseAction)
         {
-            UE_LOG(LogTemp, Log, TEXT("Binding controller mouse action: %s"), *ControllerMouseAction->GetName());
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Binding controller mouse action: %s"), *ControllerMouseAction->GetName());
             // Bind to both Ongoing and Triggered events to ensure we catch all input
             ControllerMouseBindingHandle = EnhancedInputComponent->BindAction(ControllerMouseAction, ETriggerEvent::Ongoing, this, &UPUDishCustomizationComponent::HandleControllerMouse).GetHandle();
             EnhancedInputComponent->BindAction(ControllerMouseAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleControllerMouse);
-            UE_LOG(LogTemp, Log, TEXT("Controller mouse action bound with handle: %d"), ControllerMouseBindingHandle);
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Controller mouse action bound with handle: %d"), ControllerMouseBindingHandle);
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("No ControllerMouseAction set"));
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No ControllerMouseAction set"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get Enhanced Input Component"));
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to get Enhanced Input Component"));
     }
 
     // Create and show the customization widget
+    UE_LOG(LogTemp, Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - About to create widget"));
+    UE_LOG(LogTemp, Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - CustomizationWidgetClass: %s"), 
+        CustomizationWidgetClass ? *CustomizationWidgetClass->GetName() : TEXT("NULL"));
+    
     if (CustomizationWidgetClass)
     {
-        CustomizationWidget = CreateWidget<UUserWidget>(GetWorld(), CustomizationWidgetClass);
+        UE_LOG(LogTemp, Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - Creating widget with class: %s"), *CustomizationWidgetClass->GetName());
+        
+        UWorld* World = GetWorld();
+        if (!World)
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - No World available for widget creation"));
+            return;
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - World valid: %s"), *World->GetName());
+        
+        CustomizationWidget = CreateWidget<UUserWidget>(World, CustomizationWidgetClass);
         if (CustomizationWidget)
         {
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget created successfully: %s"), *CustomizationWidget->GetName());
+            
             // Try to cast to our custom widget class and set up the connection
             if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
             {
-                UE_LOG(LogTemp, Log, TEXT("UPUDishCustomizationComponent::StartCustomization - Connecting widget to component"));
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget is PUDishCustomizationWidget, connecting to component"));
                 DishWidget->SetCustomizationComponent(this);
+                
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Component connection completed"));
             }
             else
             {
-                UE_LOG(LogTemp, Warning, TEXT("UPUDishCustomizationComponent::StartCustomization - Widget is not a PUDishCustomizationWidget, manual connection may be needed"));
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - Widget is not a PUDishCustomizationWidget, manual connection may be needed"));
+                UE_LOG(LogTemp, Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - Widget class: %s"), *CustomizationWidget->GetClass()->GetName());
             }
             
             // Pass the initial dish data to the widget during creation
             // The widget can access this data in its construction script or BeginPlay
-            UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Created - Initial dish data available"));
+            UE_LOG(LogTemp, Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - About to add widget to viewport"));
             
             CustomizationWidget->AddToViewport();
-            UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Added to Viewport"));
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget added to viewport successfully"));
+            
+            // Check if widget is visible
+            if (CustomizationWidget->IsVisible())
+            {
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget is visible"));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - Widget is NOT visible"));
+            }
             
             // Broadcast the initial dish data now that the widget is created and subscribed
             if (CurrentDishData.DishTag.IsValid())
             {
-                UE_LOG(LogTemp, Log, TEXT("UPUDishCustomizationComponent::StartCustomization - Broadcasting initial dish data to newly created widget"));
+                UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::StartCustomization - Broadcasting initial dish data to newly created widget"));
+                UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::StartCustomization - Dish data: %s"), *CurrentDishData.DisplayName.ToString());
                 BroadcastInitialDishData(CurrentDishData);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No valid dish data to broadcast"));
             }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("Failed to create Customization UI Widget"));
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to create Customization UI Widget"));
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Widget class: %s"), *CustomizationWidgetClass->GetName());
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("No CustomizationWidgetClass set"));
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - No CustomizationWidgetClass set"));
     }
 
     // Start camera transition to customization view
+    UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::StartCustomization - Starting camera transition"));
     StartCameraTransition(true);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎉 UPUDishCustomizationComponent::StartCustomization - CUSTOMIZATION STARTED SUCCESSFULLY"));
 }
 
 void UPUDishCustomizationComponent::EndCustomization()
@@ -512,16 +559,92 @@ void UPUDishCustomizationComponent::BroadcastDishDataUpdate(const FPUDishBase& N
 
 void UPUDishCustomizationComponent::BroadcastInitialDishData(const FPUDishBase& InitialDishData)
 {
-    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s with %d ingredients"), 
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - STARTING BROADCAST"));
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Component name: %s"), *GetName());
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s with %d ingredients"), 
         *InitialDishData.DisplayName.ToString(), InitialDishData.IngredientInstances.Num());
     
+    // Log dish details
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Dish tag: %s"), *InitialDishData.DishTag.ToString());
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Dish display name: %s"), *InitialDishData.DisplayName.ToString());
+    
+    // Log ingredient details
+    for (int32 i = 0; i < InitialDishData.IngredientInstances.Num(); i++)
+    {
+        const FIngredientInstance& Instance = InitialDishData.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Ingredient %d: %s (Qty: %d, ID: %d)"), 
+            i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity, Instance.InstanceID);
+    }
+    
     // Set the initial dish data
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Setting initial dish data"));
     UpdateCurrentDishData(InitialDishData);
     
     // Broadcast the initial data to all subscribers
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting to subscribers"));
     OnInitialDishDataReceived.Broadcast(InitialDishData);
+    
+    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::BroadcastInitialDishData - BROADCAST COMPLETED SUCCESSFULLY"));
 }
 
+void UPUDishCustomizationComponent::SetDataTables(UDataTable* DishTable, UDataTable* IngredientTable, UDataTable* PreparationTable)
+{
+    UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDataTables - Setting data table references"));
+    
+    IngredientDataTable = IngredientTable;
+    PreparationDataTable = PreparationTable;
+}
 
+TArray<FPUIngredientBase> UPUDishCustomizationComponent::GetIngredientData() const
+{
+    TArray<FPUIngredientBase> IngredientData;
+    
+    if (IngredientDataTable)
+    {
+        UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Getting ingredient data from table: %s"), *IngredientDataTable->GetName());
+        
+        TArray<FName> RowNames = IngredientDataTable->GetRowNames();
+        for (const FName& RowName : RowNames)
+        {
+            if (FPUIngredientBase* Ingredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredientData")))
+            {
+                IngredientData.Add(*Ingredient);
+            }
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Retrieved %d ingredients"), IngredientData.Num());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishCustomizationComponent::GetIngredientData - No ingredient data table available"));
+    }
+    
+    return IngredientData;
+}
 
- 
+TArray<FPUPreparationBase> UPUDishCustomizationComponent::GetPreparationData() const
+{
+    TArray<FPUPreparationBase> PreparationData;
+    
+    if (PreparationDataTable)
+    {
+        UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::GetPreparationData - Getting preparation data from table: %s"), *PreparationDataTable->GetName());
+        
+        TArray<FName> RowNames = PreparationDataTable->GetRowNames();
+        for (const FName& RowName : RowNames)
+        {
+            if (FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(RowName, TEXT("GetPreparationData")))
+            {
+                PreparationData.Add(*Preparation);
+            }
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::GetPreparationData - Retrieved %d preparations"), PreparationData.Num());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("UPUDishCustomizationComponent::GetPreparationData - No preparation data table available"));
+    }
+    
+    return PreparationData;
+}

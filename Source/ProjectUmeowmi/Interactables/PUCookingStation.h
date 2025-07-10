@@ -41,6 +41,18 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
     FText StationDescription;
 
+    // Data tables for dish customization (same as order component)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* DishDataTable;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* IngredientDataTable;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* PreparationDataTable;
+
+
+
     // Helper functions
     UFUNCTION()
     void OnCustomizationEnded();

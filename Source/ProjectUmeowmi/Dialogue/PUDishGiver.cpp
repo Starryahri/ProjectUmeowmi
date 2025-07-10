@@ -57,28 +57,15 @@ void APUDishGiver::GenerateOrderForDialogue()
 {
     UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Generating order for dialogue"));
     
+    // Generate the order
     if (!IsValid(OrderComponent))
     {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Order component is null!"));
+        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Order component is not valid!"));
         return;
     }
     
-    // Add safety check for the world
-    if (!GetWorld())
-    {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - No valid world!"));
-        return;
-    }
-    
-    try
-    {
-        OrderComponent->GenerateNewOrder();
-        UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Order generated successfully"));
-    }
-    catch (...)
-    {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Exception occurred during order generation!"));
-    }
+    OrderComponent->GenerateNewOrder();
+    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Order generated successfully"));
 }
 
 void APUDishGiver::GenerateAndGiveOrderToPlayer()
@@ -116,16 +103,8 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
     }
     
     // Generate the order with safety checks
-    try
-    {
-        UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Calling GenerateOrderForDialogue"));
-        GenerateOrderForDialogue();
-    }
-    catch (...)
-    {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Exception occurred during order generation!"));
-        return;
-    }
+    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Calling GenerateOrderForDialogue"));
+    GenerateOrderForDialogue();
     
     // Validate that the order was generated successfully
     if (!OrderComponent->HasActiveOrder())

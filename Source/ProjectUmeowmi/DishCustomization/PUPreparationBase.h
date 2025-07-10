@@ -119,7 +119,7 @@ public:
 
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Visual")
-    TSoftObjectPtr<UTexture2D> PreviewTexture;
+    UTexture2D* PreviewTexture;
 
     // Name Modification
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Naming")

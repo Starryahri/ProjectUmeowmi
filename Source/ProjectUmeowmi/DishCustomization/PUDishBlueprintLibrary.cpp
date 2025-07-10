@@ -439,7 +439,7 @@ bool UPUDishBlueprintLibrary::HasIngredient(const FPUDishBase& Dish, const FGame
     return Dish.HasIngredient(IngredientTag);
 }
 
-bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish)
+bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UDataTable* IngredientDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish)
 {
     if (!DishDataTable)
     {
@@ -470,15 +470,36 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, co
             UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Found dish: %s with %d default ingredients"), 
                 *OutDish.DisplayName.ToString(), OutDish.IngredientInstances.Num());
             
+            // DEBUG: Print dish data table path and ingredient data table status
+            FString DishDataTablePath = DishDataTable->GetPathName();
+            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish Data Table Path: %s"), *DishDataTablePath);
+            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Ingredient Data Table Provided: %s"), IngredientDataTable ? TEXT("TRUE") : TEXT("FALSE"));
+            
+            // Print to screen as well
+            if (GEngine)
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Dish Data Table: %s"), *DishDataTablePath));
+                GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Ingredient Data Table Provided: %s"), IngredientDataTable ? TEXT("TRUE") : TEXT("FALSE")));
+            }
+            
             // Populate IngredientData for each instance using the convenient fields
             for (FIngredientInstance& Instance : OutDish.IngredientInstances)
             {
-                if (Instance.IngredientTag.IsValid() && OutDish.IngredientDataTable.IsValid())
+                if (Instance.IngredientTag.IsValid() && IngredientDataTable)
                 {
                     UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Populating ingredient data for tag: %s"), 
                         *Instance.IngredientTag.ToString());
                     
-                    UDataTable* LoadedIngredientDataTable = OutDish.IngredientDataTable.LoadSynchronous();
+                    // DEBUG: Print ingredient data table status
+                    UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Using provided ingredient data table"));
+                    
+                    // Print to screen as well
+                    if (GEngine)
+                    {
+                        GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, FString::Printf(TEXT("Using provided ingredient data table")));
+                    }
+                    
+                    UDataTable* LoadedIngredientDataTable = IngredientDataTable;
                     if (LoadedIngredientDataTable)
                     {
                         // Get the ingredient name from the tag (everything after the last period) and convert to lowercase
@@ -543,7 +564,13 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, co
                     }
                     else
                     {
-                        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Failed to load ingredient data table"));
+                        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - No ingredient data table provided"));
+                        
+                        // Print to screen as well
+                        if (GEngine)
+                        {
+                            GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, FString::Printf(TEXT("No ingredient data table provided")));
+                        }
                     }
                 }
             }

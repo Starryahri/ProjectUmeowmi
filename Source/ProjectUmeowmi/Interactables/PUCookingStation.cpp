@@ -115,6 +115,17 @@ void APUCookingStation::StartInteraction()
             UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
         }
 
+        // Set the data tables on the dish customization component
+        if (IngredientDataTable && PreparationDataTable)
+        {
+            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Setting data tables on dish customization component"));
+            DishCustomizationComponent->SetDataTables(DishDataTable, IngredientDataTable, PreparationDataTable);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Data tables not set on cooking station"));
+        }
+        
         // Start dish customization with the character reference
         DishCustomizationComponent->StartCustomization(Character);
         
