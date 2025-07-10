@@ -202,8 +202,9 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
             // The widget can access this data in its construction script or BeginPlay
             UE_LOG(LogTemp, Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - About to add widget to viewport"));
             
-            CustomizationWidget->AddToViewport();
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget added to viewport successfully"));
+            // Add to viewport with a lower Z-Order so it doesn't override the recipe book widget
+            CustomizationWidget->AddToViewport(250);
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget added to viewport successfully with Z-Order -100"));
             
             // Check if widget is visible
             if (CustomizationWidget->IsVisible())
