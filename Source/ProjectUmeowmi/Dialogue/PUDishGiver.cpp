@@ -23,30 +23,30 @@ void APUDishGiver::BeginPlay()
 
 void APUDishGiver::StartInteraction()
 {
-    //UE_LOG(LogTemp, Log, TEXT("APUDishGiver::StartInteraction - Starting interaction with dish giver: %s"), *GetTalkingObjectDisplayName().ToString());
-    //
-    //// Find the player character first to check their current order status
-    //AProjectUmeowmiCharacter* PlayerChar = nullptr;
-    //if (UWorld* World = GetWorld())
-    //{
-    //    if (APlayerController* PC = World->GetFirstPlayerController())
-    //    {
-    //        PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
-    //    }
-    //}
-    //
-    //// Check if player has a completed order first
-    //if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
-    //{
-    //    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
-    //    HandleOrderCompletion(PlayerChar);
-    //}
-    //// Check if player already has an active order
-    //else if (PlayerChar && PlayerChar->HasCurrentOrder())
-    //{
-    //    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
-    //        *PlayerChar->GetCurrentOrder().OrderID.ToString());
-    //}
+    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::StartInteraction - Starting interaction with dish giver: %s"), *GetTalkingObjectDisplayName().ToString());
+    
+    // Find the player character first to check their current order status
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+        }
+    }
+    
+    // Check if player has a completed order first
+    if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
+        HandleOrderCompletion(PlayerChar);
+    }
+    // Check if player already has an active order
+    else if (PlayerChar && PlayerChar->HasCurrentOrder())
+    {
+        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
+            *PlayerChar->GetCurrentOrder().OrderID.ToString());
+    }
     
     // Don't generate orders automatically - let dialogue control this
     // Just start the dialogue system
