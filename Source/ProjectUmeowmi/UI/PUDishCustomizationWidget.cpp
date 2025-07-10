@@ -386,4 +386,19 @@ void UPUDishCustomizationWidget::UnsubscribeFromEvents()
         CustomizationComponent->OnDishDataUpdated.RemoveDynamic(this, &UPUDishCustomizationWidget::OnDishDataUpdated);
         CustomizationComponent->OnCustomizationEnded.RemoveDynamic(this, &UPUDishCustomizationWidget::OnCustomizationEnded);
     }
+}
+
+void UPUDishCustomizationWidget::EndCustomizationFromUI()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::EndCustomizationFromUI - UI button pressed to end customization"));
+    
+    if (CustomizationComponent)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::EndCustomizationFromUI - Calling EndCustomization on component"));
+        CustomizationComponent->EndCustomization();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::EndCustomizationFromUI - No customization component available"));
+    }
 } 

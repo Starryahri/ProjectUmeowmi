@@ -43,6 +43,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
 
+    // End customization function for UI buttons
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
+    void EndCustomizationFromUI();
+
     // Update dish data and sync back to component
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void UpdateDishData(const FPUDishBase& NewDishData);
