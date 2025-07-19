@@ -275,15 +275,21 @@ void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
     ClearPreparationCheckboxes();
     
     // Check if we have a preparation data table
-    if (!IngredientInstance.IngredientData.PreparationDataTable)
+    if (!IngredientInstance.IngredientData.PreparationDataTable.IsValid())
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
         return;
     }
     
-    // Get all rows from the preparation data table
+    UDataTable* LoadedPreparationDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
+    if (!LoadedPreparationDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Failed to load preparation data table"));
+        return;
+    }
+    
     TArray<FPUPreparationBase*> PreparationRows;
-    IngredientInstance.IngredientData.PreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("UpdatePreparationCheckboxes"), PreparationRows);
+    LoadedPreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("UpdatePreparationCheckboxes"), PreparationRows);
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Found %d preparation options"), PreparationRows.Num());
     
@@ -361,12 +367,8 @@ void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparatio
         return;
     }
     
-    // Load the preview texture if it's a soft reference
-    UTexture2D* PreviewTexture = nullptr;
-    if (PreparationData.PreviewTexture.IsValid())
-    {
-        PreviewTexture = PreparationData.PreviewTexture.LoadSynchronous();
-    }
+    // Get the preview texture
+    UTexture2D* PreviewTexture = PreparationData.PreviewTexture;
     
     // Set the preparation data
     PreparationCheckbox->SetPreparationData(

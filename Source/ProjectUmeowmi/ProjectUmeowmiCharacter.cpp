@@ -439,6 +439,13 @@ void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 {
 	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Setting current order: %s"), *Order.OrderID.ToString());
 	
+	// Clean up any existing UObject references before setting new order
+	if (bHasCurrentOrder)
+	{
+		UE_LOG(LogTemp, Display, TEXT("SetCurrentOrder - Cleaning up existing UObject references"));
+		CleanupOrderUObjectReferences(CurrentOrder);
+	}
+	
 	CurrentOrder = Order;
 	bHasCurrentOrder = true;
 	bCurrentOrderCompleted = false;
@@ -456,6 +463,11 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
 	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
+	// Properly clean up UObject references before clearing
+	UE_LOG(LogTemp, Display, TEXT("ClearCurrentOrder - Cleaning up UObject references"));
+	CleanupOrderUObjectReferences(CurrentOrder);
+	
+	// Now safely clear the order data
 	CurrentOrder = FPUOrderBase();
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
@@ -470,19 +482,12 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 
 void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float SatisfactionScore)
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetOrderResult - Order completed: %s, Satisfaction: %.2f"), 
-		bCompleted ? TEXT("YES") : TEXT("NO"), SatisfactionScore);
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetOrderResult - Order completed: YES, Satisfaction: %.2f"), 
+		SatisfactionScore);
 	
-	if (bCompleted)
-	{
-		bHasCurrentOrder = false;      // Clear active flag
-		bCurrentOrderCompleted = true; // Set completed flag
-	}
-	else
-	{
-		bHasCurrentOrder = true;       // Keep active flag
-		bCurrentOrderCompleted = false; // Clear completed flag
-	}
+	// Orders are always completed when submitted - satisfaction score indicates quality
+	bHasCurrentOrder = false;      // Clear active flag
+	bCurrentOrderCompleted = true; // Set completed flag
 	CurrentOrderSatisfaction = SatisfactionScore;
 	
 	// Display the order result immediately
@@ -493,45 +498,33 @@ void AProjectUmeowmiCharacter::DisplayOrderResult()
 {
 	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::DisplayOrderResult - Displaying order result"));
 	
-	if (bCurrentOrderCompleted)
+	// Orders are always completed - satisfaction score indicates quality
+	// Determine satisfaction level
+	FString SatisfactionLevel;
+	if (CurrentOrderSatisfaction >= 0.9f)
 	{
-		// Determine satisfaction level
-		FString SatisfactionLevel;
-		if (CurrentOrderSatisfaction >= 0.9f)
-		{
-			SatisfactionLevel = TEXT("Perfect!");
-		}
-		else if (CurrentOrderSatisfaction >= 0.7f)
-		{
-			SatisfactionLevel = TEXT("Great!");
-		}
-		else if (CurrentOrderSatisfaction >= 0.5f)
-		{
-			SatisfactionLevel = TEXT("Good!");
-		}
-		else
-		{
-			SatisfactionLevel = TEXT("Okay.");
-		}
-		
-		UE_LOG(LogTemp, Display, TEXT("=== ORDER COMPLETED ==="));
-		UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
-		UE_LOG(LogTemp, Display, TEXT("Satisfaction: %s (%.1f%%)"), *SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
-		UE_LOG(LogTemp, Display, TEXT("====================="));
-		
-		// Call the order completed event
-		OnOrderCompleted();
+		SatisfactionLevel = TEXT("Perfect!");
+	}
+	else if (CurrentOrderSatisfaction >= 0.7f)
+	{
+		SatisfactionLevel = TEXT("Great!");
+	}
+	else if (CurrentOrderSatisfaction >= 0.5f)
+	{
+		SatisfactionLevel = TEXT("Good!");
 	}
 	else
 	{
-		UE_LOG(LogTemp, Display, TEXT("=== ORDER FAILED ==="));
-		UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
-		UE_LOG(LogTemp, Display, TEXT("The dish didn't meet the requirements."));
-		UE_LOG(LogTemp, Display, TEXT("==================="));
-		
-		// Call the order failed event
-		OnOrderFailed();
+		SatisfactionLevel = TEXT("Okay.");
 	}
+	
+	UE_LOG(LogTemp, Display, TEXT("=== ORDER COMPLETED ==="));
+	UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %s (%.1f%%)"), *SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
+	UE_LOG(LogTemp, Display, TEXT("====================="));
+	
+	// Call the order completed event
+	OnOrderCompleted();
 }
 
 void AProjectUmeowmiCharacter::ClearCompletedOrder()
@@ -543,6 +536,18 @@ void AProjectUmeowmiCharacter::ClearCompletedOrder()
 	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
 	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
+	// Validate that we can safely clear the order
+	if (!bCurrentOrderCompleted)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ClearCompletedOrder - Cannot clear: order not completed"));
+		return;
+	}
+	
+	// Properly clean up UObject references before clearing
+	UE_LOG(LogTemp, Display, TEXT("ClearCompletedOrder - Cleaning up UObject references"));
+	CleanupOrderUObjectReferences(CurrentOrder);
+	
+	// Now safely clear the order data
 	CurrentOrder = FPUOrderBase();
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
@@ -562,35 +567,28 @@ FText AProjectUmeowmiCharacter::GetOrderResultText() const
 		return FText::FromString(TEXT("No order completed yet."));
 	}
 	
-	FString ResultText;
-	if (bCurrentOrderCompleted)
+	// Orders are always completed - satisfaction score indicates quality
+	// Determine satisfaction level
+	FString SatisfactionLevel;
+	if (CurrentOrderSatisfaction >= 0.9f)
 	{
-		// Determine satisfaction level
-		FString SatisfactionLevel;
-		if (CurrentOrderSatisfaction >= 0.9f)
-		{
-			SatisfactionLevel = TEXT("Perfect!");
-		}
-		else if (CurrentOrderSatisfaction >= 0.7f)
-		{
-			SatisfactionLevel = TEXT("Great!");
-		}
-		else if (CurrentOrderSatisfaction >= 0.5f)
-		{
-			SatisfactionLevel = TEXT("Good!");
-		}
-		else
-		{
-			SatisfactionLevel = TEXT("Okay.");
-		}
-		
-		ResultText = FString::Printf(TEXT("Order Completed!\nSatisfaction: %s (%.1f%%)"), 
-			*SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
+		SatisfactionLevel = TEXT("Perfect!");
+	}
+	else if (CurrentOrderSatisfaction >= 0.7f)
+	{
+		SatisfactionLevel = TEXT("Great!");
+	}
+	else if (CurrentOrderSatisfaction >= 0.5f)
+	{
+		SatisfactionLevel = TEXT("Good!");
 	}
 	else
 	{
-		ResultText = TEXT("Order Failed!\nThe dish didn't meet the requirements.");
+		SatisfactionLevel = TEXT("Okay.");
 	}
+	
+	FString ResultText = FString::Printf(TEXT("Order Completed!\nSatisfaction: %s (%.1f%%)"), 
+		*SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
 	
 	return FText::FromString(ResultText);
 }
@@ -607,12 +605,77 @@ void AProjectUmeowmiCharacter::OnOrderCompleted()
 
 void AProjectUmeowmiCharacter::OnOrderFailed()
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderFailed - Order failed"));
+	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderFailed - Order completed with low satisfaction"));
 	
 	// This function can be overridden in Blueprints to add visual/audio feedback
-	// For now, just log the failure
-	UE_LOG(LogTemp, Display, TEXT("❌ ORDER FAILED ❌"));
-	UE_LOG(LogTemp, Display, TEXT("Try again with different ingredients or preparation!"));
+	// Note: Orders are now always completed - this event is for low satisfaction scenarios
+	UE_LOG(LogTemp, Display, TEXT("⚠️ ORDER COMPLETED WITH LOW SATISFACTION ⚠️"));
+	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %.1f%% - Try again for better results!"), CurrentOrderSatisfaction * 100.0f);
+}
+
+void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order)
+{
+	// Clear UObject references in the completed dish
+	if (Order.CompletedDish.PreviewTexture)
+	{
+		Order.CompletedDish.PreviewTexture = nullptr;
+	}
+	if (Order.CompletedDish.IngredientDataTable.IsValid())
+	{
+		Order.CompletedDish.IngredientDataTable = nullptr;
+	}
+	
+	// Clear UObject references in all ingredient instances
+	for (FIngredientInstance& Instance : Order.CompletedDish.IngredientInstances)
+	{
+		if (Instance.IngredientData.PreviewTexture)
+		{
+			Instance.IngredientData.PreviewTexture = nullptr;
+		}
+		if (Instance.IngredientData.MaterialInstance.IsValid())
+		{
+			Instance.IngredientData.MaterialInstance = nullptr;
+		}
+		if (Instance.IngredientData.IngredientMesh.IsValid())
+		{
+			Instance.IngredientData.IngredientMesh = nullptr;
+		}
+		if (Instance.IngredientData.PreparationDataTable.IsValid())
+		{
+			Instance.IngredientData.PreparationDataTable = nullptr;
+		}
+	}
+	
+	// Clear UObject references in the base dish
+	if (Order.BaseDish.PreviewTexture)
+	{
+		Order.BaseDish.PreviewTexture = nullptr;
+	}
+	if (Order.BaseDish.IngredientDataTable.IsValid())
+	{
+		Order.BaseDish.IngredientDataTable = nullptr;
+	}
+	
+	// Clear UObject references in base dish ingredient instances
+	for (FIngredientInstance& Instance : Order.BaseDish.IngredientInstances)
+	{
+		if (Instance.IngredientData.PreviewTexture)
+		{
+			Instance.IngredientData.PreviewTexture = nullptr;
+		}
+		if (Instance.IngredientData.MaterialInstance.IsValid())
+		{
+			Instance.IngredientData.MaterialInstance = nullptr;
+		}
+		if (Instance.IngredientData.IngredientMesh.IsValid())
+		{
+			Instance.IngredientData.IngredientMesh = nullptr;
+		}
+		if (Instance.IngredientData.PreparationDataTable.IsValid())
+		{
+			Instance.IngredientData.PreparationDataTable = nullptr;
+		}
+	}
 }
 
 void AProjectUmeowmiCharacter::ShowMouseCursor()
@@ -627,6 +690,47 @@ void AProjectUmeowmiCharacter::ShowMouseCursor()
 void AProjectUmeowmiCharacter::HideMouseCursor()
 {
 	// Do nothing - we want the cursor to always be visible
+}
+
+void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up character: %s"), *GetName());
+	
+	// Clear order UObject references to prevent garbage collection issues
+	if (bHasCurrentOrder || bCurrentOrderCompleted)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up order UObject references"));
+		CleanupOrderUObjectReferences(CurrentOrder);
+		
+		// Clear the order data
+		CurrentOrder = FPUOrderBase();
+		bHasCurrentOrder = false;
+		bCurrentOrderCompleted = false;
+		CurrentOrderSatisfaction = 0.0f;
+	}
+	
+	// Clear talking object reference to prevent dangling references
+	if (CurrentTalkingObject)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing talking object reference"));
+		CurrentTalkingObject = nullptr;
+	}
+	
+	// Clear interactable reference
+	if (CurrentInteractable)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing interactable reference"));
+		CurrentInteractable = nullptr;
+	}
+	
+	// Clear dialogue box reference
+	if (DialogueBox)
+	{
+		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing dialogue box reference"));
+		DialogueBox = nullptr;
+	}
+	
+	Super::EndPlay(EndPlayReason);
 }
 
 void AProjectUmeowmiCharacter::SetMousePosition(int32 X, int32 Y)

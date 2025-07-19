@@ -38,6 +38,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Dish")
     FPUDishBase BaseDish;
 
+    // Order completion data
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Completion")
+    FPUDishBase CompletedDish; // The actual dish the player created
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Completion")
+    float FinalSatisfactionScore = 0.0f;
+
     // Validation methods
     bool ValidateDish(const FPUDishBase& Dish) const;
 
@@ -47,4 +54,13 @@ public:
     void LogOrderDetails() const;
 
     void LogValidationResults(const FPUDishBase& Dish) const;
+
+    void LogCompletionDetails() const;
+
+    // Completion data access
+    bool IsCompleted() const { return FinalSatisfactionScore > 0.0f; }
+    
+    const FPUDishBase& GetCompletedDish() const { return CompletedDish; }
+    
+    float GetFinalSatisfactionScore() const { return FinalSatisfactionScore; }
 }; 

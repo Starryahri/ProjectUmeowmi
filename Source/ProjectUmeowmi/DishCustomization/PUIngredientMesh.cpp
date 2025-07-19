@@ -26,15 +26,21 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
     IngredientData = InIngredientData;
 
     // Set the mesh
-    if (IngredientData.IngredientMesh)
+    if (IngredientData.IngredientMesh.IsValid())
     {
-        MeshComponent->SetStaticMesh(IngredientData.IngredientMesh);
+        if (UStaticMesh* LoadedMesh = IngredientData.IngredientMesh.LoadSynchronous())
+        {
+            MeshComponent->SetStaticMesh(LoadedMesh);
+        }
     }
 
     // Set the material
-    if (IngredientData.MaterialInstance)
+    if (IngredientData.MaterialInstance.IsValid())
     {
-        MeshComponent->SetMaterial(0, IngredientData.MaterialInstance);
+        if (UMaterialInterface* LoadedMaterial = IngredientData.MaterialInstance.LoadSynchronous())
+        {
+            MeshComponent->SetMaterial(0, LoadedMaterial);
+        }
     }
     else if (DefaultMaterial)
     {
@@ -69,9 +75,12 @@ void APUIngredientMesh::OnMouseHoverEnd()
     {
         bIsHovered = false;
         // Restore original material
-        if (IngredientData.MaterialInstance)
+        if (IngredientData.MaterialInstance.IsValid())
         {
-            MeshComponent->SetMaterial(0, IngredientData.MaterialInstance);
+            if (UMaterialInterface* LoadedMaterial = IngredientData.MaterialInstance.LoadSynchronous())
+            {
+                MeshComponent->SetMaterial(0, LoadedMaterial);
+            }
         }
         else if (DefaultMaterial)
         {
@@ -106,9 +115,12 @@ void APUIngredientMesh::OnMouseRelease()
     {
         bIsGrabbed = false;
         // Restore original material
-        if (IngredientData.MaterialInstance)
+        if (IngredientData.MaterialInstance.IsValid())
         {
-            MeshComponent->SetMaterial(0, IngredientData.MaterialInstance);
+            if (UMaterialInterface* LoadedMaterial = IngredientData.MaterialInstance.LoadSynchronous())
+            {
+                MeshComponent->SetMaterial(0, LoadedMaterial);
+            }
         }
         else if (DefaultMaterial)
         {

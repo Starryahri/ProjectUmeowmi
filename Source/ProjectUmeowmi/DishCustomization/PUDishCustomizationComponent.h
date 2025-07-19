@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "PUDishBase.h"
+#include "PUPreparationBase.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "PUDishCustomizationComponent.generated.h"
 
@@ -56,6 +57,18 @@ public:
     // Function to set the initial dish data from an order
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Orders")
     void SetInitialDishData(const FPUDishBase& InitialDishData);
+
+    // Function to set the data table references
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
+    void SetDataTables(UDataTable* DishTable, UDataTable* IngredientTable, UDataTable* PreparationTable);
+
+    // Function to get ingredient data for the widget
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
+    TArray<FPUIngredientBase> GetIngredientData() const;
+
+    // Function to get preparation data for the widget
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
+    TArray<FPUPreparationBase> GetPreparationData() const;
 
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Dish Customization")
@@ -112,6 +125,13 @@ public:
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
     FPUDishBase CurrentDishData;
+
+    // Data table references (for accessing ingredient and preparation data)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* IngredientDataTable;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* PreparationDataTable;
 
 protected:
     // Internal state management

@@ -143,7 +143,10 @@ private:
     // Internal state
     bool bIsInteracting = false;
 
+    // Add UPROPERTY() to prevent garbage collection issues
+    UPROPERTY()
     TSet<UDlgDialogue*> UsedDialogues;
+    
     bool bPlayerInRange = false;
 
     // Helper methods

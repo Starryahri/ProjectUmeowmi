@@ -31,13 +31,21 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void OnCustomizationEnded();
 
-    // Set the customization component reference
+    // Set the customization component reference (for event subscription only)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void SetCustomizationComponent(UPUDishCustomizationComponent* Component);
+
+    // Get the customization component reference (for accessing data)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
+    UPUDishCustomizationComponent* GetCustomizationComponent() const { return CustomizationComponent; }
 
     // Get current dish data
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
+
+    // End customization function for UI buttons
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
+    void EndCustomizationFromUI();
 
     // Update dish data and sync back to component
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
@@ -60,10 +68,6 @@ protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")
     FPUDishBase CurrentDishData;
-
-    // Reference to the customization component
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UPUDishCustomizationComponent* CustomizationComponent;
 
     // Widget class references
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
@@ -92,6 +96,10 @@ protected:
     void OnQuantityControlCreated(class UPUIngredientQuantityControl* QuantityControl, const FIngredientInstance& IngredientInstance);
 
 private:
+    // Internal component reference for event subscription only
+    UPROPERTY()
+    UPUDishCustomizationComponent* CustomizationComponent;
+
     void SubscribeToEvents();
     void UnsubscribeFromEvents();
 

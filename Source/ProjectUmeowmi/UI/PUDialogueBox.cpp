@@ -162,6 +162,9 @@ void UPUDialogueBox::Close_Implementation()
     UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Close_Implementation called"));
     UE_LOG(LogTemp, Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
     
+    // Clear the context reference to prevent dangling references
+    CurrentContext = nullptr;
+    
     SetVisibility(ESlateVisibility::Hidden);
     UE_LOG(LogTemp, Log, TEXT("Visibility set to hidden. New visibility state: %d"), (int32)GetVisibility());
 
@@ -207,6 +210,10 @@ void UPUDialogueBox::Close_Implementation()
 void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
 {
     UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Update_Implementation called"));
+    
+    // Store the context for reference
+    CurrentContext = ActiveContext;
+    
     if (IsValid(ActiveContext))
     {
         FText ParticipantDisplayName = ActiveContext->GetActiveNodeParticipantDisplayName();
@@ -257,6 +264,9 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 }
             }
 
+            // Clear the context reference before closing
+            CurrentContext = nullptr;
+            
             if (GetVisibility() != ESlateVisibility::Hidden)
             {
                 Close();
@@ -266,6 +276,10 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
     else
     {
         UE_LOG(LogTemp, Error, TEXT("PUDialogueBox::Update_Implementation called with invalid context"));
+        
+        // Clear the context reference
+        CurrentContext = nullptr;
+        
         if (GetVisibility() != ESlateVisibility::Hidden)
         {
             Close();

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "PUInteractableBase.h"
+#include "../Dialogue/TalkingObject.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "../DishCustomization/PUOrderBase.h"
@@ -10,23 +10,21 @@
 #include "PUCookingStation.generated.h"
 
 UCLASS()
-class PROJECTUMEOWMI_API APUCookingStation : public APUInteractableBase
+class PROJECTUMEOWMI_API APUCookingStation : public ATalkingObject
 {
     GENERATED_BODY()
 
 public:
     APUCookingStation();
 
-    // APUInteractableBase overrides
+    // ATalkingObject overrides
     virtual void StartInteraction() override;
     virtual void EndInteraction() override;
-    virtual FText GetInteractionText() const override;
-    virtual FText GetInteractionDescription() const override;
 
 protected:
     virtual void BeginPlay() override;
 
-    // Components
+    // Cooking Station specific components
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UStaticMeshComponent* StationMesh;
 
@@ -36,30 +34,40 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UPUDishCustomizationComponent* DishCustomizationComponent;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UWidgetComponent* InteractionWidget;
-
-    // Interaction properties
+    // Cooking Station specific properties
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
     FText StationName;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
     FText StationDescription;
 
+    // Data tables for dish customization (same as order component)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* DishDataTable;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* IngredientDataTable;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* PreparationDataTable;
+
+
+
     // Helper functions
     UFUNCTION()
     void OnCustomizationEnded();
 
+    // Cooking Station specific dialogue methods
+    UFUNCTION(BlueprintCallable, Category = "Cooking Station|Dialogue")
+    void StartNoOrderDialogue();
+
+    // Override dialogue participant methods for cooking station specific logic
+    virtual bool CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const override;
+    virtual bool OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName) override;
+
     // Order validation
     UFUNCTION(BlueprintCallable, Category = "Cooking Station|Orders")
     bool ValidateDishAgainstOrder(const FPUDishBase& Dish, const FPUOrderBase& Order, float& OutSatisfactionScore) const;
-
-    // Interaction range events
-    UFUNCTION()
-    void OnInteractionBoxBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
-
-    UFUNCTION()
-    void OnInteractionBoxEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 
 private:
     // Calculate satisfaction score for order completion

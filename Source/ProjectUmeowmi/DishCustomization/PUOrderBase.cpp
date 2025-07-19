@@ -94,4 +94,52 @@ void FPUOrderBase::LogValidationResults(const FPUDishBase& Dish) const
     UE_LOG(LogTemp, Display, TEXT("Validation Result: %s"), bValid ? TEXT("PASS") : TEXT("FAIL"));
     UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), Satisfaction);
     UE_LOG(LogTemp, Display, TEXT("========================="));
+}
+
+void FPUOrderBase::LogCompletionDetails() const
+{
+    if (!IsCompleted())
+    {
+        UE_LOG(LogTemp, Display, TEXT("=== ORDER NOT COMPLETED ==="));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("=== ORDER COMPLETION DETAILS ==="));
+    UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *OrderID.ToString());
+    UE_LOG(LogTemp, Display, TEXT("Final Satisfaction Score: %.2f"), FinalSatisfactionScore);
+    
+    // Log completed dish details
+    UE_LOG(LogTemp, Display, TEXT("Completed Dish:"));
+    UE_LOG(LogTemp, Display, TEXT("  - Total Ingredients: %d"), CompletedDish.IngredientInstances.Num());
+    UE_LOG(LogTemp, Display, TEXT("  - Total Quantity: %d"), CompletedDish.GetTotalIngredientQuantity());
+    
+    // Log each ingredient in the completed dish
+    for (int32 i = 0; i < CompletedDish.IngredientInstances.Num(); i++)
+    {
+        const FIngredientInstance& Instance = CompletedDish.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("  - Ingredient %d: %s (Qty: %d)"), 
+            i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity);
+        
+        // Log preparations if any
+        if (Instance.IngredientData.ActivePreparations.Num() > 0)
+        {
+            TArray<FGameplayTag> PreparationTags;
+            Instance.IngredientData.ActivePreparations.GetGameplayTagArray(PreparationTags);
+            FString PrepString = TEXT("    Preparations: ");
+            for (const FGameplayTag& PrepTag : PreparationTags)
+            {
+                PrepString += PrepTag.ToString() + TEXT(", ");
+            }
+            UE_LOG(LogTemp, Display, TEXT("    %s"), *PrepString);
+        }
+    }
+    
+    // Log final flavor values
+    if (!TargetFlavorProperty.IsNone())
+    {
+        float FinalFlavorValue = CompletedDish.GetTotalValueForProperty(TargetFlavorProperty);
+        UE_LOG(LogTemp, Display, TEXT("Final %s Value: %.2f"), *TargetFlavorProperty.ToString(), FinalFlavorValue);
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("==============================="));
 } 

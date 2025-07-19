@@ -177,10 +177,10 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
                 if (Ingredient.PreviewTexture)
                 {
                     IngredientTextures.Add(InstanceTag, Ingredient.PreviewTexture);
+                    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found ingredient %s with texture %p"), 
+                        *Ingredient.DisplayName.ToString(), 
+                        Ingredient.PreviewTexture);
                 }
-                UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found ingredient %s with texture %p"), 
-                    *Ingredient.DisplayName.ToString(), 
-                    Ingredient.PreviewTexture);
             }
             else
             {

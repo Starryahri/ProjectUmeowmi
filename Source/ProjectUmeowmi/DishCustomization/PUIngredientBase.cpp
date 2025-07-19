@@ -6,13 +6,13 @@
 FPUIngredientBase::FPUIngredientBase()
     : IngredientName(NAME_None)
     , DisplayName(FText::GetEmpty())
+    , PreviewTexture(nullptr)
+    , MaterialInstance(nullptr)
+    , IngredientMesh(nullptr)
     , MinQuantity(0)
     , MaxQuantity(5)
     , CurrentQuantity(0)
     , PreparationDataTable(nullptr)
-    , PreviewTexture(nullptr)
-    , MaterialInstance(nullptr)
-    , IngredientMesh(nullptr)
 {
 }
 
@@ -142,41 +142,89 @@ bool FPUIngredientBase::HasPreparation(const FGameplayTag& PreparationTag) const
 
 FText FPUIngredientBase::GetCurrentDisplayName() const
 {
-    FText CurrentName = DisplayName;
-    
-    if (!PreparationDataTable)
+    // If we have active preparations, try to get a modified name
+    if (ActivePreparations.Num() > 0 && PreparationDataTable.IsValid())
     {
-        return CurrentName;
-    }
-    
-    // Get all active preparation tags
-    TArray<FGameplayTag> ActiveTags;
-    ActivePreparations.GetGameplayTagArray(ActiveTags);
-    
-    // Sort preparations by their tag to ensure consistent order
-    ActiveTags.Sort([](const FGameplayTag& A, const FGameplayTag& B) {
-        return A.ToString() < B.ToString();
-    });
-    
-    // Apply name modifications in order
-    for (const FGameplayTag& Tag : ActiveTags)
-    {
-        // Get the full tag string and split at the last period
-        FString FullTag = Tag.ToString();
-        int32 LastPeriodIndex;
-        if (FullTag.FindLastChar('.', LastPeriodIndex))
+        UDataTable* LoadedPreparationDataTable = PreparationDataTable.LoadSynchronous();
+        if (LoadedPreparationDataTable)
         {
-            // Get everything after the last period and convert to lowercase
-            FString TagName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-            FName RowName = FName(*TagName);
-            FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(RowName, TEXT("GetCurrentDisplayName"));
+            // Get all preparation tags
+            TArray<FGameplayTag> PrepTags;
+            ActivePreparations.GetGameplayTagArray(PrepTags);
             
-            if (Preparation)
+            if (PrepTags.Num() > 0)
             {
-                CurrentName = Preparation->GetModifiedName(CurrentName);
+                FString CombinedPrefix;
+                FString CombinedSuffix;
+                FString SpecialOverrideName;
+                bool bHasSpecialOverride = false;
+                
+                // Process all preparations to combine their prefixes and suffixes
+                for (const FGameplayTag& PrepTag : PrepTags)
+                {
+                    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+                    FString PrepFullTag = PrepTag.ToString();
+                    int32 PrepLastPeriodIndex;
+                    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                    {
+                        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                        FName PrepRowName = FName(*PrepName);
+                        
+                        if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetCurrentDisplayName")))
+                        {
+                            // If any preparation overrides the base name, use the special name
+                            if (Preparation->OverridesBaseName)
+                            {
+                                SpecialOverrideName = Preparation->SpecialName.ToString();
+                                bHasSpecialOverride = true;
+                                break; // Special override takes precedence, stop processing
+                            }
+                            
+                            // Combine prefixes and suffixes
+                            if (!Preparation->NamePrefix.IsEmpty())
+                            {
+                                if (!CombinedPrefix.IsEmpty())
+                                {
+                                    CombinedPrefix += " ";
+                                }
+                                CombinedPrefix += Preparation->NamePrefix.ToString();
+                            }
+                            
+                            if (!Preparation->NameSuffix.IsEmpty())
+                            {
+                                if (!CombinedSuffix.IsEmpty())
+                                {
+                                    CombinedSuffix = " " + CombinedSuffix;
+                                }
+                                CombinedSuffix = Preparation->NameSuffix.ToString() + CombinedSuffix;
+                            }
+                        }
+                    }
+                }
+                
+                // Return the appropriate modified name
+                if (bHasSpecialOverride)
+                {
+                    return FText::FromString(SpecialOverrideName);
+                }
+                else if (!CombinedPrefix.IsEmpty() || !CombinedSuffix.IsEmpty())
+                {
+                    FString ModifiedName = CombinedPrefix;
+                    if (!CombinedPrefix.IsEmpty())
+                    {
+                        ModifiedName += " ";
+                    }
+                    ModifiedName += DisplayName.ToString();
+                    if (!CombinedSuffix.IsEmpty())
+                    {
+                        ModifiedName += " " + CombinedSuffix;
+                    }
+                    return FText::FromString(ModifiedName);
+                }
             }
         }
     }
     
-    return CurrentName;
+    // Return the base display name if no preparations or no data table
+    return DisplayName;
 } 

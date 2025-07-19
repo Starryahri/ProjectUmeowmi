@@ -154,8 +154,10 @@ void ATalkingObject::EndInteraction()
     UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Ending interaction for %s"), *GetName());
     bIsInteracting = false;
     
+    // Properly clear the dialogue context to prevent dangling references
     if (CurrentDialogueContext)
     {
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Clearing dialogue context"));
         CurrentDialogueContext = nullptr;
     }
 
@@ -188,6 +190,13 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
         return;
     }
 
+    // Clear any existing dialogue context first to prevent dangling references
+    if (CurrentDialogueContext)
+    {
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::StartSpecificDialogue - Clearing existing dialogue context"));
+        CurrentDialogueContext = nullptr;
+    }
+
     // Get the player controller first
     APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
     if (!PlayerController)
@@ -212,31 +221,72 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
         return;
     }
 
-    // Create participants array
+    // Create participants array with proper validation
     TArray<UObject*> Participants;
     
-    // Add the talking object itself
-    Participants.Add(this);
-    UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Added talking object as participant: %s"), *GetName());
+    // Add the talking object itself (validate first)
+    if (IsValid(this))
+    {
+        Participants.Add(this);
+        UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Added talking object as participant: %s"), *GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("TalkingObject::StartSpecificDialogue - Talking object is not valid!"));
+        return;
+    }
 
     // For NPCs, add the player character (Bao)
     if (ObjectType == ETalkingObjectType::NPC)
     {
-        // Add the player character
-        Participants.Add(PlayerCharacter);
-        UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Added player character as participant"));
+        // Add the player character (validate first)
+        if (IsValid(PlayerCharacter))
+        {
+            Participants.Add(PlayerCharacter);
+            UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Added player character as participant"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartSpecificDialogue - Player character is not valid, skipping"));
+        }
 
         // Get all other NPCs with dialogue participant interface
         TArray<UObject*> AllParticipants = UDlgManager::GetObjectsWithDialogueParticipantInterface(this);
         UE_LOG(LogTemp, Display, TEXT("TalkingObject::StartSpecificDialogue - Found %d total participants in level"), AllParticipants.Num());
 
-        // Add other NPCs that are in our allowed list
+        // Add other NPCs that are in our allowed list (with validation)
         for (UObject* Participant : AllParticipants)
         {
+            // Validate participant before using
+            if (!IsValid(Participant))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartSpecificDialogue - Skipping invalid participant"));
+                continue;
+            }
+
+            // Additional safety check: ensure participant is still in the world
+            if (AActor* ActorParticipant = Cast<AActor>(Participant))
+            {
+                if (!IsValid(ActorParticipant) || !ActorParticipant->IsValidLowLevel())
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartSpecificDialogue - Skipping invalid actor participant: %s"), *ActorParticipant->GetName());
+                    continue;
+                }
+            }
+
             if (Participant != this && Participant != PlayerCharacter) // Skip self and player since we already added them
             {
-                // Get the participant name
-                FName FoundParticipantName = IDlgDialogueParticipant::Execute_GetParticipantName(Participant);
+                // Get the participant name with safety check
+                FName FoundParticipantName = NAME_None;
+                if (Participant->GetClass()->ImplementsInterface(UDlgDialogueParticipant::StaticClass()))
+                {
+                    FoundParticipantName = IDlgDialogueParticipant::Execute_GetParticipantName(Participant);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartSpecificDialogue - Participant doesn't implement dialogue interface: %s"), *Participant->GetName());
+                    continue;
+                }
                 
                 // Check if this participant is in our allowed list
                 if (AllowedParticipantNames.Num() == 0 || AllowedParticipantNames.Contains(FoundParticipantName))
@@ -256,7 +306,31 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
         }
     }
 
-    // Start the dialogue
+    // Validate we have at least the talking object as a participant
+    if (Participants.Num() == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("TalkingObject::StartSpecificDialogue - No valid participants found!"));
+        return;
+    }
+
+    // Final validation: ensure all participants are still valid before starting dialogue
+    for (int32 i = Participants.Num() - 1; i >= 0; --i)
+    {
+        if (!IsValid(Participants[i]))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartSpecificDialogue - Removing invalid participant at index %d"), i);
+            Participants.RemoveAt(i);
+        }
+    }
+
+    // Check again after removing invalid participants
+    if (Participants.Num() == 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("TalkingObject::StartSpecificDialogue - No valid participants remaining after final validation!"));
+        return;
+    }
+
+    // Start the dialogue with validated participants
     CurrentDialogueContext = UDlgManager::StartDialogue(Dialogue, Participants);
 
     // Log the participants in the dialogue context
@@ -269,9 +343,18 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
         {
             FName ParticipantNameKey = Pair.Key;
             UObject* Participant = Pair.Value;
-            UE_LOG(LogTemp, Display, TEXT("  - Participant: %s (Name: %s)"), 
-                *Participant->GetName(), 
-                *ParticipantNameKey.ToString());
+            
+            // Validate participant before logging
+            if (IsValid(Participant))
+            {
+                UE_LOG(LogTemp, Display, TEXT("  - Participant: %s (Name: %s)"), 
+                    *Participant->GetName(), 
+                    *ParticipantNameKey.ToString());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("  - Invalid participant (Name: %s)"), *ParticipantNameKey.ToString());
+            }
         }
 
         // We need to make the dialogue box from the AProjectUmeowmiCharacter visible
@@ -455,5 +538,30 @@ void ATalkingObject::DrawDebugRange() const
 
 void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndPlay - Cleaning up talking object: %s"), *GetName());
+    
+    // Clear dialogue context to prevent dangling references
+    if (CurrentDialogueContext)
+    {
+        UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndPlay - Clearing dialogue context"));
+        CurrentDialogueContext = nullptr;
+    }
+    
+    // Clear used dialogues set
+    UsedDialogues.Empty();
+    
+    // Unregister from player character if still registered
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+            {
+                UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndPlay - Unregistering from player character"));
+                Character->UnregisterTalkingObject(this);
+            }
+        }
+    }
+    
     Super::EndPlay(EndPlayReason);
 } 
