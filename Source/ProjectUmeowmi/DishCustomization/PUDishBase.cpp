@@ -193,6 +193,29 @@ FText FPUDishBase::GetCurrentDisplayName() const
         return CustomName;
     }
     
+    // Count how many ingredients have more than 2 preparations (dubious ingredients)
+    int32 TotalIngredients = 0;
+    int32 DubiousIngredients = 0;
+    
+    for (const FIngredientInstance& Instance : IngredientInstances)
+    {
+        // Use convenient field if available, fallback to data field
+        FGameplayTagContainer Preparations = Instance.Preparations.Num() > 0 ? Instance.Preparations : Instance.IngredientData.ActivePreparations;
+        
+        TotalIngredients += Instance.Quantity;
+        if (Preparations.Num() > 2)
+        {
+            DubiousIngredients += Instance.Quantity;
+        }
+    }
+    
+    // If more than half of the ingredients are dubious, apply "Dubious" to the dish
+    if (TotalIngredients > 0 && DubiousIngredients > TotalIngredients / 2)
+    {
+        FString BaseDishName = DisplayName.ToString();
+        return FText::FromString(TEXT("Dubious ") + BaseDishName);
+    }
+    
     // Track quantities of each ingredient
     TMap<FGameplayTag, int32> IngredientQuantities;
     for (const FIngredientInstance& Instance : IngredientInstances)
@@ -329,4 +352,71 @@ int32 FPUDishBase::GetQuantity(int32 InstanceID) const
         return IngredientInstances[InstanceIndex].Quantity;
     }
     return 0;
-} 
+}
+
+// Plating-related functions (internal use only)
+bool FPUDishBase::HasPlatingData() const
+{
+    for (const FIngredientInstance& Instance : IngredientInstances)
+    {
+        if (Instance.bIsPlated)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void FPUDishBase::SetIngredientPlating(int32 InstanceID, const FVector& Position, const FRotator& Rotation, const FVector& Scale)
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
+        Instance.PlatingPosition = Position;
+        Instance.PlatingRotation = Rotation;
+        Instance.PlatingScale = Scale;
+        Instance.bIsPlated = true;
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ FPUDishBase::SetIngredientPlating - Set plating for instance %d: Pos(%.2f,%.2f,%.2f) Rot(%.2f,%.2f,%.2f) Scale(%.2f,%.2f,%.2f)"), 
+            InstanceID, Position.X, Position.Y, Position.Z, Rotation.Pitch, Rotation.Yaw, Rotation.Roll, Scale.X, Scale.Y, Scale.Z);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::SetIngredientPlating - Instance %d not found"), InstanceID);
+    }
+}
+
+void FPUDishBase::ClearIngredientPlating(int32 InstanceID)
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
+        Instance.bIsPlated = false;
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ FPUDishBase::ClearIngredientPlating - Cleared plating for instance %d"), InstanceID);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::ClearIngredientPlating - Instance %d not found"), InstanceID);
+    }
+}
+
+bool FPUDishBase::GetIngredientPlating(int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale) const
+{
+    int32 InstanceIndex = FindInstanceIndexByID(InstanceID);
+    if (InstanceIndex != INDEX_NONE)
+    {
+        const FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
+        if (Instance.bIsPlated)
+        {
+            OutPosition = Instance.PlatingPosition;
+            OutRotation = Instance.PlatingRotation;
+            OutScale = Instance.PlatingScale;
+            return true;
+        }
+    }
+    return false;
+}
+ 

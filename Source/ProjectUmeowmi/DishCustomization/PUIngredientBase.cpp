@@ -154,6 +154,14 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
             
             if (PrepTags.Num() > 0)
             {
+                // If more than 2 preparations, apply "Dubious" prefix instead of combining prefixes/suffixes
+                if (PrepTags.Num() > 2)
+                {
+                    FString ModifiedName = TEXT("Dubious ");
+                    ModifiedName += DisplayName.ToString();
+                    return FText::FromString(ModifiedName);
+                }
+                
                 FString CombinedPrefix;
                 FString CombinedSuffix;
                 FString SpecialOverrideName;

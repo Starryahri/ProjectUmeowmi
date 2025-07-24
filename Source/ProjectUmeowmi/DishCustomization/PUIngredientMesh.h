@@ -24,10 +24,18 @@ public:
 
     // Mouse interaction functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Interaction")
-    void OnMouseHoverBegin();
+    void OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent);
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Interaction")
-    void OnMouseHoverEnd();
+    void OnMouseHoverEnd(UPrimitiveComponent* TouchedComponent);
+
+    // Override actor mouse interaction
+    virtual void NotifyActorBeginCursorOver() override;
+    virtual void NotifyActorEndCursorOver() override;
+
+    // Debug function to test mouse interaction
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Debug")
+    void TestMouseInteraction();
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Interaction")
     void OnMouseGrab();
@@ -48,7 +56,7 @@ protected:
 
     // Interaction properties
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
-    float HoverHeight = 10.0f;
+    float HoverHeight = 2.0f;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
     float MovementSpeed = 10.0f;

@@ -43,6 +43,19 @@ struct FIngredientInstance
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
     FRotator PlacementRotation;
+
+    // Plating data for this instance (3D positioning on dish)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Plating")
+    FVector PlatingPosition;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Plating")
+    FRotator PlatingRotation;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Plating")
+    FVector PlatingScale;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Plating")
+    bool bIsPlated = false;
 };
 
 USTRUCT(BlueprintType)
@@ -129,6 +142,12 @@ public:
 
     // Helper function to generate a new unique instance ID
     int32 GenerateNewInstanceID() const;
+
+    // Plating-related functions (internal use only)
+    bool HasPlatingData() const;
+    void SetIngredientPlating(int32 InstanceID, const FVector& Position, const FRotator& Rotation, const FVector& Scale);
+    void ClearIngredientPlating(int32 InstanceID);
+    bool GetIngredientPlating(int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale) const;
 
 private:
     // Static counter for generating unique instance IDs
