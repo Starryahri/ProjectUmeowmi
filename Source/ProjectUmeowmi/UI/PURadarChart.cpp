@@ -286,6 +286,57 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     return true;
 }
 
+bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
+{
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Starting flavor profile analysis for dish with %d ingredients"), 
+        Dish.IngredientInstances.Num());
+
+    // Set 6 segments for flavor properties
+    if (!SetSegmentCount(6))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Failed to set segment count"));
+        return false;
+    }
+
+    // Define flavor properties in order
+    TArray<EIngredientPropertyType> FlavorProperties = {
+        EIngredientPropertyType::Sweetness,
+        EIngredientPropertyType::Saltiness,
+        EIngredientPropertyType::Sourness,
+        EIngredientPropertyType::Bitterness,
+        EIngredientPropertyType::Umami,
+        EIngredientPropertyType::Spiciness
+    };
+
+    TArray<float> Values;
+    TArray<FString> DisplayNames;
+
+    for (EIngredientPropertyType PropertyType : FlavorProperties)
+    {
+        // Get the property name
+        FString PropertyName = UEnum::GetDisplayValueAsText(PropertyType).ToString();
+        DisplayNames.Add(PropertyName);
+
+        // Get the total value for this property across all ingredients
+        float TotalValue = Dish.GetTotalValueForProperty(FName(*PropertyName));
+        Values.Add(TotalValue);
+
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: %s = %.2f"), 
+            *PropertyName, TotalValue);
+    }
+
+    // Set the segment names and values
+    SetSegmentNames(DisplayNames);
+    SetValues(Values);
+
+    // Disable icons for flavor profile (no ingredient icons needed)
+    ShowIcons(false);
+
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Completed flavor profile setup"));
+
+    return true;
+}
+
 void UPURadarChart::InitializeSegments()
 {
     // Clear existing segments

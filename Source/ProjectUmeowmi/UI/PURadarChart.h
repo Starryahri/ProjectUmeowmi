@@ -73,6 +73,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Radar Chart")
     bool SetValuesFromDishIngredients(const FPUDishBase& Dish);
 
+    /**
+     * Sets values from a dish's flavor profile properties.
+     * @param Dish - The dish to get flavor profile from
+     * @return True if the values were successfully set
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetValuesFromDishFlavorProfile(const FPUDishBase& Dish);
+
 protected:
     /** Minimum number of segments allowed in the radar chart */
     static constexpr int32 MinSegmentCount = 3;
