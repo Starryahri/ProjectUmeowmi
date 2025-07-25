@@ -291,38 +291,63 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Starting flavor profile analysis for dish with %d ingredients"), 
         Dish.IngredientInstances.Num());
 
-    // Set 6 segments for flavor properties
-    if (!SetSegmentCount(6))
+    // Set 5 segments for the five basic flavors
+    if (!SetSegmentCount(5))
     {
         UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Failed to set segment count"));
         return false;
     }
 
-    // Define flavor properties in order
+    // Define the five basic flavors in order
     TArray<EIngredientPropertyType> FlavorProperties = {
         EIngredientPropertyType::Sweetness,
         EIngredientPropertyType::Saltiness,
         EIngredientPropertyType::Sourness,
         EIngredientPropertyType::Bitterness,
-        EIngredientPropertyType::Umami,
-        EIngredientPropertyType::Spiciness
+        EIngredientPropertyType::Umami
     };
 
     TArray<float> Values;
     TArray<FString> DisplayNames;
 
+    // Debug: Log all ingredient properties first
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Debug - All ingredient properties:"));
+    for (int32 i = 0; i < Dish.IngredientInstances.Num(); ++i)
+    {
+        const FIngredientInstance& Instance = Dish.IngredientInstances[i];
+        UE_LOG(LogTemp, Log, TEXT("  Ingredient %d (%s):"), i, *Instance.IngredientData.IngredientTag.ToString());
+        for (const FIngredientProperty& Property : Instance.IngredientData.NaturalProperties)
+        {
+            FName PropertyName = Property.GetPropertyName();
+            UE_LOG(LogTemp, Log, TEXT("    Property: %s = %.2f"), *PropertyName.ToString(), Property.Value);
+        }
+    }
+
     for (EIngredientPropertyType PropertyType : FlavorProperties)
     {
-        // Get the property name
-        FString PropertyName = UEnum::GetDisplayValueAsText(PropertyType).ToString();
-        DisplayNames.Add(PropertyName);
+        // Get the property name using the same method as FIngredientProperty::GetPropertyName()
+        FString PropertyName;
+        FString EnumString = UEnum::GetValueAsString(PropertyType);
+        if (EnumString.Split(TEXT("::"), nullptr, &PropertyName))
+        {
+            // Successfully extracted the value name
+        }
+        else
+        {
+            // Fallback to the full enum string
+            PropertyName = EnumString;
+        }
 
-        // Get the total value for this property across all ingredients
+        // Use the display text for the segment name
+        FString DisplayName = UEnum::GetDisplayValueAsText(PropertyType).ToString();
+        DisplayNames.Add(DisplayName);
+
+        // Get the total value for this property across all ingredients using the value name
         float TotalValue = Dish.GetTotalValueForProperty(FName(*PropertyName));
         Values.Add(TotalValue);
 
-        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: %s = %.2f"), 
-            *PropertyName, TotalValue);
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: %s (PropertyName: %s) = %.2f"), 
+            *DisplayName, *PropertyName, TotalValue);
     }
 
     // Set the segment names and values

@@ -18,13 +18,24 @@ FPUIngredientBase::FPUIngredientBase()
 
 float FPUIngredientBase::GetPropertyValue(const FName& PropertyName) const
 {
+    UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Looking for property '%s' in ingredient '%s'"), 
+        *PropertyName.ToString(), *IngredientName.ToString());
+    
     for (const FIngredientProperty& Property : NaturalProperties)
     {
-        if (Property.GetPropertyName() == PropertyName)
+        FName CurrentPropertyName = Property.GetPropertyName();
+        UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Checking property '%s' (value: %.2f)"), 
+            *CurrentPropertyName.ToString(), Property.Value);
+        
+        if (CurrentPropertyName == PropertyName)
         {
+            UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Found match! Returning %.2f"), Property.Value);
             return Property.Value;
         }
     }
+    
+    UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Property '%s' not found, returning 0.0"), 
+        *PropertyName.ToString());
     return 0.0f;
 }
 
