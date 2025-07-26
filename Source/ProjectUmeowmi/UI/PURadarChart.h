@@ -81,12 +81,29 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Radar Chart")
     bool SetValuesFromDishFlavorProfile(const FPUDishBase& Dish);
 
+    /**
+     * Sets values from a dish's texture profile properties.
+     * @param Dish - The dish to get texture profile from
+     * @return True if the values were successfully set
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetValuesFromDishTextureProfile(const FPUDishBase& Dish);
+
 protected:
     /** Minimum number of segments allowed in the radar chart */
-    static constexpr int32 MinSegmentCount = 3;
-
+    static const int32 MinSegmentCount = 1;
+    
     /** Maximum number of segments allowed in the radar chart */
-    static constexpr int32 MaxSegmentCount = 12;
+    static const int32 MaxSegmentCount = 10;
+    
+    /** Full sequence of all possible properties in order */
+    TArray<EIngredientPropertyType> FullPropertySequence;
+    
+    /** Currently active segments (properties with values > 0) */
+    TArray<EIngredientPropertyType> ActiveSegments;
+    
+    /** Map of property type to its position in the full sequence */
+    TMap<EIngredientPropertyType, int32> PropertyPositionMap;
 
     /** Initializes default segments with the current segment count */
     void InitializeSegments();
