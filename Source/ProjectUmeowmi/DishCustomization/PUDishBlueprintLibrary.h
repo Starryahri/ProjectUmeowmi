@@ -135,4 +135,17 @@ public:
     // Get ingredient data for a specific instance ID
     UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
     static bool GetIngredientForInstanceID(const FPUDishBase& Dish, int32 InstanceID, FPUIngredientBase& OutIngredient);
+
+    // Plating-related functions
+    UFUNCTION(BlueprintCallable, Category = "Dish|Plating")
+    static bool HasPlatingData(const FPUDishBase& Dish);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish|Plating")
+    static void SetIngredientPlating(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, const FVector& Position, const FRotator& Rotation, const FVector& Scale);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish|Plating")
+    static void ClearIngredientPlating(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish|Plating")
+    static bool GetIngredientPlating(const FPUDishBase& Dish, int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale);
 }; 

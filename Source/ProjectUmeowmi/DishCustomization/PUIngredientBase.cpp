@@ -18,13 +18,24 @@ FPUIngredientBase::FPUIngredientBase()
 
 float FPUIngredientBase::GetPropertyValue(const FName& PropertyName) const
 {
+    UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Looking for property '%s' in ingredient '%s'"), 
+        *PropertyName.ToString(), *IngredientName.ToString());
+    
     for (const FIngredientProperty& Property : NaturalProperties)
     {
-        if (Property.GetPropertyName() == PropertyName)
+        FName CurrentPropertyName = Property.GetPropertyName();
+        UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Checking property '%s' (value: %.2f)"), 
+            *CurrentPropertyName.ToString(), Property.Value);
+        
+        if (CurrentPropertyName == PropertyName)
         {
+            UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Found match! Returning %.2f"), Property.Value);
             return Property.Value;
         }
     }
+    
+    UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Property '%s' not found, returning 0.0"), 
+        *PropertyName.ToString());
     return 0.0f;
 }
 
@@ -154,6 +165,14 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
             
             if (PrepTags.Num() > 0)
             {
+                // If more than 2 preparations, apply "Dubious" prefix instead of combining prefixes/suffixes
+                if (PrepTags.Num() > 2)
+                {
+                    FString ModifiedName = TEXT("Dubious ");
+                    ModifiedName += DisplayName.ToString();
+                    return FText::FromString(ModifiedName);
+                }
+                
                 FString CombinedPrefix;
                 FString CombinedSuffix;
                 FString SpecialOverrideName;

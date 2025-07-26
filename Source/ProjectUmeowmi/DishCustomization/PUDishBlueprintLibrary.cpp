@@ -655,4 +655,25 @@ bool UPUDishBlueprintLibrary::GetIngredientForInstance(const FPUDishBase& Dish, 
 bool UPUDishBlueprintLibrary::GetIngredientForInstanceID(const FPUDishBase& Dish, int32 InstanceID, FPUIngredientBase& OutIngredient)
 {
     return Dish.GetIngredientForInstanceID(InstanceID, OutIngredient);
+}
+
+// Plating-related functions
+bool UPUDishBlueprintLibrary::HasPlatingData(const FPUDishBase& Dish)
+{
+    return Dish.HasPlatingData();
+}
+
+void UPUDishBlueprintLibrary::SetIngredientPlating(FPUDishBase& Dish, int32 InstanceID, const FVector& Position, const FRotator& Rotation, const FVector& Scale)
+{
+    Dish.SetIngredientPlating(InstanceID, Position, Rotation, Scale);
+}
+
+void UPUDishBlueprintLibrary::ClearIngredientPlating(FPUDishBase& Dish, int32 InstanceID)
+{
+    Dish.ClearIngredientPlating(InstanceID);
+}
+
+bool UPUDishBlueprintLibrary::GetIngredientPlating(const FPUDishBase& Dish, int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale)
+{
+    return Dish.GetIngredientPlating(InstanceID, OutPosition, OutRotation, OutScale);
 } 

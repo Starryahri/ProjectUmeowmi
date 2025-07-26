@@ -26,6 +26,12 @@ enum class EIngredientPropertyType : uint8
     Smoothness,
     Cohesion,
     Temperature,
+    Watery,
+    Firm,
+    Crunchy,
+    Creamy,
+    Chewy,
+    Crumbly,
     Custom UMETA(DisplayName = "Custom Property")
 };
 

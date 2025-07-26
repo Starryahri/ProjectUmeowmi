@@ -38,14 +38,20 @@ void UPURadarChart::ShowIcons(bool bShow)
 
 bool UPURadarChart::SetSegmentCount(int32 NewSegmentCount)
 {
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetSegmentCount: Attempting to set %d segments (current: %d, min: %d, max: %d)"), 
+        NewSegmentCount, ChartStyle.Segments.Num(), MinSegmentCount, MaxSegmentCount);
+
     // Validate the new segment count
     if (NewSegmentCount < MinSegmentCount || NewSegmentCount > MaxSegmentCount)
     {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetSegmentCount: Invalid segment count %d (must be between %d and %d)"), 
+            NewSegmentCount, MinSegmentCount, MaxSegmentCount);
         return false;
     }
 
     // Clear existing segments
     ChartStyle.Segments.Empty();
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetSegmentCount: Cleared existing segments"));
 
     // Add new segments
     for (int32 i = 0; i < NewSegmentCount; ++i)
@@ -55,11 +61,15 @@ bool UPURadarChart::SetSegmentCount(int32 NewSegmentCount)
         ChartStyle.Segments.Last().SegmentColor = FLinearColor::White;
     }
 
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetSegmentCount: Created %d new segments"), ChartStyle.Segments.Num());
+
     // Update value layers to match new segment count
     UpdateValueLayers();
 
     // Force a rebuild of the chart
     ForceRebuild();
+
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetSegmentCount: Successfully set %d segments"), NewSegmentCount);
 
     return true;
 }
@@ -79,6 +89,16 @@ void UPURadarChart::SetValues(const TArray<float>& InValues)
         return;
     }
 
+    // Validate that we have valid values (not NaN or infinite)
+    for (int32 i = 0; i < InValues.Num(); ++i)
+    {
+        if (!FMath::IsFinite(InValues[i]))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValues: Invalid value at index %d: %f"), i, InValues[i]);
+            return;
+        }
+    }
+
     // Ensure we have at least one value layer
     if (ValueLayers.Num() == 0)
     {
@@ -87,6 +107,16 @@ void UPURadarChart::SetValues(const TArray<float>& InValues)
 
     // Set the values for the first layer
     SetValuesForLayer(0, InValues);
+
+    // Log the values being set for debugging
+    FString ValuesString = TEXT("[");
+    for (int32 i = 0; i < InValues.Num(); ++i)
+    {
+        if (i > 0) ValuesString += TEXT(", ");
+        ValuesString += FString::Printf(TEXT("%.2f"), InValues[i]);
+    }
+    ValuesString += TEXT("]");
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValues: Set values: %s"), *ValuesString);
 }
 
 bool UPURadarChart::SetSegmentNames(const TArray<FString>& InNames)
@@ -283,6 +313,319 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Completed setup"));
     
+    return true;
+}
+
+bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
+{
+    UE_LOG(LogTemp, Log, TEXT("=== PURadarChart::SetValuesFromDishFlavorProfile START ==="));
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Starting flavor profile analysis for dish with %d ingredients"), 
+        Dish.IngredientInstances.Num());
+
+    // Log initial chart state
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Initial chart state - Segments: %d, ValueLayers: %d"), 
+        ChartStyle.Segments.Num(), ValueLayers.Num());
+
+    // Validate that we have ingredients to analyze
+    if (Dish.IngredientInstances.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: No ingredients found in dish"));
+        return false;
+    }
+
+    // Initialize the full property sequence if not already done
+    if (FullPropertySequence.Num() == 0)
+    {
+        FullPropertySequence = {
+            EIngredientPropertyType::Sweetness,
+            EIngredientPropertyType::Saltiness,
+            EIngredientPropertyType::Sourness,
+            EIngredientPropertyType::Bitterness,
+            EIngredientPropertyType::Umami
+        };
+        
+        // Build the position map
+        PropertyPositionMap.Empty();
+        for (int32 i = 0; i < FullPropertySequence.Num(); ++i)
+        {
+            PropertyPositionMap.Add(FullPropertySequence[i], i);
+        }
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Initialized full property sequence with %d properties"), 
+            FullPropertySequence.Num());
+    }
+
+    // Get values for all properties in the full sequence
+    TArray<float> AllValues;
+    TArray<FString> AllDisplayNames;
+    
+    for (EIngredientPropertyType PropertyType : FullPropertySequence)
+    {
+        // Get the property name using the same method as FIngredientProperty::GetPropertyName()
+        FString PropertyName;
+        FString EnumString = UEnum::GetValueAsString(PropertyType);
+        if (EnumString.Split(TEXT("::"), nullptr, &PropertyName))
+        {
+            // Successfully extracted the value name
+        }
+        else
+        {
+            // Fallback to the full enum string
+            PropertyName = EnumString;
+        }
+
+        // Use the display text for the segment name
+        FString DisplayName = UEnum::GetDisplayValueAsText(PropertyType).ToString();
+        AllDisplayNames.Add(DisplayName);
+
+        // Get the total value for this property across all ingredients using the value name
+        float TotalValue = Dish.GetTotalValueForProperty(FName(*PropertyName));
+        AllValues.Add(TotalValue);
+
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: %s (PropertyName: %s) = %.2f"), 
+            *DisplayName, *PropertyName, TotalValue);
+        
+        // Additional debugging for 0 values
+        if (TotalValue == 0.0f)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: WARNING - Property '%s' has 0.0 value (likely missing from all ingredients)"), 
+                *PropertyName);
+        }
+    }
+
+    // Build active segments (only properties with values > 0)
+    ActiveSegments.Empty();
+    TArray<float> ActiveValues;
+    TArray<FString> ActiveDisplayNames;
+    
+    for (int32 i = 0; i < FullPropertySequence.Num(); ++i)
+    {
+        if (AllValues[i] > 0.0f)
+        {
+            ActiveSegments.Add(FullPropertySequence[i]);
+            ActiveValues.Add(AllValues[i]);
+            ActiveDisplayNames.Add(AllDisplayNames[i]);
+            
+            UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Added active segment %s with value %.2f"), 
+                *AllDisplayNames[i], AllValues[i]);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Skipped inactive segment %s (value: %.2f)"), 
+                *AllDisplayNames[i], AllValues[i]);
+        }
+    }
+
+    // Set the number of segments based on active segments
+    int32 ActiveSegmentCount = ActiveSegments.Num();
+    if (ActiveSegmentCount == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: No active segments found, using minimum segment count"));
+        ActiveSegmentCount = 1;
+        ActiveValues.Add(0.1f); // Small value for proper scaling
+        ActiveDisplayNames.Add(TEXT("No Flavor Properties"));
+    }
+
+    if (!SetSegmentCount(ActiveSegmentCount))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Failed to set segment count"));
+        return false;
+    }
+
+    // Set the segment names and values
+    if (!SetSegmentNames(ActiveDisplayNames))
+    {
+        UE_LOG(LogTemp, Error, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Failed to set segment names"));
+        return false;
+    }
+
+    SetValues(ActiveValues);
+
+    // Disable icons for flavor profile (no ingredient icons needed)
+    ShowIcons(false);
+
+    // Force a rebuild to ensure the chart updates
+    ForceRebuild();
+
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Completed flavor profile setup with %d active segments"), ActiveSegmentCount);
+    
+    // Build a string representation of active values for logging
+    FString ActiveValuesString = TEXT("[");
+    for (int32 i = 0; i < ActiveValues.Num(); ++i)
+    {
+        if (i > 0) ActiveValuesString += TEXT(", ");
+        ActiveValuesString += FString::Printf(TEXT("%.2f"), ActiveValues[i]);
+    }
+    ActiveValuesString += TEXT("]");
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Active values: %s"), *ActiveValuesString);
+    
+    // Additional debugging to verify the chart state
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Chart state - Segments: %d, ValueLayers: %d"), 
+        ChartStyle.Segments.Num(), ValueLayers.Num());
+    
+    if (ValueLayers.Num() > 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: First layer has %d values"), 
+            ValueLayers[0].RawValues.Num());
+    }
+
+    return true;
+}
+
+bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
+{
+    UE_LOG(LogTemp, Log, TEXT("=== PURadarChart::SetValuesFromDishTextureProfile START ==="));
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Starting texture profile analysis for dish with %d ingredients"), 
+        Dish.IngredientInstances.Num());
+
+    // Log initial chart state
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Initial chart state - Segments: %d, ValueLayers: %d"), 
+        ChartStyle.Segments.Num(), ValueLayers.Num());
+
+    // Validate that we have ingredients to analyze
+    if (Dish.IngredientInstances.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: No ingredients found in dish"));
+        return false;
+    }
+
+    // Initialize the full property sequence if not already done
+    if (FullPropertySequence.Num() == 0)
+    {
+        FullPropertySequence = {
+            EIngredientPropertyType::Watery,
+            EIngredientPropertyType::Firm,
+            EIngredientPropertyType::Crunchy,
+            EIngredientPropertyType::Creamy,
+            EIngredientPropertyType::Chewy,
+            EIngredientPropertyType::Crumbly
+        };
+        
+        // Build the position map
+        PropertyPositionMap.Empty();
+        for (int32 i = 0; i < FullPropertySequence.Num(); ++i)
+        {
+            PropertyPositionMap.Add(FullPropertySequence[i], i);
+        }
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Initialized full property sequence with %d properties"), 
+            FullPropertySequence.Num());
+    }
+
+    // Get values for all properties in the full sequence
+    TArray<float> AllValues;
+    TArray<FString> AllDisplayNames;
+    
+    for (EIngredientPropertyType PropertyType : FullPropertySequence)
+    {
+        // Get the property name using the same method as FIngredientProperty::GetPropertyName()
+        FString PropertyName;
+        FString EnumString = UEnum::GetValueAsString(PropertyType);
+        if (EnumString.Split(TEXT("::"), nullptr, &PropertyName))
+        {
+            // Successfully extracted the value name
+        }
+        else
+        {
+            // Fallback to the full enum string
+            PropertyName = EnumString;
+        }
+
+        // Use the display text for the segment name
+        FString DisplayName = UEnum::GetDisplayValueAsText(PropertyType).ToString();
+        AllDisplayNames.Add(DisplayName);
+
+        // Get the total value for this property across all ingredients using the value name
+        float TotalValue = Dish.GetTotalValueForProperty(FName(*PropertyName));
+        AllValues.Add(TotalValue);
+
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: %s (PropertyName: %s) = %.2f"), 
+            *DisplayName, *PropertyName, TotalValue);
+        
+        // Additional debugging for 0 values
+        if (TotalValue == 0.0f)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: WARNING - Property '%s' has 0.0 value (likely missing from all ingredients)"), 
+                *PropertyName);
+        }
+    }
+
+    // Build active segments (only properties with values > 0)
+    ActiveSegments.Empty();
+    TArray<float> ActiveValues;
+    TArray<FString> ActiveDisplayNames;
+    
+    for (int32 i = 0; i < FullPropertySequence.Num(); ++i)
+    {
+        if (AllValues[i] > 0.0f)
+        {
+            ActiveSegments.Add(FullPropertySequence[i]);
+            ActiveValues.Add(AllValues[i]);
+            ActiveDisplayNames.Add(AllDisplayNames[i]);
+            
+            UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Added active segment %s with value %.2f"), 
+                *AllDisplayNames[i], AllValues[i]);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Skipped inactive segment %s (value: %.2f)"), 
+                *AllDisplayNames[i], AllValues[i]);
+        }
+    }
+
+    // Set the number of segments based on active segments
+    int32 ActiveSegmentCount = ActiveSegments.Num();
+    if (ActiveSegmentCount == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: No active segments found, using minimum segment count"));
+        ActiveSegmentCount = 1;
+        ActiveValues.Add(0.1f); // Small value for proper scaling
+        ActiveDisplayNames.Add(TEXT("No Texture Properties"));
+    }
+
+    if (!SetSegmentCount(ActiveSegmentCount))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Failed to set segment count"));
+        return false;
+    }
+
+    // Set the segment names and values
+    if (!SetSegmentNames(ActiveDisplayNames))
+    {
+        UE_LOG(LogTemp, Error, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Failed to set segment names"));
+        return false;
+    }
+
+    SetValues(ActiveValues);
+
+    // Disable icons for texture profile (no ingredient icons needed)
+    ShowIcons(false);
+
+    // Force a rebuild to ensure the chart updates
+    ForceRebuild();
+
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Completed texture profile setup with %d active segments"), ActiveSegmentCount);
+    
+    // Build a string representation of active values for logging
+    FString ActiveValuesString = TEXT("[");
+    for (int32 i = 0; i < ActiveValues.Num(); ++i)
+    {
+        if (i > 0) ActiveValuesString += TEXT(", ");
+        ActiveValuesString += FString::Printf(TEXT("%.2f"), ActiveValues[i]);
+    }
+    ActiveValuesString += TEXT("]");
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Active values: %s"), *ActiveValuesString);
+    
+    // Additional debugging to verify the chart state
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Chart state - Segments: %d, ValueLayers: %d"), 
+        ChartStyle.Segments.Num(), ValueLayers.Num());
+    
+    if (ValueLayers.Num() > 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: First layer has %d values"), 
+            ValueLayers[0].RawValues.Num());
+    }
+
     return true;
 }
 

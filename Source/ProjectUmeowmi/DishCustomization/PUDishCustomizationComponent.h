@@ -70,6 +70,16 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
     TArray<FPUPreparationBase> GetPreparationData() const;
 
+    // Plating-specific functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void SpawnIngredientIn3D(const FGameplayTag& IngredientTag, const FVector& WorldPosition);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void SetPlatingMode(bool bInPlatingMode);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    bool IsPlatingMode() const { return bPlatingMode; }
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Dish Customization")
     FOnCustomizationEnded OnCustomizationEnded;
@@ -97,6 +107,9 @@ public:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     class UInputAction* ControllerMouseAction;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputAction* MouseClickAction;
 
     // Input Mapping Context for customization mode
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
@@ -148,6 +161,14 @@ protected:
     // Input binding handles
     uint32 ExitActionBindingHandle;
     uint32 ControllerMouseBindingHandle;
+    uint32 MouseClickBindingHandle;
+
+    // Mouse interaction state
+    bool bIsDragging = false;
+    class APUIngredientMesh* CurrentlyDraggedIngredient = nullptr;
+    FVector DragStartPosition;
+    FVector DragStartMousePosition;
+    FVector DragOffset; // Offset between mouse and ingredient when grabbed
 
     // Camera transition state
     bool bIsTransitioningCamera = false;
@@ -157,6 +178,10 @@ protected:
     float OriginalOrthoWidth = 0.0f;
     float OriginalCameraOffset = 0.0f;
     int32 OriginalCameraPositionIndex = 0;
+
+private:
+    // Spawn visual 3D mesh for ingredient
+    void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
     float TargetCameraDistance = 0.0f;
     float TargetCameraPitch = 0.0f;
     float TargetCameraYaw = 0.0f;
@@ -164,9 +189,15 @@ protected:
     float TargetCameraOffset = 0.0f;
     int32 TargetCameraPositionIndex = 0;
 
+    // Plating mode state
+    bool bPlatingMode = false;
+
     // Input handling
     void HandleExitInput();
     void HandleControllerMouse(const FInputActionValue& Value);
+    void HandleMouseClick(const FInputActionValue& Value);
+    void HandleMouseRelease(const FInputActionValue& Value);
+    void UpdateMouseDrag();
 
     // Camera handling
     void StartCameraTransition(bool bToCustomization);

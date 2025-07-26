@@ -9,10 +9,21 @@ APUIngredientMesh::APUIngredientMesh()
     MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
     RootComponent = MeshComponent;
 
-    // Enable mouse interaction
-    MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-    MeshComponent->SetCollisionProfileName(TEXT("UI"));
+    // Enable physics and collision for interactive ingredients
+    MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    MeshComponent->SetCollisionProfileName(TEXT("PhysicsActor"));
     MeshComponent->SetGenerateOverlapEvents(true);
+    MeshComponent->SetSimulatePhysics(true);
+    MeshComponent->SetEnableGravity(true);
+    MeshComponent->SetMobility(EComponentMobility::Movable);
+    
+    // Ensure visibility channel is blocked for mouse interaction
+    MeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    
+    // Enable mouse interaction events
+    MeshComponent->SetNotifyRigidBodyCollision(true);
+    
+    UE_LOG(LogTemp, Display, TEXT("🖱️ Ingredient mesh created with mouse events bound"));
 
     // Initialize state
     bIsHovered = false;
@@ -31,6 +42,11 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
         if (UStaticMesh* LoadedMesh = IngredientData.IngredientMesh.LoadSynchronous())
         {
             MeshComponent->SetStaticMesh(LoadedMesh);
+            
+            // Ensure physics is enabled after setting the mesh
+            MeshComponent->SetSimulatePhysics(true);
+            MeshComponent->SetEnableGravity(true);
+            MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         }
     }
 
@@ -52,11 +68,16 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
     OriginalRotation = GetActorRotation();
 }
 
-void APUIngredientMesh::OnMouseHoverBegin()
+void APUIngredientMesh::OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent)
 {
+    UE_LOG(LogTemp, Display, TEXT("🖱️ Hover BEGIN called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 
+        *GetName(), bIsHovered ? TEXT("True") : TEXT("False"), bIsGrabbed ? TEXT("True") : TEXT("False"));
+    
     if (!bIsHovered && !bIsGrabbed)
     {
         bIsHovered = true;
+        UE_LOG(LogTemp, Display, TEXT("🖱️ Hover BEGIN processed on ingredient: %s"), *GetName());
+        
         // Apply hover material
         if (HoverMaterial)
         {
@@ -69,11 +90,16 @@ void APUIngredientMesh::OnMouseHoverBegin()
     }
 }
 
-void APUIngredientMesh::OnMouseHoverEnd()
+void APUIngredientMesh::OnMouseHoverEnd(UPrimitiveComponent* TouchedComponent)
 {
+    UE_LOG(LogTemp, Display, TEXT("🖱️ Hover END called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 
+        *GetName(), bIsHovered ? TEXT("True") : TEXT("False"), bIsGrabbed ? TEXT("True") : TEXT("False"));
+    
     if (bIsHovered && !bIsGrabbed)
     {
         bIsHovered = false;
+        UE_LOG(LogTemp, Display, TEXT("🖱️ Hover END processed on ingredient: %s"), *GetName());
+        
         // Restore original material
         if (IngredientData.MaterialInstance.IsValid())
         {
@@ -86,9 +112,9 @@ void APUIngredientMesh::OnMouseHoverEnd()
         {
             MeshComponent->SetMaterial(0, DefaultMaterial);
         }
-        // Return to original height
+        // Return to original height smoothly
         FVector NewLocation = GetActorLocation();
-        NewLocation.Z = OriginalPosition.Z;
+        NewLocation.Z = FMath::FInterpTo(NewLocation.Z, OriginalPosition.Z, GetWorld()->GetDeltaSeconds(), 5.0f);
         SetActorLocation(NewLocation);
     }
 }
@@ -99,11 +125,17 @@ void APUIngredientMesh::OnMouseGrab()
     {
         bIsGrabbed = true;
         bIsHovered = false;
+        
+        // Disable physics while dragging to prevent interference
+        MeshComponent->SetSimulatePhysics(false);
+        MeshComponent->SetEnableGravity(false);
+        
         // Apply grabbed material
         if (GrabbedMaterial)
         {
             MeshComponent->SetMaterial(0, GrabbedMaterial);
         }
+        
         // Broadcast the grabbed event
         OnIngredientGrabbed.Broadcast();
     }
@@ -114,6 +146,11 @@ void APUIngredientMesh::OnMouseRelease()
     if (bIsGrabbed)
     {
         bIsGrabbed = false;
+        
+        // Re-enable physics after dragging
+        MeshComponent->SetSimulatePhysics(true);
+        MeshComponent->SetEnableGravity(true);
+        
         // Restore original material
         if (IngredientData.MaterialInstance.IsValid())
         {
@@ -126,9 +163,11 @@ void APUIngredientMesh::OnMouseRelease()
         {
             MeshComponent->SetMaterial(0, DefaultMaterial);
         }
+        
         // Update original position and rotation
         OriginalPosition = GetActorLocation();
         OriginalRotation = GetActorRotation();
+        
         // Broadcast the released event
         OnIngredientReleased.Broadcast();
     }
@@ -157,5 +196,52 @@ void APUIngredientMesh::UpdateRotation(const FRotator& NewRotation)
         FRotator NewRot = FMath::RInterpTo(CurrentRotation, TargetRotation, GetWorld()->GetDeltaSeconds(), RotationSpeed);
         SetActorRotation(NewRot);
         OnIngredientRotated.Broadcast(NewRot);
+    }
+}
+
+void APUIngredientMesh::NotifyActorBeginCursorOver()
+{
+    UE_LOG(LogTemp, Display, TEXT("🖱️ Actor cursor over BEGIN: %s"), *GetName());
+    OnMouseHoverBegin(nullptr);
+}
+
+void APUIngredientMesh::NotifyActorEndCursorOver()
+{
+    UE_LOG(LogTemp, Display, TEXT("🖱️ Actor cursor over END: %s"), *GetName());
+    OnMouseHoverEnd(nullptr);
+}
+
+void APUIngredientMesh::TestMouseInteraction()
+{
+    UE_LOG(LogTemp, Display, TEXT("🧪 Testing mouse interaction for ingredient: %s"), *GetName());
+    
+    APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
+    if (PlayerController)
+    {
+        // Get mouse position
+        float MouseX, MouseY;
+        PlayerController->GetMousePosition(MouseX, MouseY);
+        
+        UE_LOG(LogTemp, Display, TEXT("🧪 Mouse position: (%.0f, %.0f)"), MouseX, MouseY);
+        
+        // Raycast from mouse position
+        FHitResult HitResult;
+        if (PlayerController->GetHitResultUnderCursor(ECC_Visibility, false, HitResult))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🧪 Hit something: %s"), HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("NULL"));
+            
+            if (HitResult.GetActor() == this)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🧪 SUCCESS: Mouse is hitting this ingredient!"));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Display, TEXT("🧪 Mouse is hitting something else"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Display, TEXT("🧪 No hit under cursor"));
+        }
     }
 } 
