@@ -81,7 +81,7 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	float BaseCameraAngle = 45.0f;
 
 	/** Current camera position index */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera Config|Isometric", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Config|Isometric", meta = (AllowPrivateAccess = "true"))
 	int32 CameraPositionIndex = 0;
 
 	/** Camera transition speed */
@@ -188,6 +188,13 @@ public:
 	void ZoomCamera(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
 	
+	/** Initialize camera position based on the starting index */
+	void InitializeCameraPosition();
+	
+	/** Blueprint callable function to initialize camera position */
+	UFUNCTION(BlueprintCallable, Category = "Camera Config|Isometric")
+	void InitializeCameraPositionFromBlueprint();
+	
 	// Public wrappers for protected functions
 	void HandleMove(const FInputActionValue& Value) { Move(Value); }
 	void HandleLook(const FInputActionValue& Value) { Look(Value); }
@@ -227,6 +234,8 @@ protected:
 	FVector SnapToGrid(const FVector& Location) const;
 			
 protected:
+	virtual void BeginPlay() override;
+	
 	virtual void NotifyControllerChanged() override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
