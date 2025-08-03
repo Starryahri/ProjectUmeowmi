@@ -5,6 +5,7 @@
 #include "PUDishBase.h"
 #include "PUPreparationBase.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../UI/PUCookingStageWidget.h"
 #include "PUDishCustomizationComponent.generated.h"
 
 // Forward declarations
@@ -16,6 +17,7 @@ class UInputMappingContext;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomizationEnded);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDishDataUpdated, const FPUDishBase&, NewDishData);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnInitialDishDataReceived, const FPUDishBase&, InitialDishData);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlanningCompleted, const FPUPlanningData&, InPlanningData);
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class PROJECTUMEOWMI_API UPUDishCustomizationComponent : public USceneComponent
@@ -52,6 +54,10 @@ public:
 
     // Function to set the dish customization component reference on the widget
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
+    void SetWidgetComponentReference(UPUDishCustomizationWidget* Widget);
+
+    // Function to set the dish customization component reference on any widget (legacy)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
     void SetDishCustomizationComponentOnWidget(UUserWidget* Widget);
 
     // Function to set the initial dish data from an order
@@ -80,15 +86,28 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     bool IsPlatingMode() const { return bPlatingMode; }
 
+    // Planning mode functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
+    void StartPlanningMode();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
+    void TransitionToCookingStage(const FPUDishBase& DishData);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
+    bool IsInPlanningMode() const { return bInPlanningMode; }
+
     // Events
-    UPROPERTY(BlueprintAssignable, Category = "Dish Customization")
+    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events")
     FOnCustomizationEnded OnCustomizationEnded;
 
-    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Data")
+    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events")
     FOnDishDataUpdated OnDishDataUpdated;
 
-    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Data")
+    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events")
     FOnInitialDishDataReceived OnInitialDishDataReceived;
+
+    UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events")
+    FOnPlanningCompleted OnPlanningCompleted;
 
     // Alternative data passing methods
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data")
@@ -100,6 +119,10 @@ public:
     // UI Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     TSubclassOf<UUserWidget> CustomizationWidgetClass;
+
+    // Widget class to spawn for cooking stage
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")
+    TSubclassOf<class UPUCookingStageWidget> CookingStageWidgetClass;
 
     // Input Actions
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
@@ -138,6 +161,14 @@ public:
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
     FPUDishBase CurrentDishData;
+
+    // Planning data
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Planning Data")
+    FPUPlanningData CurrentPlanningData;
+
+    // Planning mode flag
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Planning Data")
+    bool bInPlanningMode = false;
 
     // Data table references (for accessing ingredient and preparation data)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")

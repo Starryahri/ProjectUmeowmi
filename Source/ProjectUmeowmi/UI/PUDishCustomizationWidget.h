@@ -64,10 +64,76 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void OnQuantityControlRemoved(int32 InstanceID, class UPUIngredientQuantityControl* QuantityControlWidget);
 
+    // Planning stage functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
+    void ToggleIngredientSelection(const FPUIngredientBase& IngredientData);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
+    bool IsIngredientSelected(const FPUIngredientBase& IngredientData) const;
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
+    void StartPlanningMode();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
+    void FinishPlanningAndStartCooking();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
+    const FPUPlanningData& GetPlanningData() const { return PlanningData; }
+
+    // Find ingredient button by ingredient data
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    class UPUIngredientButton* FindIngredientButton(const FPUIngredientBase& IngredientData) const;
+
+    // Find ingredient button by tag (simpler alternative)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    class UPUIngredientButton* GetIngredientButtonByTag(const FGameplayTag& IngredientTag) const;
+
+    // Remove ingredient instance by tag
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void RemoveIngredientInstanceByTag(const FGameplayTag& IngredientTag);
+
+    // Check if we can add more ingredients
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    bool CanAddMoreIngredients() const;
+
+    // Get the maximum number of ingredients allowed
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    int32 GetMaxIngredients() const { return MaxIngredients; }
+
+    // Set the maximum number of ingredients allowed
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void SetMaxIngredients(int32 NewMaxIngredients);
+
+    // Blueprint events for planning mode
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Planning")
+    void OnPlanningModeStarted();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Planning")
+    void OnIngredientSelectionChanged(const FPUIngredientBase& IngredientData, bool bIsSelected);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Planning")
+    void OnPlanningCompleted(const FPUPlanningData& InPlanningData);
+
 protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")
     FPUDishBase CurrentDishData;
+
+    // Planning data for multi-stage cooking
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Planning Data")
+    FPUPlanningData PlanningData;
+
+    // Planning mode flag
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Planning Data")
+    bool bInPlanningMode = false;
+
+    // Maximum number of ingredients that can be selected
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Settings", meta = (ClampMin = "1", ClampMax = "20"))
+    int32 MaxIngredients = 10;
+
+    // Store references to ingredient buttons for O(1) lookup
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
+    TMap<FGameplayTag, class UPUIngredientButton*> IngredientButtonMap;
 
     // Widget class references
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")

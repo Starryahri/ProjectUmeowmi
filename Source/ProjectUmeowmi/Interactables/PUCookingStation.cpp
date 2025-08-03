@@ -129,6 +129,9 @@ void APUCookingStation::StartInteraction()
         // Start dish customization with the character reference
         DishCustomizationComponent->StartCustomization(Character);
         
+        // Start planning mode by default
+        DishCustomizationComponent->StartPlanningMode();
+        
         // Hide the interaction widget since we're in dish customization mode
         if (InteractionWidget)
         {

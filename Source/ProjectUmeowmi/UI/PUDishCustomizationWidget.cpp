@@ -176,34 +176,39 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating ingredient buttons"));
     
-    // Get ingredient data from the component
+    // Clear existing buttons
+    IngredientButtonMap.Empty();
+    
     if (CustomizationComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Getting ingredient data from component"));
-        TArray<FPUIngredientBase> IngredientData = CustomizationComponent->GetIngredientData();
+        TArray<FPUIngredientBase> AvailableIngredients = CustomizationComponent->GetIngredientData();
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Found %d available ingredients"), AvailableIngredients.Num());
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Retrieved %d ingredients from component"), IngredientData.Num());
-        
-        // Call Blueprint event for each ingredient to create buttons
-        for (const FPUIngredientBase& Ingredient : IngredientData)
+        for (const FPUIngredientBase& IngredientData : AvailableIngredients)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating button for ingredient: %s"), 
-                *Ingredient.DisplayName.ToString());
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Ingredient tag: %s"), 
-                *Ingredient.IngredientTag.ToString());
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Preview texture valid: %s"), 
-                Ingredient.PreviewTexture ? TEXT("Yes") : TEXT("No"));
-            if (Ingredient.PreviewTexture)
+            if (IngredientButtonClass)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Preview texture name: %s"), 
-                    *Ingredient.PreviewTexture->GetName());
+                UPUIngredientButton* IngredientButton = CreateWidget<UPUIngredientButton>(this, IngredientButtonClass);
+                if (IngredientButton)
+                {
+                    IngredientButton->SetIngredientData(IngredientData);
+                    
+                    // Store button reference in map for O(1) lookup
+                    IngredientButtonMap.Add(IngredientData.IngredientTag, IngredientButton);
+                    
+                    // Bind the button click event
+                    IngredientButton->OnIngredientButtonClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnIngredientButtonClicked);
+                    
+                    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Created button for: %s"), 
+                        *IngredientData.DisplayName.ToString());
+                    
+                    // Call Blueprint event
+                    OnIngredientButtonCreated(IngredientButton, IngredientData);
+                }
             }
-            
-            // Call Blueprint event to create the button with ingredient data
-            OnIngredientButtonCreated(nullptr, Ingredient);
         }
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Ingredient button creation complete"));
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Created %d ingredient buttons"), IngredientButtonMap.Num());
     }
     else
     {
@@ -211,13 +216,95 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
     }
 }
 
+UPUIngredientButton* UPUDishCustomizationWidget::FindIngredientButton(const FPUIngredientBase& IngredientData) const
+{
+    // O(1) lookup using map
+    const UPUIngredientButton* const* FoundButton = IngredientButtonMap.Find(IngredientData.IngredientTag);
+    if (FoundButton)
+    {
+        return const_cast<UPUIngredientButton*>(*FoundButton);
+    }
+    return nullptr;
+}
+
+UPUIngredientButton* UPUDishCustomizationWidget::GetIngredientButtonByTag(const FGameplayTag& IngredientTag) const
+{
+    // O(1) lookup using map
+    const UPUIngredientButton* const* FoundButton = IngredientButtonMap.Find(IngredientTag);
+    if (FoundButton)
+    {
+        return const_cast<UPUIngredientButton*>(*FoundButton);
+    }
+    return nullptr;
+}
+
 void UPUDishCustomizationWidget::OnIngredientButtonClicked(const FPUIngredientBase& IngredientData)
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Ingredient button clicked: %s"), 
         *IngredientData.DisplayName.ToString());
     
-    // Create a new ingredient instance
-    CreateIngredientInstance(IngredientData);
+    if (bInPlanningMode)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - In planning mode, handling toggle selection"));
+        
+        // In planning mode, toggle ingredient selection by adding/removing from dish data
+        if (IsIngredientSelected(IngredientData))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Ingredient is selected, removing it"));
+            
+            // Remove ingredient instance
+            RemoveIngredientInstanceByTag(IngredientData.IngredientTag);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Ingredient is not selected, checking if can add"));
+            
+            // Check if we can add more ingredients
+            if (CanAddMoreIngredients())
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Can add more ingredients, adding ingredient"));
+                
+                // Add ingredient instance with default quantity
+                CreateIngredientInstance(IngredientData);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Cannot add more ingredients, max reached (%d)"), MaxIngredients);
+                // TODO: Show UI feedback that max ingredients reached
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Not in planning mode, using legacy behavior"));
+        
+        // Legacy behavior - create a new ingredient instance
+        CreateIngredientInstance(IngredientData);
+    }
+}
+
+bool UPUDishCustomizationWidget::CanAddMoreIngredients() const
+{
+    // Count unique ingredients (not instances, since one ingredient can have multiple instances)
+    TSet<FGameplayTag> UniqueIngredients;
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        UniqueIngredients.Add(Instance.IngredientTag);
+    }
+    
+    bool bCanAdd = UniqueIngredients.Num() < MaxIngredients;
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CanAddMoreIngredients - Current: %d, Max: %d, CanAdd: %s"), 
+        UniqueIngredients.Num(), MaxIngredients, bCanAdd ? TEXT("Yes") : TEXT("No"));
+    
+    return bCanAdd;
+}
+
+void UPUDishCustomizationWidget::SetMaxIngredients(int32 NewMaxIngredients)
+{
+    // Clamp the value to reasonable bounds
+    MaxIngredients = FMath::Clamp(NewMaxIngredients, 1, 20);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::SetMaxIngredients - Set max ingredients to %d"), MaxIngredients);
 }
 
 void UPUDishCustomizationWidget::OnQuantityControlChanged(const FIngredientInstance& IngredientInstance)
@@ -338,6 +425,22 @@ void UPUDishCustomizationWidget::RemoveIngredientInstance(int32 InstanceID)
     UpdateDishData(CurrentDishData);
 }
 
+void UPUDishCustomizationWidget::RemoveIngredientInstanceByTag(const FGameplayTag& IngredientTag)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RemoveIngredientInstanceByTag - Removing ingredient instance by tag: %s"), *IngredientTag.ToString());
+
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    {
+        if (CurrentDishData.IngredientInstances[i].IngredientTag == IngredientTag)
+        {
+            CurrentDishData.IngredientInstances.RemoveAt(i);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RemoveIngredientInstanceByTag - Instance removed successfully"));
+            break;
+        }
+    }
+    UpdateDishData(CurrentDishData);
+}
+
 void UPUDishCustomizationWidget::RefreshQuantityControls()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RefreshQuantityControls - Refreshing quantity controls"));
@@ -400,5 +503,80 @@ void UPUDishCustomizationWidget::EndCustomizationFromUI()
     else
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::EndCustomizationFromUI - No customization component available"));
+    }
+} 
+
+void UPUDishCustomizationWidget::ToggleIngredientSelection(const FPUIngredientBase& IngredientData)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Toggling ingredient: %s"), 
+        *IngredientData.DisplayName.ToString());
+    
+    // Check if ingredient is already selected
+    bool bWasSelected = IsIngredientSelected(IngredientData);
+    
+    if (bWasSelected)
+    {
+        // Remove from selected ingredients
+        RemoveIngredientInstanceByTag(IngredientData.IngredientTag);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Removed ingredient from planning"));
+    }
+    else
+    {
+        // Add to selected ingredients
+        CreateIngredientInstance(IngredientData);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Added ingredient to planning"));
+    }
+    
+    // Call Blueprint event
+    OnIngredientSelectionChanged(IngredientData, !bWasSelected);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Planning now has %d selected ingredients"), 
+        CurrentDishData.IngredientInstances.Num());
+}
+
+bool UPUDishCustomizationWidget::IsIngredientSelected(const FPUIngredientBase& IngredientData) const
+{
+    return CurrentDishData.IngredientInstances.ContainsByPredicate([&](const FIngredientInstance& Instance) {
+        return Instance.IngredientTag == IngredientData.IngredientTag;
+    });
+}
+
+void UPUDishCustomizationWidget::StartPlanningMode()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::StartPlanningMode - Starting planning mode"));
+    
+    bInPlanningMode = true;
+    
+    // Clear existing ingredient instances for planning
+    CurrentDishData.IngredientInstances.Empty();
+    
+    // Call Blueprint event
+    OnPlanningModeStarted();
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::StartPlanningMode - Planning mode started for dish: %s"), 
+        *CurrentDishData.DisplayName.ToString());
+}
+
+void UPUDishCustomizationWidget::FinishPlanningAndStartCooking()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Finishing planning and starting cooking"));
+    
+    if (!bInPlanningMode)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::FinishPlanningAndStartCooking - Not in planning mode"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Planning completed with %d selected ingredients"), 
+        CurrentDishData.IngredientInstances.Num());
+    
+    // Transition to cooking stage through the component
+    if (CustomizationComponent)
+    {
+        CustomizationComponent->TransitionToCookingStage(CurrentDishData);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::FinishPlanningAndStartCooking - No customization component available"));
     }
 } 

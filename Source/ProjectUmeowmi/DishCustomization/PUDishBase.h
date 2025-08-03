@@ -156,4 +156,28 @@ private:
 public:
     // Generate a globally unique instance ID
     static int32 GenerateUniqueInstanceID();
+};
+
+// Planning stage data - ingredients selected for cooking without quantities
+USTRUCT(BlueprintType)
+struct PROJECTUMEOWMI_API FPUPlanningData
+{
+    GENERATED_BODY()
+
+    // Selected ingredients for this dish (without quantities)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planning Data")
+    TArray<FPUIngredientBase> SelectedIngredients;
+
+    // Target dish being planned
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planning Data")
+    FPUDishBase TargetDish;
+
+    // Planning stage completed flag
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Planning Data")
+    bool bPlanningCompleted = false;
+
+    FPUPlanningData()
+    {
+        bPlanningCompleted = false;
+    }
 }; 

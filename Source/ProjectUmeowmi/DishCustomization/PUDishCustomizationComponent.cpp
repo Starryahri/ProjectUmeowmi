@@ -701,6 +701,22 @@ void UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget(UUserW
     UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Function disabled, using alternative approach"));
 }
 
+void UPUDishCustomizationComponent::SetWidgetComponentReference(UPUDishCustomizationWidget* Widget)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetWidgetComponentReference - Setting widget component reference"));
+    
+    if (Widget)
+    {
+        // Set the component reference on the widget
+        Widget->SetCustomizationComponent(this);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetWidgetComponentReference - Widget component reference set successfully"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SetWidgetComponentReference - Widget is null"));
+    }
+}
+
 void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& InitialDishData)
 {
     UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Setting initial dish data: %s with %d ingredients"), 
@@ -727,32 +743,73 @@ void UPUDishCustomizationComponent::BroadcastDishDataUpdate(const FPUDishBase& N
 
 void UPUDishCustomizationComponent::BroadcastInitialDishData(const FPUDishBase& InitialDishData)
 {
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - STARTING BROADCAST"));
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Component name: %s"), *GetName());
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s with %d ingredients"), 
-        *InitialDishData.DisplayName.ToString(), InitialDishData.IngredientInstances.Num());
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s"), 
+        *InitialDishData.DisplayName.ToString());
     
-    // Log dish details
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Dish tag: %s"), *InitialDishData.DishTag.ToString());
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Dish display name: %s"), *InitialDishData.DisplayName.ToString());
+    CurrentDishData = InitialDishData;
+    OnInitialDishDataReceived.Broadcast(InitialDishData);
+}
+
+void UPUDishCustomizationComponent::StartPlanningMode()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartPlanningMode - Starting planning mode"));
     
-    // Log ingredient details
-    for (int32 i = 0; i < InitialDishData.IngredientInstances.Num(); i++)
+    bInPlanningMode = true;
+    
+    // Initialize planning data with current dish
+    CurrentPlanningData.TargetDish = CurrentDishData;
+    CurrentPlanningData.SelectedIngredients.Empty();
+    CurrentPlanningData.bPlanningCompleted = false;
+    
+    // Notify the widget to start planning mode
+    if (CustomizationWidget)
     {
-        const FIngredientInstance& Instance = InitialDishData.IngredientInstances[i];
-        UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Ingredient %d: %s (Qty: %d, ID: %d)"), 
-            i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity, Instance.InstanceID);
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            DishWidget->StartPlanningMode();
+        }
     }
     
-    // Set the initial dish data
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Setting initial dish data"));
-    UpdateCurrentDishData(InitialDishData);
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartPlanningMode - Planning mode started for dish: %s"), 
+        *CurrentPlanningData.TargetDish.DisplayName.ToString());
+}
+
+void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& DishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Transitioning to cooking stage"));
     
-    // Broadcast the initial data to all subscribers
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting to subscribers"));
-    OnInitialDishDataReceived.Broadcast(InitialDishData);
+    // Store the dish data
+    CurrentDishData = DishData;
     
-    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::BroadcastInitialDishData - BROADCAST COMPLETED SUCCESSFULLY"));
+    // Remove the current customization widget
+    if (CustomizationWidget)
+    {
+        CustomizationWidget->RemoveFromParent();
+        CustomizationWidget = nullptr;
+    }
+    
+    // Create and show the cooking stage widget
+    if (CurrentCharacter && CurrentCharacter->GetWorld())
+    {
+        // Create cooking stage widget
+        if (UPUCookingStageWidget* CookingWidget = CreateWidget<UPUCookingStageWidget>(CurrentCharacter->GetWorld(), CookingStageWidgetClass))
+        {
+            // Initialize the cooking stage with dish data
+            CookingWidget->InitializeCookingStage(DishData);
+            
+            // Add to viewport
+            CookingWidget->AddToViewport(250); // Same Z-order as customization widget
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Cooking stage widget created and added to viewport"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToCookingStage - Failed to create cooking stage widget"));
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Planning completed with %d selected ingredients"), 
+        DishData.IngredientInstances.Num());
 }
 
 void UPUDishCustomizationComponent::SetDataTables(UDataTable* DishTable, UDataTable* IngredientTable, UDataTable* PreparationTable)
