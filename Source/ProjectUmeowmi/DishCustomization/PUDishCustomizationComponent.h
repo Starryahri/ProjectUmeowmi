@@ -158,6 +158,19 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
     float CustomizationOrthoWidth = 500.0f;
 
+    // Cooking Stage Camera Management
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
+    float CookingCameraDistance = 200.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
+    float CookingCameraPitch = -15.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
+    float CookingCameraYaw = 180.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
+    float CookingOrthoWidth = 600.0f;
+
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
     FPUDishBase CurrentDishData;
@@ -233,4 +246,7 @@ private:
     // Camera handling
     void StartCameraTransition(bool bToCustomization);
     void UpdateCameraTransition(float DeltaTime);
+
+    // Cooking stage camera handling
+    void StartCookingStageCameraTransition();
 }; 

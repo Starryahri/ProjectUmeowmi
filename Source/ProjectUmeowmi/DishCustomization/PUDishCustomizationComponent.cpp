@@ -434,6 +434,16 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     {
         bIsTransitioningCamera = false;
 
+        // If we're exiting customization (returning to original camera settings), re-enable collision detection
+        if (TargetOrthoWidth == OriginalOrthoWidth && CurrentCharacter)
+        {
+            if (CameraBoom)
+            {
+                CameraBoom->bDoCollisionTest = true;
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::UpdateCameraTransition - Re-enabled spring arm collision detection"));
+            }
+        }
+
         // If we're exiting customization, clear the character reference and broadcast the end event
         if (TargetOrthoWidth == OriginalOrthoWidth)
         {
@@ -781,6 +791,9 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
     // Store the dish data
     CurrentDishData = DishData;
     
+    // Start camera transition to cooking stage view
+    // StartCookingStageCameraTransition(); // Temporarily disabled
+    
     // Remove the current customization widget
     if (CustomizationWidget)
     {
@@ -794,11 +807,16 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
         // Create cooking stage widget
         if (UPUCookingStageWidget* CookingWidget = CreateWidget<UPUCookingStageWidget>(CurrentCharacter->GetWorld(), CookingStageWidgetClass))
         {
-            // Initialize the cooking stage with dish data
-            CookingWidget->InitializeCookingStage(DishData);
-            
-            // Add to viewport
+            // Add to viewport first
             CookingWidget->AddToViewport(250); // Same Z-order as customization widget
+            
+            // Get the cooking station location (this component's owner location)
+            FVector CookingStationLocation = GetOwner()->GetActorLocation();
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Cooking station location: %s"), 
+                *CookingStationLocation.ToString());
+            
+            // Initialize the cooking stage with dish data and station location
+            CookingWidget->InitializeCookingStage(DishData, CookingStationLocation);
             
             UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Cooking stage widget created and added to viewport"));
         }
@@ -987,4 +1005,35 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
         
         UE_LOG(LogTemp, Display, TEXT("✅ Spawned interactive ingredient: %s"), *IngredientInstance.IngredientData.IngredientTag.ToString());
     }
+}
+
+void UPUDishCustomizationComponent::StartCookingStageCameraTransition()
+{
+    if (!CurrentCharacter)
+    {
+        return;
+    }
+
+    USpringArmComponent* CameraBoom = CurrentCharacter->GetCameraBoom();
+    UCameraComponent* FollowCamera = CurrentCharacter->GetFollowCamera();
+    if (!CameraBoom || !FollowCamera)
+    {
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartCookingStageCameraTransition - Starting cooking stage camera transition"));
+
+    // Disable collision detection on the spring arm to prevent jittering
+    CameraBoom->bDoCollisionTest = false;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartCookingStageCameraTransition - Disabled spring arm collision detection"));
+
+    // Set target values for cooking stage view
+    TargetCameraDistance = CookingCameraDistance;
+    TargetCameraPitch = CookingCameraPitch;
+    TargetCameraYaw = CookingCameraYaw;
+    TargetOrthoWidth = CookingOrthoWidth;
+    TargetCameraOffset = OriginalCameraOffset; // Keep the same offset
+    TargetCameraPositionIndex = OriginalCameraPositionIndex; // Keep the same position index
+
+    bIsTransitioningCamera = true;
 }
