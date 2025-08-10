@@ -171,6 +171,10 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
     float CookingOrthoWidth = 600.0f;
 
+    // Cooking Stage Camera Actor
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
+    TSubclassOf<ACameraActor> CookingStageCameraClass;
+
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
     FPUDishBase CurrentDishData;
@@ -223,6 +227,10 @@ protected:
     float OriginalCameraOffset = 0.0f;
     int32 OriginalCameraPositionIndex = 0;
 
+    // Cooking stage camera
+    UPROPERTY()
+    ACameraActor* CookingStageCamera = nullptr;
+
 private:
     // Spawn visual 3D mesh for ingredient
     void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
@@ -249,4 +257,6 @@ private:
 
     // Cooking stage camera handling
     void StartCookingStageCameraTransition();
+    void SwitchToCookingCamera();
+    void SwitchToCharacterCamera();
 }; 

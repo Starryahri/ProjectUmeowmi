@@ -16,6 +16,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "PUIngredientMesh.h"
+#include "Camera/CameraActor.h"
 
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
@@ -338,6 +339,9 @@ void UPUDishCustomizationComponent::EndCustomization()
         UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Removed"));
     }
 
+    // Switch back to character camera
+    SwitchToCharacterCamera();
+    
     // Start camera transition back to original view
     StartCameraTransition(false);
 }
@@ -387,6 +391,102 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
     }
 
     bIsTransitioningCamera = true;
+}
+
+void UPUDishCustomizationComponent::SwitchToCookingCamera()
+{
+    if (!CurrentCharacter || !CurrentCharacter->GetWorld())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No character or world available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Switching to cooking camera"));
+
+    // Get the player controller
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No player controller found"));
+        return;
+    }
+
+    // Spawn or find the cooking stage camera
+    if (!CookingStageCamera)
+    {
+        if (CookingStageCameraClass)
+        {
+            // Spawn the cooking camera at the cooking station location
+            FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f);
+            FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
+            
+            FActorSpawnParameters SpawnParams;
+            SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+            
+            CookingStageCamera = CurrentCharacter->GetWorld()->SpawnActor<ACameraActor>(CookingStageCameraClass, CameraLocation, CameraRotation, SpawnParams);
+            
+            if (CookingStageCamera)
+            {
+                // Configure the camera for orthographic projection
+                UCameraComponent* CameraComponent = CookingStageCamera->GetCameraComponent();
+                if (CameraComponent)
+                {
+                    CameraComponent->SetProjectionMode(ECameraProjectionMode::Orthographic);
+                    CameraComponent->OrthoWidth = CookingOrthoWidth;
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Configured camera for orthographic projection, width: %.2f"), 
+                        CookingOrthoWidth);
+                }
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Spawned cooking camera at: %s"), 
+                    *CameraLocation.ToString());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - Failed to spawn cooking camera"));
+                return;
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No cooking camera class set"));
+            return;
+        }
+    }
+
+    // Switch to the cooking camera
+    PlayerController->SetViewTargetWithBlend(CookingStageCamera, 0.5f);
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Switched to cooking camera"));
+}
+
+void UPUDishCustomizationComponent::SwitchToCharacterCamera()
+{
+    if (!CurrentCharacter)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCharacterCamera - No character available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Switching to character camera"));
+
+    // Get the player controller
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCharacterCamera - No player controller found"));
+        return;
+    }
+
+    // Switch back to the character camera
+    PlayerController->SetViewTargetWithBlend(CurrentCharacter, 0.5f);
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Switched to character camera"));
+
+    // Clean up the cooking camera
+    if (CookingStageCamera)
+    {
+        CookingStageCamera->Destroy();
+        CookingStageCamera = nullptr;
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Destroyed cooking camera"));
+    }
 }
 
 void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
@@ -791,8 +891,8 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
     // Store the dish data
     CurrentDishData = DishData;
     
-    // Start camera transition to cooking stage view
-    // StartCookingStageCameraTransition(); // Temporarily disabled
+    // Switch to cooking stage camera
+    SwitchToCookingCamera();
     
     // Remove the current customization widget
     if (CustomizationWidget)
