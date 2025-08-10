@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/WidgetComponent.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
@@ -111,6 +112,19 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
     float RotationSpeed = 2.0f;
 
+    // Hover Detection Properties
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
+    TSubclassOf<UUserWidget> HoverTextWidgetClass;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
+    float HoverTextOffset = 100.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
+    FLinearColor HoverGlowColor = FLinearColor(1.0f, 1.0f, 0.0f, 1.0f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
+    float HoverGlowIntensity = 2.0f;
+
 private:
     // Create quantity controls for selected ingredients
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
@@ -130,12 +144,28 @@ private:
     FVector CalculateImplementPosition(int32 Index, int32 TotalCount) const;
     FRotator CalculateImplementRotation(int32 Index, int32 TotalCount) const;
 
+    // Hover detection functions
+    void SetupHoverDetection();
+    UFUNCTION()
+    void OnImplementHoverBegin(UPrimitiveComponent* TouchedComponent);
+    UFUNCTION()
+    void OnImplementHoverEnd(UPrimitiveComponent* TouchedComponent);
+    void ShowHoverText(int32 ImplementIndex, bool bShow);
+    void ApplyHoverVisualEffect(int32 ImplementIndex, bool bApply);
+    int32 GetImplementIndexFromComponent(UPrimitiveComponent* Component) const;
+
     // Carousel state
     UPROPERTY()
     TArray<AStaticMeshActor*> SpawnedCookingImplements;
 
     UPROPERTY()
+    TArray<UWidgetComponent*> HoverTextComponents;
+
+    UPROPERTY()
     int32 SelectedImplementIndex = 0;
+
+    UPROPERTY()
+    int32 HoveredImplementIndex = -1;
 
     UPROPERTY()
     bool bCarouselSpawned = false;

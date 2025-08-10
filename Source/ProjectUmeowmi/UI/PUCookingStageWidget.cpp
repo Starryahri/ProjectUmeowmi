@@ -4,6 +4,8 @@
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 UPUCookingStageWidget::UPUCookingStageWidget(const FObjectInitializer& ObjectInitializer)
@@ -235,6 +237,9 @@ void UPUCookingStageWidget::SpawnCookingCarousel()
     
     bCarouselSpawned = true;
     SelectedImplementIndex = 0;
+    
+    // Set up hover detection for the carousel
+    SetupHoverDetection();
     
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SpawnCookingCarousel - Carousel spawned with %d implements"), 
         SpawnedCookingImplements.Num());
@@ -475,5 +480,201 @@ void UPUCookingStageWidget::FindAndSetNearestCookingStation()
     else
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::FindAndSetNearestCookingStation - No valid cooking station found"));
+    }
+}
+
+// Hover Detection Functions
+void UPUCookingStageWidget::SetupHoverDetection()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetupHoverDetection - Setting up hover detection for %d implements"), 
+        SpawnedCookingImplements.Num());
+
+    // Clear existing hover text components
+    if (HoverTextComponents.Num() > 0)
+    {
+        for (UWidgetComponent* TextComponent : HoverTextComponents)
+        {
+            if (TextComponent)
+            {
+                TextComponent->DestroyComponent();
+            }
+        }
+    }
+    HoverTextComponents.Empty();
+
+    // Set up hover detection for each implement
+    for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+    {
+        AStaticMeshActor* ImplementActor = SpawnedCookingImplements[i];
+        if (ImplementActor)
+        {
+            UStaticMeshComponent* MeshComponent = ImplementActor->GetStaticMeshComponent();
+            if (MeshComponent)
+            {
+                // Enable mouse over events
+                MeshComponent->SetNotifyRigidBodyCollision(false);
+                MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+                MeshComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+                MeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+                MeshComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+
+                // Bind hover events
+                MeshComponent->OnBeginCursorOver.AddDynamic(this, &UPUCookingStageWidget::OnImplementHoverBegin);
+                MeshComponent->OnEndCursorOver.AddDynamic(this, &UPUCookingStageWidget::OnImplementHoverEnd);
+
+                // Create hover text component
+                if (HoverTextWidgetClass)
+                {
+                    UWidgetComponent* TextComponent = NewObject<UWidgetComponent>(ImplementActor);
+                    if (TextComponent)
+                    {
+                        TextComponent->SetupAttachment(MeshComponent);
+                        TextComponent->SetWidgetClass(HoverTextWidgetClass);
+                        
+                        // For orthographic cameras, use larger draw size
+                        TextComponent->SetDrawSize(FVector2D(300.0f, 100.0f));
+                        TextComponent->SetRelativeLocation(FVector(0.0f, 0.0f, HoverTextOffset));
+                        TextComponent->SetVisibility(false);
+                        
+                        // Important for orthographic cameras - make it always face the camera
+                        TextComponent->SetWidgetSpace(EWidgetSpace::World);
+                        TextComponent->SetPivot(FVector2D(0.5f, 0.5f));
+                        
+                        TextComponent->RegisterComponent();
+
+                        HoverTextComponents.Add(TextComponent);
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetupHoverDetection - Created hover text component for implement %d (orthographic optimized)"), i);
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetupHoverDetection - Failed to create text component for implement %d"), i);
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetupHoverDetection - No HoverTextWidgetClass set for implement %d"), i);
+                }
+            }
+        }
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetupHoverDetection - Hover detection setup complete"));
+}
+
+void UPUCookingStageWidget::OnImplementHoverBegin(UPrimitiveComponent* TouchedComponent)
+{
+    int32 ImplementIndex = GetImplementIndexFromComponent(TouchedComponent);
+    if (ImplementIndex >= 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnImplementHoverBegin - Implement %d hover begin"), ImplementIndex);
+        
+        HoveredImplementIndex = ImplementIndex;
+        ShowHoverText(ImplementIndex, true);
+        ApplyHoverVisualEffect(ImplementIndex, true);
+    }
+}
+
+void UPUCookingStageWidget::OnImplementHoverEnd(UPrimitiveComponent* TouchedComponent)
+{
+    int32 ImplementIndex = GetImplementIndexFromComponent(TouchedComponent);
+    if (ImplementIndex >= 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnImplementHoverEnd - Implement %d hover end"), ImplementIndex);
+        
+        if (HoveredImplementIndex == ImplementIndex)
+        {
+            HoveredImplementIndex = -1;
+        }
+        ShowHoverText(ImplementIndex, false);
+        ApplyHoverVisualEffect(ImplementIndex, false);
+    }
+}
+
+int32 UPUCookingStageWidget::GetImplementIndexFromComponent(UPrimitiveComponent* Component) const
+{
+    if (!Component)
+    {
+        return -1;
+    }
+
+    // Find which implement this component belongs to
+    for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+    {
+        AStaticMeshActor* ImplementActor = SpawnedCookingImplements[i];
+        if (ImplementActor && ImplementActor->GetStaticMeshComponent() == Component)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+void UPUCookingStageWidget::ShowHoverText(int32 ImplementIndex, bool bShow)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ShowHoverText - Attempting to %s hover text for implement %d (Total components: %d)"), 
+        bShow ? TEXT("show") : TEXT("hide"), ImplementIndex, HoverTextComponents.Num());
+    
+    if (ImplementIndex >= 0 && ImplementIndex < HoverTextComponents.Num())
+    {
+        UWidgetComponent* TextComponent = HoverTextComponents[ImplementIndex];
+        if (TextComponent)
+        {
+            TextComponent->SetVisibility(bShow);
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ShowHoverText - %s hover text for implement %d"), 
+                bShow ? TEXT("Showing") : TEXT("Hiding"), ImplementIndex);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::ShowHoverText - Text component is null for implement %d"), ImplementIndex);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::ShowHoverText - Invalid implement index %d (valid range: 0-%d)"), 
+            ImplementIndex, HoverTextComponents.Num() - 1);
+    }
+}
+
+void UPUCookingStageWidget::ApplyHoverVisualEffect(int32 ImplementIndex, bool bApply)
+{
+    if (ImplementIndex >= 0 && ImplementIndex < SpawnedCookingImplements.Num())
+    {
+        AStaticMeshActor* ImplementActor = SpawnedCookingImplements[ImplementIndex];
+        if (ImplementActor)
+        {
+            UStaticMeshComponent* MeshComponent = ImplementActor->GetStaticMeshComponent();
+            if (MeshComponent)
+            {
+                if (bApply)
+                {
+                    // For orthographic cameras, use a more visible approach
+                    // Scale up the mesh slightly to create a "glow" effect
+                    FVector CurrentScale = MeshComponent->GetRelativeScale3D();
+                    MeshComponent->SetRelativeScale3D(CurrentScale * 1.1f);
+                    
+                    // Also try custom depth (may work better with orthographic)
+                    MeshComponent->SetRenderCustomDepth(true);
+                    MeshComponent->SetCustomDepthStencilValue(1);
+                    
+                    // Set material parameter for glow
+                    MeshComponent->SetScalarParameterValueOnMaterials(TEXT("GlowIntensity"), HoverGlowIntensity);
+                    
+                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ApplyHoverVisualEffect - Applied hover effect to implement %d (scaled up)"), ImplementIndex);
+                }
+                else
+                {
+                    // Restore original scale
+                    FVector CurrentScale = MeshComponent->GetRelativeScale3D();
+                    MeshComponent->SetRelativeScale3D(CurrentScale / 1.1f);
+                    
+                    // Remove custom depth
+                    MeshComponent->SetRenderCustomDepth(false);
+                    MeshComponent->SetScalarParameterValueOnMaterials(TEXT("GlowIntensity"), 0.0f);
+                    
+                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ApplyHoverVisualEffect - Removed hover effect from implement %d (scaled down)"), ImplementIndex);
+                }
+            }
+        }
     }
 } 
