@@ -24,6 +24,7 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     // Initialize the cooking stage with dish data
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
@@ -125,6 +126,13 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
     float HoverGlowIntensity = 2.0f;
 
+    // Front indicator properties
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
+    float FrontItemScale = 1.3f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
+    float FrontItemHeight = 50.0f;
+
 private:
     // Create quantity controls for selected ingredients
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
@@ -154,6 +162,22 @@ private:
     void ApplyHoverVisualEffect(int32 ImplementIndex, bool bApply);
     int32 GetImplementIndexFromComponent(UPrimitiveComponent* Component) const;
 
+    // Click detection functions
+    void SetupClickDetection();
+    UFUNCTION()
+    void OnImplementClicked(UPrimitiveComponent* ClickedComponent, FKey ButtonPressed);
+    void UpdateCarouselRotation(float DeltaTime);
+    void ApplySelectionVisualEffect(int32 ImplementIndex, bool bApply);
+    void UpdateFrontIndicator();
+    int32 GetFrontImplementIndex() const;
+    void DebugCollisionDetection();
+    void SetupMultiHitCollisionDetection();
+    void OnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent);
+    void UpdateHoverDetection();
+    bool IsPointInCarouselBounds(const FVector2D& ScreenPoint) const;
+    void HandleMouseClick();
+    bool IsMouseOverImplement(int32 ImplementIndex) const;
+
     // Carousel state
     UPROPERTY()
     TArray<AStaticMeshActor*> SpawnedCookingImplements;
@@ -169,4 +193,17 @@ private:
 
     UPROPERTY()
     bool bCarouselSpawned = false;
+
+    // Carousel rotation state
+    UPROPERTY()
+    bool bIsRotating = false;
+
+    UPROPERTY()
+    float CurrentRotationAngle = 0.0f;
+
+    UPROPERTY()
+    float TargetRotationAngle = 0.0f;
+
+    UPROPERTY()
+    float RotationProgress = 0.0f;
 }; 
