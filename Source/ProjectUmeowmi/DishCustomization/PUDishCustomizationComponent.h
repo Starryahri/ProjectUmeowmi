@@ -96,6 +96,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
     bool IsInPlanningMode() const { return bInPlanningMode; }
 
+    // Cooking Camera Position Control
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking Camera")
+    void SetCookingCameraPositionOffset(const FVector& NewOffset);
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events")
     FOnCustomizationEnded OnCustomizationEnded;
@@ -171,9 +175,13 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
     float CookingOrthoWidth = 600.0f;
 
-    // Cooking Stage Camera Actor
+    // Cooking Stage Camera Position Offsets
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
-    TSubclassOf<ACameraActor> CookingStageCameraClass;
+    FVector CookingCameraPositionOffset = FVector(0.0f, 0.0f, 0.0f); // X=Left/Right, Y=Forward/Back, Z=Up/Down
+
+    // Cooking Stage Camera Component Reference
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
+    FName CookingStationCameraComponentName = TEXT("CookingCamera");
 
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
@@ -198,6 +206,9 @@ protected:
     // Internal state management
     UPROPERTY()
     UUserWidget* CustomizationWidget;
+
+    UPROPERTY()
+    UPUCookingStageWidget* CookingStageWidget;
 
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;
@@ -227,9 +238,9 @@ protected:
     float OriginalCameraOffset = 0.0f;
     int32 OriginalCameraPositionIndex = 0;
 
-    // Cooking stage camera
+    // Cooking stage camera component
     UPROPERTY()
-    ACameraActor* CookingStageCamera = nullptr;
+    UCameraComponent* CookingStationCamera = nullptr;
 
 private:
     // Spawn visual 3D mesh for ingredient

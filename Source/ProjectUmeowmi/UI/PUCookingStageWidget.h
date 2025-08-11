@@ -42,6 +42,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
     void FinishCookingAndStartPlating();
 
+    // Exit cooking stage and return to customization
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
+    void ExitCookingStage();
+
+    // Exit customization mode completely and return to main game
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
+    void ExitCustomizationMode();
+
     // Carousel Functions
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Carousel")
     void SpawnCookingCarousel();
@@ -77,6 +85,24 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Cooking Stage Widget|Events")
     FOnCookingImplementSelected OnCookingImplementSelected;
+
+    UPROPERTY(BlueprintAssignable, Category = "Cooking Stage Widget|Events")
+    FOnCookingCompleted OnCookingStageExited;
+
+    // Reference to the dish customization component for exit functionality
+    UPROPERTY(BlueprintReadWrite, Category = "Cooking Stage Widget")
+    class UPUDishCustomizationComponent* DishCustomizationComponent;
+
+    // Set the customization component reference
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
+    void SetDishCustomizationComponent(UPUDishCustomizationComponent* Component);
+
+    // Drag and Drop Functions
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Drag Drop")
+    void OnIngredientDroppedOnImplement(int32 ImplementIndex, const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity);
+
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Drag Drop")
+    bool IsDragOverImplement(int32 ImplementIndex, const FVector2D& ScreenPosition) const;
 
 protected:
     // Current dish data (being built during cooking)
@@ -125,6 +151,15 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
     float HoverGlowIntensity = 2.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
+    FVector HoverDetectionOffset = FVector(0.0f, 0.0f, 20.0f); // Adjustable offset for hover detection
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
+    float HoverDetectionRadius = 100.0f; // Radius in pixels for hover detection
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
+    float ClickDetectionRadius = 120.0f; // Radius in pixels for click detection
 
     // Front indicator properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
@@ -177,6 +212,11 @@ private:
     bool IsPointInCarouselBounds(const FVector2D& ScreenPoint) const;
     void HandleMouseClick();
     bool IsMouseOverImplement(int32 ImplementIndex) const;
+    void ShowDebugSpheres();
+    void HideDebugSpheres();
+    void ToggleDebugVisualization();
+    void DrawDebugHoverArea();
+    void SwitchToPlayerCamera();
 
     // Carousel state
     UPROPERTY()

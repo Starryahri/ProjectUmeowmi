@@ -331,12 +331,20 @@ void UPUDishCustomizationComponent::EndCustomization()
         PlayerController->SetInputMode(InputMode);
     }
 
-    // Clean up the widget
+    // Clean up the customization widget
     if (CustomizationWidget)
     {
         CustomizationWidget->RemoveFromParent();
         CustomizationWidget = nullptr;
         UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Removed"));
+    }
+
+    // Clean up the cooking stage widget
+    if (CookingStageWidget)
+    {
+        CookingStageWidget->RemoveFromParent();
+        CookingStageWidget = nullptr;
+        UE_LOG(LogTemp, Log, TEXT("Cooking Stage Widget Removed"));
     }
 
     // Switch back to character camera
@@ -411,51 +419,83 @@ void UPUDishCustomizationComponent::SwitchToCookingCamera()
         return;
     }
 
-    // Spawn or find the cooking stage camera
-    if (!CookingStageCamera)
+    // Find the cooking station camera component
+    if (!CookingStationCamera)
     {
-        if (CookingStageCameraClass)
+        AActor* OwnerActor = GetOwner();
+        if (OwnerActor)
         {
-            // Spawn the cooking camera at the cooking station location
-            FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f);
-            FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
+            CookingStationCamera = Cast<UCameraComponent>(OwnerActor->GetComponentByClass(UCameraComponent::StaticClass()));
             
-            FActorSpawnParameters SpawnParams;
-            SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+            if (!CookingStationCamera)
+            {
+                // Try to find by name if the default class search didn't work
+                TArray<UCameraComponent*> CameraComponents;
+                OwnerActor->GetComponents<UCameraComponent>(CameraComponents);
+                
+                for (UCameraComponent* CameraComp : CameraComponents)
+                {
+                    if (CameraComp && CameraComp->GetName() == CookingStationCameraComponentName.ToString())
+                    {
+                        CookingStationCamera = CameraComp;
+                        break;
+                    }
+                }
+            }
             
-            CookingStageCamera = CurrentCharacter->GetWorld()->SpawnActor<ACameraActor>(CookingStageCameraClass, CameraLocation, CameraRotation, SpawnParams);
-            
-            if (CookingStageCamera)
+            if (CookingStationCamera)
             {
                 // Configure the camera for orthographic projection
-                UCameraComponent* CameraComponent = CookingStageCamera->GetCameraComponent();
-                if (CameraComponent)
-                {
-                    CameraComponent->SetProjectionMode(ECameraProjectionMode::Orthographic);
-                    CameraComponent->OrthoWidth = CookingOrthoWidth;
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Configured camera for orthographic projection, width: %.2f"), 
-                        CookingOrthoWidth);
-                }
+                CookingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+                CookingStationCamera->OrthoWidth = CookingOrthoWidth;
                 
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Spawned cooking camera at: %s"), 
-                    *CameraLocation.ToString());
+                // Position the camera properly for smooth transition
+                FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + CookingCameraPositionOffset;
+                FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
+                
+                CookingStationCamera->SetWorldLocation(CameraLocation);
+                CookingStationCamera->SetWorldRotation(CameraRotation);
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Found and configured cooking camera component, width: %.2f, position: %s"), 
+                    CookingOrthoWidth, *CameraLocation.ToString());
             }
             else
             {
-                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - Failed to spawn cooking camera"));
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - No camera component found on cooking station"));
                 return;
             }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No cooking camera class set"));
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - No owner actor found"));
             return;
         }
     }
 
     // Switch to the cooking camera
-    PlayerController->SetViewTargetWithBlend(CookingStageCamera, 0.5f);
+    PlayerController->SetViewTargetWithBlend(CookingStationCamera->GetOwner(), 0.5f);
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Switched to cooking camera"));
+}
+
+void UPUDishCustomizationComponent::SetCookingCameraPositionOffset(const FVector& NewOffset)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Setting camera offset to: %s"), 
+        *NewOffset.ToString());
+    
+    CookingCameraPositionOffset = NewOffset;
+    
+    // If the cooking camera component is found, update its position
+    if (CookingStationCamera)
+    {
+        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + NewOffset;
+        FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
+        
+        CookingStationCamera->SetWorldLocation(CameraLocation);
+        CookingStationCamera->SetWorldRotation(CameraRotation);
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Updated existing camera position to: %s"), 
+            *CameraLocation.ToString());
+    }
 }
 
 void UPUDishCustomizationComponent::SwitchToCharacterCamera()
@@ -480,13 +520,9 @@ void UPUDishCustomizationComponent::SwitchToCharacterCamera()
     PlayerController->SetViewTargetWithBlend(CurrentCharacter, 0.5f);
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Switched to character camera"));
 
-    // Clean up the cooking camera
-    if (CookingStageCamera)
-    {
-        CookingStageCamera->Destroy();
-        CookingStageCamera = nullptr;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Destroyed cooking camera"));
-    }
+    // Reset the cooking camera component reference
+    CookingStationCamera = nullptr;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Reset cooking camera reference"));
 }
 
 void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
@@ -907,6 +943,9 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
         // Create cooking stage widget
         if (UPUCookingStageWidget* CookingWidget = CreateWidget<UPUCookingStageWidget>(CurrentCharacter->GetWorld(), CookingStageWidgetClass))
         {
+            // Store reference to cooking stage widget
+            CookingStageWidget = CookingWidget;
+            
             // Add to viewport first
             CookingWidget->AddToViewport(250); // Same Z-order as customization widget
             
@@ -914,6 +953,9 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
             FVector CookingStationLocation = GetOwner()->GetActorLocation();
             UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Cooking station location: %s"), 
                 *CookingStationLocation.ToString());
+            
+            // Set the dish customization component reference
+            CookingWidget->SetDishCustomizationComponent(this);
             
             // Initialize the cooking stage with dish data and station location
             CookingWidget->InitializeCookingStage(DishData, CookingStationLocation);

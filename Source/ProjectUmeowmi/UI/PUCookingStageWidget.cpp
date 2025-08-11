@@ -8,6 +8,14 @@
 #include "Components/PrimitiveComponent.h"
 #include "Input/Events.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/Player.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
+#include "../DishCustomization/PUDishCustomizationComponent.h"
+#include "../ProjectUmeowmiCharacter.h"
+#include "PUIngredientDragDropOperation.h"
 
 UPUCookingStageWidget::UPUCookingStageWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -42,12 +50,15 @@ void UPUCookingStageWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
         }
         UpdateCarouselRotation(InDeltaTime);
         
-        // Update hover detection for orthographic cameras
-        UpdateHoverDetection();
-        
-        // Handle mouse clicks
-        HandleMouseClick();
-    }
+                            // Update hover detection for orthographic cameras
+                    UpdateHoverDetection();
+                    
+                    // Handle mouse clicks
+                    HandleMouseClick();
+                    
+                    // Update debug visualization
+                    // DrawDebugHoverArea(); // Debug visualization disabled
+                }
 }
 
 void UPUCookingStageWidget::InitializeCookingStage(const FPUDishBase& DishData, const FVector& CookingStationLocation)
@@ -182,6 +193,187 @@ void UPUCookingStageWidget::FinishCookingAndStartPlating()
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::FinishCookingAndStartPlating - Cooking stage completed"));
 }
 
+void UPUCookingStageWidget::ExitCookingStage()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ExitCookingStage - Exiting cooking stage"));
+    
+    // Destroy carousel before exiting
+    DestroyCookingCarousel();
+    
+    // Broadcast the cooking stage exited event (with current dish data)
+    OnCookingStageExited.Broadcast(CurrentDishData);
+    
+    // Remove this widget from viewport
+    RemoveFromParent();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ExitCookingStage - Cooking stage exited"));
+}
+
+void UPUCookingStageWidget::ExitCustomizationMode()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ExitCustomizationMode - Exiting customization mode completely"));
+    
+    // Destroy carousel before exiting
+    DestroyCookingCarousel();
+    
+    // Switch back to player camera
+    SwitchToPlayerCamera();
+    
+    // Use the existing dish customization component to exit
+    if (DishCustomizationComponent)
+    {
+        DishCustomizationComponent->EndCustomization();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::ExitCustomizationMode - No dish customization component available"));
+        // Fallback: remove this widget from viewport
+        RemoveFromParent();
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ExitCustomizationMode - Customization mode exited"));
+}
+
+void UPUCookingStageWidget::SwitchToPlayerCamera()
+{
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+    
+    APlayerController* PC = World->GetFirstPlayerController();
+    if (!PC)
+    {
+        return;
+    }
+    
+    // Get the player character
+    AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+    if (!Character)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SwitchToPlayerCamera - No player character found"));
+        return;
+    }
+    
+    // Switch back to the character's camera
+    PC->SetViewTarget(Character);
+    
+    // Re-enable player input
+    PC->SetIgnoreMoveInput(false);
+    PC->SetIgnoreLookInput(false);
+    
+    // Hide mouse cursor
+    PC->bShowMouseCursor = false;
+    
+    // Set input mode back to game
+    FInputModeGameOnly InputMode;
+    PC->SetInputMode(InputMode);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SwitchToPlayerCamera - Switched back to player camera"));
+}
+
+void UPUCookingStageWidget::SetDishCustomizationComponent(UPUDishCustomizationComponent* Component)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetDishCustomizationComponent - Setting dish customization component"));
+    
+    DishCustomizationComponent = Component;
+    
+    if (DishCustomizationComponent)
+    {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetDishCustomizationComponent - Component reference set successfully: %s"), 
+        *DishCustomizationComponent->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetDishCustomizationComponent - Component reference is NULL"));
+    }
+}
+
+void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex, const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Ingredient %s dropped on implement %d (ID: %d, Qty: %d)"), 
+        *IngredientTag.ToString(), ImplementIndex, InstanceID, Quantity);
+    
+    // Validate implement index
+    if (ImplementIndex < 0 || ImplementIndex >= SpawnedCookingImplements.Num())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnIngredientDroppedOnImplement - Invalid implement index: %d"), ImplementIndex);
+        return;
+    }
+    
+    // Get the cooking implement
+    AStaticMeshActor* ImplementActor = SpawnedCookingImplements[ImplementIndex];
+    if (!ImplementActor)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnIngredientDroppedOnImplement - No implement actor at index %d"), ImplementIndex);
+        return;
+    }
+    
+    // TODO: Implement cooking logic here
+    // This is where you would:
+    // 1. Apply the ingredient to the cooking implement
+    // 2. Update the dish data
+    // 3. Show cooking effects/animations
+    // 4. Update the cooking progress
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Applied %s to %s"), 
+        *IngredientData.DisplayName.ToString(), *CookingImplementNames[ImplementIndex]);
+    
+    // Broadcast event for Blueprint handling
+    // You can add a delegate here if needed
+}
+
+bool UPUCookingStageWidget::IsDragOverImplement(int32 ImplementIndex, const FVector2D& ScreenPosition) const
+{
+    // Validate implement index
+    if (ImplementIndex < 0 || ImplementIndex >= SpawnedCookingImplements.Num())
+    {
+        return false;
+    }
+    
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return false;
+    }
+    
+    APlayerController* PC = World->GetFirstPlayerController();
+    if (!PC)
+    {
+        return false;
+    }
+    
+    // Get the cooking implement
+    AStaticMeshActor* ImplementActor = SpawnedCookingImplements[ImplementIndex];
+    if (!ImplementActor)
+    {
+        return false;
+    }
+    
+    UStaticMeshComponent* MeshComponent = ImplementActor->GetStaticMeshComponent();
+    if (!MeshComponent)
+    {
+        return false;
+    }
+    
+    // Get the center of the mesh bounds
+    FVector MeshCenter = MeshComponent->Bounds.Origin;
+    
+    // Project the mesh center to screen space
+    FVector2D ScreenLocation;
+    if (PC->ProjectWorldLocationToScreen(MeshCenter, ScreenLocation))
+    {
+        // Calculate distance from drag position to mesh center on screen
+        float Distance = FVector2D::Distance(ScreenPosition, ScreenLocation);
+        
+        // Use the same radius as hover detection for consistency
+        return Distance < HoverDetectionRadius;
+    }
+    
+    return false;
+}
+
 // Carousel Functions
 void UPUCookingStageWidget::SpawnCookingCarousel()
 {
@@ -271,10 +463,13 @@ void UPUCookingStageWidget::SpawnCookingCarousel()
     UpdateFrontIndicator();
     
     // Debug collision detection
-    DebugCollisionDetection();
+    // DebugCollisionDetection(); // Debug visualization disabled
     
     // Set up multi-hit collision detection for orthographic cameras
-    SetupMultiHitCollisionDetection();
+    // SetupMultiHitCollisionDetection(); // Debug visualization disabled
+    
+    // Show debug spheres to visualize hover detection areas
+    // ShowDebugSpheres(); // Debug visualization disabled
     
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SpawnCookingCarousel - Carousel spawned with %d implements"), 
         SpawnedCookingImplements.Num());
@@ -362,10 +557,47 @@ void UPUCookingStageWidget::RotateCarouselToSelection(int32 TargetIndex)
     // Calculate the target rotation angle
     // We want the selected item to be at the front (0 degrees)
     float AngleStep = 360.0f / SpawnedCookingImplements.Num();
-    TargetRotationAngle = -(TargetIndex * AngleStep); // Negative because we want to rotate the carousel, not the item
+    float TargetAngle = -(TargetIndex * AngleStep); // Negative because we want to rotate the carousel, not the item
+    
+    // Calculate the shortest rotation path
+    float CurrentAngle = FMath::Fmod(CurrentRotationAngle, 360.0f);
+    float TargetAngleNormalized = FMath::Fmod(TargetAngle, 360.0f);
+    
+    // Debug: Log the angle calculations
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RotateCarouselToSelection - Angle calculation: CurrentAngle=%.2f, TargetAngle=%.2f, TargetAngleNormalized=%.2f"), 
+        CurrentAngle, TargetAngle, TargetAngleNormalized);
+    
+    // Calculate the shortest path difference
+    float AngleDifference = TargetAngleNormalized - CurrentAngle;
+    
+    // Normalize to get the shortest path (can be positive or negative)
+    if (AngleDifference > 180.0f)
+    {
+        // If difference is more than 180°, go the other way (shorter path)
+        AngleDifference -= 360.0f;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RotateCarouselToSelection - Shortest path: AngleDifference=%.2f (adjusted for shorter path)"), AngleDifference);
+    }
+    else if (AngleDifference < -180.0f)
+    {
+        // If difference is less than -180°, go the other way (shorter path)
+        AngleDifference += 360.0f;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RotateCarouselToSelection - Shortest path: AngleDifference=%.2f (adjusted for shorter path)"), AngleDifference);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RotateCarouselToSelection - Shortest path: AngleDifference=%.2f (no adjustment needed)"), AngleDifference);
+    }
+    
+    // Set the target rotation
+    TargetRotationAngle = CurrentRotationAngle + AngleDifference;
 
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RotateCarouselToSelection - Rotating carousel to bring implement %d to front (angle: %.2f)"), 
-        TargetIndex, TargetRotationAngle);
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RotateCarouselToSelection - Rotating carousel to bring implement %d to front (current: %.2f, target: %.2f, difference: %.2f)"), 
+        TargetIndex, CurrentRotationAngle, TargetRotationAngle, TargetRotationAngle - CurrentRotationAngle);
+    
+    // Debug: Log the rotation path details
+    float RotationDistance = TargetRotationAngle - CurrentRotationAngle;
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RotateCarouselToSelection - Rotation distance: %.2f degrees (%.2f steps)"), 
+        RotationDistance, RotationDistance / (360.0f / SpawnedCookingImplements.Num()));
 
     // Start rotation
     bIsRotating = true;
@@ -391,9 +623,6 @@ FVector UPUCookingStageWidget::CalculateImplementPosition(int32 Index, int32 Tot
     float Z = CarouselCenter.Z + CarouselHeight;
     
     FVector Position = FVector(X, Y, Z);
-    
-    UE_LOG(LogTemp, Display, TEXT("🍳 CalculateImplementPosition - Index: %d, Total: %d, Angle: %.2f°, Center: %s, Radius: %.2f, Position: %s"), 
-        Index, TotalCount, (360.0f / TotalCount) * Index, *CarouselCenter.ToString(), CarouselRadius, *Position.ToString());
     
     return Position;
 }
@@ -750,8 +979,7 @@ void UPUCookingStageWidget::UpdateCarouselRotation(float DeltaTime)
             FRotator RotatedRotation = BaseRotation + FRotator(0.0f, CurrentRotationAngle, 0.0f);
             ImplementActor->SetActorRotation(RotatedRotation);
             
-            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCarouselRotation - Implement %d: BasePos=%s, RotatedPos=%s, Angle=%.2f"), 
-                i, *BasePosition.ToString(), *RotatedPosition.ToString(), CurrentRotationAngle);
+            // Debug logging removed to reduce spam
         }
     }
 
@@ -1025,62 +1253,49 @@ void UPUCookingStageWidget::UpdateHoverDetection()
         return;
     }
     
-    // Get mouse position
+    // Get mouse position in screen space
     FVector2D MousePosition;
     PC->GetMousePosition(MousePosition.X, MousePosition.Y);
     
-    // Check if mouse is in carousel bounds
-    if (!IsPointInCarouselBounds(MousePosition))
-    {
-        if (HoveredImplementIndex >= 0)
-        {
-            ShowHoverText(HoveredImplementIndex, false);
-            ApplyHoverVisualEffect(HoveredImplementIndex, false);
-            HoveredImplementIndex = -1;
-        }
-        return;
-    }
-    
-    // For orthographic cameras, we need to check distance to each implement
-    // and find the closest one that's actually visible
-    float ClosestDistance = 10000.0f;
-    int32 ClosestIndex = -1;
+    // Find which implement is closest to the mouse using screen-space distance
+    float ClosestDistance = HoverDetectionRadius; // Use configurable hover radius
+    int32 NewHoveredIndex = -1;
     
     for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
     {
         AStaticMeshActor* ImplementActor = SpawnedCookingImplements[i];
-        if (ImplementActor)
+        if (!ImplementActor)
         {
-            // Convert world position to screen position
-            FVector WorldLocation = ImplementActor->GetActorLocation();
-            FVector2D ScreenLocation;
-            if (PC->ProjectWorldLocationToScreen(WorldLocation, ScreenLocation))
+            continue;
+        }
+        
+        // Get the mesh component's bounds center
+        UStaticMeshComponent* MeshComponent = ImplementActor->GetStaticMeshComponent();
+        if (!MeshComponent)
+        {
+            continue;
+        }
+        
+        // Get the center of the mesh bounds
+        FVector MeshCenter = MeshComponent->Bounds.Origin;
+        
+        // Project the mesh center to screen space
+        FVector2D ScreenLocation;
+        if (PC->ProjectWorldLocationToScreen(MeshCenter, ScreenLocation))
+        {
+            // Calculate distance from mouse to mesh center on screen
+            float Distance = FVector2D::Distance(MousePosition, ScreenLocation);
+            
+            if (Distance < ClosestDistance)
             {
-                // Calculate distance from mouse to this implement on screen
-                float Distance = FVector2D::Distance(MousePosition, ScreenLocation);
-                
-                // Debug: Log distances for troubleshooting
-                static float DebugTimer = 0.0f;
-                DebugTimer += 0.016f; // Assuming 60fps
-                if (DebugTimer > 1.0f) // Log once per second
-                {
-                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateHoverDetection - Implement %d: Mouse=(%.1f,%.1f), Screen=(%.1f,%.1f), Distance=%.1f"), 
-                        i, MousePosition.X, MousePosition.Y, ScreenLocation.X, ScreenLocation.Y, Distance);
-                    DebugTimer = 0.0f;
-                }
-                
-                // Check if this implement is closer and within reasonable distance
-                if (Distance < ClosestDistance && Distance < 120.0f) // 120 pixel radius for hover
-                {
-                    ClosestDistance = Distance;
-                    ClosestIndex = i;
-                }
+                ClosestDistance = Distance;
+                NewHoveredIndex = i;
             }
         }
     }
     
     // Update hover state
-    if (ClosestIndex >= 0 && ClosestIndex != HoveredImplementIndex)
+    if (NewHoveredIndex != HoveredImplementIndex)
     {
         // Clear previous hover
         if (HoveredImplementIndex >= 0)
@@ -1090,12 +1305,18 @@ void UPUCookingStageWidget::UpdateHoverDetection()
         }
         
         // Set new hover
-        HoveredImplementIndex = ClosestIndex;
-        ShowHoverText(HoveredImplementIndex, true);
-        ApplyHoverVisualEffect(HoveredImplementIndex, true);
-        
-        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateHoverDetection - Hovering over implement %d (distance: %.2f)"), 
-            ClosestIndex, ClosestDistance);
+        if (NewHoveredIndex >= 0)
+        {
+            HoveredImplementIndex = NewHoveredIndex;
+            ShowHoverText(HoveredImplementIndex, true);
+            ApplyHoverVisualEffect(HoveredImplementIndex, true);
+            
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateHoverDetection - Hovering over implement %d (distance: %.1f)"), HoveredImplementIndex, ClosestDistance);
+        }
+        else
+        {
+            HoveredImplementIndex = -1;
+        }
     }
 }
 
@@ -1142,15 +1363,51 @@ void UPUCookingStageWidget::HandleMouseClick()
     // Check if left mouse button is pressed
     if (PC->WasInputKeyJustPressed(EKeys::LeftMouseButton))
     {
-        // Find which implement is currently being hovered
+        // Get mouse position in screen space
+        FVector2D MousePosition;
+        PC->GetMousePosition(MousePosition.X, MousePosition.Y);
+        
+        // Find which implement is closest to the mouse using screen-space distance
+        float ClosestDistance = ClickDetectionRadius; // Use configurable click radius
+        int32 ClosestIndex = -1;
+        
         for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
         {
-            if (IsMouseOverImplement(i))
+            AStaticMeshActor* ImplementActor = SpawnedCookingImplements[i];
+            if (!ImplementActor)
             {
-                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::HandleMouseClick - Clicked on implement %d"), i);
-                SelectCookingImplement(i);
-                break;
+                continue;
             }
+            
+            // Get the mesh component's bounds center
+            UStaticMeshComponent* MeshComponent = ImplementActor->GetStaticMeshComponent();
+            if (!MeshComponent)
+            {
+                continue;
+            }
+            
+            // Get the center of the mesh bounds
+            FVector MeshCenter = MeshComponent->Bounds.Origin;
+            
+            // Project the mesh center to screen space
+            FVector2D ScreenLocation;
+            if (PC->ProjectWorldLocationToScreen(MeshCenter, ScreenLocation))
+            {
+                // Calculate distance from mouse to mesh center on screen
+                float Distance = FVector2D::Distance(MousePosition, ScreenLocation);
+                
+                if (Distance < ClosestDistance)
+                {
+                    ClosestDistance = Distance;
+                    ClosestIndex = i;
+                }
+            }
+        }
+        
+        if (ClosestIndex >= 0)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::HandleMouseClick - Clicked on implement %d (distance: %.1f)"), ClosestIndex, ClosestDistance);
+            SelectCookingImplement(ClosestIndex);
         }
     }
 }
@@ -1174,28 +1431,106 @@ bool UPUCookingStageWidget::IsMouseOverImplement(int32 ImplementIndex) const
         return false;
     }
     
-    // Get mouse position
+    // Get mouse position in screen space
     FVector2D MousePosition;
     PC->GetMousePosition(MousePosition.X, MousePosition.Y);
     
-    // Get implement position
+    // Get the specific implement we're checking
     AStaticMeshActor* ImplementActor = SpawnedCookingImplements[ImplementIndex];
     if (!ImplementActor)
     {
         return false;
     }
     
-    // Convert world position to screen position
-    FVector WorldLocation = ImplementActor->GetActorLocation();
-    FVector2D ScreenLocation;
-    if (PC->ProjectWorldLocationToScreen(WorldLocation, ScreenLocation))
+    UStaticMeshComponent* MeshComponent = ImplementActor->GetStaticMeshComponent();
+    if (!MeshComponent)
     {
-        // Calculate distance from mouse to this implement on screen
+        return false;
+    }
+    
+    // Get the center of the mesh bounds
+    FVector MeshCenter = MeshComponent->Bounds.Origin;
+    
+    // Project the mesh center to screen space
+    FVector2D ScreenLocation;
+    if (PC->ProjectWorldLocationToScreen(MeshCenter, ScreenLocation))
+    {
+        // Calculate distance from mouse to mesh center on screen
         float Distance = FVector2D::Distance(MousePosition, ScreenLocation);
         
-        // Check if mouse is within click radius (smaller than hover radius for precision)
-        return Distance < 80.0f; // 80 pixel radius for clicks
+        // Check if mouse is within hover radius
+        return Distance < HoverDetectionRadius; // Use configurable hover radius
     }
     
     return false;
+} 
+
+void UPUCookingStageWidget::ShowDebugSpheres()
+{
+    // Use Unreal's built-in debug drawing instead
+    DrawDebugHoverArea();
+}
+
+void UPUCookingStageWidget::HideDebugSpheres()
+{
+    // Clear debug drawing
+    UWorld* World = GetWorld();
+    if (World)
+    {
+        FlushDebugStrings(World);
+        FlushPersistentDebugLines(World);
+    }
+}
+
+void UPUCookingStageWidget::ToggleDebugVisualization()
+{
+    static bool bDebugEnabled = false;
+    bDebugEnabled = !bDebugEnabled;
+    
+    if (bDebugEnabled)
+    {
+        ShowDebugSpheres();
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ToggleDebugVisualization - Debug visualization ENABLED"));
+    }
+    else
+    {
+        HideDebugSpheres();
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ToggleDebugVisualization - Debug visualization DISABLED"));
+    }
+}
+
+void UPUCookingStageWidget::DrawDebugHoverArea()
+{
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+    
+    // Draw debug circles around each implement to show hover detection area
+    for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+    {
+        AStaticMeshActor* ImplementActor = SpawnedCookingImplements[i];
+        if (!ImplementActor)
+        {
+            continue;
+        }
+        
+        // Use the actor location with a simple offset
+        FVector WorldLocation = ImplementActor->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
+        
+        // Draw a debug circle to represent the hover detection area
+        // Convert 150 pixels to world space (approximate)
+        float WorldRadius = 75.0f; // Increased to match the larger hover radius
+        
+        // Draw a circle around the implement
+        DrawDebugCircle(World, WorldLocation, WorldRadius, 32, FColor::Red, false, -1.0f, 0, 2.0f);
+        
+        // Draw a line from the implement to show its center
+        DrawDebugLine(World, WorldLocation, WorldLocation + FVector(0, 0, 50), FColor::Yellow, false, -1.0f, 0, 2.0f);
+        
+        // Add debug text
+        FString DebugText = FString::Printf(TEXT("Implement %d"), i);
+        DrawDebugString(World, WorldLocation + FVector(0, 0, 60), DebugText, nullptr, FColor::White, 0.0f, true);
+    }
 } 
