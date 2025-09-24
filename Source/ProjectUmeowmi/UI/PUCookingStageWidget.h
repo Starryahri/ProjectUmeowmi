@@ -110,6 +110,8 @@ public:
     virtual bool NativeOnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
     virtual bool NativeOnDrop(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
     virtual void NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+    virtual void NativeOnDragEnter(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+    virtual void NativeOnDragLeave(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
 
     // Ingredient Button Management Functions
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
@@ -283,4 +285,7 @@ private:
 
     UPROPERTY()
     float RotationProgress = 0.0f;
+
+    UPROPERTY()
+    bool bIsDragActive = false;
 }; 

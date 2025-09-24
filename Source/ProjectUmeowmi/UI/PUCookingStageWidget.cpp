@@ -55,11 +55,17 @@ void UPUCookingStageWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
         }
         UpdateCarouselRotation(InDeltaTime);
         
-                            // Update hover detection for orthographic cameras
-                    UpdateHoverDetection();
+                    // Update hover detection only when not dragging
+                    if (!bIsDragActive)
+                    {
+                        UpdateHoverDetection();
+                    }
                     
-                    // Handle mouse clicks
-                    HandleMouseClick();
+                    // Disable click handling during drag
+                    if (!bIsDragActive)
+                    {
+                        HandleMouseClick();
+                    }
                     
                     // Update debug visualization
                     // DrawDebugHoverArea(); // Debug visualization disabled
@@ -374,15 +380,13 @@ int32 UPUCookingStageWidget::FindImplementUnderScreenPos(const FVector2D& Screen
 
 FVector2D UPUCookingStageWidget::ConvertAbsoluteToViewport(const FVector2D& AbsoluteScreenPos) const
 {
-    // Convert Slate absolute to viewport coordinates (pixels in the game viewport)
-    // Use the geometry passed into drag events to convert absolute → local. Here we approximate
-    // using viewport scale; Unreal typically has viewport scale = DPI scale.
-    float Scale = 1.0f;
-    if (GEngine && GEngine->GameViewport)
+    // Convert absolute Slate coords to viewport-local using UWidgetLayoutLibrary geometry.
+    if (UWorld* World = GetWorld())
     {
-        Scale = GEngine->GameViewport->GetDPIScale();
+        const FGeometry ViewportGeo = UWidgetLayoutLibrary::GetViewportWidgetGeometry(World);
+        return ViewportGeo.AbsoluteToLocal(AbsoluteScreenPos);
     }
-    return AbsoluteScreenPos / FMath::Max(Scale, 0.001f);
+    return AbsoluteScreenPos; // Fallback
 }
 
 void UPUCookingStageWidget::SetDishCustomizationComponent(UPUDishCustomizationComponent* Component)
@@ -1851,6 +1855,7 @@ bool UPUCookingStageWidget::NativeOnDragOver(const FGeometry& MyGeometry, const 
 {
     if (Cast<UPUIngredientDragDropOperation>(InOperation))
     {
+        bIsDragActive = true;
         UWorld* World = GetWorld();
         if (!World)
         {
@@ -1862,20 +1867,34 @@ bool UPUCookingStageWidget::NativeOnDragOver(const FGeometry& MyGeometry, const 
         const FVector2D ViewportPos = ConvertAbsoluteToViewport(Absolute);
 
         FHitResult Hit;
-        const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
-        if (ImplementIdx != INDEX_NONE)
+		const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
+		if (ImplementIdx != INDEX_NONE)
         {
-            if (HoveredImplementIndex != ImplementIdx)
+			// Only allow hover on the currently selected implement
+			if (ImplementIdx == SelectedImplementIndex)
             {
-                if (HoveredImplementIndex != INDEX_NONE)
-                {
-                    ApplyHoverVisualEffect(HoveredImplementIndex, false);
-                }
-                HoveredImplementIndex = ImplementIdx;
-                ApplyHoverVisualEffect(HoveredImplementIndex, true);
+				if (HoveredImplementIndex != ImplementIdx)
+				{
+					if (HoveredImplementIndex != INDEX_NONE)
+					{
+						ApplyHoverVisualEffect(HoveredImplementIndex, false);
+					}
+					HoveredImplementIndex = ImplementIdx;
+					ApplyHoverVisualEffect(HoveredImplementIndex, true);
+				}
+				UE_LOG(LogTemp, Verbose, TEXT("🎯 DragOver hovering active implement %d"), ImplementIdx);
+				return true;
             }
-            UE_LOG(LogTemp, Verbose, TEXT("🎯 DragOver hovering implement %d"), ImplementIdx);
-            return true;
+			else
+			{
+				if (HoveredImplementIndex != INDEX_NONE)
+				{
+					ApplyHoverVisualEffect(HoveredImplementIndex, false);
+					HoveredImplementIndex = INDEX_NONE;
+				}
+				UE_LOG(LogTemp, Verbose, TEXT("🛑 DragOver rejected: implement %d is not active (active=%d)"), ImplementIdx, SelectedImplementIndex);
+				return false;
+			}
         }
 
         if (HoveredImplementIndex != INDEX_NONE)
@@ -1893,6 +1912,7 @@ bool UPUCookingStageWidget::NativeOnDrop(const FGeometry& MyGeometry, const FDra
 {
     if (UPUIngredientDragDropOperation* IngredientOp = Cast<UPUIngredientDragDropOperation>(InOperation))
     {
+        bIsDragActive = false;
         UWorld* World = GetWorld();
         if (!World)
         {
@@ -1902,13 +1922,20 @@ bool UPUCookingStageWidget::NativeOnDrop(const FGeometry& MyGeometry, const FDra
         const FVector2D ViewportPos = ConvertAbsoluteToViewport(Absolute);
 
         FHitResult Hit;
-        const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
-        if (ImplementIdx != INDEX_NONE)
+		const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
+		if (ImplementIdx != INDEX_NONE)
         {
-            UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDrop - Dropping on implement %d"), ImplementIdx);
-            OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
-            RotateCarouselToSelection(ImplementIdx);
-            return true;
+			if (ImplementIdx == SelectedImplementIndex)
+			{
+				UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDrop - Dropping on active implement %d"), ImplementIdx);
+				OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
+				RotateCarouselToSelection(ImplementIdx);
+				return true;
+			}
+			else
+			{
+				UE_LOG(LogTemp, Display, TEXT("🛑 NativeOnDrop - Rejected drop on non-active implement %d (active=%d)"), ImplementIdx, SelectedImplementIndex);
+			}
         }
     }
 
@@ -1920,6 +1947,7 @@ void UPUCookingStageWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDr
     // Handle drop onto world when no widget accepted the drop
     if (UPUIngredientDragDropOperation* IngredientOp = Cast<UPUIngredientDragDropOperation>(InOperation))
     {
+        bIsDragActive = false;
         UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - Attempting world drop"));
         UWorld* World = GetWorld();
         if (!World)
@@ -1930,16 +1958,44 @@ void UPUCookingStageWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDr
         const FVector2D ViewportPos = ConvertAbsoluteToViewport(Absolute);
 
         FHitResult Hit;
-        const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
-        if (ImplementIdx != INDEX_NONE)
+		const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
+		if (ImplementIdx != INDEX_NONE)
         {
-            UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - Dropped on implement %d"), ImplementIdx);
-            OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
-            RotateCarouselToSelection(ImplementIdx);
+			if (ImplementIdx == SelectedImplementIndex)
+			{
+				UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - Dropped on active implement %d"), ImplementIdx);
+				OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
+				RotateCarouselToSelection(ImplementIdx);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Display, TEXT("🛑 NativeOnDragCancelled - Rejected drop on non-active implement %d (active=%d)"), ImplementIdx, SelectedImplementIndex);
+			}
         }
         else
         {
             UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - No implement under cursor"));
+        }
+    }
+}
+
+void UPUCookingStageWidget::NativeOnDragEnter(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    if (Cast<UPUIngredientDragDropOperation>(InOperation))
+    {
+        bIsDragActive = true;
+    }
+}
+
+void UPUCookingStageWidget::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    if (Cast<UPUIngredientDragDropOperation>(InOperation))
+    {
+        bIsDragActive = false;
+        if (HoveredImplementIndex != INDEX_NONE)
+        {
+            ApplyHoverVisualEffect(HoveredImplementIndex, false);
+            HoveredImplementIndex = INDEX_NONE;
         }
     }
 }
