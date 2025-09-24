@@ -406,6 +406,19 @@ void UPUCookingStageWidget::SetDishCustomizationComponent(UPUDishCustomizationCo
     }
 }
 
+void UPUCookingStageWidget::SetQuantityControlContainer(UPanelWidget* Container)
+{
+    QuantityControlContainer = Container;
+    if (QuantityControlContainer.IsValid())
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 QuantityControlContainer set to: %s"), *QuantityControlContainer->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ QuantityControlContainer set to null"));
+    }
+}
+
 void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex, const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity)
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Ingredient %s dropped on implement %d (ID: %d, Qty: %d)"), 
@@ -1844,8 +1857,26 @@ void UPUCookingStageWidget::CreateQuantityControlFromDroppedIngredient(const FPU
         QuantityControl->OnQuantityControlChanged.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
         QuantityControl->OnQuantityControlRemoved.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlRemoved);
         
-        // Add to viewport (Blueprint will handle placement)
-        QuantityControl->AddToViewport();
+        // Prefer the bound QuantityScrollBox if available
+        if (QuantityScrollBox)
+        {
+            QuantityScrollBox->AddChild(QuantityControl);
+            UE_LOG(LogTemp, Display, TEXT("🍳 Quantity control added to QuantityScrollBox: %s"), *QuantityScrollBox->GetName());
+        }
+        // Else add to specified panel container if available
+        else if (QuantityControlContainer.IsValid())
+        {
+            if (UPanelWidget* Panel = QuantityControlContainer.Get())
+            {
+                Panel->AddChild(QuantityControl);
+                UE_LOG(LogTemp, Display, TEXT("🍳 Quantity control added to container: %s"), *Panel->GetName());
+            }
+        }
+        else
+        {
+            QuantityControl->AddToViewport();
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ No QuantityControlContainer set; added to viewport"));
+        }
         
         UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - Quantity control created successfully"));
     }

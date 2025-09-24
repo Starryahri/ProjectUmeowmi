@@ -7,11 +7,13 @@
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
 #include "PUIngredientButton.h"
+#include "Components/ScrollBox.h"
 #include "PUCookingStageWidget.generated.h"
 
 class UPUIngredientQuantityControl;
 class UPUIngredientButton;
 class AStaticMeshActor;
+class UScrollBox;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCookingCompleted, const FPUDishBase&, FinalDishData);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCookingImplementSelected, int32, ImplementIndex);
@@ -124,6 +126,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
     void SetIngredientButtonContainer(UPanelWidget* Container);
 
+    // Set the container widget for quantity controls (e.g., a ScrollBox)
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    void SetQuantityControlContainer(UPanelWidget* Container);
+
 
 protected:
     // Current dish data (being built during cooking)
@@ -155,6 +161,14 @@ protected:
     // Widget reference for ingredient button container (set in Blueprint)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Ingredients")
     TWeakObjectPtr<class UPanelWidget> IngredientButtonContainer;
+
+    // Optional direct reference to the ScrollBox that should host quantity controls
+    UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category = "Cooking Stage Widget|Ingredients")
+    UScrollBox* QuantityScrollBox = nullptr;
+
+    // Widget reference for quantity control container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Ingredients")
+    TWeakObjectPtr<class UPanelWidget> QuantityControlContainer;
 
     // Carousel Properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
