@@ -18,6 +18,9 @@
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "PUIngredientDragDropOperation.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Engine/GameViewportClient.h"
 
 UPUCookingStageWidget::UPUCookingStageWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -275,6 +278,113 @@ void UPUCookingStageWidget::SwitchToPlayerCamera()
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SwitchToPlayerCamera - Switched back to player camera"));
 }
 
+bool UPUCookingStageWidget::GetViewportMousePos(APlayerController* PC, FVector2D& OutViewportPos) const
+{
+    if (!PC)
+    {
+        return false;
+    }
+
+    float X = 0.0f;
+    float Y = 0.0f;
+    if (PC->GetMousePosition(X, Y))
+    {
+        OutViewportPos = FVector2D(X, Y);
+        return true;
+    }
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::GetViewportMousePos - Failed to get mouse position"));
+    return false;
+}
+
+int32 UPUCookingStageWidget::FindImplementUnderScreenPos(const FVector2D& ScreenPosViewport, FHitResult& OutHit) const
+{
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return INDEX_NONE;
+    }
+
+    APlayerController* PC = World->GetFirstPlayerController();
+    if (!PC)
+    {
+        return INDEX_NONE;
+    }
+
+    // First try engine's screen hit test (uses Visibility channel)
+    FHitResult Hit;
+    if (PC->GetHitResultAtScreenPosition(ScreenPosViewport, ECollisionChannel::ECC_Visibility, true, Hit))
+    {
+        if (UPrimitiveComponent* Comp = Hit.GetComponent())
+        {
+            for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+            {
+                const AStaticMeshActor* Actor = SpawnedCookingImplements[i];
+                if (Actor)
+                {
+                    if (Actor->GetStaticMeshComponent() == Comp || Comp->GetOwner() == Actor)
+                    {
+                        OutHit = Hit;
+                        UE_LOG(LogTemp, Display, TEXT("🍳 HitTest (screen) implement %d at %s"), i, *ScreenPosViewport.ToString());
+                        return i;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: manual line trace that works well with orthographic cameras
+    FVector WorldOrigin;
+    FVector WorldDirection;
+    if (PC->DeprojectScreenPositionToWorld(ScreenPosViewport.X, ScreenPosViewport.Y, WorldOrigin, WorldDirection))
+    {
+        const float TraceDepth = 100000.0f;
+        const FVector Start = WorldOrigin - WorldDirection * (TraceDepth * 0.5f);
+        const FVector End = WorldOrigin + WorldDirection * (TraceDepth * 0.5f);
+
+        TArray<TEnumAsByte<EObjectTypeQuery>> ObjTypes;
+        ObjTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldStatic));
+        ObjTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
+
+        TArray<AActor*> Ignore;
+
+        FHitResult LocalHit;
+        if (UKismetSystemLibrary::LineTraceSingleForObjects(World, Start, End, ObjTypes, false, Ignore, EDrawDebugTrace::None, LocalHit, true))
+        {
+            if (UPrimitiveComponent* Comp = LocalHit.GetComponent())
+            {
+                for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+                {
+                    const AStaticMeshActor* Actor = SpawnedCookingImplements[i];
+                    if (Actor)
+                    {
+                        if (Actor->GetStaticMeshComponent() == Comp || Comp->GetOwner() == Actor)
+                        {
+                            OutHit = LocalHit;
+                            UE_LOG(LogTemp, Display, TEXT("🍳 HitTest (line) implement %d at %s"), i, *ScreenPosViewport.ToString());
+                            return i;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return INDEX_NONE;
+}
+
+FVector2D UPUCookingStageWidget::ConvertAbsoluteToViewport(const FVector2D& AbsoluteScreenPos) const
+{
+    // Convert Slate absolute to viewport coordinates (pixels in the game viewport)
+    // Use the geometry passed into drag events to convert absolute → local. Here we approximate
+    // using viewport scale; Unreal typically has viewport scale = DPI scale.
+    float Scale = 1.0f;
+    if (GEngine && GEngine->GameViewport)
+    {
+        Scale = GEngine->GameViewport->GetDPIScale();
+    }
+    return AbsoluteScreenPos / FMath::Max(Scale, 0.001f);
+}
+
 void UPUCookingStageWidget::SetDishCustomizationComponent(UPUDishCustomizationComponent* Component)
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetDishCustomizationComponent - Setting dish customization component"));
@@ -318,8 +428,11 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
     // Rotate carousel to bring selected implement to front
     RotateCarouselToSelection(ImplementIndex);
     
+    const FString ImplementName = CookingImplementNames.IsValidIndex(ImplementIndex)
+        ? CookingImplementNames[ImplementIndex]
+        : FString::Printf(TEXT("Implement %d"), ImplementIndex);
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Applied %s to %s"), 
-        *IngredientData.DisplayName.ToString(), *CookingImplementNames[ImplementIndex]);
+        *IngredientData.DisplayName.ToString(), *ImplementName);
     
     // TODO: Implement additional cooking logic here
     // This is where you would:
@@ -1736,48 +1849,97 @@ void UPUCookingStageWidget::CreateQuantityControlFromDroppedIngredient(const FPU
 
 bool UPUCookingStageWidget::NativeOnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
-    // Check if this is an ingredient drag operation
-    if (UPUIngredientDragDropOperation* IngredientOp = Cast<UPUIngredientDragDropOperation>(InOperation))
+    if (Cast<UPUIngredientDragDropOperation>(InOperation))
     {
-        // Get mouse position in screen space
-        FVector2D ScreenPosition = InDragDropEvent.GetScreenSpacePosition();
-        
-        // Check if dragging over any carousel implement
-        for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+        UWorld* World = GetWorld();
+        if (!World)
         {
-            if (IsDragOverImplement(i, ScreenPosition))
+            return false;
+        }
+
+        // Use the drag event's absolute position; convert to viewport pixel coords
+        const FVector2D Absolute = InDragDropEvent.GetScreenSpacePosition();
+        const FVector2D ViewportPos = ConvertAbsoluteToViewport(Absolute);
+
+        FHitResult Hit;
+        const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
+        if (ImplementIdx != INDEX_NONE)
+        {
+            if (HoveredImplementIndex != ImplementIdx)
             {
-                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::NativeOnDragOver - Dragging over implement %d"), i);
-                return true; // Accept the drag
+                if (HoveredImplementIndex != INDEX_NONE)
+                {
+                    ApplyHoverVisualEffect(HoveredImplementIndex, false);
+                }
+                HoveredImplementIndex = ImplementIdx;
+                ApplyHoverVisualEffect(HoveredImplementIndex, true);
             }
+            UE_LOG(LogTemp, Verbose, TEXT("🎯 DragOver hovering implement %d"), ImplementIdx);
+            return true;
+        }
+
+        if (HoveredImplementIndex != INDEX_NONE)
+        {
+            ApplyHoverVisualEffect(HoveredImplementIndex, false);
+            HoveredImplementIndex = INDEX_NONE;
+            UE_LOG(LogTemp, Verbose, TEXT("🎯 DragOver left hover"));
         }
     }
-    
-    return false; // Not over a valid drop target
+
+    return false;
 }
 
 bool UPUCookingStageWidget::NativeOnDrop(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
-    // Check if this is an ingredient drag operation
     if (UPUIngredientDragDropOperation* IngredientOp = Cast<UPUIngredientDragDropOperation>(InOperation))
     {
-        // Get mouse position in screen space
-        FVector2D ScreenPosition = InDragDropEvent.GetScreenSpacePosition();
-        
-        // Find which implement we're dropping on
-        for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+        UWorld* World = GetWorld();
+        if (!World)
         {
-            if (IsDragOverImplement(i, ScreenPosition))
-            {
-                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::NativeOnDrop - Dropped ingredient on implement %d"), i);
-                
-                // Handle the drop
-                OnIngredientDroppedOnImplement(i, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
-                
-                return true; // Drop handled
-            }
+            return false;
+        }
+        const FVector2D Absolute = InDragDropEvent.GetScreenSpacePosition();
+        const FVector2D ViewportPos = ConvertAbsoluteToViewport(Absolute);
+
+        FHitResult Hit;
+        const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
+        if (ImplementIdx != INDEX_NONE)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDrop - Dropping on implement %d"), ImplementIdx);
+            OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
+            RotateCarouselToSelection(ImplementIdx);
+            return true;
         }
     }
-    
-    return false; // Drop not handled
+
+    return false;
+}
+
+void UPUCookingStageWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    // Handle drop onto world when no widget accepted the drop
+    if (UPUIngredientDragDropOperation* IngredientOp = Cast<UPUIngredientDragDropOperation>(InOperation))
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - Attempting world drop"));
+        UWorld* World = GetWorld();
+        if (!World)
+        {
+            return;
+        }
+        const FVector2D Absolute = InDragDropEvent.GetScreenSpacePosition();
+        const FVector2D ViewportPos = ConvertAbsoluteToViewport(Absolute);
+
+        FHitResult Hit;
+        const int32 ImplementIdx = FindImplementUnderScreenPos(ViewportPos, Hit);
+        if (ImplementIdx != INDEX_NONE)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - Dropped on implement %d"), ImplementIdx);
+            OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
+            RotateCarouselToSelection(ImplementIdx);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - No implement under cursor"));
+        }
+    }
 }

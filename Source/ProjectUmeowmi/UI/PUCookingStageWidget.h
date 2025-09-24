@@ -109,6 +109,7 @@ public:
     // Native drag and drop events
     virtual bool NativeOnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
     virtual bool NativeOnDrop(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+    virtual void NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
 
     // Ingredient Button Management Functions
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
@@ -250,6 +251,9 @@ private:
     void ToggleDebugVisualization();
     void DrawDebugHoverArea();
     void SwitchToPlayerCamera();
+    bool GetViewportMousePos(class APlayerController* PC, FVector2D& OutViewportPos) const;
+    int32 FindImplementUnderScreenPos(const FVector2D& ScreenPosViewport, struct FHitResult& OutHit) const;
+    FVector2D ConvertAbsoluteToViewport(const FVector2D& AbsoluteScreenPos) const;
 
     // Carousel state
     UPROPERTY()
