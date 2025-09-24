@@ -2,6 +2,9 @@
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
+#include "PUIngredientDragDropOperation.h"
+#include "Blueprint/UserWidget.h"
+#include "Components/SlateWrapperTypes.h"
 
 UPUIngredientButton::UPUIngredientButton(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -127,4 +130,28 @@ void UPUIngredientButton::OnIngredientButtonUnhoveredInternal()
     OnButtonUnhovered();
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonUnhoveredInternal - Unhover event broadcasted"));
+}
+
+FReply UPUIngredientButton::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::NativeOnMouseButtonDown - Mouse button down on ingredient: %s (Drag enabled: %s)"), 
+        *IngredientData.DisplayName.ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    // Only handle left mouse button and only if drag is enabled
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDragEnabled)
+    {
+        // Start drag detection - this will call the Blueprint OnDragDetected event
+        return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+    }
+    
+    return FReply::Unhandled();
+}
+
+
+void UPUIngredientButton::SetDragEnabled(bool bEnabled)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetDragEnabled - Setting drag enabled to %s for ingredient: %s"), 
+        bEnabled ? TEXT("TRUE") : TEXT("FALSE"), *IngredientData.DisplayName.ToString());
+    
+    bDragEnabled = bEnabled;
 } 

@@ -1,6 +1,8 @@
 #include "PUCookingStageWidget.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
+#include "PUIngredientButton.h"
+#include "Components/Button.h"
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
 #include "Components/StaticMeshComponent.h"
@@ -92,8 +94,8 @@ void UPUCookingStageWidget::InitializeCookingStage(const FPUDishBase& DishData, 
         *CarouselCenter.ToString());
     SpawnCookingCarousel();
     
-    // Create quantity controls for the selected ingredients
-    //CreateQuantityControlsForSelectedIngredients();
+    // Create ingredient buttons from the dish data
+    CreateIngredientButtonsFromDishData();
     
     // Call Blueprint event
     OnCookingStageInitialized(CurrentDishData);
@@ -310,18 +312,21 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
         return;
     }
     
-    // TODO: Implement cooking logic here
+    // Create quantity control from dropped ingredient
+    CreateQuantityControlFromDroppedIngredient(IngredientData, InstanceID, Quantity);
+    
+    // Rotate carousel to bring selected implement to front
+    RotateCarouselToSelection(ImplementIndex);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Applied %s to %s"), 
+        *IngredientData.DisplayName.ToString(), *CookingImplementNames[ImplementIndex]);
+    
+    // TODO: Implement additional cooking logic here
     // This is where you would:
     // 1. Apply the ingredient to the cooking implement
     // 2. Update the dish data
     // 3. Show cooking effects/animations
     // 4. Update the cooking progress
-    
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Applied %s to %s"), 
-        *IngredientData.DisplayName.ToString(), *CookingImplementNames[ImplementIndex]);
-    
-    // Broadcast event for Blueprint handling
-    // You can add a delegate here if needed
 }
 
 bool UPUCookingStageWidget::IsDragOverImplement(int32 ImplementIndex, const FVector2D& ScreenPosition) const
@@ -1533,4 +1538,246 @@ void UPUCookingStageWidget::DrawDebugHoverArea()
         FString DebugText = FString::Printf(TEXT("Implement %d"), i);
         DrawDebugString(World, WorldLocation + FVector(0, 0, 60), DebugText, nullptr, FColor::White, 0.0f, true);
     }
-} 
+}
+
+void UPUCookingStageWidget::CreateIngredientButtonsFromDishData()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Creating ingredient buttons from dish data"));
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Current button count before clearing: %d"), CreatedIngredientButtons.Num());
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Buttons already created: %s"), bIngredientButtonsCreated ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    // Check if buttons were already created
+    if (bIngredientButtonsCreated)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientButtonsFromDishData - Buttons already created, skipping to prevent duplicates"));
+        return;
+    }
+    
+    // Check if we have a valid world context
+    if (!GetWorld())
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::CreateIngredientButtonsFromDishData - No world context available"));
+        return;
+    }
+    
+    // Clear any existing buttons
+    CreatedIngredientButtons.Empty();
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Cleared existing buttons"));
+    
+    // Check if we have dish data
+    if (CurrentDishData.IngredientInstances.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientButtonsFromDishData - No ingredient instances in dish data"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Found %d ingredient instances"), CurrentDishData.IngredientInstances.Num());
+    
+    // Debug: Log each ingredient instance
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); ++i)
+    {
+        const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("🍳 Ingredient %d: Tag=%s, Name=%s, ID=%d, Qty=%d"), 
+            i, 
+            *Instance.IngredientData.IngredientTag.ToString(),
+            *Instance.IngredientData.DisplayName.ToString(),
+            Instance.InstanceID,
+            Instance.Quantity);
+    }
+    
+    // Create buttons for up to 10 ingredient instances
+    int32 MaxButtons = FMath::Min(10, CurrentDishData.IngredientInstances.Num());
+    for (int32 i = 0; i < MaxButtons; ++i)
+    {
+        const FIngredientInstance& IngredientInstance = CurrentDishData.IngredientInstances[i];
+        
+        // Validate ingredient instance
+        if (!IngredientInstance.IngredientData.IngredientTag.IsValid())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientButtonsFromDishData - Invalid ingredient instance at index %d"), i);
+            continue;
+        }
+        
+        // Create ingredient button using the Blueprint class
+        TSubclassOf<UPUIngredientButton> ButtonClass;
+        if (IngredientButtonClass)
+        {
+            ButtonClass = IngredientButtonClass;
+        }
+        else
+        {
+            ButtonClass = UPUIngredientButton::StaticClass();
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("🍳 Creating ingredient button using class: %s"), 
+            ButtonClass ? *ButtonClass->GetName() : TEXT("NULL"));
+        
+        UPUIngredientButton* IngredientButton = CreateWidget<UPUIngredientButton>(this, ButtonClass);
+        if (IngredientButton)
+        {
+            // Set the ingredient data
+            IngredientButton->SetIngredientData(IngredientInstance.IngredientData);
+            
+            // Try to disable click functionality (only drag should work)
+            UButton* InternalButton = IngredientButton->GetIngredientButton();
+            if (InternalButton)
+            {
+                InternalButton->SetIsEnabled(false);
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Disabled click functionality for ingredient: %s"), 
+                    *IngredientInstance.IngredientData.DisplayName.ToString());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientButtonsFromDishData - Internal button is null for ingredient: %s (this is expected for programmatically created widgets)"), 
+                    *IngredientInstance.IngredientData.DisplayName.ToString());
+            }
+            
+            // Add to our array
+            CreatedIngredientButtons.Add(IngredientButton);
+            
+            // Enable drag functionality for cooking stage
+            IngredientButton->SetDragEnabled(true);
+            
+            // Add to the UI container if available
+            if (IngredientButtonContainer.IsValid())
+            {
+                IngredientButtonContainer->AddChild(IngredientButton);
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Added button to container for ingredient: %s"), 
+                    *IngredientInstance.IngredientData.DisplayName.ToString());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientButtonsFromDishData - No ingredient button container set! Button will not be visible."));
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Created button for ingredient: %s (ID: %d, Qty: %d)"), 
+                *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::CreateIngredientButtonsFromDishData - Failed to create ingredient button for: %s"), 
+                *IngredientInstance.IngredientData.DisplayName.ToString());
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Successfully created %d ingredient buttons"), CreatedIngredientButtons.Num());
+    
+    // Mark that buttons have been created
+    bIngredientButtonsCreated = true;
+}
+
+void UPUCookingStageWidget::SetIngredientButtonContainer(UPanelWidget* Container)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Setting ingredient button container"));
+    
+    if (Container)
+    {
+        IngredientButtonContainer = Container;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Container set successfully"));
+        
+        // If we already have created buttons, add them to the new container
+        if (CreatedIngredientButtons.Num() > 0)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Adding %d existing buttons to container"), CreatedIngredientButtons.Num());
+            for (UPUIngredientButton* Button : CreatedIngredientButtons)
+            {
+                if (Button && !Button->GetParent())
+                {
+                    Container->AddChild(Button);
+                }
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetIngredientButtonContainer - Container is null"));
+    }
+}
+
+void UPUCookingStageWidget::CreateQuantityControlFromDroppedIngredient(const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - Creating quantity control for dropped ingredient: %s"), 
+        *IngredientData.DisplayName.ToString());
+    
+    // Print the message as requested
+    UE_LOG(LogTemp, Display, TEXT("🎯 INGREDIENT DROPPED: %s (ID: %d, Qty: %d)"), 
+        *IngredientData.DisplayName.ToString(), InstanceID, Quantity);
+    
+    if (!QuantityControlClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - No quantity control class set"));
+        return;
+    }
+    
+    // Create quantity control widget
+    if (UPUIngredientQuantityControl* QuantityControl = CreateWidget<UPUIngredientQuantityControl>(this, QuantityControlClass))
+    {
+        // Create ingredient instance for the quantity control
+        FIngredientInstance IngredientInstance;
+        IngredientInstance.InstanceID = InstanceID;
+        IngredientInstance.Quantity = Quantity;
+        IngredientInstance.IngredientData = IngredientData;
+        IngredientInstance.IngredientTag = IngredientData.IngredientTag;
+        
+        // Set up the quantity control
+        QuantityControl->SetIngredientInstance(IngredientInstance);
+        QuantityControl->SetPreparationCheckboxClass(PreparationCheckboxClass);
+        
+        // Bind events
+        QuantityControl->OnQuantityControlChanged.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
+        QuantityControl->OnQuantityControlRemoved.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlRemoved);
+        
+        // Add to viewport (Blueprint will handle placement)
+        QuantityControl->AddToViewport();
+        
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - Quantity control created successfully"));
+    }
+}
+
+bool UPUCookingStageWidget::NativeOnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    // Check if this is an ingredient drag operation
+    if (UPUIngredientDragDropOperation* IngredientOp = Cast<UPUIngredientDragDropOperation>(InOperation))
+    {
+        // Get mouse position in screen space
+        FVector2D ScreenPosition = InDragDropEvent.GetScreenSpacePosition();
+        
+        // Check if dragging over any carousel implement
+        for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+        {
+            if (IsDragOverImplement(i, ScreenPosition))
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::NativeOnDragOver - Dragging over implement %d"), i);
+                return true; // Accept the drag
+            }
+        }
+    }
+    
+    return false; // Not over a valid drop target
+}
+
+bool UPUCookingStageWidget::NativeOnDrop(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+    // Check if this is an ingredient drag operation
+    if (UPUIngredientDragDropOperation* IngredientOp = Cast<UPUIngredientDragDropOperation>(InOperation))
+    {
+        // Get mouse position in screen space
+        FVector2D ScreenPosition = InDragDropEvent.GetScreenSpacePosition();
+        
+        // Find which implement we're dropping on
+        for (int32 i = 0; i < SpawnedCookingImplements.Num(); ++i)
+        {
+            if (IsDragOverImplement(i, ScreenPosition))
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::NativeOnDrop - Dropped ingredient on implement %d"), i);
+                
+                // Handle the drop
+                OnIngredientDroppedOnImplement(i, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
+                
+                return true; // Drop handled
+            }
+        }
+    }
+    
+    return false; // Drop not handled
+}

@@ -48,6 +48,17 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
     FOnIngredientButtonClicked OnIngredientButtonHovered;
 
+    // Native drag events (only enabled in cooking stage)
+    virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+    // Enable/disable drag functionality
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    void SetDragEnabled(bool bEnabled);
+
+    // Check if drag is enabled
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    bool IsDragEnabled() const { return bDragEnabled; }
+
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
     FOnIngredientButtonClicked OnIngredientButtonUnhovered;
 
@@ -65,6 +76,10 @@ protected:
 
     UPROPERTY(meta = (BindWidget))
     UImage* IngredientIcon;
+
+    // Whether drag functionality is enabled
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Button|Drag")
+    bool bDragEnabled = false;
 
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Button")

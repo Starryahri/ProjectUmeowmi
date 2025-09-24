@@ -6,9 +6,11 @@
 #include "../DishCustomization/PUDishBase.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
+#include "PUIngredientButton.h"
 #include "PUCookingStageWidget.generated.h"
 
 class UPUIngredientQuantityControl;
+class UPUIngredientButton;
 class AStaticMeshActor;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCookingCompleted, const FPUDishBase&, FinalDishData);
@@ -104,6 +106,22 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Drag Drop")
     bool IsDragOverImplement(int32 ImplementIndex, const FVector2D& ScreenPosition) const;
 
+    // Native drag and drop events
+    virtual bool NativeOnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+    virtual bool NativeOnDrop(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+
+    // Ingredient Button Management Functions
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    void CreateIngredientButtonsFromDishData();
+
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    void CreateQuantityControlFromDroppedIngredient(const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity);
+
+    // Set the container widget for ingredient buttons
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    void SetIngredientButtonContainer(UPanelWidget* Container);
+
+
 protected:
     // Current dish data (being built during cooking)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Data")
@@ -119,6 +137,21 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUPreparationCheckbox> PreparationCheckboxClass;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<UPUIngredientButton> IngredientButtonClass;
+
+    // Ingredient Button Management Properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Ingredients")
+    TArray<class UPUIngredientButton*> CreatedIngredientButtons;
+
+    // Flag to prevent double creation
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Ingredients")
+    bool bIngredientButtonsCreated = false;
+
+    // Widget reference for ingredient button container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Ingredients")
+    TWeakObjectPtr<class UPanelWidget> IngredientButtonContainer;
 
     // Carousel Properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
