@@ -83,6 +83,12 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget")
     void OnCookingStageCompleted(const FPUDishBase& FinalDishData);
 
+    UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget")
+    void OnQuantityControlCreated(class UPUIngredientQuantityControl* QuantityControl, const FIngredientInstance& IngredientInstance);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget")
+    void OnDishDataChanged(const FPUDishBase& DishData);
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Cooking Stage Widget|Events")
     FOnCookingCompleted OnCookingCompleted;

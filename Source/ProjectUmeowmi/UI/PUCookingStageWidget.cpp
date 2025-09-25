@@ -106,6 +106,9 @@ void UPUCookingStageWidget::InitializeCookingStage(const FPUDishBase& DishData, 
     // Create ingredient buttons from the dish data
     CreateIngredientButtonsFromDishData();
     
+    // Create quantity controls for existing ingredients
+    CreateQuantityControlsForSelectedIngredients();
+    
     // Call Blueprint event
     OnCookingStageInitialized(CurrentDishData);
 }
@@ -113,12 +116,7 @@ void UPUCookingStageWidget::InitializeCookingStage(const FPUDishBase& DishData, 
 void UPUCookingStageWidget::CreateQuantityControlsForSelectedIngredients()
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlsForSelectedIngredients - Creating quantity controls"));
-    
-    if (!QuantityControlClass)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateQuantityControlsForSelectedIngredients - No quantity control class set"));
-        return;
-    }
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: CurrentDishData has %d ingredient instances"), CurrentDishData.IngredientInstances.Num());
     
     // Create quantity controls for each ingredient instance
     for (const FIngredientInstance& IngredientInstance : CurrentDishData.IngredientInstances)
@@ -126,22 +124,16 @@ void UPUCookingStageWidget::CreateQuantityControlsForSelectedIngredients()
         UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlsForSelectedIngredients - Creating control for: %s"), 
             *IngredientInstance.IngredientData.DisplayName.ToString());
         
-        // Create quantity control widget
-        if (UPUIngredientQuantityControl* QuantityControl = CreateWidget<UPUIngredientQuantityControl>(this, QuantityControlClass))
-        {
-            QuantityControl->SetIngredientInstance(IngredientInstance);
-            QuantityControl->SetPreparationCheckboxClass(PreparationCheckboxClass);
-            
-            // Bind events
-            QuantityControl->OnQuantityControlChanged.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
-            QuantityControl->OnQuantityControlRemoved.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlRemoved);
-            
-            // Add to viewport (Blueprint will handle the actual placement)
-            QuantityControl->AddToViewport();
-            
-            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlsForSelectedIngredients - Quantity control created for instance: %d"), 
-                IngredientInstance.InstanceID);
-        }
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to create widget for instance ID: %d"), IngredientInstance.InstanceID);
+        
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call OnQuantityControlCreated Blueprint event"));
+        
+        // Call Blueprint event to create quantity control widget (Blueprint handles everything)
+        OnQuantityControlCreated(nullptr, IngredientInstance);
+        
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: OnQuantityControlCreated Blueprint event called"));
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlsForSelectedIngredients - Blueprint event called for instance: %d"), 
+            IngredientInstance.InstanceID);
     }
     
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlsForSelectedIngredients - Created %d quantity controls"), 
@@ -163,6 +155,10 @@ void UPUCookingStageWidget::OnQuantityControlChanged(const FIngredientInstance& 
             break;
         }
     }
+    
+    // Broadcast dish data change to update flavor/texture/dish quantity profiles
+    OnDishDataChanged(CurrentDishData);
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlChanged - Broadcasted dish data change"));
 }
 
 void UPUCookingStageWidget::OnQuantityControlRemoved(int32 InstanceID, UPUIngredientQuantityControl* QuantityControlWidget)
@@ -173,6 +169,10 @@ void UPUCookingStageWidget::OnQuantityControlRemoved(int32 InstanceID, UPUIngred
     CurrentDishData.IngredientInstances.RemoveAll([InstanceID](const FIngredientInstance& Instance) {
         return Instance.InstanceID == InstanceID;
     });
+    
+    // Broadcast dish data change to update flavor/texture/dish quantity profiles
+    OnDishDataChanged(CurrentDishData);
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlRemoved - Broadcasted dish data change"));
     
     // Remove the widget from viewport
     if (QuantityControlWidget)
@@ -439,8 +439,12 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
         return;
     }
     
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call CreateQuantityControlFromDroppedIngredient"));
+    
     // Create quantity control from dropped ingredient
     CreateQuantityControlFromDroppedIngredient(IngredientData, InstanceID, Quantity);
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: CreateQuantityControlFromDroppedIngredient completed"));
     
     // Rotate carousel to bring selected implement to front
     RotateCarouselToSelection(ImplementIndex);
@@ -1833,53 +1837,25 @@ void UPUCookingStageWidget::CreateQuantityControlFromDroppedIngredient(const FPU
     UE_LOG(LogTemp, Display, TEXT("🎯 INGREDIENT DROPPED: %s (ID: %d, Qty: %d)"), 
         *IngredientData.DisplayName.ToString(), InstanceID, Quantity);
     
-    if (!QuantityControlClass)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - No quantity control class set"));
-        return;
-    }
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Creating ingredient instance data"));
     
-    // Create quantity control widget
-    if (UPUIngredientQuantityControl* QuantityControl = CreateWidget<UPUIngredientQuantityControl>(this, QuantityControlClass))
-    {
-        // Create ingredient instance for the quantity control
-        FIngredientInstance IngredientInstance;
-        IngredientInstance.InstanceID = InstanceID;
-        IngredientInstance.Quantity = Quantity;
-        IngredientInstance.IngredientData = IngredientData;
-        IngredientInstance.IngredientTag = IngredientData.IngredientTag;
-        
-        // Set up the quantity control
-        QuantityControl->SetIngredientInstance(IngredientInstance);
-        QuantityControl->SetPreparationCheckboxClass(PreparationCheckboxClass);
-        
-        // Bind events
-        QuantityControl->OnQuantityControlChanged.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
-        QuantityControl->OnQuantityControlRemoved.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlRemoved);
-        
-        // Prefer the bound QuantityScrollBox if available
-        if (QuantityScrollBox)
-        {
-            QuantityScrollBox->AddChild(QuantityControl);
-            UE_LOG(LogTemp, Display, TEXT("🍳 Quantity control added to QuantityScrollBox: %s"), *QuantityScrollBox->GetName());
-        }
-        // Else add to specified panel container if available
-        else if (QuantityControlContainer.IsValid())
-        {
-            if (UPanelWidget* Panel = QuantityControlContainer.Get())
-            {
-                Panel->AddChild(QuantityControl);
-                UE_LOG(LogTemp, Display, TEXT("🍳 Quantity control added to container: %s"), *Panel->GetName());
-            }
-        }
-        else
-        {
-            QuantityControl->AddToViewport();
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ No QuantityControlContainer set; added to viewport"));
-        }
-        
-        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - Quantity control created successfully"));
-    }
+    // Create ingredient instance for Blueprint event
+    FIngredientInstance IngredientInstance;
+    IngredientInstance.InstanceID = InstanceID;
+    IngredientInstance.Quantity = Quantity;
+    IngredientInstance.IngredientData = IngredientData;
+    IngredientInstance.IngredientTag = IngredientData.IngredientTag;
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Ingredient instance created - ID: %d, Qty: %d, Tag: %s"), 
+        IngredientInstance.InstanceID, IngredientInstance.Quantity, *IngredientInstance.IngredientTag.ToString());
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call OnQuantityControlCreated Blueprint event"));
+    
+    // Call Blueprint event to create quantity control widget
+    OnQuantityControlCreated(nullptr, IngredientInstance);
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: OnQuantityControlCreated Blueprint event called"));
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - Blueprint event called for quantity control creation"));
 }
 
 bool UPUCookingStageWidget::NativeOnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
