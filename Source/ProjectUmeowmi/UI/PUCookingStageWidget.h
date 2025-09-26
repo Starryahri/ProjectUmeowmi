@@ -7,6 +7,7 @@
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
 #include "PUIngredientButton.h"
+#include "GameplayTagContainer.h"
 #include "Components/ScrollBox.h"
 #include "PUCookingStageWidget.generated.h"
 
@@ -37,6 +38,10 @@ public:
     // Get the current dish data
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
     const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
+
+    // GUID-based unique ID generation
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
+    static int32 GenerateGUIDBasedInstanceID();
 
     // Get the planning data
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
@@ -75,6 +80,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Carousel")
     void FindAndSetNearestCookingStation();
+
+    // Implement Preparation Tags
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Preparations")
+    FGameplayTagContainer GetPreparationTagsForImplement(int32 ImplementIndex) const;
 
     // Blueprint events
     UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget")
@@ -195,6 +204,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
     float RotationSpeed = 2.0f;
 
+    // One entry per cooking implement (same order as CookingImplementMeshes)
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cooking Stage Widget|Preparations", meta=(EditFixedSize=true, Categories="Prep", DisplayName="Implement Preparation Tags", ToolTip="Per-implement allowed preparation tags; must match CookingImplementMeshes order/length and only uses Prep.* tags"))
+    TArray<FGameplayTagContainer> ImplementPreparationTags;
+
     // Hover Detection Properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Hover")
     TSubclassOf<UUserWidget> HoverTextWidgetClass;
@@ -276,6 +289,7 @@ private:
     bool GetViewportMousePos(class APlayerController* PC, FVector2D& OutViewportPos) const;
     int32 FindImplementUnderScreenPos(const FVector2D& ScreenPosViewport, struct FHitResult& OutHit) const;
     FVector2D ConvertAbsoluteToViewport(const FVector2D& AbsoluteScreenPos) const;
+    int32 GenerateUniqueIngredientInstanceID() const;
 
     // Carousel state
     UPROPERTY()

@@ -47,6 +47,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void SetQuantity(int32 NewQuantity);
 
+    // Update the quantity text display
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control")
+    void UpdateQuantityText();
+
     // Add/remove preparation
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void AddPreparation(const FGameplayTag& PreparationTag);
@@ -83,7 +87,8 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UButton* DecreaseQuantityButton;
 
-
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* QuantityNumberText;
 
     UPROPERTY(meta = (BindWidget))
     UButton* IncreaseQuantityButton;
@@ -108,7 +113,8 @@ protected:
     UFUNCTION(BlueprintCallable, Category = "Quantity Control|Components")
     UButton* GetDecreaseQuantityButton() const { return DecreaseQuantityButton; }
 
-
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control|Components")
+    UTextBlock* GetQuantityNumberText() const { return QuantityNumberText; }
 
     UFUNCTION(BlueprintCallable, Category = "Quantity Control|Components")
     UButton* GetIncreaseQuantityButton() const { return IncreaseQuantityButton; }

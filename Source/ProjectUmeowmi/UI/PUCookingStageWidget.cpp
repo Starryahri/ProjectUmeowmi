@@ -22,6 +22,14 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Engine/GameViewportClient.h"
 
+FGameplayTagContainer UPUCookingStageWidget::GetPreparationTagsForImplement(int32 ImplementIndex) const
+{
+    if (ImplementPreparationTags.IsValidIndex(ImplementIndex))
+    {
+        return ImplementPreparationTags[ImplementIndex];
+    }
+    return FGameplayTagContainer();
+}
 UPUCookingStageWidget::UPUCookingStageWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
@@ -51,7 +59,7 @@ void UPUCookingStageWidget::NativeTick(const FGeometry& MyGeometry, float InDelt
     {
         if (bIsRotating)
         {
-            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::NativeTick - Carousel is rotating, updating..."));
+            // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::NativeTick - Carousel is rotating, updating..."));
         }
         UpdateCarouselRotation(InDeltaTime);
         
@@ -144,17 +152,23 @@ void UPUCookingStageWidget::OnQuantityControlChanged(const FIngredientInstance& 
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlChanged - Quantity control changed for instance: %d"), 
         IngredientInstance.InstanceID);
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Received quantity change - ID: %d, Qty: %d"), 
+        IngredientInstance.InstanceID, IngredientInstance.Quantity);
     
     // Update the ingredient instance in the current dish data
     for (FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
     {
         if (Instance.InstanceID == IngredientInstance.InstanceID)
         {
+            UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found matching instance, updating from qty %d to %d"), 
+                Instance.Quantity, IngredientInstance.Quantity);
             Instance = IngredientInstance;
             UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlChanged - Updated instance in dish data"));
             break;
         }
     }
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to broadcast OnDishDataChanged"));
     
     // Broadcast dish data change to update flavor/texture/dish quantity profiles
     OnDishDataChanged(CurrentDishData);
@@ -165,21 +179,63 @@ void UPUCookingStageWidget::OnQuantityControlRemoved(int32 InstanceID, UPUIngred
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlRemoved - Quantity control removed for instance: %d"), InstanceID);
     
-    // Remove the ingredient instance from the current dish data
-    CurrentDishData.IngredientInstances.RemoveAll([InstanceID](const FIngredientInstance& Instance) {
+    // Debug: Log all instances before removal
+    UE_LOG(LogTemp, Display, TEXT("🍳 BEFORE REMOVAL - Total instances: %d"), CurrentDishData.IngredientInstances.Num());
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    {
+        const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("🍳   Instance %d: ID=%d, Ingredient=%s, Quantity=%d"), 
+            i, Instance.InstanceID, *Instance.IngredientData.IngredientName.ToString(), Instance.Quantity);
+    }
+    
+    // Remove ONLY the specific instance id; leave other instances of the same ingredient intact
+    int32 Removed = CurrentDishData.IngredientInstances.RemoveAll([InstanceID](const FIngredientInstance& Instance) {
         return Instance.InstanceID == InstanceID;
     });
+    UE_LOG(LogTemp, Display, TEXT("🔍 Removed instances with ID %d: %d"), InstanceID, Removed);
+    
+    // Debug: Log all instances after removal
+    UE_LOG(LogTemp, Display, TEXT("🍳 AFTER REMOVAL - Total instances: %d"), CurrentDishData.IngredientInstances.Num());
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    {
+        const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("🍳   Instance %d: ID=%d, Ingredient=%s, Quantity=%d"), 
+            i, Instance.InstanceID, *Instance.IngredientData.IngredientName.ToString(), Instance.Quantity);
+    }
     
     // Broadcast dish data change to update flavor/texture/dish quantity profiles
     OnDishDataChanged(CurrentDishData);
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlRemoved - Broadcasted dish data change"));
     
-    // Remove the widget from viewport
-    if (QuantityControlWidget)
+    // Note: Widget removal is handled by the quantity control widget itself
+}
+
+int32 UPUCookingStageWidget::GenerateUniqueIngredientInstanceID() const
+{
+    int32 MaxId = 0;
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
     {
-        QuantityControlWidget->RemoveFromParent();
-        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlRemoved - Widget removed from viewport"));
+        MaxId = FMath::Max(MaxId, Instance.InstanceID);
     }
+    // Next available id
+    return MaxId + 1;
+}
+
+int32 UPUCookingStageWidget::GenerateGUIDBasedInstanceID()
+{
+    // Generate a GUID and convert it to a unique integer
+    FGuid NewGUID = FGuid::NewGuid();
+    
+    // Convert GUID to a unique integer using hash
+    int32 UniqueID = GetTypeHash(NewGUID);
+    
+    // Ensure it's positive (hash can be negative)
+    UniqueID = FMath::Abs(UniqueID);
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 Generated GUID-based InstanceID: %d from GUID: %s"), 
+        UniqueID, *NewGUID.ToString());
+    
+    return UniqueID;
 }
 
 void UPUCookingStageWidget::FinishCookingAndStartPlating()
@@ -330,7 +386,7 @@ int32 UPUCookingStageWidget::FindImplementUnderScreenPos(const FVector2D& Screen
                     if (Actor->GetStaticMeshComponent() == Comp || Comp->GetOwner() == Actor)
                     {
                         OutHit = Hit;
-                        UE_LOG(LogTemp, Display, TEXT("🍳 HitTest (screen) implement %d at %s"), i, *ScreenPosViewport.ToString());
+                        // UE_LOG(LogTemp, Display, TEXT("🍳 HitTest (screen) implement %d at %s"), i, *ScreenPosViewport.ToString());
                         return i;
                     }
                 }
@@ -1071,15 +1127,15 @@ void UPUCookingStageWidget::UpdateCarouselRotation(float DeltaTime)
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCarouselRotation - Rotating: Progress=%.3f, CurrentAngle=%.2f, TargetAngle=%.2f"), 
-        RotationProgress, CurrentRotationAngle, TargetRotationAngle);
+    // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCarouselRotation - Rotating: Progress=%.3f, CurrentAngle=%.2f, TargetAngle=%.2f"),
+    //     RotationProgress, CurrentRotationAngle, TargetRotationAngle);
 
     // Update rotation progress
     float ProgressIncrement = DeltaTime * RotationSpeed;
     RotationProgress += ProgressIncrement;
     
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCarouselRotation - Progress increment: %.4f, Total progress: %.3f"), 
-        ProgressIncrement, RotationProgress);
+    // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCarouselRotation - Progress increment: %.4f, Total progress: %.3f"),
+    //     ProgressIncrement, RotationProgress);
     
     if (RotationProgress >= 1.0f)
     {
@@ -1088,7 +1144,7 @@ void UPUCookingStageWidget::UpdateCarouselRotation(float DeltaTime)
         bIsRotating = false;
         CurrentRotationAngle = TargetRotationAngle;
         
-        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCarouselRotation - Carousel rotation complete"));
+        // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCarouselRotation - Carousel rotation complete"));
     }
     else
     {
@@ -1162,8 +1218,8 @@ void UPUCookingStageWidget::ApplySelectionVisualEffect(int32 ImplementIndex, boo
 
 void UPUCookingStageWidget::ShowHoverText(int32 ImplementIndex, bool bShow)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ShowHoverText - Attempting to %s hover text for implement %d (Total components: %d)"), 
-        bShow ? TEXT("show") : TEXT("hide"), ImplementIndex, HoverTextComponents.Num());
+    // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ShowHoverText - Attempting to %s hover text for implement %d (Total components: %d)"), 
+    //     bShow ? TEXT("show") : TEXT("hide"), ImplementIndex, HoverTextComponents.Num());
     
     if (ImplementIndex >= 0 && ImplementIndex < HoverTextComponents.Num())
     {
@@ -1171,8 +1227,8 @@ void UPUCookingStageWidget::ShowHoverText(int32 ImplementIndex, bool bShow)
         if (TextComponent)
         {
             TextComponent->SetVisibility(bShow);
-            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ShowHoverText - %s hover text for implement %d"), 
-                bShow ? TEXT("Showing") : TEXT("Hiding"), ImplementIndex);
+            // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ShowHoverText - %s hover text for implement %d"), 
+            //     bShow ? TEXT("Showing") : TEXT("Hiding"), ImplementIndex);
         }
         else
         {
@@ -1210,7 +1266,7 @@ void UPUCookingStageWidget::ApplyHoverVisualEffect(int32 ImplementIndex, bool bA
                     // Set material parameter for glow
                     MeshComponent->SetScalarParameterValueOnMaterials(TEXT("GlowIntensity"), HoverGlowIntensity);
                     
-                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ApplyHoverVisualEffect - Applied hover effect to implement %d (scaled up)"), ImplementIndex);
+                    // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ApplyHoverVisualEffect - Applied hover effect to implement %d (scaled up)"), ImplementIndex);
                 }
                 else
                 {
@@ -1222,7 +1278,7 @@ void UPUCookingStageWidget::ApplyHoverVisualEffect(int32 ImplementIndex, bool bA
                     MeshComponent->SetRenderCustomDepth(false);
                     MeshComponent->SetScalarParameterValueOnMaterials(TEXT("GlowIntensity"), 0.0f);
                     
-                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ApplyHoverVisualEffect - Removed hover effect from implement %d (scaled down)"), ImplementIndex);
+                    // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ApplyHoverVisualEffect - Removed hover effect from implement %d (scaled down)"), ImplementIndex);
                 }
             }
         }
@@ -1270,8 +1326,8 @@ void UPUCookingStageWidget::UpdateFrontIndicator()
                 CurrentLocation.Z += FrontItemHeight;
                 FrontActor->SetActorLocation(CurrentLocation);
                 
-                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateFrontIndicator - Front item is implement %d (scale: %.2f, height: %.2f)"), 
-                    FrontIndex, FrontItemScale, FrontItemHeight);
+                // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateFrontIndicator - Front item is implement %d (scale: %.2f, height: %.2f)"), 
+                //     FrontIndex, FrontItemScale, FrontItemHeight);
             }
         }
     }
@@ -1450,7 +1506,7 @@ void UPUCookingStageWidget::UpdateHoverDetection()
             ShowHoverText(HoveredImplementIndex, true);
             ApplyHoverVisualEffect(HoveredImplementIndex, true);
             
-            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateHoverDetection - Hovering over implement %d (distance: %.1f)"), HoveredImplementIndex, ClosestDistance);
+            // UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateHoverDetection - Hovering over implement %d (distance: %.1f)"), HoveredImplementIndex, ClosestDistance);
         }
         else
         {
@@ -1849,12 +1905,49 @@ void UPUCookingStageWidget::CreateQuantityControlFromDroppedIngredient(const FPU
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Ingredient instance created - ID: %d, Qty: %d, Tag: %s"), 
         IngredientInstance.InstanceID, IngredientInstance.Quantity, *IngredientInstance.IngredientTag.ToString());
     
+    // Apply implement-specific preparation tags on drop
+    {
+        const FGameplayTagContainer AllowedTags = GetPreparationTagsForImplement(SelectedImplementIndex);
+        if (AllowedTags.Num() > 0)
+        {
+            TArray<FGameplayTag> TagsArray;
+            AllowedTags.GetGameplayTagArray(TagsArray);
+            for (const FGameplayTag& Tag : TagsArray)
+            {
+                if (!IngredientInstance.Preparations.HasTag(Tag))
+                {
+                    IngredientInstance.Preparations.AddTag(Tag);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 Applied preparation tag on drop: %s"), *Tag.ToString());
+                }
+            }
+            // Mirror to ingredient data active preps for UI/name logic
+            IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
+            UE_LOG(LogTemp, Display, TEXT("🎯 Total applied preparation tags: %d"), IngredientInstance.Preparations.Num());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Display, TEXT("ℹ️ No implement-specific preparation tags configured for implement %d"), SelectedImplementIndex);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Adding ingredient to CurrentDishData with InstanceID: %d"), IngredientInstance.InstanceID);
+    
+    // Add the ingredient instance to the current dish data
+    CurrentDishData.IngredientInstances.Add(IngredientInstance);
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Added ingredient to dish data. Total ingredients: %d"), CurrentDishData.IngredientInstances.Num());
+    
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call OnQuantityControlCreated Blueprint event"));
     
     // Call Blueprint event to create quantity control widget
     OnQuantityControlCreated(nullptr, IngredientInstance);
     
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: OnQuantityControlCreated Blueprint event called"));
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: After Blueprint event, CurrentDishData has %d ingredients"), CurrentDishData.IngredientInstances.Num());
+    
+    // Broadcast dish data change to update radar graphs
+    OnDishDataChanged(CurrentDishData);
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Broadcasted OnDishDataChanged for radar graph update"));
+    
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - Blueprint event called for quantity control creation"));
 }
 

@@ -59,6 +59,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
     bool IsDragEnabled() const { return bDragEnabled; }
 
+    // Generate a unique instance ID for this ingredient
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    int32 GenerateUniqueInstanceID() const;
+
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
     FOnIngredientButtonClicked OnIngredientButtonUnhovered;
 

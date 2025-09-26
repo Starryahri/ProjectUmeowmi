@@ -87,6 +87,9 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     // Update quantity controls
     UpdateQuantityControls();
     
+    // Update quantity text display
+    UpdateQuantityText();
+    
     // Update preparation checkboxes
     UpdatePreparationCheckboxes();
     
@@ -118,10 +121,27 @@ void UPUIngredientQuantityControl::SetQuantity(int32 NewQuantity)
         
         IngredientInstance.Quantity = NewQuantity;
         UpdateQuantityControls();
+        UpdateQuantityText(); // Update the text display
         BroadcastChange();
         
         // Call Blueprint event
         OnQuantityChanged(NewQuantity);
+    }
+}
+
+void UPUIngredientQuantityControl::UpdateQuantityText()
+{
+    if (QuantityNumberText)
+    {
+        FString QuantityText = FString::Printf(TEXT("x%d"), IngredientInstance.Quantity);
+        QuantityNumberText->SetText(FText::FromString(QuantityText));
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdateQuantityText - Updated quantity text to: %s"), 
+            *QuantityText);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUIngredientQuantityControl::UpdateQuantityText - QuantityNumberText is null"));
     }
 }
 
@@ -206,6 +226,10 @@ void UPUIngredientQuantityControl::RemoveIngredientInstance()
     
     // Call Blueprint event
     OnIngredientRemoved();
+    
+    // Remove this widget from viewport
+    RemoveFromParent();
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Widget removed from viewport"));
 }
 
 void UPUIngredientQuantityControl::OnDecreaseQuantityClicked()

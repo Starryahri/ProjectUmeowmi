@@ -61,7 +61,7 @@ void UPUDishCustomizationWidget::NativeConstruct()
 
 void UPUDishCustomizationWidget::NativeDestruct()
 {
-    UE_LOG(LogTemp, Display, TEXT("PUDishCustomizationWidget::NativeDestruct - Widget destructing"));
+    // UE_LOG(LogTemp, Display, TEXT("PUDishCustomizationWidget::NativeDestruct - Widget destructing"));
     
     // Unsubscribe from events
     UnsubscribeFromEvents();
@@ -482,7 +482,7 @@ void UPUDishCustomizationWidget::UnsubscribeFromEvents()
 {
     if (CustomizationComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("PUDishCustomizationWidget::UnsubscribeFromEvents - Unsubscribing from customization component events"));
+        // UE_LOG(LogTemp, Display, TEXT("PUDishCustomizationWidget::UnsubscribeFromEvents - Unsubscribing from customization component events"));
         
         // Unsubscribe from the component's events
         CustomizationComponent->OnInitialDishDataReceived.RemoveDynamic(this, &UPUDishCustomizationWidget::OnInitialDishDataReceived);

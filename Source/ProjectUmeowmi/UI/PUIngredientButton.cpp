@@ -3,6 +3,7 @@
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "PUIngredientDragDropOperation.h"
+#include "PUCookingStageWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/SlateWrapperTypes.h"
 
@@ -35,7 +36,7 @@ void UPUIngredientButton::NativeConstruct()
 
 void UPUIngredientButton::NativeDestruct()
 {
-    UE_LOG(LogTemp, Display, TEXT("PUIngredientButton::NativeDestruct - Widget destructing"));
+    // UE_LOG(LogTemp, Display, TEXT("PUIngredientButton::NativeDestruct - Widget destructing"));
     
     // Unbind button events
     if (IngredientButton)
@@ -106,8 +107,8 @@ void UPUIngredientButton::OnIngredientButtonClickedInternal()
 
 void UPUIngredientButton::OnIngredientButtonHoveredInternal()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonHoveredInternal - Button hovered for ingredient: %s"), 
-        *IngredientData.DisplayName.ToString());
+    // UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonHoveredInternal - Button hovered for ingredient: %s"), 
+    //     *IngredientData.DisplayName.ToString());
     
     // Broadcast the hover event with ingredient data
     OnIngredientButtonHovered.Broadcast(IngredientData);
@@ -115,13 +116,13 @@ void UPUIngredientButton::OnIngredientButtonHoveredInternal()
     // Call Blueprint event
     OnButtonHovered();
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonHoveredInternal - Hover event broadcasted"));
+    // UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonHoveredInternal - Hover event broadcasted"));
 }
 
 void UPUIngredientButton::OnIngredientButtonUnhoveredInternal()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonUnhoveredInternal - Button unhovered for ingredient: %s"), 
-        *IngredientData.DisplayName.ToString());
+    // UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonUnhoveredInternal - Button unhovered for ingredient: %s"), 
+    //     *IngredientData.DisplayName.ToString());
     
     // Broadcast the unhover event with ingredient data
     OnIngredientButtonUnhovered.Broadcast(IngredientData);
@@ -129,7 +130,7 @@ void UPUIngredientButton::OnIngredientButtonUnhoveredInternal()
     // Call Blueprint event
     OnButtonUnhovered();
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonUnhoveredInternal - Unhover event broadcasted"));
+    // UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonUnhoveredInternal - Unhover event broadcasted"));
 }
 
 FReply UPUIngredientButton::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
@@ -154,4 +155,15 @@ void UPUIngredientButton::SetDragEnabled(bool bEnabled)
         bEnabled ? TEXT("TRUE") : TEXT("FALSE"), *IngredientData.DisplayName.ToString());
     
     bDragEnabled = bEnabled;
+}
+
+int32 UPUIngredientButton::GenerateUniqueInstanceID() const
+{
+    // Call the static GUID-based function from PUCookingStageWidget
+    int32 UniqueID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GenerateUniqueInstanceID - Generated unique ID %d for ingredient: %s"), 
+        UniqueID, *IngredientData.DisplayName.ToString());
+    
+    return UniqueID;
 } 
