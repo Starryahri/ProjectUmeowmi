@@ -64,6 +64,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void OnQuantityControlRemoved(int32 InstanceID, class UPUIngredientQuantityControl* QuantityControlWidget);
 
+    // Plating stage functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
+    void CreatePlatingIngredientButtons();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
+    void SetIngredientButtonContainer(UPanelWidget* Container);
+
     // Planning stage functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
     void ToggleIngredientSelection(const FPUIngredientBase& IngredientData);
@@ -145,6 +152,10 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUPreparationCheckbox> PreparationCheckboxClass;
 
+    // Container for ingredient buttons
+    UPROPERTY(BlueprintReadOnly, Category = "Dish Customization Widget|Plating")
+    TWeakObjectPtr<UPanelWidget> IngredientButtonContainer;
+
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
     void OnDishDataReceived(const FPUDishBase& DishData);
@@ -160,6 +171,13 @@ protected:
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
     void OnQuantityControlCreated(class UPUIngredientQuantityControl* QuantityControl, const FIngredientInstance& IngredientInstance);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Plating")
+    void OnPlatingStageInitialized(const FPUDishBase& DishData);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
+    void EnablePlatingButtons();
+
 
 private:
     // Internal component reference for event subscription only

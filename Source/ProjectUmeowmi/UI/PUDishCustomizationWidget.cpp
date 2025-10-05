@@ -3,6 +3,7 @@
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
 #include "PUIngredientButton.h"
 #include "PUIngredientQuantityControl.h"
+#include "Components/Button.h"
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -207,12 +208,167 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
                 }
             }
         }
-        
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Created %d ingredient buttons"), IngredientButtonMap.Num());
     }
     else
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientButtons - No customization component available"));
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Created %d ingredient buttons"), IngredientButtonMap.Num());
+}
+
+void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Creating plating ingredient buttons"));
+
+    if (!CustomizationComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No customization component available"));
+        return;
+    }
+
+    // Get the current dish data
+    const FPUDishBase& DishData = CustomizationComponent->GetCurrentDishData();
+    
+    if (DishData.IngredientInstances.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No ingredient instances in dish data"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Found %d ingredient instances"), 
+        DishData.IngredientInstances.Num());
+
+    // Create buttons for each ingredient instance
+    for (const FIngredientInstance& Instance : DishData.IngredientInstances)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ Creating plating button for: %s (ID: %d, Qty: %d)"), 
+            *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Instance.Quantity);
+
+        // Create ingredient button using the Blueprint class
+        TSubclassOf<UPUIngredientButton> ButtonClass;
+        if (IngredientButtonClass)
+        {
+            ButtonClass = IngredientButtonClass;
+        }
+        else
+        {
+            ButtonClass = UPUIngredientButton::StaticClass();
+        }
+
+        UPUIngredientButton* IngredientButton = CreateWidget<UPUIngredientButton>(this, ButtonClass);
+        if (IngredientButton)
+        {
+            // Set the ingredient instance data (this uses our enhanced PUIngredientButton)
+            IngredientButton->SetIngredientInstance(Instance);
+            
+            // Also set the ingredient data to ensure texture is set (like cooking stage)
+            IngredientButton->SetIngredientData(Instance.IngredientData);
+            
+            // Disable the internal button (like in cooking stage) but keep the widget enabled for drag
+            UButton* InternalButton = IngredientButton->GetIngredientButton();
+            if (InternalButton)
+            {
+                InternalButton->SetIsEnabled(false);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Disabled internal button for: %s"), 
+                    *Instance.IngredientData.DisplayName.ToString());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Internal button is null for: %s"), 
+                    *Instance.IngredientData.DisplayName.ToString());
+            }
+            
+            // Enable drag functionality for plating
+            IngredientButton->SetDragEnabled(true);
+            
+            // Add to our button map
+            IngredientButtonMap.Add(Instance.IngredientData.IngredientTag, IngredientButton);
+            
+            // Add to container if available
+            if (IngredientButtonContainer.IsValid())
+            {
+                IngredientButtonContainer->AddChild(IngredientButton);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Added button to container for: %s"), 
+                    *Instance.IngredientData.DisplayName.ToString());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No ingredient button container set! Button will not be visible."));
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Created button for: %s"), 
+                *Instance.IngredientData.DisplayName.ToString());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Failed to create button for: %s"), 
+                *Instance.IngredientData.DisplayName.ToString());
+        }
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Created %d plating ingredient buttons"), 
+        IngredientButtonMap.Num());
+    
+    // Call the plating stage initialized event
+    OnPlatingStageInitialized(DishData);
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Called OnPlatingStageInitialized event"));
+}
+
+void UPUDishCustomizationWidget::EnablePlatingButtons()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabling all plating buttons"));
+
+    for (auto& ButtonPair : IngredientButtonMap)
+    {
+        if (ButtonPair.Value)
+        {
+            // Enable the internal button (unlike cooking stage)
+            UButton* InternalButton = ButtonPair.Value->GetIngredientButton();
+            if (InternalButton)
+            {
+                InternalButton->SetIsEnabled(true);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabled internal button for: %s"), 
+                    *ButtonPair.Value->GetIngredientData().DisplayName.ToString());
+            }
+            
+            // Update the button display (this should update icons and text)
+            ButtonPair.Value->UpdatePlatingDisplay();
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabled button for: %s"), 
+                *ButtonPair.Value->GetIngredientData().DisplayName.ToString());
+        }
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabled %d plating buttons"), IngredientButtonMap.Num());
+}
+
+
+void UPUDishCustomizationWidget::SetIngredientButtonContainer(UPanelWidget* Container)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Setting ingredient button container"));
+    
+    if (!Container)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::SetIngredientButtonContainer - Container is null"));
+        return;
+    }
+    
+    IngredientButtonContainer = Container;
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Container set successfully"));
+    
+    // Add any existing buttons to the new container
+    if (IngredientButtonMap.Num() > 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Adding %d existing buttons to container"), IngredientButtonMap.Num());
+        
+        for (auto& ButtonPair : IngredientButtonMap)
+        {
+            if (ButtonPair.Value)
+            {
+                Container->AddChild(ButtonPair.Value);
+            }
+        }
     }
 }
 

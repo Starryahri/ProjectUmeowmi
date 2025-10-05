@@ -7,6 +7,8 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/SlateWrapperTypes.h"
 #include "GameplayTagContainer.h"
+#include "Kismet/GameplayStatics.h"
+#include "../DishCustomization/PUDishCustomizationComponent.h"
 
 UPUIngredientButton::UPUIngredientButton(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -158,6 +160,7 @@ void UPUIngredientButton::SetDragEnabled(bool bEnabled)
     bDragEnabled = bEnabled;
 }
 
+
 int32 UPUIngredientButton::GenerateUniqueInstanceID() const
 {
     // Call the static GUID-based function from PUCookingStageWidget
@@ -232,6 +235,13 @@ void UPUIngredientButton::UpdatePlatingDisplay()
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::UpdatePlatingDisplay - Updating plating display"));
     
+    // Update the ingredient icon/texture
+    if (IngredientIcon)
+    {
+        IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::UpdatePlatingDisplay - Updated icon texture"));
+    }
+    
     // Update the main ingredient name to include preparation state
     if (IngredientNameText)
     {
@@ -274,6 +284,126 @@ void UPUIngredientButton::UpdatePreparationDisplay()
     
     // Call Blueprint event
     OnPreparationStateChanged();
+}
+
+void UPUIngredientButton::SpawnIngredientAtPosition(const FVector2D& ScreenPosition)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString(), ScreenPosition.X, ScreenPosition.Y);
+
+    // Convert screen position to world position using raycast
+    APlayerController* PlayerController = GetOwningPlayer();
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUIngredientButton::SpawnIngredientAtPosition - No player controller"));
+        return;
+    }
+
+    // Get camera location and rotation
+    FVector CameraLocation;
+    FRotator CameraRotation;
+    PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
+    
+    // Get viewport size
+    int32 ViewportSizeX, ViewportSizeY;
+    PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - Viewport: %dx%d, Mouse: (%.0f,%.0f)"), 
+        ViewportSizeX, ViewportSizeY, ScreenPosition.X, ScreenPosition.Y);
+    
+    // Find the dish customization station in the world
+    TArray<AActor*> FoundActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AActor::StaticClass(), FoundActors);
+    
+    AActor* DishStation = nullptr;
+    for (AActor* Actor : FoundActors)
+    {
+        if (Actor && (Actor->GetName().Contains(TEXT("CookingStation")) || Actor->GetName().Contains(TEXT("DishCustomization"))))
+        {
+            DishStation = Actor;
+            break;
+        }
+    }
+    
+    // Declare spawn position at function level
+    FVector SpawnPosition;
+    
+    if (DishStation)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
+        
+        // Get the station's location and bounds
+        FVector StationLocation = DishStation->GetActorLocation();
+        FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
+        
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Station location: (%.2f,%.2f,%.2f), bounds: (%.2f,%.2f,%.2f)"), 
+            StationLocation.X, StationLocation.Y, StationLocation.Z, StationBounds.X, StationBounds.Y, StationBounds.Z);
+        
+        // Calculate spawn position on the station surface
+        // Use a small random offset to avoid stacking ingredients exactly on top of each other
+        float RandomOffsetX = FMath::RandRange(-50.0f, 50.0f);
+        float RandomOffsetY = FMath::RandRange(-50.0f, 50.0f);
+        
+        SpawnPosition = StationLocation + FVector(RandomOffsetX, RandomOffsetY, StationBounds.Z * 0.2f);
+        
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Spawning on dish customization station at: (%.2f,%.2f,%.2f)"), 
+            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ No dish customization station found! Spawning at default position."));
+        
+        // Fallback: spawn near the player
+        SpawnPosition = CameraLocation + (CameraRotation.Vector() * 300.0f);
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Fallback spawn position: (%.2f,%.2f,%.2f)"), 
+            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+    }
+    
+    // Find the dish customization component and spawn the ingredient
+    for (AActor* Actor : FoundActors)
+    {
+        if (Actor)
+        {
+            UPUDishCustomizationComponent* DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
+            if (DishComponent)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - Calling SpawnIngredientIn3D on customization component"));
+                DishComponent->SpawnIngredientIn3D(IngredientInstance.IngredientData.IngredientTag, SpawnPosition);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - SpawnIngredientIn3D call completed"));
+                break;
+            }
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - END"));
+}
+
+UPUIngredientDragDropOperation* UPUIngredientButton::CreateIngredientDragDropOperation() const
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d)"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+
+    // Create the drag drop operation
+    UPUIngredientDragDropOperation* DragOperation = NewObject<UPUIngredientDragDropOperation>(GetWorld(), UPUIngredientDragDropOperation::StaticClass());
+
+    if (DragOperation)
+    {
+        // Set up the drag operation with ingredient data
+        DragOperation->SetupIngredientDrag(
+            IngredientInstance.IngredientData.IngredientTag,
+            IngredientInstance.IngredientData,
+            IngredientInstance.InstanceID,
+            IngredientInstance.Quantity
+        );
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ PUIngredientButton::CreateIngredientDragDropOperation - Successfully created drag operation"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ PUIngredientButton::CreateIngredientDragDropOperation - Failed to create drag operation"));
+    }
+
+    return DragOperation;
 }
 
 FString UPUIngredientButton::GetPreparationDisplayText() const

@@ -4,6 +4,7 @@
 #include "Blueprint/UserWidget.h"
 #include "../DishCustomization/PUIngredientBase.h"
 #include "../DishCustomization/PUDishBase.h"
+#include "GameplayTagContainer.h"
 #include "PUIngredientButton.generated.h"
 
 class UButton;
@@ -60,6 +61,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
     bool IsDragEnabled() const { return bDragEnabled; }
 
+
     // Generate a unique instance ID for this ingredient
     UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
     int32 GenerateUniqueInstanceID() const;
@@ -88,6 +90,18 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
     FOnIngredientButtonClicked OnIngredientButtonUnhovered;
+
+    // Plating helper functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    void UpdatePlatingDisplay();
+
+    // Spawn ingredient at position (moved from plating widget)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    void SpawnIngredientAtPosition(const FVector2D& ScreenPosition);
+
+    // Create drag drop operation (moved from plating widget)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    class UPUIngredientDragDropOperation* CreateIngredientDragDropOperation() const;
 
 protected:
     // Current ingredient data
@@ -160,7 +174,6 @@ private:
     void OnIngredientButtonUnhoveredInternal();
 
     // Plating helper functions
-    void UpdatePlatingDisplay();
     void UpdateQuantityDisplay();
     void UpdatePreparationDisplay();
     FString GetPreparationDisplayText() const;

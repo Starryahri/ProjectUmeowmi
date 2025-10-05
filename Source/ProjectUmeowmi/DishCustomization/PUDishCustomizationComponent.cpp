@@ -1047,10 +1047,6 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - START - Ingredient %s at position (%.2f,%.2f,%.2f)"), 
         *IngredientTag.ToString(), WorldPosition.X, WorldPosition.Y, WorldPosition.Z);
 
-    // TEMPORARY: Force plating mode to true for testing
-    bPlatingMode = true;
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - FORCED plating mode to TRUE for testing"));
-
     if (!bPlatingMode)
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Not in plating mode"));
@@ -1069,10 +1065,22 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
         
         if (Instance.IngredientData.IngredientTag == IngredientTag)
         {
+            // Check if we can place this ingredient (quantity limits)
+            if (!CanPlaceIngredient(Instance.InstanceID))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Cannot place ingredient %s - quantity limit reached"), 
+                    *IngredientTag.ToString());
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - END - Failed (quantity limit)"));
+                return;
+            }
+            
             UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Found matching ingredient! Setting plating position"));
             
             // Set the plating position for this ingredient
             CurrentDishData.SetIngredientPlating(Instance.InstanceID, WorldPosition, FRotator::ZeroRotator, FVector::OneVector);
+            
+            // Track the placement
+            PlaceIngredient(Instance.InstanceID);
             
             UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3D - Set plating for instance %d"), Instance.InstanceID);
             
@@ -1100,12 +1108,20 @@ void UPUDishCustomizationComponent::SetPlatingMode(bool bInPlatingMode)
         bPlatingMode ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
+bool UPUDishCustomizationComponent::IsPlatingMode() const
+{
+    return bPlatingMode;
+}
+
 void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& DishData)
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Transitioning to plating stage"));
     
     // Set plating mode
     SetPlatingMode(true);
+    
+    // Reset placement tracking for new plating session
+    ResetPlatingPlacements();
     
     // Update the current dish data
     CurrentDishData = DishData;
@@ -1149,6 +1165,13 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
                 // Add the widget to viewport
                 CustomizationWidget->AddToViewport();
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating widget added to viewport"));
+                
+                // Create plating ingredient buttons
+                if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Creating plating ingredient buttons"));
+                    DishWidget->CreatePlatingIngredientButtons();
+                }
             }
             else
             {
@@ -1473,4 +1496,126 @@ void UPUDishCustomizationComponent::SetPlatingCameraPositionOffset(const FVector
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetPlatingCameraPositionOffset - Updated existing camera position to: %s"),
             *CameraLocation.ToString());
     }
+}
+
+// Plating placement limits implementation
+bool UPUDishCustomizationComponent::CanPlaceIngredient(int32 InstanceID) const
+{
+    // Find the ingredient instance
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            int32 PlacedQuantity = GetPlacedQuantity(InstanceID);
+            bool bCanPlace = PlacedQuantity < Instance.Quantity;
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::CanPlaceIngredient - Instance %d: Placed %d/%d, Can place: %s"), 
+                InstanceID, PlacedQuantity, Instance.Quantity, bCanPlace ? TEXT("Yes") : TEXT("No"));
+            
+            return bCanPlace;
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::CanPlaceIngredient - Instance %d not found"), InstanceID);
+    return false;
+}
+
+int32 UPUDishCustomizationComponent::GetRemainingQuantity(int32 InstanceID) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            int32 PlacedQuantity = GetPlacedQuantity(InstanceID);
+            int32 Remaining = Instance.Quantity - PlacedQuantity;
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::GetRemainingQuantity - Instance %d: %d remaining"), 
+                InstanceID, Remaining);
+            
+            return Remaining;
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::GetRemainingQuantity - Instance %d not found"), InstanceID);
+    return 0;
+}
+
+int32 UPUDishCustomizationComponent::GetPlacedQuantity(int32 InstanceID) const
+{
+    if (const int32* PlacedQuantity = PlacedIngredientQuantities.Find(InstanceID))
+    {
+        return *PlacedQuantity;
+    }
+    return 0;
+}
+
+void UPUDishCustomizationComponent::PlaceIngredient(int32 InstanceID)
+{
+    int32 CurrentPlaced = GetPlacedQuantity(InstanceID);
+    PlacedIngredientQuantities.Add(InstanceID, CurrentPlaced + 1);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::PlaceIngredient - Instance %d: Placed %d"), 
+        InstanceID, CurrentPlaced + 1);
+}
+
+void UPUDishCustomizationComponent::RemoveIngredient(int32 InstanceID)
+{
+    if (int32* PlacedQuantity = PlacedIngredientQuantities.Find(InstanceID))
+    {
+        if (*PlacedQuantity > 0)
+        {
+            (*PlacedQuantity)--;
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RemoveIngredient - Instance %d: Now placed %d"), 
+                InstanceID, *PlacedQuantity);
+        }
+    }
+}
+
+void UPUDishCustomizationComponent::ResetPlatingPlacements()
+{
+    PlacedIngredientQuantities.Empty();
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlatingPlacements - Reset all placement tracking"));
+}
+
+// Blueprint-callable plating limits
+bool UPUDishCustomizationComponent::CanPlaceIngredientByTag(const FGameplayTag& IngredientTag) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.IngredientData.IngredientTag == IngredientTag)
+        {
+            return CanPlaceIngredient(Instance.InstanceID);
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::CanPlaceIngredientByTag - Ingredient %s not found"), *IngredientTag.ToString());
+    return false;
+}
+
+int32 UPUDishCustomizationComponent::GetRemainingQuantityByTag(const FGameplayTag& IngredientTag) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.IngredientData.IngredientTag == IngredientTag)
+        {
+            return GetRemainingQuantity(Instance.InstanceID);
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::GetRemainingQuantityByTag - Ingredient %s not found"), *IngredientTag.ToString());
+    return 0;
+}
+
+int32 UPUDishCustomizationComponent::GetPlacedQuantityByTag(const FGameplayTag& IngredientTag) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.IngredientData.IngredientTag == IngredientTag)
+        {
+            return GetPlacedQuantity(Instance.InstanceID);
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::GetPlacedQuantityByTag - Ingredient %s not found"), *IngredientTag.ToString());
+    return 0;
 }

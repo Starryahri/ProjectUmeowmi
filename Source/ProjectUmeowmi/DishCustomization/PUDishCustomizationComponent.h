@@ -84,7 +84,7 @@ public:
     void SetPlatingMode(bool bInPlatingMode);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
-    bool IsPlatingMode() const { return bPlatingMode; }
+    bool IsPlatingMode() const;
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void TransitionToPlatingStage(const FPUDishBase& DishData);
@@ -287,6 +287,9 @@ private:
     // Plating mode state
     bool bPlatingMode = false;
 
+    // Plating placement tracking
+    TMap<int32, int32> PlacedIngredientQuantities; // InstanceID -> Placed Quantity
+
     // Plating camera transition state
     bool bPlatingCameraTransitioning = false;
     float PlatingCameraTransitionTime = 0.0f;
@@ -319,4 +322,22 @@ private:
     void SetPlatingCameraPositionOffset(const FVector& NewOffset);
     void StartPlatingCameraTransition();
     void UpdatePlatingCameraTransition(float DeltaTime);
+
+    // Plating placement limits
+    bool CanPlaceIngredient(int32 InstanceID) const;
+    int32 GetRemainingQuantity(int32 InstanceID) const;
+    int32 GetPlacedQuantity(int32 InstanceID) const;
+    void PlaceIngredient(int32 InstanceID);
+    void RemoveIngredient(int32 InstanceID);
+    void ResetPlatingPlacements();
+
+    // Blueprint-callable plating limits
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    bool CanPlaceIngredientByTag(const FGameplayTag& IngredientTag) const;
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    int32 GetRemainingQuantityByTag(const FGameplayTag& IngredientTag) const;
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    int32 GetPlacedQuantityByTag(const FGameplayTag& IngredientTag) const;
 }; 
