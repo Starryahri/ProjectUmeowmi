@@ -13,6 +13,7 @@
 #include "InputMappingContext.h"
 #include "Engine/GameViewportClient.h"
 #include "../UI/PUDishCustomizationWidget.h"
+#include "../UI/PUPlatingWidget.h"
 #include "Engine/StaticMeshActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "PUIngredientMesh.h"
@@ -35,6 +36,12 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
     if (bIsTransitioningCamera && CurrentCharacter)
     {
         UpdateCameraTransition(DeltaTime);
+    }
+
+    // Update plating camera transition if active
+    if (bPlatingCameraTransitioning)
+    {
+        UpdatePlatingCameraTransition(DeltaTime);
     }
 
     // Update mouse dragging if active
@@ -1093,6 +1100,80 @@ void UPUDishCustomizationComponent::SetPlatingMode(bool bInPlatingMode)
         bPlatingMode ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
+void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& DishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Transitioning to plating stage"));
+    
+    // Set plating mode
+    SetPlatingMode(true);
+    
+    // Update the current dish data
+    CurrentDishData = DishData;
+    
+    // Switch to plating widget class if available
+    if (PlatingWidgetClass)
+    {
+        CustomizationWidgetClass = PlatingWidgetClass;
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Switched to plating widget class"));
+        
+        // Remove the current widget if it exists
+        if (CustomizationWidget)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Removing current widget"));
+            CustomizationWidget->RemoveFromParent();
+            CustomizationWidget = nullptr;
+        }
+        
+        // Create the new plating widget
+        UWorld* World = GetWorld();
+        if (World)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Creating new plating widget"));
+            CustomizationWidget = CreateWidget<UUserWidget>(World, CustomizationWidgetClass);
+            
+            if (CustomizationWidget)
+            {
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating widget created successfully"));
+                
+                // Try to cast to dish customization widget and set up the connection
+                if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+                {
+                    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Widget is UPUDishCustomizationWidget, connecting to component"));
+                    DishWidget->SetCustomizationComponent(this);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - Widget is not a UPUDishCustomizationWidget"));
+                }
+                
+                // Add the widget to viewport
+                CustomizationWidget->AddToViewport();
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating widget added to viewport"));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::TransitionToPlatingStage - Failed to create plating widget"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::TransitionToPlatingStage - No world available"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - No plating widget class set"));
+    }
+    
+    // Broadcast the dish data to the new widget
+    BroadcastInitialDishData(DishData);
+    
+    // Switch to plating camera
+    SwitchToPlatingCamera();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating stage transition complete"));
+}
+
 void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition)
 {
     // Get the owner actor (should be the plating station or dish)
@@ -1178,4 +1259,218 @@ void UPUDishCustomizationComponent::StartCookingStageCameraTransition()
     TargetCameraPositionIndex = OriginalCameraPositionIndex; // Keep the same position index
 
     bIsTransitioningCamera = true;
+}
+
+
+void UPUDishCustomizationComponent::SwitchToPlatingCamera()
+{
+    if (!CurrentCharacter || !GetWorld())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToPlatingCamera - No character or world available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Switching to plating camera"));
+
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToPlatingCamera - No player controller found"));
+        return;
+    }
+
+    // Find the plating station camera component
+    if (!PlatingStationCamera)
+    {
+        AActor* OwnerActor = GetOwner();
+        if (OwnerActor)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Owner actor: %s"), *OwnerActor->GetName());
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Looking for camera component named: %s"), *PlatingStationCameraComponentName.ToString());
+            
+            // Search for camera component with specific name (since there are multiple cameras)
+            TArray<UCameraComponent*> CameraComponents;
+            OwnerActor->GetComponents<UCameraComponent>(CameraComponents);
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Found %d camera components"), CameraComponents.Num());
+            
+            for (UCameraComponent* CameraComp : CameraComponents)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Camera component: %s"), *CameraComp->GetName());
+                if (CameraComp && CameraComp->GetName() == PlatingStationCameraComponentName.ToString())
+                {
+                    PlatingStationCamera = CameraComp;
+                    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SwitchToPlatingCamera - Found matching camera component: %s"), *CameraComp->GetName());
+                    break;
+                }
+            }
+            
+            if (!PlatingStationCamera)
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No camera component found with name: %s"), *PlatingStationCameraComponentName.ToString());
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No owner actor found"));
+            return;
+        }
+    }
+
+    if (PlatingStationCamera)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Configuring plating camera: %s"), *PlatingStationCamera->GetName());
+        
+        // CRITICAL: Set the PlatingCamera as the active camera component on the actor FIRST
+        AActor* StationActor = PlatingStationCamera->GetOwner();
+        if (StationActor)
+        {
+            // Disable the cooking camera first
+            TArray<UCameraComponent*> AllCameras;
+            StationActor->GetComponents<UCameraComponent>(AllCameras);
+            
+            for (UCameraComponent* Camera : AllCameras)
+            {
+                if (Camera && Camera->GetName() == TEXT("CookingCamera"))
+                {
+                    Camera->SetActive(false);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Disabled CookingCamera"));
+                }
+            }
+            
+            // Enable the plating camera
+            PlatingStationCamera->SetActive(true);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Activated PlatingCamera"));
+        }
+
+        // Configure the plating camera BEFORE switching to it
+        PlatingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+        PlatingStationCamera->OrthoWidth = PlatingOrthoWidth;
+
+        // Set camera position and rotation BEFORE switching
+        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
+        FRotator CameraRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
+
+        PlatingStationCamera->SetWorldLocation(CameraLocation);
+        PlatingStationCamera->SetWorldRotation(CameraRotation);
+
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Configured camera - Width: %.2f, Location: %s, Rotation: %s"),
+            PlatingOrthoWidth, *CameraLocation.ToString(), *CameraRotation.ToString());
+
+        // Start smooth transition for camera properties
+        StartPlatingCameraTransition();
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SwitchToPlatingCamera - Started smooth plating camera transition"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No camera component found on plating station"));
+    }
+}
+
+void UPUDishCustomizationComponent::StartPlatingCameraTransition()
+{
+    if (!PlatingStationCamera || !CurrentCharacter)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartPlatingCameraTransition - No camera or character available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Starting smooth camera transition"));
+
+    // Get current camera position and properties (from cooking camera)
+    FVector CurrentLocation = PlatingStationCamera->GetComponentLocation();
+    FRotator CurrentRotation = PlatingStationCamera->GetComponentRotation();
+    float CurrentOrthoWidth = PlatingStationCamera->OrthoWidth;
+    
+    // Try to get the cooking camera properties for smoother transition
+    AActor* StationActor = PlatingStationCamera->GetOwner();
+    if (StationActor)
+    {
+        TArray<UCameraComponent*> AllCameras;
+        StationActor->GetComponents<UCameraComponent>(AllCameras);
+        
+        for (UCameraComponent* Camera : AllCameras)
+        {
+            if (Camera && Camera->GetName() == TEXT("CookingCamera"))
+            {
+                CurrentLocation = Camera->GetComponentLocation();
+                CurrentRotation = Camera->GetComponentRotation();
+                CurrentOrthoWidth = Camera->OrthoWidth;
+                UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Using cooking camera properties"));
+                break;
+            }
+        }
+    }
+
+    // Set up transition state
+    bPlatingCameraTransitioning = true;
+    PlatingCameraTransitionTime = 0.0f;
+    PlatingCameraStartLocation = CurrentLocation;
+    PlatingCameraStartRotation = CurrentRotation;
+
+    // Target position and properties (already set in SwitchToPlatingCamera)
+    PlatingCameraTargetLocation = PlatingStationCamera->GetComponentLocation();
+    PlatingCameraTargetRotation = PlatingStationCamera->GetComponentRotation();
+
+    // Store start and target ortho widths for smooth transition
+    PlatingCameraStartOrthoWidth = CurrentOrthoWidth;
+    PlatingCameraTargetOrthoWidth = PlatingOrthoWidth;
+
+    UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Start: %s (Ortho: %.2f), Target: %s (Ortho: %.2f)"), 
+        *PlatingCameraStartLocation.ToString(), PlatingCameraStartOrthoWidth,
+        *PlatingCameraTargetLocation.ToString(), PlatingCameraTargetOrthoWidth);
+}
+
+void UPUDishCustomizationComponent::UpdatePlatingCameraTransition(float DeltaTime)
+{
+    if (!bPlatingCameraTransitioning || !PlatingStationCamera)
+    {
+        return;
+    }
+
+    PlatingCameraTransitionTime += DeltaTime;
+    float Alpha = FMath::Clamp(PlatingCameraTransitionTime / PlatingCameraTransitionDuration, 0.0f, 1.0f);
+
+    // Use smooth interpolation
+    float SmoothAlpha = FMath::SmoothStep(0.0f, 1.0f, Alpha);
+
+    // Interpolate position and rotation
+    FVector NewLocation = FMath::Lerp(PlatingCameraStartLocation, PlatingCameraTargetLocation, SmoothAlpha);
+    FRotator NewRotation = FMath::Lerp(PlatingCameraStartRotation, PlatingCameraTargetRotation, SmoothAlpha);
+
+    // Interpolate ortho width smoothly
+    float NewOrthoWidth = FMath::Lerp(PlatingCameraStartOrthoWidth, PlatingCameraTargetOrthoWidth, SmoothAlpha);
+
+    // Update camera position, rotation, and ortho width
+    PlatingStationCamera->SetWorldLocation(NewLocation);
+    PlatingStationCamera->SetWorldRotation(NewRotation);
+    PlatingStationCamera->OrthoWidth = NewOrthoWidth;
+
+    // Check if transition is complete
+    if (Alpha >= 1.0f)
+    {
+        bPlatingCameraTransitioning = false;
+        UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::UpdatePlatingCameraTransition - Transition complete"));
+    }
+}
+
+void UPUDishCustomizationComponent::SetPlatingCameraPositionOffset(const FVector& NewOffset)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetPlatingCameraPositionOffset - Setting camera offset to: %s"),
+        *NewOffset.ToString());
+
+    PlatingCameraPositionOffset = NewOffset;
+
+    // If the plating camera component is found, update its position
+    if (PlatingStationCamera)
+    {
+        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
+        FRotator CameraRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
+
+        PlatingStationCamera->SetWorldLocation(CameraLocation);
+        PlatingStationCamera->SetWorldRotation(CameraRotation);
+
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetPlatingCameraPositionOffset - Updated existing camera position to: %s"),
+            *CameraLocation.ToString());
+    }
 }

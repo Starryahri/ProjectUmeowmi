@@ -86,6 +86,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     bool IsPlatingMode() const { return bPlatingMode; }
 
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void TransitionToPlatingStage(const FPUDishBase& DishData);
+
     // Planning mode functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
     void StartPlanningMode();
@@ -127,6 +130,10 @@ public:
     // Widget class to spawn for cooking stage
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")
     TSubclassOf<class UPUCookingStageWidget> CookingStageWidgetClass;
+
+    // Widget class to spawn for plating stage
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")
+    TSubclassOf<UUserWidget> PlatingWidgetClass;
 
     // Input Actions
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
@@ -182,6 +189,27 @@ public:
     // Cooking Stage Camera Component Reference
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
     FName CookingStationCameraComponentName = TEXT("CookingCamera");
+
+    // Plating Stage Camera Management
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
+    float PlatingCameraDistance = 200.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
+    float PlatingCameraPitch = -15.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
+    float PlatingCameraYaw = 180.0f;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
+    float PlatingOrthoWidth = 600.0f;
+
+    // Plating Stage Camera Position Offsets
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
+    FVector PlatingCameraPositionOffset = FVector(0.0f, 0.0f, 0.0f); // X=Left/Right, Y=Forward/Back, Z=Up/Down
+
+    // Plating Stage Camera Component Reference
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
+    FName PlatingStationCameraComponentName = TEXT("PlatingCamera");
 
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
@@ -242,6 +270,10 @@ protected:
     UPROPERTY()
     UCameraComponent* CookingStationCamera = nullptr;
 
+    // Plating stage camera component
+    UPROPERTY()
+    UCameraComponent* PlatingStationCamera = nullptr;
+
 private:
     // Spawn visual 3D mesh for ingredient
     void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
@@ -254,6 +286,17 @@ private:
 
     // Plating mode state
     bool bPlatingMode = false;
+
+    // Plating camera transition state
+    bool bPlatingCameraTransitioning = false;
+    float PlatingCameraTransitionTime = 0.0f;
+    float PlatingCameraTransitionDuration = 1.0f;
+    FVector PlatingCameraStartLocation;
+    FRotator PlatingCameraStartRotation;
+    FVector PlatingCameraTargetLocation;
+    FRotator PlatingCameraTargetRotation;
+    float PlatingCameraStartOrthoWidth = 0.0f;
+    float PlatingCameraTargetOrthoWidth = 0.0f;
 
     // Input handling
     void HandleExitInput();
@@ -270,4 +313,10 @@ private:
     void StartCookingStageCameraTransition();
     void SwitchToCookingCamera();
     void SwitchToCharacterCamera();
+
+    // Plating stage camera handling
+    void SwitchToPlatingCamera();
+    void SetPlatingCameraPositionOffset(const FVector& NewOffset);
+    void StartPlatingCameraTransition();
+    void UpdatePlatingCameraTransition(float DeltaTime);
 }; 

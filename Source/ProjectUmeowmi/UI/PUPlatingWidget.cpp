@@ -83,11 +83,15 @@ void UPUPlatingWidget::OnCustomizationEnded()
 void UPUPlatingWidget::SetCustomizationComponent(UPUDishCustomizationComponent* Component)
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - Setting customization component"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - Component: %s"), 
+        Component ? TEXT("Valid") : TEXT("NULL"));
 
     // Unsubscribe from old component if it exists
     UnsubscribeFromEvents();
 
     CustomizationComponent = Component;
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - CustomizationComponent set to: %s"), 
+        CustomizationComponent ? TEXT("Valid") : TEXT("NULL"));
 
     // Subscribe to new component if it exists
     SubscribeToEvents();
@@ -96,10 +100,17 @@ void UPUPlatingWidget::SetCustomizationComponent(UPUDishCustomizationComponent* 
 void UPUPlatingWidget::EndCustomizationFromUI()
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - Ending customization from UI"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - CustomizationComponent: %s"), 
+        CustomizationComponent ? TEXT("Valid") : TEXT("NULL"));
 
     if (CustomizationComponent)
     {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - Calling EndCustomization"));
         CustomizationComponent->EndCustomization();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUPlatingWidget::EndCustomizationFromUI - CustomizationComponent is NULL!"));
     }
 }
 
@@ -120,14 +131,53 @@ void UPUPlatingWidget::CreateIngredientButtons()
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Creating ingredient buttons for %d ingredients"), 
         CurrentDishData.IngredientInstances.Num());
 
-    // This will be implemented in Blueprint to create the actual UI buttons
-    // For now, we just log the ingredients that should be available for plating
-    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); ++i)
+    // Group ingredients by base ingredient tag
+    TMap<FGameplayTag, TArray<FIngredientInstance>> GroupedIngredients;
+    
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
     {
-        const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Ingredient %d: %s (Qty: %d, ID: %d)"), 
-            i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity, Instance.InstanceID);
+        FGameplayTag BaseTag = Instance.IngredientTag;
+        if (!GroupedIngredients.Contains(BaseTag))
+        {
+            GroupedIngredients.Add(BaseTag, TArray<FIngredientInstance>());
+        }
+        GroupedIngredients[BaseTag].Add(Instance);
     }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Grouped into %d ingredient categories"), 
+        GroupedIngredients.Num());
+    
+    // Log the grouped ingredients for debugging
+    for (const auto& Pair : GroupedIngredients)
+    {
+        FGameplayTag BaseTag = Pair.Key;
+        const TArray<FIngredientInstance>& Instances = Pair.Value;
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Category: %s (%d variants)"), 
+            *BaseTag.ToString(), Instances.Num());
+        
+        for (const FIngredientInstance& Instance : Instances)
+        {
+            FString PrepText = TEXT("Raw");
+            if (Instance.Preparations.Num() > 0)
+            {
+                FString PrepNames;
+                for (const FGameplayTag& Prep : Instance.Preparations)
+                {
+                    if (!PrepNames.IsEmpty()) PrepNames += TEXT(", ");
+                    PrepNames += Prep.ToString().Replace(TEXT("Prep."), TEXT(""));
+                }
+                PrepText = PrepNames;
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons -   - %s (%s) x%d [ID: %d]"), 
+                *Instance.IngredientData.DisplayName.ToString(), *PrepText, Instance.Quantity, Instance.InstanceID);
+        }
+    }
+    
+    // This will be implemented in Blueprint to create the actual UI buttons
+    // The Blueprint should create grouped collapsible sections for each base ingredient
+    // and populate them with enhanced ingredient buttons for each preparation variant
 }
 
 void UPUPlatingWidget::OnIngredientButtonClicked(const FPUIngredientBase& IngredientData)
@@ -296,4 +346,51 @@ void UPUPlatingWidget::RefreshIngredientButtons()
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::RefreshIngredientButtons - Refreshing ingredient buttons"));
 
     // This will be implemented in Blueprint to refresh the UI
+}
+
+TArray<FIngredientInstance> UPUPlatingWidget::GetIngredientInstancesForBase(const FGameplayTag& BaseIngredientTag) const
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetIngredientInstancesForBase - Getting instances for base ingredient: %s"), 
+        *BaseIngredientTag.ToString());
+
+    TArray<FIngredientInstance> Instances;
+    
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.IngredientTag == BaseIngredientTag)
+        {
+            Instances.Add(Instance);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetIngredientInstancesForBase - Found %d instances"), Instances.Num());
+    
+    return Instances;
+}
+
+TArray<FGameplayTag> UPUPlatingWidget::GetBaseIngredientTags() const
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetBaseIngredientTags - Getting all base ingredient tags"));
+
+    TArray<FGameplayTag> BaseTags;
+    
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (!BaseTags.Contains(Instance.IngredientTag))
+        {
+            BaseTags.Add(Instance.IngredientTag);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetBaseIngredientTags - Found %d unique base ingredients"), BaseTags.Num());
+    
+    return BaseTags;
+}
+
+void UPUPlatingWidget::ResetAllIngredientQuantities()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::ResetAllIngredientQuantities - Resetting all ingredient quantities"));
+
+    // This will be implemented in Blueprint to reset all ingredient button quantities
+    // The Blueprint should call ResetQuantity() on all ingredient buttons
 } 

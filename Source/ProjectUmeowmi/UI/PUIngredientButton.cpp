@@ -6,6 +6,7 @@
 #include "PUCookingStageWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/SlateWrapperTypes.h"
+#include "GameplayTagContainer.h"
 
 UPUIngredientButton::UPUIngredientButton(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -166,4 +167,174 @@ int32 UPUIngredientButton::GenerateUniqueInstanceID() const
         UniqueID, *IngredientData.DisplayName.ToString());
     
     return UniqueID;
+}
+
+// Plating-specific functions
+void UPUIngredientButton::SetIngredientInstance(const FIngredientInstance& InInstance)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SetIngredientInstance - Setting ingredient instance: %s (ID: %d, Qty: %d)"), 
+        *InInstance.IngredientData.DisplayName.ToString(), InInstance.InstanceID, InInstance.Quantity);
+    
+    IngredientInstance = InInstance;
+    MaxQuantity = InInstance.Quantity;
+    RemainingQuantity = MaxQuantity;
+    
+    // Update the base ingredient data as well
+    IngredientData = InInstance.IngredientData;
+    
+    // Update all displays
+    UpdatePlatingDisplay();
+    
+    // Call Blueprint event
+    OnIngredientInstanceSet(InInstance);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SetIngredientInstance - Instance set successfully"));
+}
+
+void UPUIngredientButton::DecreaseQuantity()
+{
+    if (RemainingQuantity > 0)
+    {
+        RemainingQuantity--;
+        UpdateQuantityDisplay();
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::DecreaseQuantity - Quantity decreased to %d"), RemainingQuantity);
+        
+        // Call Blueprint event
+        OnQuantityChanged(RemainingQuantity);
+        
+        // Update button state
+        if (IngredientButton)
+        {
+            IngredientButton->SetIsEnabled(RemainingQuantity > 0);
+        }
+    }
+}
+
+void UPUIngredientButton::ResetQuantity()
+{
+    RemainingQuantity = MaxQuantity;
+    UpdateQuantityDisplay();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::ResetQuantity - Quantity reset to %d"), RemainingQuantity);
+    
+    // Call Blueprint event
+    OnQuantityChanged(RemainingQuantity);
+    
+    // Update button state
+    if (IngredientButton)
+    {
+        IngredientButton->SetIsEnabled(RemainingQuantity > 0);
+    }
+}
+
+void UPUIngredientButton::UpdatePlatingDisplay()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::UpdatePlatingDisplay - Updating plating display"));
+    
+    // Update the main ingredient name to include preparation state
+    if (IngredientNameText)
+    {
+        FString DisplayName = IngredientInstance.IngredientData.DisplayName.ToString();
+        
+        // Add preparation state to the name
+        FString PrepText = GetPreparationDisplayText();
+        if (!PrepText.IsEmpty())
+        {
+            DisplayName = FString::Printf(TEXT("%s (%s)"), *DisplayName, *PrepText);
+        }
+        
+        IngredientNameText->SetText(FText::FromString(DisplayName));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::UpdatePlatingDisplay - Updated name: %s"), *DisplayName);
+    }
+    
+    // Update quantity and preparation displays
+    UpdateQuantityDisplay();
+    UpdatePreparationDisplay();
+}
+
+void UPUIngredientButton::UpdateQuantityDisplay()
+{
+    if (QuantityText)
+    {
+        FString QuantityString = FString::Printf(TEXT("x%d"), RemainingQuantity);
+        QuantityText->SetText(FText::FromString(QuantityString));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::UpdateQuantityDisplay - Updated quantity: %s"), *QuantityString);
+    }
+}
+
+void UPUIngredientButton::UpdatePreparationDisplay()
+{
+    if (PreparationText)
+    {
+        FString IconText = GetPreparationIconText();
+        PreparationText->SetText(FText::FromString(IconText));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::UpdatePreparationDisplay - Updated preparation icons: %s"), *IconText);
+    }
+    
+    // Call Blueprint event
+    OnPreparationStateChanged();
+}
+
+FString UPUIngredientButton::GetPreparationDisplayText() const
+{
+    if (IngredientInstance.Preparations.Num() == 0)
+    {
+        return TEXT("");
+    }
+    
+    FString PrepNames;
+    for (const FGameplayTag& Prep : IngredientInstance.Preparations)
+    {
+        if (!PrepNames.IsEmpty()) 
+        {
+            PrepNames += TEXT(", ");
+        }
+        PrepNames += Prep.ToString().Replace(TEXT("Prep."), TEXT(""));
+    }
+    
+    return PrepNames;
+}
+
+FString UPUIngredientButton::GetPreparationIconText() const
+{
+    if (IngredientInstance.Preparations.Num() == 0)
+    {
+        return TEXT("");
+    }
+    
+    FString IconString;
+    for (const FGameplayTag& Prep : IngredientInstance.Preparations)
+    {
+        FString PrepName = Prep.ToString().Replace(TEXT("Prep."), TEXT(""));
+        
+        // Map preparation tags to icons
+        if (PrepName.Contains(TEXT("Dried")))
+        {
+            IconString += TEXT("🌡️");
+        }
+        else if (PrepName.Contains(TEXT("Minced")))
+        {
+            IconString += TEXT("🔪");
+        }
+        else if (PrepName.Contains(TEXT("Boiled")))
+        {
+            IconString += TEXT("💧");
+        }
+        else if (PrepName.Contains(TEXT("Chopped")))
+        {
+            IconString += TEXT("✂️");
+        }
+        else if (PrepName.Contains(TEXT("Caramelized")))
+        {
+            IconString += TEXT("🔥");
+        }
+        else
+        {
+            // Default icon for unknown preparations
+            IconString += TEXT("⚙️");
+        }
+    }
+    
+    return IconString;
 } 

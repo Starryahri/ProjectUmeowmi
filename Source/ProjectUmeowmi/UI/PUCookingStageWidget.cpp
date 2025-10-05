@@ -17,6 +17,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../DishCustomization/PUOrderBase.h"
 #include "PUIngredientDragDropOperation.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -245,6 +246,19 @@ void UPUCookingStageWidget::FinishCookingAndStartPlating()
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::FinishCookingAndStartPlating - Final dish has %d ingredients"), 
         CurrentDishData.IngredientInstances.Num());
     
+    // Get the dish customization component to transition to plating mode
+    if (DishCustomizationComponent)
+    {
+        // Transition to plating stage with the completed dish data
+        DishCustomizationComponent->TransitionToPlatingStage(CurrentDishData);
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ PUCookingStageWidget::FinishCookingAndStartPlating - Transitioned to plating stage"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::FinishCookingAndStartPlating - No dish customization component reference"));
+    }
+    
     // Destroy carousel before finishing
     DestroyCookingCarousel();
     
@@ -257,7 +271,7 @@ void UPUCookingStageWidget::FinishCookingAndStartPlating()
     // Remove this widget from viewport
     RemoveFromParent();
     
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::FinishCookingAndStartPlating - Cooking stage completed"));
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::FinishCookingAndStartPlating - Cooking stage completed, plating mode activated"));
 }
 
 void UPUCookingStageWidget::ExitCookingStage()
