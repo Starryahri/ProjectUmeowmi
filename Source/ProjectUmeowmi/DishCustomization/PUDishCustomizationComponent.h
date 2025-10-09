@@ -89,6 +89,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void TransitionToPlatingStage(const FPUDishBase& DishData);
 
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void EndPlatingStage();
+
     // Planning mode functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
     void StartPlanningMode();
@@ -126,6 +129,10 @@ public:
     // UI Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     TSubclassOf<UUserWidget> CustomizationWidgetClass;
+
+    // Original widget class (stored before switching to plating)
+    UPROPERTY()
+    TSubclassOf<UUserWidget> OriginalWidgetClass;
 
     // Widget class to spawn for cooking stage
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")

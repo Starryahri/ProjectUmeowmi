@@ -283,6 +283,12 @@ void UPUDishCustomizationComponent::EndCustomization()
         return;
     }
 
+    // End plating stage if we're in plating mode
+    if (bPlatingMode)
+    {
+        EndPlatingStage();
+    }
+
     // Get the player controller
     APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
     if (PlayerController)
@@ -452,6 +458,28 @@ void UPUDishCustomizationComponent::SwitchToCookingCamera()
             
             if (CookingStationCamera)
             {
+                // CRITICAL: Set the CookingCamera as the active camera component on the actor FIRST
+                AActor* StationActor = CookingStationCamera->GetOwner();
+                if (StationActor)
+                {
+                    // Disable the plating camera first
+                    TArray<UCameraComponent*> AllCameras;
+                    StationActor->GetComponents<UCameraComponent>(AllCameras);
+                    
+                    for (UCameraComponent* Camera : AllCameras)
+                    {
+                        if (Camera && Camera->GetName() == TEXT("PlatingCamera"))
+                        {
+                            Camera->SetActive(false);
+                            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Disabled PlatingCamera"));
+                        }
+                    }
+                    
+                    // Enable the cooking camera
+                    CookingStationCamera->SetActive(true);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Activated CookingCamera"));
+                }
+
                 // Configure the camera for orthographic projection
                 CookingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
                 CookingStationCamera->OrthoWidth = CookingOrthoWidth;
@@ -1129,8 +1157,10 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     // Switch to plating widget class if available
     if (PlatingWidgetClass)
     {
+        // Store the original widget class before switching
+        OriginalWidgetClass = CustomizationWidgetClass;
         CustomizationWidgetClass = PlatingWidgetClass;
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Switched to plating widget class"));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Stored original widget class and switched to plating widget class"));
         
         // Remove the current widget if it exists
         if (CustomizationWidget)
@@ -1195,6 +1225,34 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     SwitchToPlatingCamera();
     
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating stage transition complete"));
+}
+
+void UPUDishCustomizationComponent::EndPlatingStage()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Ending plating stage"));
+
+    // Set plating mode to false
+    SetPlatingMode(false);
+
+    // Restore the original widget class
+    if (OriginalWidgetClass)
+    {
+        CustomizationWidgetClass = OriginalWidgetClass;
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Restored original widget class"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::EndPlatingStage - No original widget class stored"));
+    }
+
+    // Clear the original widget class reference
+    OriginalWidgetClass = nullptr;
+
+    // Switch back to cooking camera for the next cooking session
+    SwitchToCookingCamera();
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Switched back to cooking camera"));
+
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Plating stage ended"));
 }
 
 void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition)
