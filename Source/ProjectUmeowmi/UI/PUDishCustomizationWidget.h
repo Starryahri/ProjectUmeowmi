@@ -142,6 +142,10 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
     TMap<FGameplayTag, class UPUIngredientButton*> IngredientButtonMap;
 
+    // Store references to plating ingredient buttons by InstanceID (for multiple instances of same ingredient)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
+    TMap<int32, class UPUIngredientButton*> PlatingIngredientButtonMap;
+
     // Widget class references
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUIngredientButton> IngredientButtonClass;

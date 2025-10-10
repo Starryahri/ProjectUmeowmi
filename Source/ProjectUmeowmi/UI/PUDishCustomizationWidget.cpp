@@ -239,6 +239,22 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
     UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Found %d ingredient instances"), 
         DishData.IngredientInstances.Num());
 
+    // Debug: Log all ingredient instances
+    for (int32 i = 0; i < DishData.IngredientInstances.Num(); i++)
+    {
+        const FIngredientInstance& Instance = DishData.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("🍽️ DEBUG: Instance %d - %s (ID: %d, Qty: %d, Preparations: %d)"), 
+            i, *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Instance.Quantity, Instance.Preparations.Num());
+        
+        // Log preparation details
+        TArray<FGameplayTag> PreparationTags;
+        Instance.Preparations.GetGameplayTagArray(PreparationTags);
+        for (const FGameplayTag& PrepTag : PreparationTags)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ DEBUG:   - Preparation: %s"), *PrepTag.ToString());
+        }
+    }
+
     // Create buttons for each ingredient instance
     for (const FIngredientInstance& Instance : DishData.IngredientInstances)
     {
@@ -282,8 +298,9 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
             // Enable drag functionality for plating
             IngredientButton->SetDragEnabled(true);
             
-            // Add to our button map
-            IngredientButtonMap.Add(Instance.IngredientData.IngredientTag, IngredientButton);
+            // Add to our plating button map using InstanceID as the key (since it's unique)
+            PlatingIngredientButtonMap.Add(Instance.InstanceID, IngredientButton);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Added button to plating map for InstanceID: %d"), Instance.InstanceID);
             
             // Add to container if available
             if (IngredientButtonContainer.IsValid())
@@ -295,6 +312,8 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
             else
             {
                 UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No ingredient button container set! Button will not be visible."));
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Container is: %s"), 
+                    IngredientButtonContainer.IsValid() ? TEXT("VALID") : TEXT("INVALID"));
             }
             
             UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Created button for: %s"), 
@@ -308,7 +327,7 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
     }
 
     UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Created %d plating ingredient buttons"), 
-        IngredientButtonMap.Num());
+        PlatingIngredientButtonMap.Num());
     
     // Call the plating stage initialized event
     OnPlatingStageInitialized(DishData);
@@ -319,7 +338,7 @@ void UPUDishCustomizationWidget::EnablePlatingButtons()
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabling all plating buttons"));
 
-    for (auto& ButtonPair : IngredientButtonMap)
+    for (auto& ButtonPair : PlatingIngredientButtonMap)
     {
         if (ButtonPair.Value)
         {
@@ -340,7 +359,7 @@ void UPUDishCustomizationWidget::EnablePlatingButtons()
         }
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabled %d plating buttons"), IngredientButtonMap.Num());
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabled %d plating buttons"), PlatingIngredientButtonMap.Num());
 }
 
 
@@ -358,11 +377,24 @@ void UPUDishCustomizationWidget::SetIngredientButtonContainer(UPanelWidget* Cont
     UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Container set successfully"));
     
     // Add any existing buttons to the new container
-    if (IngredientButtonMap.Num() > 0)
+    // Check both regular ingredient buttons and plating ingredient buttons
+    int32 TotalButtons = IngredientButtonMap.Num() + PlatingIngredientButtonMap.Num();
+    
+    if (TotalButtons > 0)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Adding %d existing buttons to container"), IngredientButtonMap.Num());
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Adding %d existing buttons to container"), TotalButtons);
         
+        // Add regular ingredient buttons
         for (auto& ButtonPair : IngredientButtonMap)
+        {
+            if (ButtonPair.Value)
+            {
+                Container->AddChild(ButtonPair.Value);
+            }
+        }
+        
+        // Add plating ingredient buttons
+        for (auto& ButtonPair : PlatingIngredientButtonMap)
         {
             if (ButtonPair.Value)
             {
