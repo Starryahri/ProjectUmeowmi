@@ -489,6 +489,192 @@ void UPUCookingStageWidget::SetQuantityControlContainer(UPanelWidget* Container)
     }
 }
 
+void UPUCookingStageWidget::EnableQuantityControlDrag(bool bEnabled)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::EnableQuantityControlDrag - Setting drag enabled to %s for all quantity controls"), 
+        bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    if (!QuantityControlContainer.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::EnableQuantityControlDrag - QuantityControlContainer is not valid"));
+        return;
+    }
+    
+    // Get all child widgets in the container
+    TArray<UWidget*> ChildWidgets = QuantityControlContainer->GetAllChildren();
+    int32 QuantityControlsFound = 0;
+    
+    for (UWidget* ChildWidget : ChildWidgets)
+    {
+        if (UPUIngredientQuantityControl* QuantityControl = Cast<UPUIngredientQuantityControl>(ChildWidget))
+        {
+            QuantityControl->SetDragEnabled(bEnabled);
+            QuantityControlsFound++;
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::EnableQuantityControlDrag - Set drag enabled for quantity control: %s"), 
+                *QuantityControl->GetIngredientInstance().IngredientData.DisplayName.ToString());
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::EnableQuantityControlDrag - Updated %d quantity controls"), QuantityControlsFound);
+}
+
+bool UPUCookingStageWidget::UpdateExistingQuantityControl(int32 InstanceID, const FGameplayTagContainer& NewPreparations)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Looking for quantity control with InstanceID: %d"), InstanceID);
+    
+    // Try to use the bound QuantityScrollBox first, then fall back to QuantityControlContainer
+    UPanelWidget* ContainerToUse = nullptr;
+    
+    if (QuantityScrollBox)
+    {
+        ContainerToUse = QuantityScrollBox;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Using bound QuantityScrollBox: %s"), *QuantityScrollBox->GetName());
+    }
+    else if (QuantityControlContainer.IsValid())
+    {
+        ContainerToUse = QuantityControlContainer.Get();
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Using QuantityControlContainer: %s"), *QuantityControlContainer->GetName());
+    }
+    
+    if (!ContainerToUse)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::UpdateExistingQuantityControl - No container found, trying to find quantity controls automatically"));
+        
+        // Try to find the container automatically by searching for quantity controls in the widget hierarchy
+        TArray<UPUIngredientQuantityControl*> FoundQuantityControls;
+        FindQuantityControlsInHierarchy(FoundQuantityControls);
+        
+        if (FoundQuantityControls.Num() > 0)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Found %d quantity controls in hierarchy"), FoundQuantityControls.Num());
+            
+            // Check if any of the found quantity controls match our InstanceID
+            for (UPUIngredientQuantityControl* QuantityControl : FoundQuantityControls)
+            {
+                if (QuantityControl && QuantityControl->GetInstanceID() == InstanceID)
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Found existing quantity control for InstanceID: %d"), InstanceID);
+                    
+                    // Apply new preparations to the existing quantity control
+                    TArray<FGameplayTag> PreparationTags;
+                    NewPreparations.GetGameplayTagArray(PreparationTags);
+                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Applying %d new preparations"), PreparationTags.Num());
+                    
+                    for (const FGameplayTag& PreparationTag : PreparationTags)
+                    {
+                        if (!QuantityControl->GetIngredientInstance().Preparations.HasTag(PreparationTag))
+                        {
+                            QuantityControl->AddPreparation(PreparationTag);
+                            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Added preparation: %s"), *PreparationTag.ToString());
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Preparation already exists: %s"), *PreparationTag.ToString());
+                        }
+                    }
+                    
+                    UE_LOG(LogTemp, Display, TEXT("✅ PUCookingStageWidget::UpdateExistingQuantityControl - Successfully updated existing quantity control"));
+                    return true;
+                }
+            }
+        }
+        
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::UpdateExistingQuantityControl - No quantity controls found in hierarchy"));
+        return false;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Container is valid: %s"), *ContainerToUse->GetName());
+    
+    // Get all child widgets in the container
+    TArray<UWidget*> ChildWidgets = ContainerToUse->GetAllChildren();
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Found %d child widgets in container"), ChildWidgets.Num());
+    
+    for (int32 i = 0; i < ChildWidgets.Num(); i++)
+    {
+        UWidget* ChildWidget = ChildWidgets[i];
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Checking child widget %d: %s"), i, ChildWidget ? *ChildWidget->GetName() : TEXT("NULL"));
+        
+        if (UPUIngredientQuantityControl* QuantityControl = Cast<UPUIngredientQuantityControl>(ChildWidget))
+        {
+            int32 ControlInstanceID = QuantityControl->GetInstanceID();
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Found quantity control with InstanceID: %d (looking for: %d)"), ControlInstanceID, InstanceID);
+            
+            // Check if this is the quantity control we're looking for
+            if (ControlInstanceID == InstanceID)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Found existing quantity control for InstanceID: %d"), InstanceID);
+                
+                // Apply new preparations to the existing quantity control
+                TArray<FGameplayTag> PreparationTags;
+                NewPreparations.GetGameplayTagArray(PreparationTags);
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Applying %d new preparations"), PreparationTags.Num());
+                
+                for (const FGameplayTag& PreparationTag : PreparationTags)
+                {
+                    if (!QuantityControl->GetIngredientInstance().Preparations.HasTag(PreparationTag))
+                    {
+                        QuantityControl->AddPreparation(PreparationTag);
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Added preparation: %s"), *PreparationTag.ToString());
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Preparation already exists: %s"), *PreparationTag.ToString());
+                    }
+                }
+                
+                UE_LOG(LogTemp, Display, TEXT("✅ PUCookingStageWidget::UpdateExistingQuantityControl - Successfully updated existing quantity control"));
+                return true;
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateExistingQuantityControl - Child widget %d is not a quantity control"), i);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("⚠️ PUCookingStageWidget::UpdateExistingQuantityControl - No existing quantity control found for InstanceID: %d"), InstanceID);
+    return false;
+}
+
+void UPUCookingStageWidget::FindQuantityControlsInHierarchy(TArray<UPUIngredientQuantityControl*>& OutQuantityControls)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::FindQuantityControlsInHierarchy - Searching for quantity controls in widget hierarchy"));
+    
+    // Clear the output array
+    OutQuantityControls.Empty();
+    
+    // Recursively search through all child widgets
+    FindQuantityControlsRecursive(this, OutQuantityControls);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::FindQuantityControlsInHierarchy - Found %d quantity controls"), OutQuantityControls.Num());
+}
+
+void UPUCookingStageWidget::FindQuantityControlsRecursive(UWidget* ParentWidget, TArray<UPUIngredientQuantityControl*>& OutQuantityControls)
+{
+    if (!ParentWidget)
+    {
+        return;
+    }
+    
+    // Check if this widget is a quantity control
+    if (UPUIngredientQuantityControl* QuantityControl = Cast<UPUIngredientQuantityControl>(ParentWidget))
+    {
+        OutQuantityControls.Add(QuantityControl);
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::FindQuantityControlsRecursive - Found quantity control: %s (InstanceID: %d)"), 
+            *QuantityControl->GetName(), QuantityControl->GetInstanceID());
+    }
+    
+    // Recursively search child widgets
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(ParentWidget))
+    {
+        TArray<UWidget*> ChildWidgets = PanelWidget->GetAllChildren();
+        for (UWidget* ChildWidget : ChildWidgets)
+        {
+            FindQuantityControlsRecursive(ChildWidget, OutQuantityControls);
+        }
+    }
+}
+
 void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex, const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity)
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Ingredient %s dropped on implement %d (ID: %d, Qty: %d)"), 
@@ -509,12 +695,55 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
         return;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call CreateQuantityControlFromDroppedIngredient"));
+    // Get implement-specific preparation tags
+    const FGameplayTagContainer AllowedTags = GetPreparationTagsForImplement(ImplementIndex);
     
-    // Create quantity control from dropped ingredient
-    CreateQuantityControlFromDroppedIngredient(IngredientData, InstanceID, Quantity);
+    // First, try to update existing quantity control if it exists
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call UpdateExistingQuantityControl for InstanceID: %d"), InstanceID);
+    bool bFoundExisting = UpdateExistingQuantityControl(InstanceID, AllowedTags);
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: UpdateExistingQuantityControl returned: %s"), bFoundExisting ? TEXT("TRUE") : TEXT("FALSE"));
     
-    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: CreateQuantityControlFromDroppedIngredient completed"));
+    if (bFoundExisting)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Updated existing quantity control for InstanceID: %d"), InstanceID);
+        
+        // Update the dish data to reflect the new preparations
+        for (FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+        {
+            if (Instance.InstanceID == InstanceID)
+            {
+                // Apply the new preparations to the dish data as well
+                TArray<FGameplayTag> PreparationTags;
+                AllowedTags.GetGameplayTagArray(PreparationTags);
+                
+                for (const FGameplayTag& PreparationTag : PreparationTags)
+                {
+                    if (!Instance.Preparations.HasTag(PreparationTag))
+                    {
+                        Instance.Preparations.AddTag(PreparationTag);
+                        UE_LOG(LogTemp, Display, TEXT("🍳 Updated dish data with preparation: %s"), *PreparationTag.ToString());
+                    }
+                }
+                
+                // Update the ingredient data active preparations
+                Instance.IngredientData.ActivePreparations = Instance.Preparations;
+                break;
+            }
+        }
+        
+        // Broadcast dish data change to update radar graphs
+        OnDishDataChanged(CurrentDishData);
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Updated dish data and broadcasted changes"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: No existing quantity control found, creating new one"));
+        
+        // Create quantity control from dropped ingredient
+        CreateQuantityControlFromDroppedIngredient(IngredientData, InstanceID, Quantity);
+        
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: CreateQuantityControlFromDroppedIngredient completed"));
+    }
     
     // Rotate carousel to bring selected implement to front
     RotateCarouselToSelection(ImplementIndex);

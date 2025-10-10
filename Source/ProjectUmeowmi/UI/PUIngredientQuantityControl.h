@@ -65,6 +65,21 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void RemoveIngredientInstance();
 
+    // Native drag events (similar to ingredient button)
+    virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+    // Enable/disable drag functionality
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control|Drag")
+    void SetDragEnabled(bool bEnabled);
+
+    // Check if drag is enabled
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control|Drag")
+    bool IsDragEnabled() const { return bDragEnabled; }
+
+    // Create drag drop operation
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control|Drag")
+    class UPUIngredientDragDropOperation* CreateDragDropOperation() const;
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Quantity Control|Events")
     FOnQuantityControlChanged OnQuantityControlChanged;
@@ -102,6 +117,10 @@ protected:
     // Preparation checkbox class reference
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUPreparationCheckbox> PreparationCheckboxClass;
+
+    // Whether drag functionality is enabled
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quantity Control|Drag")
+    bool bDragEnabled = false;
 
     // Get UI components (Blueprint accessible)
     UFUNCTION(BlueprintCallable, Category = "Quantity Control|Components")

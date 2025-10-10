@@ -145,6 +145,20 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
     void SetQuantityControlContainer(UPanelWidget* Container);
 
+    // Enable/disable drag functionality on all quantity controls
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    void EnableQuantityControlDrag(bool bEnabled);
+
+    // Find and update existing quantity control by InstanceID
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    bool UpdateExistingQuantityControl(int32 InstanceID, const FGameplayTagContainer& NewPreparations);
+
+    // Find quantity controls in the widget hierarchy
+    void FindQuantityControlsInHierarchy(TArray<UPUIngredientQuantityControl*>& OutQuantityControls);
+
+    // Recursive helper function to find quantity controls
+    void FindQuantityControlsRecursive(UWidget* ParentWidget, TArray<UPUIngredientQuantityControl*>& OutQuantityControls);
+
 
 protected:
     // Current dish data (being built during cooking)
