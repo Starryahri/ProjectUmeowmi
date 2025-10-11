@@ -1128,6 +1128,60 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - END - Failed"));
 }
 
+void UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID(int32 InstanceID, const FVector& WorldPosition)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - START - InstanceID %d at position (%.2f,%.2f,%.2f)"), 
+        InstanceID, WorldPosition.X, WorldPosition.Y, WorldPosition.Z);
+
+    if (!bPlatingMode)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Not in plating mode"));
+        return;
+    }
+
+    // Find the specific ingredient instance by InstanceID
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Found instance %d: %s"), 
+                InstanceID, *Instance.IngredientData.DisplayName.ToString());
+            
+            // Check if we can place this ingredient (quantity limits)
+            if (!CanPlaceIngredient(InstanceID))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Cannot place ingredient %s (InstanceID: %d) - quantity limit reached"), 
+                    *Instance.IngredientData.DisplayName.ToString(), InstanceID);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - END - Failed (quantity limit)"));
+                return;
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Can place ingredient! Setting plating position"));
+            
+            // Set the plating position for this ingredient
+            CurrentDishData.SetIngredientPlating(InstanceID, WorldPosition, FRotator::ZeroRotator, FVector::OneVector);
+            
+            // Track the placement
+            PlaceIngredient(InstanceID);
+            
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Set plating for instance %d"), InstanceID);
+            
+            // Spawn visual 3D mesh
+            SpawnVisualIngredientMesh(Instance, WorldPosition);
+            
+            // Broadcast the updated dish data
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Broadcasting OnDishDataUpdated"));
+            OnDishDataUpdated.Broadcast(CurrentDishData);
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - END - Success"));
+            return;
+        }
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - InstanceID %d not found in current dish"), InstanceID);
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - END - Failed"));
+}
+
 void UPUDishCustomizationComponent::SetPlatingMode(bool bInPlatingMode)
 {
     bPlatingMode = bInPlatingMode;

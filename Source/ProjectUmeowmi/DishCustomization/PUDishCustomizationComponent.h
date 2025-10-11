@@ -80,6 +80,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void SpawnIngredientIn3D(const FGameplayTag& IngredientTag, const FVector& WorldPosition);
 
+    // Spawn ingredient in 3D world by InstanceID (for plating stage)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void SpawnIngredientIn3DByInstanceID(int32 InstanceID, const FVector& WorldPosition);
+
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void SetPlatingMode(bool bInPlatingMode);
 

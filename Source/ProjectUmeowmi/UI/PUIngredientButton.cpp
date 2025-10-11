@@ -367,9 +367,9 @@ void UPUIngredientButton::SpawnIngredientAtPosition(const FVector2D& ScreenPosit
             UPUDishCustomizationComponent* DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
             if (DishComponent)
             {
-                UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - Calling SpawnIngredientIn3D on customization component"));
-                DishComponent->SpawnIngredientIn3D(IngredientInstance.IngredientData.IngredientTag, SpawnPosition);
-                UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - SpawnIngredientIn3D call completed"));
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - Calling SpawnIngredientIn3DByInstanceID on customization component"));
+                DishComponent->SpawnIngredientIn3DByInstanceID(IngredientInstance.InstanceID, SpawnPosition);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::SpawnIngredientAtPosition - SpawnIngredientIn3DByInstanceID call completed"));
                 break;
             }
         }
@@ -438,31 +438,41 @@ FString UPUIngredientButton::GetPreparationIconText() const
     {
         FString PrepName = Prep.ToString().Replace(TEXT("Prep."), TEXT(""));
         
-        // Map preparation tags to icons
-        if (PrepName.Contains(TEXT("Dried")))
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GetPreparationIconText - Processing preparation tag: %s (cleaned: %s)"), 
+            *Prep.ToString(), *PrepName);
+        
+        // Map preparation tags to text abbreviations
+        if (PrepName.Contains(TEXT("Dehydrate")) || PrepName.Contains(TEXT("Dried")))
         {
-            IconString += TEXT("🌡️");
+            IconString += TEXT("[D]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GetPreparationIconText - Matched Dehydrate/Dried: [D]"));
         }
-        else if (PrepName.Contains(TEXT("Minced")))
+        else if (PrepName.Contains(TEXT("Mince")) || PrepName.Contains(TEXT("Minced")))
         {
-            IconString += TEXT("🔪");
+            IconString += TEXT("[M]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GetPreparationIconText - Matched Mince/Minced: [M]"));
         }
         else if (PrepName.Contains(TEXT("Boiled")))
         {
-            IconString += TEXT("💧");
+            IconString += TEXT("[B]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GetPreparationIconText - Matched Boiled: [B]"));
         }
         else if (PrepName.Contains(TEXT("Chopped")))
         {
-            IconString += TEXT("✂️");
+            IconString += TEXT("[C]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GetPreparationIconText - Matched Chopped: [C]"));
         }
         else if (PrepName.Contains(TEXT("Caramelized")))
         {
-            IconString += TEXT("🔥");
+            IconString += TEXT("[CR]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GetPreparationIconText - Matched Caramelized: [CR]"));
         }
         else
         {
-            // Default icon for unknown preparations
-            IconString += TEXT("⚙️");
+            // Default abbreviation for unknown preparations
+            IconString += TEXT("[?]");
+            UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientButton::GetPreparationIconText - Unknown preparation: %s (cleaned: %s)"), 
+                *Prep.ToString(), *PrepName);
         }
     }
     
