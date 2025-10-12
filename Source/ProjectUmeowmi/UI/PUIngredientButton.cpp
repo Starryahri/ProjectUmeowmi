@@ -91,11 +91,22 @@ void UPUIngredientButton::SetIngredientData(const FPUIngredientBase& InIngredien
     // Call Blueprint event
     OnIngredientDataSet(InIngredientData);
     
+    // Re-hide text after Blueprint event in case it was overridden
+    HideAllText();
+    
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetIngredientData - Ingredient data set successfully"));
 }
 
 void UPUIngredientButton::OnIngredientButtonClickedInternal()
 {
+    // If drag is enabled, ignore click events to prevent double-click issues
+    if (bDragEnabled)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonClickedInternal - Ignoring click event (drag enabled) for ingredient: %s"), 
+            *IngredientData.DisplayName.ToString());
+        return;
+    }
+    
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonClickedInternal - Button clicked for ingredient: %s"), 
         *IngredientData.DisplayName.ToString());
     
@@ -136,14 +147,17 @@ void UPUIngredientButton::OnIngredientButtonUnhoveredInternal()
     // UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::OnIngredientButtonUnhoveredInternal - Unhover event broadcasted"));
 }
 
-FReply UPUIngredientButton::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+FReply UPUIngredientButton::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::NativeOnMouseButtonDown - Mouse button down on ingredient: %s (Drag enabled: %s)"), 
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::NativeOnPreviewMouseButtonDown - Preview mouse button down on ingredient: %s (Drag enabled: %s)"), 
         *IngredientData.DisplayName.ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"));
     
     // Only handle left mouse button and only if drag is enabled
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDragEnabled)
     {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s"), 
+            *IngredientData.DisplayName.ToString());
+        
         // Start drag detection - this will call the Blueprint OnDragDetected event
         return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
     }
@@ -158,6 +172,9 @@ void UPUIngredientButton::SetDragEnabled(bool bEnabled)
         bEnabled ? TEXT("TRUE") : TEXT("FALSE"), *IngredientData.DisplayName.ToString());
     
     bDragEnabled = bEnabled;
+    
+    // Simple approach - just set the drag enabled flag
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetDragEnabled - Drag enabled set to: %s"), bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
 
@@ -477,4 +494,86 @@ FString UPUIngredientButton::GetPreparationIconText() const
     }
     
     return IconString;
-} 
+}
+
+void UPUIngredientButton::SetTextVisibility(bool bShowQuantity, bool bShowDescription)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetTextVisibility - Setting text visibility: Quantity=%s, Description=%s"), 
+        bShowQuantity ? TEXT("TRUE") : TEXT("FALSE"), bShowDescription ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    // Control quantity text visibility
+    if (QuantityText)
+    {
+        QuantityText->SetVisibility(bShowQuantity ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetTextVisibility - Set quantity text visibility to: %s"), 
+            bShowQuantity ? TEXT("Visible") : TEXT("Hidden"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUIngredientButton::SetTextVisibility - QuantityText component not found for ingredient: %s"), 
+            *IngredientData.DisplayName.ToString());
+    }
+    
+    // Control preparation/description text visibility
+    if (PreparationText)
+    {
+        PreparationText->SetVisibility(bShowDescription ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::SetTextVisibility - Set preparation text visibility to: %s"), 
+            bShowDescription ? TEXT("Visible") : TEXT("Hidden"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUIngredientButton::SetTextVisibility - PreparationText component not found for ingredient: %s"), 
+            *IngredientData.DisplayName.ToString());
+    }
+}
+
+void UPUIngredientButton::HideAllText()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::HideAllText - Hiding all text elements"));
+    LogTextComponentStatus();
+    SetTextVisibility(false, false);
+    
+    // Force hide using different visibility modes
+    if (QuantityText)
+    {
+        QuantityText->SetVisibility(ESlateVisibility::Collapsed);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::HideAllText - Force collapsed quantity text"));
+    }
+    
+    if (PreparationText)
+    {
+        PreparationText->SetVisibility(ESlateVisibility::Collapsed);
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::HideAllText - Force collapsed preparation text"));
+    }
+}
+
+void UPUIngredientButton::ShowAllText()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::ShowAllText - Showing all text elements"));
+    LogTextComponentStatus();
+    SetTextVisibility(true, true);
+}
+
+void UPUIngredientButton::LogTextComponentStatus()
+{
+    UE_LOG(LogTemp, Display, TEXT("🔍 PUIngredientButton::LogTextComponentStatus - Checking text component status for ingredient: %s"), 
+        *IngredientData.DisplayName.ToString());
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 QuantityText: %s"), QuantityText ? TEXT("FOUND") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("🔍 PreparationText: %s"), PreparationText ? TEXT("FOUND") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("🔍 IngredientNameText: %s"), IngredientNameText ? TEXT("FOUND") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("🔍 IngredientIcon: %s"), IngredientIcon ? TEXT("FOUND") : TEXT("NULL"));
+    
+    if (QuantityText)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 QuantityText visibility: %s"), 
+            QuantityText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
+    }
+    
+    if (PreparationText)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 PreparationText visibility: %s"), 
+            PreparationText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
+    }
+}

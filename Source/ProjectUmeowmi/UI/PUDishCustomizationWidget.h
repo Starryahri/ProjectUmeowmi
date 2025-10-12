@@ -95,6 +95,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     class UPUIngredientButton* GetIngredientButtonByTag(const FGameplayTag& IngredientTag) const;
 
+    // Get plating ingredient button map
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    const TMap<int32, class UPUIngredientButton*>& GetPlatingIngredientButtonMap() const { return PlatingIngredientButtonMap; }
+
     // Remove ingredient instance by tag
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void RemoveIngredientInstanceByTag(const FGameplayTag& IngredientTag);

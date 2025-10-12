@@ -2051,12 +2051,12 @@ void UPUCookingStageWidget::CreateIngredientButtonsFromDishData()
             // Set the ingredient data
             IngredientButton->SetIngredientData(IngredientInstance.IngredientData);
             
-            // Try to disable click functionality (only drag should work)
+            // Enable the internal button for cooking stage
             UButton* InternalButton = IngredientButton->GetIngredientButton();
             if (InternalButton)
             {
-                InternalButton->SetIsEnabled(false);
-                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Disabled click functionality for ingredient: %s"), 
+                InternalButton->SetIsEnabled(true);
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Enabled internal button for ingredient: %s"), 
                     *IngredientInstance.IngredientData.DisplayName.ToString());
             }
             else
@@ -2070,6 +2070,10 @@ void UPUCookingStageWidget::CreateIngredientButtonsFromDishData()
             
             // Enable drag functionality for cooking stage
             IngredientButton->SetDragEnabled(true);
+            
+            // Hide text elements for cooking stage (prepping/cooking stages)
+            IngredientButton->HideAllText();
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientButtonsFromDishData - Hidden text elements for cooking stage"));
             
             // Add to the UI container if available
             if (IngredientButtonContainer.IsValid())

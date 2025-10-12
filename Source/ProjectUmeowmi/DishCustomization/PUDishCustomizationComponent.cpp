@@ -1164,6 +1164,9 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID(int32 Instan
             // Track the placement
             PlaceIngredient(InstanceID);
             
+            // Update the ingredient button's quantity display
+            UpdateIngredientButtonQuantity(InstanceID);
+            
             UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Set plating for instance %d"), InstanceID);
             
             // Spawn visual 3D mesh
@@ -1730,4 +1733,51 @@ int32 UPUDishCustomizationComponent::GetPlacedQuantityByTag(const FGameplayTag& 
     
     UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::GetPlacedQuantityByTag - Ingredient %s not found"), *IngredientTag.ToString());
     return 0;
+}
+
+void UPUDishCustomizationComponent::UpdateIngredientButtonQuantity(int32 InstanceID)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Updating button quantity for InstanceID: %d"), InstanceID);
+    
+    // Find the ingredient instance to get the ingredient tag
+    FGameplayTag IngredientTag;
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            IngredientTag = Instance.IngredientData.IngredientTag;
+            break;
+        }
+    }
+    
+    if (!IngredientTag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - InstanceID %d not found"), InstanceID);
+        return;
+    }
+    
+    // Find the ingredient button in the plating button map
+    if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        // Get the plating button map from the widget
+        TMap<int32, class UPUIngredientButton*> PlatingButtons = DishWidget->GetPlatingIngredientButtonMap();
+        
+        if (UPUIngredientButton* IngredientButton = PlatingButtons.FindRef(InstanceID))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Found button for InstanceID: %d"), InstanceID);
+            
+            // Decrease the button's quantity
+            IngredientButton->DecreaseQuantity();
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Decreased quantity for button"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - No button found for InstanceID: %d"), InstanceID);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - No customization widget found"));
+    }
 }

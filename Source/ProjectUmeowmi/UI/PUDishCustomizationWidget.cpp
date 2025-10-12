@@ -203,6 +203,10 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
                     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Created button for: %s"), 
                         *IngredientData.DisplayName.ToString());
                     
+                    // Hide text elements for planning stage (prep stage should hide text)
+                    IngredientButton->HideAllText();
+                    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Hidden text elements for planning stage"));
+                    
                     // Call Blueprint event
                     OnIngredientButtonCreated(IngredientButton, IngredientData);
                 }
@@ -281,12 +285,12 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
             // Also set the ingredient data to ensure texture is set (like cooking stage)
             IngredientButton->SetIngredientData(Instance.IngredientData);
             
-            // Disable the internal button (like in cooking stage) but keep the widget enabled for drag
+            // Keep the internal button enabled for plating stage
             UButton* InternalButton = IngredientButton->GetIngredientButton();
             if (InternalButton)
             {
-                InternalButton->SetIsEnabled(false);
-                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Disabled internal button for: %s"), 
+                InternalButton->SetIsEnabled(true);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Enabled internal button for: %s"), 
                     *Instance.IngredientData.DisplayName.ToString());
             }
             else
@@ -297,6 +301,10 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
             
             // Enable drag functionality for plating
             IngredientButton->SetDragEnabled(true);
+            
+            // Show text elements for plating stage
+            IngredientButton->ShowAllText();
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Shown text elements for plating stage"));
             
             // Add to our plating button map using InstanceID as the key (since it's unique)
             PlatingIngredientButtonMap.Add(Instance.InstanceID, IngredientButton);

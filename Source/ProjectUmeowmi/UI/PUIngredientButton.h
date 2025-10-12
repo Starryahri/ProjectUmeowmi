@@ -51,7 +51,7 @@ public:
     FOnIngredientButtonClicked OnIngredientButtonHovered;
 
     // Native drag events (only enabled in cooking stage)
-    virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+    virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
     // Enable/disable drag functionality
     UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
@@ -102,6 +102,20 @@ public:
     // Create drag drop operation (moved from plating widget)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
     class UPUIngredientDragDropOperation* CreateIngredientDragDropOperation() const;
+
+    // Text visibility control for different stages
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void SetTextVisibility(bool bShowQuantity, bool bShowDescription);
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void HideAllText();
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void ShowAllText();
+
+    // Debug method to check text component status
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void LogTextComponentStatus();
 
 protected:
     // Current ingredient data

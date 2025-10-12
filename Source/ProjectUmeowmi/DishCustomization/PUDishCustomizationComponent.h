@@ -351,4 +351,7 @@ private:
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     int32 GetPlacedQuantityByTag(const FGameplayTag& IngredientTag) const;
+
+    // Update ingredient button quantity display
+    void UpdateIngredientButtonQuantity(int32 InstanceID);
 }; 
