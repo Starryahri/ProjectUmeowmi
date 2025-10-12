@@ -618,6 +618,9 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
         // If we're exiting customization, clear the character reference and broadcast the end event
         if (TargetOrthoWidth == OriginalOrthoWidth)
         {
+            // Clear all 3D ingredient meshes before ending customization
+            ClearAll3DIngredientMeshes();
+            
             AProjectUmeowmiCharacter* TempCharacter = CurrentCharacter;
             CurrentCharacter = nullptr;
             OnCustomizationEnded.Broadcast();
@@ -1364,7 +1367,11 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
             MeshComponent->SetStaticMesh(IngredientMesh);
         }
         
-        UE_LOG(LogTemp, Display, TEXT("✅ Spawned interactive ingredient: %s"), *IngredientInstance.IngredientData.IngredientTag.ToString());
+        // Track the spawned mesh for cleanup
+        SpawnedIngredientMeshes.Add(SpawnedIngredient);
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ Spawned interactive ingredient: %s (Total spawned: %d)"), 
+            *IngredientInstance.IngredientData.IngredientTag.ToString(), SpawnedIngredientMeshes.Num());
     }
 }
 
@@ -1780,4 +1787,68 @@ void UPUDishCustomizationComponent::UpdateIngredientButtonQuantity(int32 Instanc
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - No customization widget found"));
     }
+}
+
+void UPUDishCustomizationComponent::ResetPlating()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Resetting all plating"));
+    
+    // Clear all placed ingredient quantities
+    PlacedIngredientQuantities.Empty();
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Cleared placed ingredient quantities"));
+    
+    // Reset all ingredient button quantities
+    if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        // Get the plating button map from the widget
+        TMap<int32, class UPUIngredientButton*> PlatingButtons = DishWidget->GetPlatingIngredientButtonMap();
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Found %d plating buttons to reset"), 
+            PlatingButtons.Num());
+        
+        // Reset each button's quantity
+        for (auto& ButtonPair : PlatingButtons)
+        {
+            int32 InstanceID = ButtonPair.Key;
+            UPUIngredientButton* IngredientButton = ButtonPair.Value;
+            
+            if (IngredientButton)
+            {
+                IngredientButton->ResetQuantity();
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Reset button for InstanceID: %d"), InstanceID);
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::ResetPlating - No customization widget found"));
+    }
+    
+    // Clear all 3D ingredient meshes
+    ClearAll3DIngredientMeshes();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Plating reset complete"));
+}
+
+void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - Clearing %d 3D ingredient meshes"), 
+        SpawnedIngredientMeshes.Num());
+    
+    // Destroy all tracked ingredient meshes
+    for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
+    {
+        if (IsValid(IngredientMesh))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - Destroying ingredient mesh: %s"), 
+                *IngredientMesh->GetName());
+            
+            IngredientMesh->Destroy();
+        }
+    }
+    
+    // Clear the tracking array
+    SpawnedIngredientMeshes.Empty();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - All 3D ingredient meshes cleared"));
 }

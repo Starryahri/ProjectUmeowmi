@@ -301,6 +301,9 @@ private:
     // Plating placement tracking
     TMap<int32, int32> PlacedIngredientQuantities; // InstanceID -> Placed Quantity
 
+    // Track spawned 3D ingredient meshes for cleanup
+    TArray<class APUIngredientMesh*> SpawnedIngredientMeshes;
+
     // Plating camera transition state
     bool bPlatingCameraTransitioning = false;
     float PlatingCameraTransitionTime = 0.0f;
@@ -354,4 +357,12 @@ private:
 
     // Update ingredient button quantity display
     void UpdateIngredientButtonQuantity(int32 InstanceID);
+
+    // Reset all plating (restore original quantities and clear placed ingredients)
+    UFUNCTION(BlueprintCallable, Category = "Plating")
+    void ResetPlating();
+
+    // Clear all 3D ingredient meshes
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void ClearAll3DIngredientMeshes();
 }; 

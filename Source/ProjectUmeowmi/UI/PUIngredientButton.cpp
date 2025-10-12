@@ -231,12 +231,14 @@ void UPUIngredientButton::DecreaseQuantity()
     }
 }
 
+
 void UPUIngredientButton::ResetQuantity()
 {
     RemainingQuantity = MaxQuantity;
     UpdateQuantityDisplay();
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::ResetQuantity - Quantity reset to %d"), RemainingQuantity);
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUIngredientButton::ResetQuantity - Quantity reset to %d for ingredient: %s"), 
+        RemainingQuantity, *IngredientData.DisplayName.ToString());
     
     // Call Blueprint event
     OnQuantityChanged(RemainingQuantity);
