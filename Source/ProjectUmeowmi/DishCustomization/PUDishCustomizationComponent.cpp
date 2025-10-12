@@ -8,6 +8,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "EnhancedInputSubsystems.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "InputMappingContext.h"
@@ -1284,6 +1286,25 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     // Switch to plating camera
     SwitchToPlatingCamera();
     
+    // Swap to plating dish mesh
+    if (PlatingDishMesh.IsValid())
+    {
+        UStaticMesh* LoadedMesh = PlatingDishMesh.LoadSynchronous();
+        if (LoadedMesh)
+        {
+            SwapDishContainerMesh(LoadedMesh);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Swapped to plating dish mesh"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - Failed to load plating dish mesh"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - No plating dish mesh set"));
+    }
+    
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating stage transition complete"));
 }
 
@@ -1367,10 +1388,13 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
             MeshComponent->SetStaticMesh(IngredientMesh);
         }
         
+        // Scale down the ingredient to half size
+        SpawnedIngredient->SetActorScale3D(FVector(0.5f, 0.5f, 0.5f));
+        
         // Track the spawned mesh for cleanup
         SpawnedIngredientMeshes.Add(SpawnedIngredient);
         
-        UE_LOG(LogTemp, Display, TEXT("✅ Spawned interactive ingredient: %s (Total spawned: %d)"), 
+        UE_LOG(LogTemp, Display, TEXT("✅ Spawned interactive ingredient: %s (Total spawned: %d) - Scaled to 0.5x"), 
             *IngredientInstance.IngredientData.IngredientTag.ToString(), SpawnedIngredientMeshes.Num());
     }
 }
@@ -1851,4 +1875,105 @@ void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
     SpawnedIngredientMeshes.Empty();
     
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - All 3D ingredient meshes cleared"));
+}
+
+void UPUDishCustomizationComponent::SwapDishContainerMesh(UStaticMesh* NewDishMesh)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Swapping dish container mesh"));
+    
+    if (!NewDishMesh)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is null"));
+        return;
+    }
+    
+    // Find the cooking station actor by searching all actors
+    AActor* DishStation = nullptr;
+    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+    {
+        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
+        {
+            DishStation = *ActorItr;
+            break;
+        }
+    }
+    
+    if (!DishStation)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - DishStation not found"));
+        return;
+    }
+    
+    // Find the DishContainer child component (nested in StationMesh)
+    UStaticMeshComponent* DishContainer = nullptr;
+    
+    // First, find the StationMesh component
+    UStaticMeshComponent* StationMesh = nullptr;
+    TArray<UStaticMeshComponent*> AllMeshComponents;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents)
+    {
+        if (MeshComp->GetName().Contains(TEXT("StationMesh")))
+        {
+            StationMesh = MeshComp;
+            break;
+        }
+    }
+    
+    if (!StationMesh)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - StationMesh component not found"));
+        return;
+    }
+    
+    // Now find DishContainer as a child of StationMesh using a simpler approach
+    TArray<UStaticMeshComponent*> AllMeshComponents2;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
+    {
+        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
+        {
+            DishContainer = MeshComp;
+            break;
+        }
+    }
+    
+    if (!DishContainer)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - DishContainer component not found"));
+        return;
+    }
+    
+    // Clear any child static mesh components under DishContainer
+    // Get all components from the DishContainer's owner actor and clear only child meshes
+    TArray<UStaticMeshComponent*> AllChildMeshes;
+    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
+    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
+    {
+        // Only clear meshes that are children of DishContainer, not StationMesh or other main components
+        if (ChildMesh != DishContainer && ChildMesh != StationMesh && 
+            ChildMesh->GetAttachParent() == DishContainer)
+        {
+            ChildMesh->SetStaticMesh(nullptr);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Cleared child mesh: %s"), 
+                *ChildMesh->GetName());
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Cleared child meshes only"));
+    
+    // Add the new dish mesh under DishContainer
+    if (NewDishMesh)
+    {
+        // Create a new static mesh component for the dish
+        UStaticMeshComponent* NewDishComponent = NewObject<UStaticMeshComponent>(DishContainer->GetOwner());
+        NewDishComponent->SetStaticMesh(NewDishMesh);
+        NewDishComponent->SetupAttachment(DishContainer);
+        NewDishComponent->RegisterComponent();
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Added new dish mesh: %s"), 
+            *NewDishMesh->GetName());
+    }
 }

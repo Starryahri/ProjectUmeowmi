@@ -17,6 +17,13 @@ APUIngredientMesh::APUIngredientMesh()
     MeshComponent->SetEnableGravity(true);
     MeshComponent->SetMobility(EComponentMobility::Movable);
     
+    // Add physics damping to make movement less intense
+    MeshComponent->SetLinearDamping(2.0f);      // Reduces linear velocity over time
+    MeshComponent->SetAngularDamping(5.0f);    // Reduces rotation over time
+    
+    // Reduce mass to make ingredients less bouncy
+    MeshComponent->SetMassScale(NAME_None, 0.5f);  // Reduce mass scale
+    
     // Ensure visibility channel is blocked for mouse interaction
     MeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     
@@ -47,6 +54,11 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
             MeshComponent->SetSimulatePhysics(true);
             MeshComponent->SetEnableGravity(true);
             MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            
+            // Re-apply physics damping and mass settings
+            MeshComponent->SetLinearDamping(2.0f);
+            MeshComponent->SetAngularDamping(5.0f);
+            MeshComponent->SetMassScale(NAME_None, 0.5f);
         }
     }
 
@@ -147,9 +159,13 @@ void APUIngredientMesh::OnMouseRelease()
     {
         bIsGrabbed = false;
         
-        // Re-enable physics after dragging
+        // Re-enable physics after dragging with gentle release
         MeshComponent->SetSimulatePhysics(true);
         MeshComponent->SetEnableGravity(true);
+        
+        // Apply gentle physics settings for smoother release
+        MeshComponent->SetLinearDamping(3.0f);      // Higher damping for release
+        MeshComponent->SetAngularDamping(8.0f);    // Higher angular damping for release
         
         // Restore original material
         if (IngredientData.MaterialInstance.IsValid())

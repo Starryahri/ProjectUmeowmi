@@ -241,6 +241,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
     UDataTable* PreparationDataTable;
 
+    // Plating dish mesh
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
+    TSoftObjectPtr<UStaticMesh> PlatingDishMesh;
+
 protected:
     // Internal state management
     UPROPERTY()
@@ -365,4 +369,8 @@ private:
     // Clear all 3D ingredient meshes
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ClearAll3DIngredientMeshes();
+
+    // Swap dish container mesh
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
+    void SwapDishContainerMesh(UStaticMesh* NewDishMesh);
 }; 
