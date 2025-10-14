@@ -245,6 +245,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
     TSoftObjectPtr<UStaticMesh> PlatingDishMesh;
 
+    // Ingredient mesh scale for plating stage
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
+    FVector IngredientMeshScale = FVector(1.0f, 1.0f, 1.0f);
+
 protected:
     // Internal state management
     UPROPERTY()
