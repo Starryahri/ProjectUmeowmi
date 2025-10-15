@@ -63,6 +63,9 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         return;
     }
 
+    // Store the original dish container mesh before any changes
+    StoreOriginalDishContainerMesh();
+
     UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
     CurrentCharacter = Character;
 
@@ -622,6 +625,9 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
         {
             // Clear all 3D ingredient meshes before ending customization
             ClearAll3DIngredientMeshes();
+            
+            // Restore the original dish container mesh
+            RestoreOriginalDishContainerMesh();
             
             AProjectUmeowmiCharacter* TempCharacter = CurrentCharacter;
             CurrentCharacter = nullptr;
@@ -1996,4 +2002,169 @@ void UPUDishCustomizationComponent::SwapDishContainerMesh(UStaticMesh* NewDishMe
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is null!"));
     }
+}
+
+void UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restoring original dish container mesh"));
+    
+    // Find the cooking station actor by searching all actors
+    AActor* DishStation = nullptr;
+    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+    {
+        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
+        {
+            DishStation = *ActorItr;
+            break;
+        }
+    }
+    
+    if (!DishStation)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - BP_CookingStation not found"));
+        return;
+    }
+    
+    // Find the DishContainer child component
+    UStaticMeshComponent* DishContainer = nullptr;
+    TArray<UStaticMeshComponent*> AllMeshComponents2;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
+    {
+        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
+        {
+            DishContainer = MeshComp;
+            break;
+        }
+    }
+    
+    if (!DishContainer)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - DishContainer component not found"));
+        return;
+    }
+    
+    // Clear any existing children first
+    TArray<UStaticMeshComponent*> AllChildMeshes;
+    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
+    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
+    {
+        // Only clear meshes that are children of DishContainer, not StationMesh or other main components
+        if (ChildMesh != DishContainer && ChildMesh->GetAttachParent() == DishContainer)
+        {
+            ChildMesh->SetStaticMesh(nullptr);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Cleared child mesh: %s"), 
+                *ChildMesh->GetName());
+        }
+    }
+
+    // Restore the original mesh
+    if (OriginalDishContainerMesh)
+    {
+        DishContainer->SetStaticMesh(OriginalDishContainerMesh);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored original mesh: %s"), 
+            *OriginalDishContainerMesh->GetName());
+    }
+    else
+    {
+        // Clear the mesh if no original was stored
+        DishContainer->SetStaticMesh(nullptr);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Cleared mesh (no original stored)"));
+    }
+
+    // Restore the original children meshes
+    for (UStaticMesh* ChildMesh : OriginalDishContainerChildren)
+    {
+        if (ChildMesh)
+        {
+            // Create a new static mesh component for the child
+            UStaticMeshComponent* NewChildComponent = NewObject<UStaticMeshComponent>(DishContainer->GetOwner());
+            NewChildComponent->SetStaticMesh(ChildMesh);
+            NewChildComponent->SetupAttachment(DishContainer);
+            NewChildComponent->RegisterComponent();
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored child mesh: %s"), 
+                *ChildMesh->GetName());
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored %d child meshes"), 
+        OriginalDishContainerChildren.Num());
+}
+
+void UPUDishCustomizationComponent::StoreOriginalDishContainerMesh()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Storing original dish container mesh"));
+    
+    // Find the cooking station actor by searching all actors
+    AActor* DishStation = nullptr;
+    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+    {
+        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
+        {
+            DishStation = *ActorItr;
+            break;
+        }
+    }
+    
+    if (!DishStation)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - BP_CookingStation not found"));
+        return;
+    }
+    
+    // Find the DishContainer child component
+    UStaticMeshComponent* DishContainer = nullptr;
+    TArray<UStaticMeshComponent*> AllMeshComponents2;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
+    {
+        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
+        {
+            DishContainer = MeshComp;
+            break;
+        }
+    }
+    
+    if (!DishContainer)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - DishContainer component not found"));
+        return;
+    }
+    
+    // Store the original mesh
+    OriginalDishContainerMesh = DishContainer->GetStaticMesh();
+    if (OriginalDishContainerMesh)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored original mesh: %s"), 
+            *OriginalDishContainerMesh->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - No original mesh found (DishContainer was empty)"));
+    }
+
+    // Store the original children meshes
+    OriginalDishContainerChildren.Empty();
+    TArray<UStaticMeshComponent*> AllChildMeshes;
+    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
+    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
+    {
+        // Only store meshes that are children of DishContainer, not StationMesh or other main components
+        if (ChildMesh != DishContainer && ChildMesh->GetAttachParent() == DishContainer)
+        {
+            UStaticMesh* ChildStaticMesh = ChildMesh->GetStaticMesh();
+            if (ChildStaticMesh)
+            {
+                OriginalDishContainerChildren.Add(ChildStaticMesh);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored child mesh: %s"), 
+                    *ChildStaticMesh->GetName());
+            }
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored %d child meshes"), 
+        OriginalDishContainerChildren.Num());
 }

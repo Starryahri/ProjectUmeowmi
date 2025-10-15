@@ -249,6 +249,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
     FVector IngredientMeshScale = FVector(1.0f, 1.0f, 1.0f);
 
+    // Original dish container mesh (stored when customization starts)
+    UPROPERTY()
+    UStaticMesh* OriginalDishContainerMesh = nullptr;
+
+    // Original dish container children meshes (stored when customization starts)
+    UPROPERTY()
+    TArray<UStaticMesh*> OriginalDishContainerChildren;
+
 protected:
     // Internal state management
     UPROPERTY()
@@ -377,4 +385,11 @@ private:
     // Swap dish container mesh
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
     void SwapDishContainerMesh(UStaticMesh* NewDishMesh);
+
+    // Restore original dish container mesh
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
+    void RestoreOriginalDishContainerMesh();
+
+    // Store original dish container mesh
+    void StoreOriginalDishContainerMesh();
 }; 
