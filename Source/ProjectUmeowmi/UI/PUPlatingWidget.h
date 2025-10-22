@@ -64,6 +64,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Plating Widget")
     UPUIngredientDragDropOperation* CreateIngredientDragDropOperation(const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity);
 
+    // Blueprint-friendly functions to get ingredient data
+    // Get ingredient instances for a specific base ingredient
+    UFUNCTION(BlueprintCallable, Category = "Plating Widget")
+    TArray<FIngredientInstance> GetIngredientInstancesForBase(const FGameplayTag& BaseIngredientTag) const;
+
+    // Get all base ingredient tags
+    UFUNCTION(BlueprintCallable, Category = "Plating Widget")
+    TArray<FGameplayTag> GetBaseIngredientTags() const;
+
+    // Reset all ingredient quantities to original values
+    UFUNCTION(BlueprintCallable, Category = "Plating Widget")
+    void ResetAllIngredientQuantities();
+
 protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")

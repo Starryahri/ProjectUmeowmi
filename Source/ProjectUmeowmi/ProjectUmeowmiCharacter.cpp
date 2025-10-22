@@ -67,6 +67,16 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
 
+void AProjectUmeowmiCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Initialize the camera position based on the starting index
+	InitializeCameraPosition();
+
+	UE_LOG(LogTemp, Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
+}
+
 //////////////////////////////////////////////////////////////////////////
 // Input
 
@@ -144,9 +154,8 @@ void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 
 	if (Controller != nullptr)
 	{
-		// find out which way is forward
-		const FRotator Rotation = Controller->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw + CameraOffset, 0);
+		// Use camera angle directly for movement direction, independent of character rotation
+		const FRotator YawRotation(0, CameraOffset, 0);
 
 		// get forward vector
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
@@ -193,6 +202,30 @@ void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 			AddMovementInput(RightDirection, MovementVector.X);
 		}
 	}
+}
+
+void AProjectUmeowmiCharacter::InitializeCameraPosition()
+{
+	// Calculate the angle for the current camera position
+	float AngleStep = 360.0f / NumberOfCameraPositions;
+	float CurrentAngle = BaseCameraAngle + (CameraPositionIndex * AngleStep);
+	
+	// Update the target camera rotation based on calculated angle
+	TargetCameraRotation = FRotator(-25.0f, CurrentAngle, 0.0f);
+	CameraOffset = CurrentAngle;
+	
+	// Immediately set the camera rotation to avoid any interpolation delay
+	if (CameraBoom)
+	{
+		CameraBoom->SetRelativeRotation(TargetCameraRotation);
+	}
+	
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera initialized - Position Index: %d, Angle: %f"), CameraPositionIndex, CurrentAngle);
+}
+
+void AProjectUmeowmiCharacter::InitializeCameraPositionFromBlueprint()
+{
+	InitializeCameraPosition();
 }
 
 void AProjectUmeowmiCharacter::GetCameraPositionIndex(const FInputActionValue& Value)
@@ -750,24 +783,5 @@ void AProjectUmeowmiCharacter::CenterMouseCursor()
 		PC->SetMouseLocation(ViewportSizeX / 2, ViewportSizeY / 2);
 	}
 }
-
-//void AProjectUmeowmiCharacter::BeginPlay()
-//{
-//	Super::BeginPlay();
-//	
-//	// Debug logging for DialogueBox
-//	UE_LOG(LogTemp, Log, TEXT("Character BeginPlay - DialogueBox pointer: %p"), DialogueBox);
-//	if (DialogueBox)
-//	{
-//		UE_LOG(LogTemp, Log, TEXT("DialogueBox is valid"));
-//		UE_LOG(LogTemp, Log, TEXT("DialogueBox visibility: %d"), (int32)DialogueBox->GetVisibility());
-//		UE_LOG(LogTemp, Log, TEXT("DialogueBox in viewport: %d"), DialogueBox->IsInViewport());
-//	}
-//	else
-//	{
-//		UE_LOG(LogTemp, Warning, TEXT("DialogueBox is null!"));
-//	}
-//}
-
 
 

@@ -66,6 +66,14 @@ public:
     bool SetValuesFromIngredient(const FPUIngredientBase& Ingredient);
 
     /**
+     * Sets the icon for a specific segment.
+     * @param SegmentIndex - The index of the segment to set the icon for
+     * @param IconTexture - The texture to use as the icon
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    void SetSegmentIcon(int32 SegmentIndex, UTexture2D* IconTexture);
+
+    /**
      * Sets values from a dish's ingredient quantities.
      * @param Dish - The dish to get ingredient quantities from
      * @return True if the values were successfully set

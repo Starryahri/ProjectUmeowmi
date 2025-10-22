@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "../DishCustomization/PUIngredientBase.h"
+#include "../DishCustomization/PUDishBase.h"
+#include "GameplayTagContainer.h"
 #include "PUIngredientButton.generated.h"
 
 class UButton;
@@ -48,8 +50,72 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
     FOnIngredientButtonClicked OnIngredientButtonHovered;
 
+    // Native drag events (only enabled in cooking stage)
+    virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+    // Enable/disable drag functionality
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    void SetDragEnabled(bool bEnabled);
+
+    // Check if drag is enabled
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    bool IsDragEnabled() const { return bDragEnabled; }
+
+
+    // Generate a unique instance ID for this ingredient
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    int32 GenerateUniqueInstanceID() const;
+
+    // Plating-specific functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    void SetIngredientInstance(const FIngredientInstance& InInstance);
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    const FIngredientInstance& GetIngredientInstance() const { return IngredientInstance; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    void DecreaseQuantity();
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    void ResetQuantity();
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    bool CanDrag() const { return RemainingQuantity > 0; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    int32 GetRemainingQuantity() const { return RemainingQuantity; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    int32 GetMaxQuantity() const { return MaxQuantity; }
+
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
     FOnIngredientButtonClicked OnIngredientButtonUnhovered;
+
+    // Plating helper functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    void UpdatePlatingDisplay();
+
+    // Spawn ingredient at position (moved from plating widget)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    void SpawnIngredientAtPosition(const FVector2D& ScreenPosition);
+
+    // Create drag drop operation (moved from plating widget)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    class UPUIngredientDragDropOperation* CreateIngredientDragDropOperation() const;
+
+    // Text visibility control for different stages
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void SetTextVisibility(bool bShowQuantity, bool bShowDescription);
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void HideAllText();
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void ShowAllText();
+
+    // Debug method to check text component status
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    void LogTextComponentStatus();
 
 protected:
     // Current ingredient data
@@ -66,6 +132,27 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UImage* IngredientIcon;
 
+    // Plating-specific UI components
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* QuantityText;
+
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* PreparationText;
+
+    // Whether drag functionality is enabled
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Button|Drag")
+    bool bDragEnabled = false;
+
+    // Plating-specific properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Plating")
+    FIngredientInstance IngredientInstance;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Plating")
+    int32 RemainingQuantity = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Plating")
+    int32 MaxQuantity = 0;
+
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Button")
     void OnIngredientDataSet(const FPUIngredientBase& InIngredientData);
@@ -79,6 +166,16 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Button")
     void OnButtonUnhovered();
 
+    // Plating-specific Blueprint events
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Button|Plating")
+    void OnIngredientInstanceSet(const FIngredientInstance& InInstance);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Button|Plating")
+    void OnQuantityChanged(int32 NewQuantity);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Button|Plating")
+    void OnPreparationStateChanged();
+
 private:
     // Button event handlers
     UFUNCTION()
@@ -89,4 +186,10 @@ private:
 
     UFUNCTION()
     void OnIngredientButtonUnhoveredInternal();
+
+    // Plating helper functions
+    void UpdateQuantityDisplay();
+    void UpdatePreparationDisplay();
+    FString GetPreparationDisplayText() const;
+    FString GetPreparationIconText() const;
 }; 

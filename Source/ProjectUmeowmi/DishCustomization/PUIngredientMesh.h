@@ -59,7 +59,7 @@ protected:
     float HoverHeight = 2.0f;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
-    float MovementSpeed = 10.0f;
+    float MovementSpeed = 5.0f;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
     float RotationSpeed = 45.0f;

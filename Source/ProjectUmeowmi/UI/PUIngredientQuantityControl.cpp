@@ -6,6 +6,10 @@
 #include "Components/CheckBox.h"
 #include "PUPreparationCheckbox.h"
 #include "../DishCustomization/PUPreparationBase.h"
+#include "PUIngredientDragDropOperation.h"
+#include "Blueprint/UserWidget.h"
+#include "Components/SlateWrapperTypes.h"
+#include "GameplayTagContainer.h"
 
 
 UPUIngredientQuantityControl::UPUIngredientQuantityControl(const FObjectInitializer& ObjectInitializer)
@@ -87,6 +91,9 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     // Update quantity controls
     UpdateQuantityControls();
     
+    // Update quantity text display
+    UpdateQuantityText();
+    
     // Update preparation checkboxes
     UpdatePreparationCheckboxes();
     
@@ -118,10 +125,27 @@ void UPUIngredientQuantityControl::SetQuantity(int32 NewQuantity)
         
         IngredientInstance.Quantity = NewQuantity;
         UpdateQuantityControls();
+        UpdateQuantityText(); // Update the text display
         BroadcastChange();
         
         // Call Blueprint event
         OnQuantityChanged(NewQuantity);
+    }
+}
+
+void UPUIngredientQuantityControl::UpdateQuantityText()
+{
+    if (QuantityNumberText)
+    {
+        FString QuantityText = FString::Printf(TEXT("x%d"), IngredientInstance.Quantity);
+        QuantityNumberText->SetText(FText::FromString(QuantityText));
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdateQuantityText - Updated quantity text to: %s"), 
+            *QuantityText);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUIngredientQuantityControl::UpdateQuantityText - QuantityNumberText is null"));
     }
 }
 
@@ -206,6 +230,10 @@ void UPUIngredientQuantityControl::RemoveIngredientInstance()
     
     // Call Blueprint event
     OnIngredientRemoved();
+    
+    // Remove this widget from viewport
+    RemoveFromParent();
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Widget removed from viewport"));
 }
 
 void UPUIngredientQuantityControl::OnDecreaseQuantityClicked()
@@ -389,4 +417,56 @@ void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparatio
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Created checkbox for preparation: %s (applied: %s)"), 
         *PreparationData.DisplayName.ToString(), bIsCurrentlyApplied ? TEXT("true") : TEXT("false"));
+}
+
+// Drag functionality implementation
+FReply UPUIngredientQuantityControl::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeOnMouseButtonDown - Mouse button down on quantity control: %s (Drag enabled: %s)"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    // Only handle left mouse button and only if drag is enabled
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDragEnabled)
+    {
+        // Start drag detection - this will call the Blueprint OnDragDetected event
+        return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+    }
+    
+    return FReply::Unhandled();
+}
+
+void UPUIngredientQuantityControl::SetDragEnabled(bool bEnabled)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetDragEnabled - Setting drag enabled to %s for quantity control: %s"), 
+        bEnabled ? TEXT("TRUE") : TEXT("FALSE"), *IngredientInstance.IngredientData.DisplayName.ToString());
+    
+    bDragEnabled = bEnabled;
+}
+
+UPUIngredientDragDropOperation* UPUIngredientQuantityControl::CreateDragDropOperation() const
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::CreateDragDropOperation - Creating drag operation for quantity control %s (ID: %d, Qty: %d)"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+
+    // Create the drag drop operation
+    UPUIngredientDragDropOperation* DragOperation = NewObject<UPUIngredientDragDropOperation>(GetWorld(), UPUIngredientDragDropOperation::StaticClass());
+
+    if (DragOperation)
+    {
+        // Set up the drag operation with ingredient data
+        DragOperation->SetupIngredientDrag(
+            IngredientInstance.IngredientData.IngredientTag,
+            IngredientInstance.IngredientData,
+            IngredientInstance.InstanceID,
+            IngredientInstance.Quantity
+        );
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ PUIngredientQuantityControl::CreateDragDropOperation - Successfully created drag operation"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ PUIngredientQuantityControl::CreateDragDropOperation - Failed to create drag operation"));
+    }
+
+    return DragOperation;
 } 

@@ -8,14 +8,18 @@
 #include "Kismet/GameplayStatics.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "EnhancedInputSubsystems.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "InputMappingContext.h"
 #include "Engine/GameViewportClient.h"
 #include "../UI/PUDishCustomizationWidget.h"
+#include "../UI/PUPlatingWidget.h"
 #include "Engine/StaticMeshActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "PUIngredientMesh.h"
+#include "Camera/CameraActor.h"
 
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
@@ -36,6 +40,12 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
         UpdateCameraTransition(DeltaTime);
     }
 
+    // Update plating camera transition if active
+    if (bPlatingCameraTransitioning)
+    {
+        UpdatePlatingCameraTransition(DeltaTime);
+    }
+
     // Update mouse dragging if active
     if (bIsDragging)
     {
@@ -52,6 +62,9 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to get Character"));
         return;
     }
+
+    // Store the original dish container mesh before any changes
+    StoreOriginalDishContainerMesh();
 
     UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
     CurrentCharacter = Character;
@@ -275,6 +288,12 @@ void UPUDishCustomizationComponent::EndCustomization()
         return;
     }
 
+    // End plating stage if we're in plating mode
+    if (bPlatingMode)
+    {
+        EndPlatingStage();
+    }
+
     // Get the player controller
     APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
     if (PlayerController)
@@ -330,7 +349,7 @@ void UPUDishCustomizationComponent::EndCustomization()
         PlayerController->SetInputMode(InputMode);
     }
 
-    // Clean up the widget
+    // Clean up the customization widget
     if (CustomizationWidget)
     {
         CustomizationWidget->RemoveFromParent();
@@ -338,6 +357,17 @@ void UPUDishCustomizationComponent::EndCustomization()
         UE_LOG(LogTemp, Log, TEXT("Customization UI Widget Removed"));
     }
 
+    // Clean up the cooking stage widget
+    if (CookingStageWidget)
+    {
+        CookingStageWidget->RemoveFromParent();
+        CookingStageWidget = nullptr;
+        UE_LOG(LogTemp, Log, TEXT("Cooking Stage Widget Removed"));
+    }
+
+    // Switch back to character camera
+    SwitchToCharacterCamera();
+    
     // Start camera transition back to original view
     StartCameraTransition(false);
 }
@@ -389,6 +419,152 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
     bIsTransitioningCamera = true;
 }
 
+void UPUDishCustomizationComponent::SwitchToCookingCamera()
+{
+    if (!CurrentCharacter || !CurrentCharacter->GetWorld())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No character or world available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Switching to cooking camera"));
+
+    // Get the player controller
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No player controller found"));
+        return;
+    }
+
+    // Find the cooking station camera component
+    if (!CookingStationCamera)
+    {
+        AActor* OwnerActor = GetOwner();
+        if (OwnerActor)
+        {
+            CookingStationCamera = Cast<UCameraComponent>(OwnerActor->GetComponentByClass(UCameraComponent::StaticClass()));
+            
+            if (!CookingStationCamera)
+            {
+                // Try to find by name if the default class search didn't work
+                TArray<UCameraComponent*> CameraComponents;
+                OwnerActor->GetComponents<UCameraComponent>(CameraComponents);
+                
+                for (UCameraComponent* CameraComp : CameraComponents)
+                {
+                    if (CameraComp && CameraComp->GetName() == CookingStationCameraComponentName.ToString())
+                    {
+                        CookingStationCamera = CameraComp;
+                        break;
+                    }
+                }
+            }
+            
+            if (CookingStationCamera)
+            {
+                // CRITICAL: Set the CookingCamera as the active camera component on the actor FIRST
+                AActor* StationActor = CookingStationCamera->GetOwner();
+                if (StationActor)
+                {
+                    // Disable the plating camera first
+                    TArray<UCameraComponent*> AllCameras;
+                    StationActor->GetComponents<UCameraComponent>(AllCameras);
+                    
+                    for (UCameraComponent* Camera : AllCameras)
+                    {
+                        if (Camera && Camera->GetName() == TEXT("PlatingCamera"))
+                        {
+                            Camera->SetActive(false);
+                            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Disabled PlatingCamera"));
+                        }
+                    }
+                    
+                    // Enable the cooking camera
+                    CookingStationCamera->SetActive(true);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Activated CookingCamera"));
+                }
+
+                // Configure the camera for orthographic projection
+                CookingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+                CookingStationCamera->OrthoWidth = CookingOrthoWidth;
+                
+                // Position the camera properly for smooth transition
+                FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + CookingCameraPositionOffset;
+                FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
+                
+                CookingStationCamera->SetWorldLocation(CameraLocation);
+                CookingStationCamera->SetWorldRotation(CameraRotation);
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Found and configured cooking camera component, width: %.2f, position: %s"), 
+                    CookingOrthoWidth, *CameraLocation.ToString());
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - No camera component found on cooking station"));
+                return;
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - No owner actor found"));
+            return;
+        }
+    }
+
+    // Switch to the cooking camera
+    PlayerController->SetViewTargetWithBlend(CookingStationCamera->GetOwner(), 0.5f);
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Switched to cooking camera"));
+}
+
+void UPUDishCustomizationComponent::SetCookingCameraPositionOffset(const FVector& NewOffset)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Setting camera offset to: %s"), 
+        *NewOffset.ToString());
+    
+    CookingCameraPositionOffset = NewOffset;
+    
+    // If the cooking camera component is found, update its position
+    if (CookingStationCamera)
+    {
+        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + NewOffset;
+        FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
+        
+        CookingStationCamera->SetWorldLocation(CameraLocation);
+        CookingStationCamera->SetWorldRotation(CameraRotation);
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Updated existing camera position to: %s"), 
+            *CameraLocation.ToString());
+    }
+}
+
+void UPUDishCustomizationComponent::SwitchToCharacterCamera()
+{
+    if (!CurrentCharacter)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCharacterCamera - No character available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Switching to character camera"));
+
+    // Get the player controller
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCharacterCamera - No player controller found"));
+        return;
+    }
+
+    // Switch back to the character camera
+    PlayerController->SetViewTargetWithBlend(CurrentCharacter, 0.5f);
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Switched to character camera"));
+
+    // Reset the cooking camera component reference
+    CookingStationCamera = nullptr;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Reset cooking camera reference"));
+}
+
 void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
 {
     if (!CurrentCharacter)
@@ -434,9 +610,25 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     {
         bIsTransitioningCamera = false;
 
+        // If we're exiting customization (returning to original camera settings), re-enable collision detection
+        if (TargetOrthoWidth == OriginalOrthoWidth && CurrentCharacter)
+        {
+            if (CameraBoom)
+            {
+                CameraBoom->bDoCollisionTest = true;
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::UpdateCameraTransition - Re-enabled spring arm collision detection"));
+            }
+        }
+
         // If we're exiting customization, clear the character reference and broadcast the end event
         if (TargetOrthoWidth == OriginalOrthoWidth)
         {
+            // Clear all 3D ingredient meshes before ending customization
+            ClearAll3DIngredientMeshes();
+            
+            // Restore the original dish container mesh
+            RestoreOriginalDishContainerMesh();
+            
             AProjectUmeowmiCharacter* TempCharacter = CurrentCharacter;
             CurrentCharacter = nullptr;
             OnCustomizationEnded.Broadcast();
@@ -701,6 +893,22 @@ void UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget(UUserW
     UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetDishCustomizationComponentOnWidget - Function disabled, using alternative approach"));
 }
 
+void UPUDishCustomizationComponent::SetWidgetComponentReference(UPUDishCustomizationWidget* Widget)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetWidgetComponentReference - Setting widget component reference"));
+    
+    if (Widget)
+    {
+        // Set the component reference on the widget
+        Widget->SetCustomizationComponent(this);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetWidgetComponentReference - Widget component reference set successfully"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SetWidgetComponentReference - Widget is null"));
+    }
+}
+
 void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& InitialDishData)
 {
     UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Setting initial dish data: %s with %d ingredients"), 
@@ -727,32 +935,87 @@ void UPUDishCustomizationComponent::BroadcastDishDataUpdate(const FPUDishBase& N
 
 void UPUDishCustomizationComponent::BroadcastInitialDishData(const FPUDishBase& InitialDishData)
 {
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - STARTING BROADCAST"));
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Component name: %s"), *GetName());
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s with %d ingredients"), 
-        *InitialDishData.DisplayName.ToString(), InitialDishData.IngredientInstances.Num());
+    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s"), 
+        *InitialDishData.DisplayName.ToString());
     
-    // Log dish details
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Dish tag: %s"), *InitialDishData.DishTag.ToString());
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Dish display name: %s"), *InitialDishData.DisplayName.ToString());
+    CurrentDishData = InitialDishData;
+    OnInitialDishDataReceived.Broadcast(InitialDishData);
+}
+
+void UPUDishCustomizationComponent::StartPlanningMode()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartPlanningMode - Starting planning mode"));
     
-    // Log ingredient details
-    for (int32 i = 0; i < InitialDishData.IngredientInstances.Num(); i++)
+    bInPlanningMode = true;
+    
+    // Initialize planning data with current dish
+    CurrentPlanningData.TargetDish = CurrentDishData;
+    CurrentPlanningData.SelectedIngredients.Empty();
+    CurrentPlanningData.bPlanningCompleted = false;
+    
+    // Notify the widget to start planning mode
+    if (CustomizationWidget)
     {
-        const FIngredientInstance& Instance = InitialDishData.IngredientInstances[i];
-        UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Ingredient %d: %s (Qty: %d, ID: %d)"), 
-            i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity, Instance.InstanceID);
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            DishWidget->StartPlanningMode();
+        }
     }
     
-    // Set the initial dish data
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Setting initial dish data"));
-    UpdateCurrentDishData(InitialDishData);
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartPlanningMode - Planning mode started for dish: %s"), 
+        *CurrentPlanningData.TargetDish.DisplayName.ToString());
+}
+
+void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& DishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Transitioning to cooking stage"));
     
-    // Broadcast the initial data to all subscribers
-    UE_LOG(LogTemp, Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting to subscribers"));
-    OnInitialDishDataReceived.Broadcast(InitialDishData);
+    // Store the dish data
+    CurrentDishData = DishData;
     
-    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::BroadcastInitialDishData - BROADCAST COMPLETED SUCCESSFULLY"));
+    // Switch to cooking stage camera
+    SwitchToCookingCamera();
+    
+    // Remove the current customization widget
+    if (CustomizationWidget)
+    {
+        CustomizationWidget->RemoveFromParent();
+        CustomizationWidget = nullptr;
+    }
+    
+    // Create and show the cooking stage widget
+    if (CurrentCharacter && CurrentCharacter->GetWorld())
+    {
+        // Create cooking stage widget
+        if (UPUCookingStageWidget* CookingWidget = CreateWidget<UPUCookingStageWidget>(CurrentCharacter->GetWorld(), CookingStageWidgetClass))
+        {
+            // Store reference to cooking stage widget
+            CookingStageWidget = CookingWidget;
+            
+            // Add to viewport first
+            CookingWidget->AddToViewport(250); // Same Z-order as customization widget
+            
+            // Get the cooking station location (this component's owner location)
+            FVector CookingStationLocation = GetOwner()->GetActorLocation();
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Cooking station location: %s"), 
+                *CookingStationLocation.ToString());
+            
+            // Set the dish customization component reference
+            CookingWidget->SetDishCustomizationComponent(this);
+            
+            // Initialize the cooking stage with dish data and station location
+            CookingWidget->InitializeCookingStage(DishData, CookingStationLocation);
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Cooking stage widget created and added to viewport"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToCookingStage - Failed to create cooking stage widget"));
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Planning completed with %d selected ingredients"), 
+        DishData.IngredientInstances.Num());
 }
 
 void UPUDishCustomizationComponent::SetDataTables(UDataTable* DishTable, UDataTable* IngredientTable, UDataTable* PreparationTable)
@@ -823,10 +1086,6 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - START - Ingredient %s at position (%.2f,%.2f,%.2f)"), 
         *IngredientTag.ToString(), WorldPosition.X, WorldPosition.Y, WorldPosition.Z);
 
-    // TEMPORARY: Force plating mode to true for testing
-    bPlatingMode = true;
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - FORCED plating mode to TRUE for testing"));
-
     if (!bPlatingMode)
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Not in plating mode"));
@@ -845,10 +1104,22 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
         
         if (Instance.IngredientData.IngredientTag == IngredientTag)
         {
+            // Check if we can place this ingredient (quantity limits)
+            if (!CanPlaceIngredient(Instance.InstanceID))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Cannot place ingredient %s - quantity limit reached"), 
+                    *IngredientTag.ToString());
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - END - Failed (quantity limit)"));
+                return;
+            }
+            
             UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Found matching ingredient! Setting plating position"));
             
             // Set the plating position for this ingredient
             CurrentDishData.SetIngredientPlating(Instance.InstanceID, WorldPosition, FRotator::ZeroRotator, FVector::OneVector);
+            
+            // Track the placement
+            PlaceIngredient(Instance.InstanceID);
             
             UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3D - Set plating for instance %d"), Instance.InstanceID);
             
@@ -868,12 +1139,222 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - END - Failed"));
 }
 
+void UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID(int32 InstanceID, const FVector& WorldPosition)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - START - InstanceID %d at position (%.2f,%.2f,%.2f)"), 
+        InstanceID, WorldPosition.X, WorldPosition.Y, WorldPosition.Z);
+
+    if (!bPlatingMode)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Not in plating mode"));
+        return;
+    }
+
+    // Find the specific ingredient instance by InstanceID
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Found instance %d: %s"), 
+                InstanceID, *Instance.IngredientData.DisplayName.ToString());
+            
+            // Check if we can place this ingredient (quantity limits)
+            if (!CanPlaceIngredient(InstanceID))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Cannot place ingredient %s (InstanceID: %d) - quantity limit reached"), 
+                    *Instance.IngredientData.DisplayName.ToString(), InstanceID);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - END - Failed (quantity limit)"));
+                return;
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Can place ingredient! Setting plating position"));
+            
+            // Set the plating position for this ingredient
+            CurrentDishData.SetIngredientPlating(InstanceID, WorldPosition, FRotator::ZeroRotator, FVector::OneVector);
+            
+            // Track the placement
+            PlaceIngredient(InstanceID);
+            
+            // Update the ingredient button's quantity display
+            UpdateIngredientButtonQuantity(InstanceID);
+            
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Set plating for instance %d"), InstanceID);
+            
+            // Spawn visual 3D mesh
+            SpawnVisualIngredientMesh(Instance, WorldPosition);
+            
+            // Broadcast the updated dish data
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Broadcasting OnDishDataUpdated"));
+            OnDishDataUpdated.Broadcast(CurrentDishData);
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - END - Success"));
+            return;
+        }
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - InstanceID %d not found in current dish"), InstanceID);
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - END - Failed"));
+}
+
 void UPUDishCustomizationComponent::SetPlatingMode(bool bInPlatingMode)
 {
     bPlatingMode = bInPlatingMode;
     
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SetPlatingMode - Plating mode set to: %s"), 
         bPlatingMode ? TEXT("TRUE") : TEXT("FALSE"));
+}
+
+bool UPUDishCustomizationComponent::IsPlatingMode() const
+{
+    return bPlatingMode;
+}
+
+void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& DishData)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Transitioning to plating stage"));
+    
+    // Set plating mode
+    SetPlatingMode(true);
+    
+    // Reset placement tracking for new plating session
+    ResetPlatingPlacements();
+    
+    // Update the current dish data
+    CurrentDishData = DishData;
+    
+    // Switch to plating widget class if available
+    if (PlatingWidgetClass)
+    {
+        // Store the original widget class before switching
+        OriginalWidgetClass = CustomizationWidgetClass;
+        CustomizationWidgetClass = PlatingWidgetClass;
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Stored original widget class and switched to plating widget class"));
+        
+        // Remove the current widget if it exists
+        if (CustomizationWidget)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Removing current widget"));
+            CustomizationWidget->RemoveFromParent();
+            CustomizationWidget = nullptr;
+        }
+        
+        // Create the new plating widget
+        UWorld* World = GetWorld();
+        if (World)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Creating new plating widget"));
+            CustomizationWidget = CreateWidget<UUserWidget>(World, CustomizationWidgetClass);
+            
+            if (CustomizationWidget)
+            {
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating widget created successfully"));
+                
+                // Try to cast to dish customization widget and set up the connection
+                if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+                {
+                    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Widget is UPUDishCustomizationWidget, connecting to component"));
+                    DishWidget->SetCustomizationComponent(this);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - Widget is not a UPUDishCustomizationWidget"));
+                }
+                
+                // Add the widget to viewport
+                CustomizationWidget->AddToViewport();
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating widget added to viewport"));
+                
+                // Create plating ingredient buttons
+                if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Creating plating ingredient buttons"));
+                    DishWidget->CreatePlatingIngredientButtons();
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::TransitionToPlatingStage - Failed to create plating widget"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::TransitionToPlatingStage - No world available"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - No plating widget class set"));
+    }
+    
+    // Broadcast the dish data to the new widget
+    BroadcastInitialDishData(DishData);
+    
+    // Switch to plating camera
+    SwitchToPlatingCamera();
+    
+    // Swap to plating dish mesh
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Checking PlatingDishMesh..."));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PlatingDishMesh.IsValid(): %s"), PlatingDishMesh.IsValid() ? TEXT("TRUE") : TEXT("FALSE"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PlatingDishMesh.ToString(): %s"), *PlatingDishMesh.ToString());
+    
+    if (PlatingDishMesh.IsValid())
+    {
+        UStaticMesh* LoadedMesh = PlatingDishMesh.LoadSynchronous();
+        if (LoadedMesh)
+        {
+            SwapDishContainerMesh(LoadedMesh);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Swapped to plating dish mesh"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - Failed to load plating dish mesh"));
+        }
+    }
+    else
+    {
+        // Try to load the mesh directly by path since IsValid() is false but path exists
+        UE_LOG(LogTemp, Display, TEXT("🍽️ Trying to load mesh directly by path..."));
+        UStaticMesh* DirectLoadedMesh = LoadObject<UStaticMesh>(nullptr, *PlatingDishMesh.ToString());
+        if (DirectLoadedMesh)
+        {
+            SwapDishContainerMesh(DirectLoadedMesh);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Loaded mesh directly and swapped"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - Failed to load mesh directly by path"));
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating stage transition complete"));
+}
+
+void UPUDishCustomizationComponent::EndPlatingStage()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Ending plating stage"));
+
+    // Set plating mode to false
+    SetPlatingMode(false);
+
+    // Restore the original widget class
+    if (OriginalWidgetClass)
+    {
+        CustomizationWidgetClass = OriginalWidgetClass;
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Restored original widget class"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::EndPlatingStage - No original widget class stored"));
+    }
+
+    // Clear the original widget class reference
+    OriginalWidgetClass = nullptr;
+
+    // Switch back to cooking camera for the next cooking session
+    SwitchToCookingCamera();
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Switched back to cooking camera"));
+
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Plating stage ended"));
 }
 
 void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition)
@@ -928,6 +1409,762 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
             MeshComponent->SetStaticMesh(IngredientMesh);
         }
         
-        UE_LOG(LogTemp, Display, TEXT("✅ Spawned interactive ingredient: %s"), *IngredientInstance.IngredientData.IngredientTag.ToString());
+        // Scale the ingredient using the configurable scale
+        SpawnedIngredient->SetActorScale3D(IngredientMeshScale);
+        
+        // Track the spawned mesh for cleanup
+        SpawnedIngredientMeshes.Add(SpawnedIngredient);
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ Spawned interactive ingredient: %s (Total spawned: %d) - Scaled to (%.2f,%.2f,%.2f)"), 
+            *IngredientInstance.IngredientData.IngredientTag.ToString(), SpawnedIngredientMeshes.Num(),
+            IngredientMeshScale.X, IngredientMeshScale.Y, IngredientMeshScale.Z);
     }
+}
+
+void UPUDishCustomizationComponent::StartCookingStageCameraTransition()
+{
+    if (!CurrentCharacter)
+    {
+        return;
+    }
+
+    USpringArmComponent* CameraBoom = CurrentCharacter->GetCameraBoom();
+    UCameraComponent* FollowCamera = CurrentCharacter->GetFollowCamera();
+    if (!CameraBoom || !FollowCamera)
+    {
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartCookingStageCameraTransition - Starting cooking stage camera transition"));
+
+    // Disable collision detection on the spring arm to prevent jittering
+    CameraBoom->bDoCollisionTest = false;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartCookingStageCameraTransition - Disabled spring arm collision detection"));
+
+    // Set target values for cooking stage view
+    TargetCameraDistance = CookingCameraDistance;
+    TargetCameraPitch = CookingCameraPitch;
+    TargetCameraYaw = CookingCameraYaw;
+    TargetOrthoWidth = CookingOrthoWidth;
+    TargetCameraOffset = OriginalCameraOffset; // Keep the same offset
+    TargetCameraPositionIndex = OriginalCameraPositionIndex; // Keep the same position index
+
+    bIsTransitioningCamera = true;
+}
+
+
+void UPUDishCustomizationComponent::SwitchToPlatingCamera()
+{
+    if (!CurrentCharacter || !GetWorld())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToPlatingCamera - No character or world available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Switching to plating camera"));
+
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToPlatingCamera - No player controller found"));
+        return;
+    }
+
+    // Find the plating station camera component
+    if (!PlatingStationCamera)
+    {
+        AActor* OwnerActor = GetOwner();
+        if (OwnerActor)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Owner actor: %s"), *OwnerActor->GetName());
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Looking for camera component named: %s"), *PlatingStationCameraComponentName.ToString());
+            
+            // Search for camera component with specific name (since there are multiple cameras)
+            TArray<UCameraComponent*> CameraComponents;
+            OwnerActor->GetComponents<UCameraComponent>(CameraComponents);
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Found %d camera components"), CameraComponents.Num());
+            
+            for (UCameraComponent* CameraComp : CameraComponents)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Camera component: %s"), *CameraComp->GetName());
+                if (CameraComp && CameraComp->GetName() == PlatingStationCameraComponentName.ToString())
+                {
+                    PlatingStationCamera = CameraComp;
+                    UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SwitchToPlatingCamera - Found matching camera component: %s"), *CameraComp->GetName());
+                    break;
+                }
+            }
+            
+            if (!PlatingStationCamera)
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No camera component found with name: %s"), *PlatingStationCameraComponentName.ToString());
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No owner actor found"));
+            return;
+        }
+    }
+
+    if (PlatingStationCamera)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Configuring plating camera: %s"), *PlatingStationCamera->GetName());
+        
+        // CRITICAL: Set the PlatingCamera as the active camera component on the actor FIRST
+        AActor* StationActor = PlatingStationCamera->GetOwner();
+        if (StationActor)
+        {
+            // Disable the cooking camera first
+            TArray<UCameraComponent*> AllCameras;
+            StationActor->GetComponents<UCameraComponent>(AllCameras);
+            
+            for (UCameraComponent* Camera : AllCameras)
+            {
+                if (Camera && Camera->GetName() == TEXT("CookingCamera"))
+                {
+                    Camera->SetActive(false);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Disabled CookingCamera"));
+                }
+            }
+            
+            // Enable the plating camera
+            PlatingStationCamera->SetActive(true);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Activated PlatingCamera"));
+        }
+
+        // Configure the plating camera BEFORE switching to it
+        PlatingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+        PlatingStationCamera->OrthoWidth = PlatingOrthoWidth;
+
+        // Set camera position and rotation BEFORE switching
+        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
+        FRotator CameraRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
+
+        PlatingStationCamera->SetWorldLocation(CameraLocation);
+        PlatingStationCamera->SetWorldRotation(CameraRotation);
+
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Configured camera - Width: %.2f, Location: %s, Rotation: %s"),
+            PlatingOrthoWidth, *CameraLocation.ToString(), *CameraRotation.ToString());
+
+        // Start smooth transition for camera properties
+        StartPlatingCameraTransition();
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SwitchToPlatingCamera - Started smooth plating camera transition"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No camera component found on plating station"));
+    }
+}
+
+void UPUDishCustomizationComponent::StartPlatingCameraTransition()
+{
+    if (!PlatingStationCamera || !CurrentCharacter)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartPlatingCameraTransition - No camera or character available"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Starting smooth camera transition"));
+
+    // Get current camera position and properties (from cooking camera)
+    FVector CurrentLocation = PlatingStationCamera->GetComponentLocation();
+    FRotator CurrentRotation = PlatingStationCamera->GetComponentRotation();
+    float CurrentOrthoWidth = PlatingStationCamera->OrthoWidth;
+    
+    // Try to get the cooking camera properties for smoother transition
+    AActor* StationActor = PlatingStationCamera->GetOwner();
+    if (StationActor)
+    {
+        TArray<UCameraComponent*> AllCameras;
+        StationActor->GetComponents<UCameraComponent>(AllCameras);
+        
+        for (UCameraComponent* Camera : AllCameras)
+        {
+            if (Camera && Camera->GetName() == TEXT("CookingCamera"))
+            {
+                CurrentLocation = Camera->GetComponentLocation();
+                CurrentRotation = Camera->GetComponentRotation();
+                CurrentOrthoWidth = Camera->OrthoWidth;
+                UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Using cooking camera properties"));
+                break;
+            }
+        }
+    }
+
+    // Set up transition state
+    bPlatingCameraTransitioning = true;
+    PlatingCameraTransitionTime = 0.0f;
+    PlatingCameraStartLocation = CurrentLocation;
+    PlatingCameraStartRotation = CurrentRotation;
+
+    // Target position and properties (already set in SwitchToPlatingCamera)
+    PlatingCameraTargetLocation = PlatingStationCamera->GetComponentLocation();
+    PlatingCameraTargetRotation = PlatingStationCamera->GetComponentRotation();
+
+    // Store start and target ortho widths for smooth transition
+    PlatingCameraStartOrthoWidth = CurrentOrthoWidth;
+    PlatingCameraTargetOrthoWidth = PlatingOrthoWidth;
+
+    UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Start: %s (Ortho: %.2f), Target: %s (Ortho: %.2f)"), 
+        *PlatingCameraStartLocation.ToString(), PlatingCameraStartOrthoWidth,
+        *PlatingCameraTargetLocation.ToString(), PlatingCameraTargetOrthoWidth);
+}
+
+void UPUDishCustomizationComponent::UpdatePlatingCameraTransition(float DeltaTime)
+{
+    if (!bPlatingCameraTransitioning || !PlatingStationCamera)
+    {
+        return;
+    }
+
+    PlatingCameraTransitionTime += DeltaTime;
+    float Alpha = FMath::Clamp(PlatingCameraTransitionTime / PlatingCameraTransitionDuration, 0.0f, 1.0f);
+
+    // Use smooth interpolation
+    float SmoothAlpha = FMath::SmoothStep(0.0f, 1.0f, Alpha);
+
+    // Interpolate position and rotation
+    FVector NewLocation = FMath::Lerp(PlatingCameraStartLocation, PlatingCameraTargetLocation, SmoothAlpha);
+    FRotator NewRotation = FMath::Lerp(PlatingCameraStartRotation, PlatingCameraTargetRotation, SmoothAlpha);
+
+    // Interpolate ortho width smoothly
+    float NewOrthoWidth = FMath::Lerp(PlatingCameraStartOrthoWidth, PlatingCameraTargetOrthoWidth, SmoothAlpha);
+
+    // Update camera position, rotation, and ortho width
+    PlatingStationCamera->SetWorldLocation(NewLocation);
+    PlatingStationCamera->SetWorldRotation(NewRotation);
+    PlatingStationCamera->OrthoWidth = NewOrthoWidth;
+
+    // Check if transition is complete
+    if (Alpha >= 1.0f)
+    {
+        bPlatingCameraTransitioning = false;
+        UE_LOG(LogTemp, Display, TEXT("🎬 UPUDishCustomizationComponent::UpdatePlatingCameraTransition - Transition complete"));
+    }
+}
+
+void UPUDishCustomizationComponent::SetPlatingCameraPositionOffset(const FVector& NewOffset)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetPlatingCameraPositionOffset - Setting camera offset to: %s"),
+        *NewOffset.ToString());
+
+    PlatingCameraPositionOffset = NewOffset;
+
+    // If the plating camera component is found, update its position
+    if (PlatingStationCamera)
+    {
+        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
+        FRotator CameraRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
+
+        PlatingStationCamera->SetWorldLocation(CameraLocation);
+        PlatingStationCamera->SetWorldRotation(CameraRotation);
+
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::SetPlatingCameraPositionOffset - Updated existing camera position to: %s"),
+            *CameraLocation.ToString());
+    }
+}
+
+// Plating placement limits implementation
+bool UPUDishCustomizationComponent::CanPlaceIngredient(int32 InstanceID) const
+{
+    // Find the ingredient instance
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            int32 PlacedQuantity = GetPlacedQuantity(InstanceID);
+            bool bCanPlace = PlacedQuantity < Instance.Quantity;
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::CanPlaceIngredient - Instance %d: Placed %d/%d, Can place: %s"), 
+                InstanceID, PlacedQuantity, Instance.Quantity, bCanPlace ? TEXT("Yes") : TEXT("No"));
+            
+            return bCanPlace;
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::CanPlaceIngredient - Instance %d not found"), InstanceID);
+    return false;
+}
+
+int32 UPUDishCustomizationComponent::GetRemainingQuantity(int32 InstanceID) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            int32 PlacedQuantity = GetPlacedQuantity(InstanceID);
+            int32 Remaining = Instance.Quantity - PlacedQuantity;
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::GetRemainingQuantity - Instance %d: %d remaining"), 
+                InstanceID, Remaining);
+            
+            return Remaining;
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::GetRemainingQuantity - Instance %d not found"), InstanceID);
+    return 0;
+}
+
+int32 UPUDishCustomizationComponent::GetPlacedQuantity(int32 InstanceID) const
+{
+    if (const int32* PlacedQuantity = PlacedIngredientQuantities.Find(InstanceID))
+    {
+        return *PlacedQuantity;
+    }
+    return 0;
+}
+
+void UPUDishCustomizationComponent::PlaceIngredient(int32 InstanceID)
+{
+    int32 CurrentPlaced = GetPlacedQuantity(InstanceID);
+    PlacedIngredientQuantities.Add(InstanceID, CurrentPlaced + 1);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::PlaceIngredient - Instance %d: Placed %d"), 
+        InstanceID, CurrentPlaced + 1);
+}
+
+void UPUDishCustomizationComponent::RemoveIngredient(int32 InstanceID)
+{
+    if (int32* PlacedQuantity = PlacedIngredientQuantities.Find(InstanceID))
+    {
+        if (*PlacedQuantity > 0)
+        {
+            (*PlacedQuantity)--;
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RemoveIngredient - Instance %d: Now placed %d"), 
+                InstanceID, *PlacedQuantity);
+        }
+    }
+}
+
+void UPUDishCustomizationComponent::ResetPlatingPlacements()
+{
+    PlacedIngredientQuantities.Empty();
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlatingPlacements - Reset all placement tracking"));
+}
+
+// Blueprint-callable plating limits
+bool UPUDishCustomizationComponent::CanPlaceIngredientByTag(const FGameplayTag& IngredientTag) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.IngredientData.IngredientTag == IngredientTag)
+        {
+            return CanPlaceIngredient(Instance.InstanceID);
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::CanPlaceIngredientByTag - Ingredient %s not found"), *IngredientTag.ToString());
+    return false;
+}
+
+int32 UPUDishCustomizationComponent::GetRemainingQuantityByTag(const FGameplayTag& IngredientTag) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.IngredientData.IngredientTag == IngredientTag)
+        {
+            return GetRemainingQuantity(Instance.InstanceID);
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::GetRemainingQuantityByTag - Ingredient %s not found"), *IngredientTag.ToString());
+    return 0;
+}
+
+int32 UPUDishCustomizationComponent::GetPlacedQuantityByTag(const FGameplayTag& IngredientTag) const
+{
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.IngredientData.IngredientTag == IngredientTag)
+        {
+            return GetPlacedQuantity(Instance.InstanceID);
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::GetPlacedQuantityByTag - Ingredient %s not found"), *IngredientTag.ToString());
+    return 0;
+}
+
+void UPUDishCustomizationComponent::UpdateIngredientButtonQuantity(int32 InstanceID)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Updating button quantity for InstanceID: %d"), InstanceID);
+    
+    // Find the ingredient instance to get the ingredient tag
+    FGameplayTag IngredientTag;
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        if (Instance.InstanceID == InstanceID)
+        {
+            IngredientTag = Instance.IngredientData.IngredientTag;
+            break;
+        }
+    }
+    
+    if (!IngredientTag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - InstanceID %d not found"), InstanceID);
+        return;
+    }
+    
+    // Find the ingredient button in the plating button map
+    if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        // Get the plating button map from the widget
+        TMap<int32, class UPUIngredientButton*> PlatingButtons = DishWidget->GetPlatingIngredientButtonMap();
+        
+        if (UPUIngredientButton* IngredientButton = PlatingButtons.FindRef(InstanceID))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Found button for InstanceID: %d"), InstanceID);
+            
+            // Decrease the button's quantity
+            IngredientButton->DecreaseQuantity();
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Decreased quantity for button"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - No button found for InstanceID: %d"), InstanceID);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - No customization widget found"));
+    }
+}
+
+void UPUDishCustomizationComponent::ResetPlating()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Resetting all plating"));
+    
+    // Clear all placed ingredient quantities
+    PlacedIngredientQuantities.Empty();
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Cleared placed ingredient quantities"));
+    
+    // Reset all ingredient button quantities
+    if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        // Get the plating button map from the widget
+        TMap<int32, class UPUIngredientButton*> PlatingButtons = DishWidget->GetPlatingIngredientButtonMap();
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Found %d plating buttons to reset"), 
+            PlatingButtons.Num());
+        
+        // Reset each button's quantity
+        for (auto& ButtonPair : PlatingButtons)
+        {
+            int32 InstanceID = ButtonPair.Key;
+            UPUIngredientButton* IngredientButton = ButtonPair.Value;
+            
+            if (IngredientButton)
+            {
+                IngredientButton->ResetQuantity();
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Reset button for InstanceID: %d"), InstanceID);
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::ResetPlating - No customization widget found"));
+    }
+    
+    // Clear all 3D ingredient meshes
+    ClearAll3DIngredientMeshes();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Plating reset complete"));
+}
+
+void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - Clearing %d 3D ingredient meshes"), 
+        SpawnedIngredientMeshes.Num());
+    
+    // Destroy all tracked ingredient meshes
+    for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
+    {
+        if (IsValid(IngredientMesh))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - Destroying ingredient mesh: %s"), 
+                *IngredientMesh->GetName());
+            
+            IngredientMesh->Destroy();
+        }
+    }
+    
+    // Clear the tracking array
+    SpawnedIngredientMeshes.Empty();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - All 3D ingredient meshes cleared"));
+}
+
+void UPUDishCustomizationComponent::SwapDishContainerMesh(UStaticMesh* NewDishMesh)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Swapping dish container mesh"));
+    
+    if (!NewDishMesh)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is null"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is valid: %s"), 
+        *NewDishMesh->GetName());
+    
+    // Find the cooking station actor by searching all actors
+    AActor* DishStation = nullptr;
+    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+    {
+        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
+        {
+            DishStation = *ActorItr;
+            break;
+        }
+    }
+    
+    if (!DishStation)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - DishStation not found"));
+        return;
+    }
+    
+    // Find the DishContainer child component (nested in StationMesh)
+    UStaticMeshComponent* DishContainer = nullptr;
+    
+    // First, find the StationMesh component
+    UStaticMeshComponent* StationMesh = nullptr;
+    TArray<UStaticMeshComponent*> AllMeshComponents;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents)
+    {
+        if (MeshComp->GetName().Contains(TEXT("StationMesh")))
+        {
+            StationMesh = MeshComp;
+            break;
+        }
+    }
+    
+    if (!StationMesh)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - StationMesh component not found"));
+        return;
+    }
+    
+    // Now find DishContainer as a child of StationMesh using a simpler approach
+    TArray<UStaticMeshComponent*> AllMeshComponents2;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
+    {
+        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
+        {
+            DishContainer = MeshComp;
+            break;
+        }
+    }
+    
+    if (!DishContainer)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - DishContainer component not found"));
+        return;
+    }
+    
+    // Clear any child static mesh components under DishContainer
+    // Get all components from the DishContainer's owner actor and clear only child meshes
+    TArray<UStaticMeshComponent*> AllChildMeshes;
+    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
+    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
+    {
+        // Only clear meshes that are children of DishContainer, not StationMesh or other main components
+        if (ChildMesh != DishContainer && ChildMesh != StationMesh && 
+            ChildMesh->GetAttachParent() == DishContainer)
+        {
+            ChildMesh->SetStaticMesh(nullptr);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Cleared child mesh: %s"), 
+                *ChildMesh->GetName());
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Cleared child meshes only"));
+    
+    // Add the new dish mesh under DishContainer
+    if (NewDishMesh)
+    {
+        // Set the mesh on the main DishContainer component
+        DishContainer->SetStaticMesh(NewDishMesh);
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Set mesh on DishContainer: %s"), 
+            *NewDishMesh->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is null!"));
+    }
+}
+
+void UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restoring original dish container mesh"));
+    
+    // Find the cooking station actor by searching all actors
+    AActor* DishStation = nullptr;
+    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+    {
+        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
+        {
+            DishStation = *ActorItr;
+            break;
+        }
+    }
+    
+    if (!DishStation)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - BP_CookingStation not found"));
+        return;
+    }
+    
+    // Find the DishContainer child component
+    UStaticMeshComponent* DishContainer = nullptr;
+    TArray<UStaticMeshComponent*> AllMeshComponents2;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
+    {
+        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
+        {
+            DishContainer = MeshComp;
+            break;
+        }
+    }
+    
+    if (!DishContainer)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - DishContainer component not found"));
+        return;
+    }
+    
+    // Clear any existing children first
+    TArray<UStaticMeshComponent*> AllChildMeshes;
+    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
+    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
+    {
+        // Only clear meshes that are children of DishContainer, not StationMesh or other main components
+        if (ChildMesh != DishContainer && ChildMesh->GetAttachParent() == DishContainer)
+        {
+            ChildMesh->SetStaticMesh(nullptr);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Cleared child mesh: %s"), 
+                *ChildMesh->GetName());
+        }
+    }
+
+    // Restore the original mesh
+    if (OriginalDishContainerMesh)
+    {
+        DishContainer->SetStaticMesh(OriginalDishContainerMesh);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored original mesh: %s"), 
+            *OriginalDishContainerMesh->GetName());
+    }
+    else
+    {
+        // Clear the mesh if no original was stored
+        DishContainer->SetStaticMesh(nullptr);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Cleared mesh (no original stored)"));
+    }
+
+    // Restore the original children meshes
+    for (UStaticMesh* ChildMesh : OriginalDishContainerChildren)
+    {
+        if (ChildMesh)
+        {
+            // Create a new static mesh component for the child
+            UStaticMeshComponent* NewChildComponent = NewObject<UStaticMeshComponent>(DishContainer->GetOwner());
+            NewChildComponent->SetStaticMesh(ChildMesh);
+            NewChildComponent->SetupAttachment(DishContainer);
+            NewChildComponent->RegisterComponent();
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored child mesh: %s"), 
+                *ChildMesh->GetName());
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored %d child meshes"), 
+        OriginalDishContainerChildren.Num());
+}
+
+void UPUDishCustomizationComponent::StoreOriginalDishContainerMesh()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Storing original dish container mesh"));
+    
+    // Find the cooking station actor by searching all actors
+    AActor* DishStation = nullptr;
+    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+    {
+        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
+        {
+            DishStation = *ActorItr;
+            break;
+        }
+    }
+    
+    if (!DishStation)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - BP_CookingStation not found"));
+        return;
+    }
+    
+    // Find the DishContainer child component
+    UStaticMeshComponent* DishContainer = nullptr;
+    TArray<UStaticMeshComponent*> AllMeshComponents2;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
+    
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
+    {
+        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
+        {
+            DishContainer = MeshComp;
+            break;
+        }
+    }
+    
+    if (!DishContainer)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - DishContainer component not found"));
+        return;
+    }
+    
+    // Store the original mesh
+    OriginalDishContainerMesh = DishContainer->GetStaticMesh();
+    if (OriginalDishContainerMesh)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored original mesh: %s"), 
+            *OriginalDishContainerMesh->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - No original mesh found (DishContainer was empty)"));
+    }
+
+    // Store the original children meshes
+    OriginalDishContainerChildren.Empty();
+    TArray<UStaticMeshComponent*> AllChildMeshes;
+    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
+    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
+    {
+        // Only store meshes that are children of DishContainer, not StationMesh or other main components
+        if (ChildMesh != DishContainer && ChildMesh->GetAttachParent() == DishContainer)
+        {
+            UStaticMesh* ChildStaticMesh = ChildMesh->GetStaticMesh();
+            if (ChildStaticMesh)
+            {
+                OriginalDishContainerChildren.Add(ChildStaticMesh);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored child mesh: %s"), 
+                    *ChildStaticMesh->GetName());
+            }
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored %d child meshes"), 
+        OriginalDishContainerChildren.Num());
 }
