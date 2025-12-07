@@ -93,10 +93,10 @@ protected:
     FIngredientInstance IngredientInstance;
 
     // UI Components (will be bound in Blueprint)
-    UPROPERTY(meta = (BindWidget))
+    UPROPERTY(meta = (BindWidgetOptional))
     UTextBlock* IngredientNameText;
 
-    UPROPERTY(meta = (BindWidget))
+    UPROPERTY(meta = (BindWidgetOptional))
     UImage* IngredientIcon;
 
     UPROPERTY(meta = (BindWidget))
@@ -108,10 +108,10 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UButton* IncreaseQuantityButton;
 
-    UPROPERTY(meta = (BindWidget))
+    UPROPERTY(meta = (BindWidgetOptional))
     UButton* RemoveButton;
 
-    UPROPERTY(meta = (BindWidget))
+    UPROPERTY(meta = (BindWidgetOptional))
     UScrollBox* PreparationsScrollBox;
 
     // Preparation checkbox class reference

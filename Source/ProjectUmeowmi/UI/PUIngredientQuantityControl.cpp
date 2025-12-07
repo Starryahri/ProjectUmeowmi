@@ -123,6 +123,14 @@ void UPUIngredientQuantityControl::SetQuantity(int32 NewQuantity)
         UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetQuantity - Changing quantity from %d to %d"), 
             IngredientInstance.Quantity, NewQuantity);
         
+        // If quantity reaches zero, remove the ingredient instance
+        if (NewQuantity <= 0)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetQuantity - Quantity reached zero, removing ingredient instance"));
+            RemoveIngredientInstance();
+            return;
+        }
+        
         IngredientInstance.Quantity = NewQuantity;
         UpdateQuantityControls();
         UpdateQuantityText(); // Update the text display
@@ -240,7 +248,20 @@ void UPUIngredientQuantityControl::OnDecreaseQuantityClicked()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::OnDecreaseQuantityClicked - Decrease button clicked"));
     
-    int32 NewQuantity = FMath::Max(IngredientInstance.Quantity - 1, IngredientInstance.IngredientData.MinQuantity);
+    int32 NewQuantity = IngredientInstance.Quantity - 1;
+    
+    // If quantity would go to zero or below, remove the ingredient instance
+    if (NewQuantity <= 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::OnDecreaseQuantityClicked - Quantity would reach zero, removing ingredient instance"));
+        RemoveIngredientInstance();
+        return;
+    }
+    
+    // Clamp to minimum quantity from ingredient data
+    int32 MinQuantity = IngredientInstance.IngredientData.MinQuantity;
+    NewQuantity = FMath::Max(NewQuantity, MinQuantity);
+    
     SetQuantity(NewQuantity);
 }
 
