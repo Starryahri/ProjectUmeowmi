@@ -2,6 +2,7 @@
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
 #include "PUIngredientButton.h"
+#include "PUIngredientSlot.h"
 #include "Components/Button.h"
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
@@ -113,7 +114,8 @@ void UPUCookingStageWidget::InitializeCookingStage(const FPUDishBase& DishData, 
     SpawnCookingCarousel();
     
     // Create ingredient buttons from the dish data
-    CreateIngredientButtonsFromDishData();
+    // Create ingredient slots from dish data (replaces ingredient buttons)
+    CreateIngredientSlotsFromDishData();
     
     // Create quantity controls for existing ingredients
     CreateQuantityControlsForSelectedIngredients();
@@ -157,6 +159,7 @@ void UPUCookingStageWidget::OnQuantityControlChanged(const FIngredientInstance& 
         IngredientInstance.InstanceID, IngredientInstance.Quantity);
     
     // Update the ingredient instance in the current dish data
+    bool bFound = false;
     for (FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
     {
         if (Instance.InstanceID == IngredientInstance.InstanceID)
@@ -164,9 +167,18 @@ void UPUCookingStageWidget::OnQuantityControlChanged(const FIngredientInstance& 
             UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found matching instance, updating from qty %d to %d"), 
                 Instance.Quantity, IngredientInstance.Quantity);
             Instance = IngredientInstance;
+            bFound = true;
             UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlChanged - Updated instance in dish data"));
             break;
         }
+    }
+    
+    // If not found, add it (e.g., when ingredient is dropped on empty slot)
+    if (!bFound)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Instance not found in dish data, adding new instance (ID: %d, Qty: %d)"), 
+            IngredientInstance.InstanceID, IngredientInstance.Quantity);
+        CurrentDishData.IngredientInstances.Add(IngredientInstance);
     }
     
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to broadcast OnDishDataChanged"));
@@ -2103,6 +2115,150 @@ void UPUCookingStageWidget::CreateIngredientButtonsFromDishData()
     bIngredientButtonsCreated = true;
 }
 
+void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Creating ingredient slots from dish data"));
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Current slot count before clearing: %d"), CreatedIngredientSlots.Num());
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Slots already created: %s"), bIngredientSlotsCreated ? TEXT("TRUE") : TEXT("FALSE"));
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - IngredientSlotContainer valid: %s"), IngredientSlotContainer.IsValid() ? TEXT("YES") : TEXT("NO"));
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - IngredientButtonContainer valid: %s"), IngredientButtonContainer.IsValid() ? TEXT("YES") : TEXT("NO"));
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - IngredientSlotClass set: %s"), IngredientSlotClass ? TEXT("YES") : TEXT("NO"));
+    
+    // Check if slots were already created
+    if (bIngredientSlotsCreated)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientSlotsFromDishData - Slots already created, skipping to prevent duplicates"));
+        return;
+    }
+    
+    // Check if we have a valid world context
+    if (!GetWorld())
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::CreateIngredientSlotsFromDishData - No world context available"));
+        return;
+    }
+    
+    // Clear any existing slots
+    CreatedIngredientSlots.Empty();
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Cleared existing slots"));
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Found %d ingredient instances in dish data"), CurrentDishData.IngredientInstances.Num());
+    
+    // Debug: Log each ingredient instance
+    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); ++i)
+    {
+        const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
+        UE_LOG(LogTemp, Display, TEXT("🍳 Ingredient %d: Tag=%s, Name=%s, ID=%d, Qty=%d"), 
+            i, 
+            *Instance.IngredientData.IngredientTag.ToString(),
+            *Instance.IngredientData.DisplayName.ToString(),
+            Instance.InstanceID,
+            Instance.Quantity);
+    }
+    
+    // Get the container to use (use slot container first, fallback to button container if they're the same)
+    UPanelWidget* ContainerToUse = nullptr;
+    if (IngredientSlotContainer.IsValid())
+    {
+        ContainerToUse = IngredientSlotContainer.Get();
+    }
+    else if (IngredientButtonContainer.IsValid())
+    {
+        ContainerToUse = IngredientButtonContainer.Get();
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Using IngredientButtonContainer as fallback"));
+    }
+    
+    if (!ContainerToUse)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientSlotsFromDishData - No ingredient container set (neither slot nor button container)! Slots cannot be added."));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientButtonContainer() is called."));
+    }
+    
+    // Create slots for up to 12 ingredient instances (max slots in active ingredient area)
+    // Create slots for existing ingredients, or create empty slots if no ingredients yet
+    int32 NumSlotsToCreate = FMath::Max(CurrentDishData.IngredientInstances.Num(), 12); // Always create 12 slots (empty or filled)
+    NumSlotsToCreate = FMath::Min(12, NumSlotsToCreate); // Cap at 12
+    
+    for (int32 i = 0; i < NumSlotsToCreate; ++i)
+    {
+        // Create ingredient slot using the Blueprint class
+        TSubclassOf<UPUIngredientSlot> SlotClass;
+        if (IngredientSlotClass)
+        {
+            SlotClass = IngredientSlotClass;
+        }
+        else
+        {
+            SlotClass = UPUIngredientSlot::StaticClass();
+        }
+        
+        UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
+        if (IngredientSlot)
+        {
+            // Set the location to ActiveIngredientArea
+            IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
+            
+            // If we have an ingredient instance for this slot, set it
+            if (i < CurrentDishData.IngredientInstances.Num())
+            {
+                const FIngredientInstance& IngredientInstance = CurrentDishData.IngredientInstances[i];
+                
+                // Validate ingredient instance
+                if (IngredientInstance.IngredientData.IngredientTag.IsValid())
+                {
+                    // Set the ingredient instance
+                    IngredientSlot->SetIngredientInstance(IngredientInstance);
+                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Created slot with ingredient: %s (ID: %d, Qty: %d)"), 
+                        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientSlotsFromDishData - Invalid ingredient instance at index %d, creating empty slot"), i);
+                }
+            }
+            else
+            {
+                // Create empty slot - ensure display is cleared (removes quantity control)
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Created empty slot %d"), i);
+                // Call UpdateDisplay to ensure empty slot clears quantity control and other UI elements
+                IngredientSlot->UpdateDisplay();
+            }
+            
+            // Set the preparation data table if we have access to it
+            if (DishCustomizationComponent && DishCustomizationComponent->PreparationDataTable)
+            {
+                IngredientSlot->SetPreparationDataTable(DishCustomizationComponent->PreparationDataTable);
+            }
+            
+            // Bind to slot's ingredient changed event so we can update dish data and flavor graphs
+            IngredientSlot->OnSlotIngredientChanged.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
+            
+            // Add to our array
+            CreatedIngredientSlots.Add(IngredientSlot);
+            
+            // Add to the UI container if available
+            if (ContainerToUse)
+            {
+                ContainerToUse->AddChild(IngredientSlot);
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Added slot to container"));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Slot created but not added to container (container not set yet)"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::CreateIngredientSlotsFromDishData - Failed to create ingredient slot at index %d"), i);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Successfully created %d ingredient slots"), CreatedIngredientSlots.Num());
+    
+    // Mark that slots have been created
+    bIngredientSlotsCreated = true;
+}
+
 void UPUCookingStageWidget::SetIngredientButtonContainer(UPanelWidget* Container)
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Setting ingredient button container"));
@@ -2110,7 +2266,9 @@ void UPUCookingStageWidget::SetIngredientButtonContainer(UPanelWidget* Container
     if (Container)
     {
         IngredientButtonContainer = Container;
-        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Container set successfully"));
+        // Also set the slot container to the same container since they're the same
+        IngredientSlotContainer = Container;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Container set successfully (also set IngredientSlotContainer)"));
         
         // If we already have created buttons, add them to the new container
         if (CreatedIngredientButtons.Num() > 0)
@@ -2123,6 +2281,34 @@ void UPUCookingStageWidget::SetIngredientButtonContainer(UPanelWidget* Container
                     Container->AddChild(Button);
                 }
             }
+        }
+        
+        // If we already have created slots, add them to the new container
+        if (CreatedIngredientSlots.Num() > 0)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Found %d existing slots to add to container"), CreatedIngredientSlots.Num());
+            int32 SlotsAdded = 0;
+            for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
+            {
+                if (IngredientSlot)
+                {
+                    if (!IngredientSlot->GetParent())
+                    {
+                        Container->AddChild(IngredientSlot);
+                        SlotsAdded++;
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Added slot to container (Slot: %s)"), *IngredientSlot->GetName());
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Slot already has a parent, skipping (Slot: %s)"), *IngredientSlot->GetName());
+                    }
+                }
+            }
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - Successfully added %d slots to container"), SlotsAdded);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetIngredientButtonContainer - No existing slots to add (slots will be created when ingredients are added)"));
         }
     }
     else

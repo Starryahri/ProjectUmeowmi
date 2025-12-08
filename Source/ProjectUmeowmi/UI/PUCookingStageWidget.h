@@ -130,9 +130,13 @@ public:
     virtual void NativeOnDragEnter(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
     virtual void NativeOnDragLeave(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
 
-    // Ingredient Button Management Functions
+    // Ingredient Button Management Functions (DEPRECATED - use slots instead)
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
     void CreateIngredientButtonsFromDishData();
+
+    // Ingredient Slot Management Functions
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    void CreateIngredientSlotsFromDishData();
 
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
     void CreateQuantityControlFromDroppedIngredient(const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity);
@@ -179,7 +183,10 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUIngredientButton> IngredientButtonClass;
 
-    // Ingredient Button Management Properties
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<class UPUIngredientSlot> IngredientSlotClass;
+
+    // Ingredient Button Management Properties (DEPRECATED - use slots instead)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Ingredients")
     TArray<class UPUIngredientButton*> CreatedIngredientButtons;
 
@@ -187,9 +194,21 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Ingredients")
     bool bIngredientButtonsCreated = false;
 
-    // Widget reference for ingredient button container (set in Blueprint)
+    // Widget reference for ingredient button container (set in Blueprint) (DEPRECATED - use slots instead)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Ingredients")
     TWeakObjectPtr<class UPanelWidget> IngredientButtonContainer;
+
+    // Ingredient Slot Management Properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Ingredients")
+    TArray<class UPUIngredientSlot*> CreatedIngredientSlots;
+
+    // Flag to prevent double creation
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Ingredients")
+    bool bIngredientSlotsCreated = false;
+
+    // Widget reference for ingredient slot container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Ingredients")
+    TWeakObjectPtr<class UPanelWidget> IngredientSlotContainer;
 
     // Optional direct reference to the ScrollBox that should host quantity controls
     UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category = "Cooking Stage Widget|Ingredients")

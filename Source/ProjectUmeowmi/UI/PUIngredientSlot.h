@@ -61,6 +61,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     EPUIngredientSlotLocation GetLocation() const { return Location; }
 
+    // Set the preparation data table
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Data")
+    void SetPreparationDataTable(UDataTable* InPreparationDataTable) { PreparationDataTable = InPreparationDataTable; }
+
     // Update all display elements
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
     void UpdateDisplay();

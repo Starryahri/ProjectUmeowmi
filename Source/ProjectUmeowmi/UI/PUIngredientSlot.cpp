@@ -350,7 +350,7 @@ void UPUIngredientSlot::ClearDisplay()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
-    // Remove quantity control
+    // Remove quantity control - first check if we have a reference, then search container
     if (QuantityControlWidget)
     {
         if (QuantityControlContainer)
@@ -359,6 +359,20 @@ void UPUIngredientSlot::ClearDisplay()
         }
         QuantityControlWidget->RemoveFromParent();
         QuantityControlWidget = nullptr;
+    }
+    else if (QuantityControlContainer)
+    {
+        // Search for any quantity control widget in the container (in case it was placed in Blueprint)
+        for (int32 i = QuantityControlContainer->GetChildrenCount() - 1; i >= 0; i--)
+        {
+            if (UPUIngredientQuantityControl* FoundWidget = Cast<UPUIngredientQuantityControl>(QuantityControlContainer->GetChildAt(i)))
+            {
+                QuantityControlContainer->RemoveChild(FoundWidget);
+                FoundWidget->RemoveFromParent();
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Removed quantity control widget found in container"));
+                break;
+            }
+        }
     }
 }
 
