@@ -33,6 +33,9 @@ void UPUIngredientSlot::NativeConstruct()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
+    // Initialize plate background opacity based on selection state
+    UpdatePlateBackgroundOpacity();
+
     // Update display on construction
     UpdateDisplay();
 }
@@ -66,22 +69,40 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
 
     // Store the instance data
     IngredientInstance = InIngredientInstance;
-    bHasIngredient = true;
+    
+    // If quantity is 0, treat as empty (but still store ingredient data for pantry texture display)
+    // Also check if InstanceID is 0 - if so, this is likely a pantry slot placeholder
+    if (InIngredientInstance.Quantity <= 0 || InIngredientInstance.InstanceID == 0)
+    {
+        bHasIngredient = false;
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Quantity is 0 or InstanceID is 0, treating as empty (but storing ingredient data for display)"));
+    }
+    else
+    {
+        bHasIngredient = true;
+    }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Stored Ingredient: %s (ID: %d, Qty: %d, Preparations: %d)"),
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Stored Ingredient: %s (ID: %d, Qty: %d, Preparations: %d, HasIngredient: %s)"),
         *IngredientInstance.IngredientData.DisplayName.ToString(),
         IngredientInstance.InstanceID,
         IngredientInstance.Quantity,
-        IngredientInstance.Preparations.Num());
+        IngredientInstance.Preparations.Num(),
+        bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
 
     // Update all display elements
     UpdateDisplay();
 
-    // Call Blueprint event
-    OnIngredientInstanceSet(IngredientInstance);
+    // Call Blueprint event (only if we actually have an ingredient)
+    if (bHasIngredient)
+    {
+        OnIngredientInstanceSet(IngredientInstance);
+    }
 
-    // Broadcast change event
-    OnSlotIngredientChanged.Broadcast(IngredientInstance);
+    // Broadcast change event (only if we actually have an ingredient)
+    if (bHasIngredient)
+    {
+        OnSlotIngredientChanged.Broadcast(IngredientInstance);
+    }
 }
 
 void UPUIngredientSlot::ClearSlot()
@@ -115,10 +136,19 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
 
 void UPUIngredientSlot::UpdateDisplay()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s)"),
-        *GetName(), IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
+        *GetName(), IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
-    if (IsEmpty())
+    // For pantry and prep slots, we want to show the texture even if "empty" (quantity 0)
+    // For other locations, clear display if empty
+    bool bShouldClear = IsEmpty();
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    {
+        // Pantry/Prep slots: only clear if we don't have ingredient data at all
+        bShouldClear = !IngredientInstance.IngredientData.IngredientTag.IsValid();
+    }
+
+    if (bShouldClear)
     {
         ClearDisplay();
     }
@@ -138,7 +168,21 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         return;
     }
 
-    if (!bHasIngredient)
+    // For pantry and prep slots, show texture even if empty (to display ingredient texture)
+    // For active ingredient area slots, only show if we have an ingredient
+    bool bShouldShowTexture = false;
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    {
+        // Pantry/Prep slots: show texture if we have ingredient data (even if quantity is 0)
+        bShouldShowTexture = IngredientInstance.IngredientData.IngredientTag.IsValid();
+    }
+    else // ActiveIngredientArea
+    {
+        // Active ingredient area: only show if we have an actual ingredient
+        bShouldShowTexture = bHasIngredient;
+    }
+
+    if (!bShouldShowTexture)
     {
         IngredientIcon->SetVisibility(ESlateVisibility::Collapsed);
         return;
@@ -149,14 +193,14 @@ void UPUIngredientSlot::UpdateIngredientIcon()
     {
         IngredientIcon->SetBrushFromTexture(TextureToUse);
         IngredientIcon->SetVisibility(ESlateVisibility::Visible);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture for location: %d"),
-            (int32)Location);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture for location: %d (Texture: %s)"),
+            (int32)Location, *TextureToUse->GetName());
     }
     else
     {
         IngredientIcon->SetVisibility(ESlateVisibility::Collapsed);
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - No texture found for ingredient: %s"),
-            *IngredientInstance.IngredientData.DisplayName.ToString());
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - No texture found for ingredient: %s (Location: %d)"),
+            *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
     }
 }
 
@@ -378,18 +422,43 @@ void UPUIngredientSlot::ClearDisplay()
 
 UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
 {
-    if (!bHasIngredient)
+    // For pantry and prep slots, show texture even if bHasIngredient is false (for display purposes)
+    // For other locations, require bHasIngredient to be true
+    if (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && !bHasIngredient)
+    {
+        return nullptr;
+    }
+
+    // Check if we have valid ingredient data
+    if (!IngredientInstance.IngredientData.IngredientTag.IsValid())
     {
         return nullptr;
     }
 
     // TODO: When PantryTexture field is added to FPUIngredientBase, use it here
-    // For now, we'll use PreviewTexture for both locations as a placeholder
+    // For now, we'll use PreviewTexture for all locations as a placeholder
     if (Location == EPUIngredientSlotLocation::Pantry)
     {
         // TODO: Return IngredientInstance.IngredientData.PantryTexture when available
         // For now, fallback to PreviewTexture
-        return IngredientInstance.IngredientData.PreviewTexture;
+        UTexture2D* Texture = IngredientInstance.IngredientData.PreviewTexture;
+        if (!Texture)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Pantry slot has no PreviewTexture for ingredient: %s"),
+                *IngredientInstance.IngredientData.DisplayName.ToString());
+        }
+        return Texture;
+    }
+    else if (Location == EPUIngredientSlotLocation::Prep)
+    {
+        // Prep slots use PreviewTexture (or could use a specific prep texture in the future)
+        UTexture2D* Texture = IngredientInstance.IngredientData.PreviewTexture;
+        if (!Texture)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prep slot has no PreviewTexture for ingredient: %s"),
+                *IngredientInstance.IngredientData.DisplayName.ToString());
+        }
+        return Texture;
     }
     else // ActiveIngredientArea
     {
@@ -583,10 +652,16 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Mouse entered slot: %s"),
         *GetName());
 
-    // Show hover text if slot has ingredient
-    if (bHasIngredient)
+    // Show hover text (works for prep/pantry slots even when "empty")
+    UpdateHoverTextVisibility(true);
+
+    // Change plate background opacity to 1.0 on hover (always, regardless of selection)
+    if (PlateBackground)
     {
-        UpdateHoverTextVisibility(true);
+        FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
+        CurrentColor.A = 1.0f;
+        PlateBackground->SetColorAndOpacity(CurrentColor);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Set plate background opacity to 1.0"));
     }
 }
 
@@ -599,6 +674,9 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 
     // Hide hover text
     UpdateHoverTextVisibility(false);
+
+    // Restore plate background opacity based on selection state
+    UpdatePlateBackgroundOpacity();
 }
 
 void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent)
@@ -608,10 +686,16 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Focus added to slot: %s"),
         *GetName());
 
-    // Show hover text if slot has ingredient
-    if (bHasIngredient)
+    // Show hover text (works for prep/pantry slots even when "empty")
+    UpdateHoverTextVisibility(true);
+
+    // Change plate background opacity to 1.0 on focus (always, regardless of selection)
+    if (PlateBackground)
     {
-        UpdateHoverTextVisibility(true);
+        FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
+        CurrentColor.A = 1.0f;
+        PlateBackground->SetColorAndOpacity(CurrentColor);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Set plate background opacity to 1.0"));
     }
 }
 
@@ -624,11 +708,28 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
 
     // Hide hover text
     UpdateHoverTextVisibility(false);
+
+    // Restore plate background opacity based on selection state
+    UpdatePlateBackgroundOpacity();
 }
 
 FText UPUIngredientSlot::GetIngredientDisplayText() const
 {
-    if (!bHasIngredient)
+    // For prep/pantry slots, show text even if "empty" (quantity 0) as long as we have ingredient data
+    // For other locations, require bHasIngredient to be true
+    bool bShouldShowText = false;
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    {
+        // Prep/Pantry slots: show text if we have ingredient data (even if quantity is 0)
+        bShouldShowText = IngredientInstance.IngredientData.IngredientTag.IsValid();
+    }
+    else
+    {
+        // Active ingredient area: only show if we have an actual ingredient
+        bShouldShowText = bHasIngredient;
+    }
+
+    if (!bShouldShowText)
     {
         return FText::GetEmpty();
     }
@@ -687,7 +788,19 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
         return;
     }
 
-    if (bShow && bHasIngredient)
+    // For prep/pantry slots, show text if we have ingredient data (even if "empty")
+    // For other locations, require bHasIngredient
+    bool bCanShowText = false;
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    {
+        bCanShowText = IngredientInstance.IngredientData.IngredientTag.IsValid();
+    }
+    else
+    {
+        bCanShowText = bHasIngredient;
+    }
+
+    if (bShow && bCanShowText)
     {
         // Update text content
         FText DisplayText = GetIngredientDisplayText();
@@ -701,5 +814,31 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateHoverTextVisibility - Hiding hover text"));
     }
+}
+
+void UPUIngredientSlot::SetSelected(bool bSelected)
+{
+    if (bIsSelected != bSelected)
+    {
+        bIsSelected = bSelected;
+        UpdatePlateBackgroundOpacity();
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Selection changed to: %s"), bSelected ? TEXT("TRUE") : TEXT("FALSE"));
+    }
+}
+
+void UPUIngredientSlot::UpdatePlateBackgroundOpacity()
+{
+    if (!PlateBackground)
+    {
+        return;
+    }
+
+    // Set opacity to 1.0 if selected, otherwise 0.6
+    // Note: Hover state is handled separately in NativeOnMouseEnter/Leave
+    FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
+    CurrentColor.A = bIsSelected ? 1.0f : 0.6f;
+    PlateBackground->SetColorAndOpacity(CurrentColor);
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePlateBackgroundOpacity - Set opacity to: %.2f (Selected: %s)"),
+        CurrentColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
 }
 

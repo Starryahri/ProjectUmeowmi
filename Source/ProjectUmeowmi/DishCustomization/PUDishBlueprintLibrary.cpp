@@ -2,6 +2,7 @@
 #include "PUDishBase.h"
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
+#include "../UI/PUCookingStageWidget.h"
 
 FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations)
 {
@@ -31,7 +32,8 @@ FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, co
         {
             // Create a new ingredient instance
             FIngredientInstance NewInstance;
-            NewInstance.InstanceID = Dish.GenerateNewInstanceID();
+            // Use GUID-based instance ID generation (same as ingredient buttons)
+            NewInstance.InstanceID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
             NewInstance.Quantity = 1;
             NewInstance.IngredientData = *FoundIngredient;
             NewInstance.IngredientTag = IngredientTag;

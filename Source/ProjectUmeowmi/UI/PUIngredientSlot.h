@@ -18,7 +18,8 @@ UENUM(BlueprintType)
 enum class EPUIngredientSlotLocation : uint8
 {
     Pantry,
-    ActiveIngredientArea
+    ActiveIngredientArea,
+    Prep
 };
 
 // Events
@@ -61,6 +62,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     EPUIngredientSlotLocation GetLocation() const { return Location; }
 
+    // Set selection state
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
+    void SetSelected(bool bSelected);
+
+    // Get selection state
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
+    bool IsSelected() const { return bIsSelected; }
+
     // Set the preparation data table
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Data")
     void SetPreparationDataTable(UDataTable* InPreparationDataTable) { PreparationDataTable = InPreparationDataTable; }
@@ -91,6 +100,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UPanelWidget* GetQuantityControlContainer() const { return QuantityControlContainer; }
 
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
+    UImage* GetPlateBackground() const { return PlateBackground; }
+
     // Radial menu functions (stubbed for now)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
     void ShowRadialMenu(bool bIsPrepMenu);
@@ -120,6 +132,10 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot")
     bool bHasIngredient = false;
 
+    // Flag to track if slot is selected
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot")
+    bool bIsSelected = false;
+
     // Location of this slot
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot")
     EPUIngredientSlotLocation Location = EPUIngredientSlotLocation::ActiveIngredientArea;
@@ -132,6 +148,10 @@ protected:
     // UI Components (will be bound in Blueprint)
     UPROPERTY(meta = (BindWidget))
     UImage* IngredientIcon;
+
+    // Plate background image (opacity changes on hover)
+    UPROPERTY(meta = (BindWidget))
+    UImage* PlateBackground;
 
     // Container for quantity control widget
     UPROPERTY(meta = (BindWidget))
@@ -222,6 +242,9 @@ private:
 
     // Update hover text visibility
     void UpdateHoverTextVisibility(bool bShow);
+
+    // Update plate background opacity based on selection state
+    void UpdatePlateBackgroundOpacity();
 
     // Quantity control event handlers
     UFUNCTION()

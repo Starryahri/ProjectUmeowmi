@@ -56,7 +56,14 @@ public:
     void CreateIngredientButtons();
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void CreateIngredientSlots();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void OnIngredientButtonClicked(const FPUIngredientBase& IngredientData);
+
+    // Ingredient Slot Management Functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void CreateIngredientSlotsFromDishData();
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void OnQuantityControlChanged(const FIngredientInstance& IngredientInstance);
@@ -146,6 +153,10 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
     TMap<FGameplayTag, class UPUIngredientButton*> IngredientButtonMap;
 
+    // Store references to ingredient slots by ingredient tag (for pantry slots)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slots")
+    TMap<FGameplayTag, class UPUIngredientSlot*> IngredientSlotMap;
+
     // Store references to plating ingredient buttons by InstanceID (for multiple instances of same ingredient)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
     TMap<int32, class UPUIngredientButton*> PlatingIngredientButtonMap;
@@ -160,9 +171,24 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUPreparationCheckbox> PreparationCheckboxClass;
 
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<class UPUIngredientSlot> IngredientSlotClass;
+
     // Container for ingredient buttons
     UPROPERTY(BlueprintReadOnly, Category = "Dish Customization Widget|Plating")
     TWeakObjectPtr<UPanelWidget> IngredientButtonContainer;
+
+    // Ingredient Slot Management Properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Ingredients")
+    TArray<class UPUIngredientSlot*> CreatedIngredientSlots;
+
+    // Flag to prevent double creation
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Ingredients")
+    bool bIngredientSlotsCreated = false;
+
+    // Widget reference for ingredient slot container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Ingredients")
+    TWeakObjectPtr<class UPanelWidget> IngredientSlotContainer;
 
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
@@ -176,6 +202,9 @@ protected:
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
     void OnIngredientButtonCreated(class UPUIngredientButton* IngredientButton, const FPUIngredientBase& IngredientData);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
+    void OnIngredientSlotCreated(class UPUIngredientSlot* IngredientSlot, const FIngredientInstance& IngredientInstance);
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
     void OnQuantityControlCreated(class UPUIngredientQuantityControl* QuantityControl, const FIngredientInstance& IngredientInstance);
@@ -200,4 +229,8 @@ private:
     void UpdateIngredientInstance(const FIngredientInstance& IngredientInstance);
     void RemoveIngredientInstance(int32 InstanceID);
     void RefreshQuantityControls();
+    
+    // Handle pantry slot clicks
+    UFUNCTION()
+    void OnPantrySlotClicked(class UPUIngredientSlot* IngredientSlot);
 }; 
