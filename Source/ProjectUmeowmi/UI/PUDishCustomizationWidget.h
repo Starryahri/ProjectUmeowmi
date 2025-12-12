@@ -52,13 +52,13 @@ public:
     void UpdateDishData(const FPUDishBase& NewDishData);
 
     // Ingredient management functions
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     void CreateIngredientButtons();
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void CreateIngredientSlots();
 
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     void OnIngredientButtonClicked(const FPUIngredientBase& IngredientData);
 
     // Ingredient Slot Management Functions
@@ -72,11 +72,11 @@ public:
     void OnQuantityControlRemoved(int32 InstanceID, class UPUIngredientQuantityControl* QuantityControlWidget);
 
     // Plating stage functions
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
+    UFUNCTION(Category = "Dish Customization Widget|Plating")
     void CreatePlatingIngredientButtons();
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
-    void SetIngredientButtonContainer(UPanelWidget* Container);
+    void SetIngredientSlotContainer(UPanelWidget* Container);
 
     // Planning stage functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
@@ -95,15 +95,15 @@ public:
     const FPUPlanningData& GetPlanningData() const { return PlanningData; }
 
     // Find ingredient button by ingredient data
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     class UPUIngredientButton* FindIngredientButton(const FPUIngredientBase& IngredientData) const;
 
     // Find ingredient button by tag (simpler alternative)
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     class UPUIngredientButton* GetIngredientButtonByTag(const FGameplayTag& IngredientTag) const;
 
     // Get plating ingredient button map
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     const TMap<int32, class UPUIngredientButton*>& GetPlatingIngredientButtonMap() const { return PlatingIngredientButtonMap; }
 
     // Remove ingredient instance by tag

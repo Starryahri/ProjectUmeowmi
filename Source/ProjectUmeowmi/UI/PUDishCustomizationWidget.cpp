@@ -258,7 +258,7 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
         if (!ContainerToUse)
         {
             UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - No ingredient container set (neither slot nor button container)! Slots cannot be added."));
-            UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientButtonContainer() is called."));
+            UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientSlotContainer() is called."));
         }
         
         for (const FPUIngredientBase& IngredientData : AvailableIngredients)
@@ -404,7 +404,7 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
     if (!ContainerToUse)
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No ingredient container set (neither slot nor button container)! Slots cannot be added."));
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientButtonContainer() is called."));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientSlotContainer() is called."));
     }
 
     // Create slots for each ingredient instance
@@ -504,20 +504,20 @@ void UPUDishCustomizationWidget::EnablePlatingButtons()
 }
 
 
-void UPUDishCustomizationWidget::SetIngredientButtonContainer(UPanelWidget* Container)
+void UPUDishCustomizationWidget::SetIngredientSlotContainer(UPanelWidget* Container)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Setting ingredient button container"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Setting ingredient slot container"));
     
     if (!Container)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::SetIngredientButtonContainer - Container is null"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::SetIngredientSlotContainer - Container is null"));
         return;
     }
     
     IngredientButtonContainer = Container;
     // Also set the slot container to the same container since they're the same
     IngredientSlotContainer = Container;
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Container set successfully (also set IngredientSlotContainer)"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Container set successfully (also set IngredientSlotContainer)"));
     
     // Add any existing buttons to the new container
     // Note: Plating now uses slots instead of buttons, so we only add regular ingredient buttons
@@ -525,7 +525,7 @@ void UPUDishCustomizationWidget::SetIngredientButtonContainer(UPanelWidget* Cont
     
     if (TotalButtons > 0)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Adding %d existing buttons to container"), TotalButtons);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Adding %d existing buttons to container"), TotalButtons);
         
         // Add regular ingredient buttons (for planning stage)
         for (auto& ButtonPair : IngredientButtonMap)
@@ -540,7 +540,7 @@ void UPUDishCustomizationWidget::SetIngredientButtonContainer(UPanelWidget* Cont
     // If we already have created slots, add them to the new container
     if (CreatedIngredientSlots.Num() > 0)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Found %d existing slots to add to container"), CreatedIngredientSlots.Num());
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Found %d existing slots to add to container"), CreatedIngredientSlots.Num());
         int32 SlotsAdded = 0;
         for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
         {
@@ -550,19 +550,19 @@ void UPUDishCustomizationWidget::SetIngredientButtonContainer(UPanelWidget* Cont
                 {
                     Container->AddChild(IngredientSlot);
                     SlotsAdded++;
-                    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Added slot to container (Slot: %s)"), *IngredientSlot->GetName());
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Added slot to container (Slot: %s)"), *IngredientSlot->GetName());
                 }
                 else
                 {
-                    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Slot already has a parent, skipping (Slot: %s)"), *IngredientSlot->GetName());
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Slot already has a parent, skipping (Slot: %s)"), *IngredientSlot->GetName());
                 }
             }
         }
-        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - Successfully added %d slots to container"), SlotsAdded);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Successfully added %d slots to container"), SlotsAdded);
     }
     else
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientButtonContainer - No existing slots to add (slots will be created when ingredients are added)"));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - No existing slots to add (slots will be created when ingredients are added)"));
     }
 }
 
@@ -1081,7 +1081,7 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsFromDishData()
     if (!ContainerToUse)
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - No ingredient container set (neither slot nor button container)! Slots cannot be added."));
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientButtonContainer() is called."));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientSlotContainer() is called."));
     }
     
     // Create slots for up to 12 ingredient instances (max slots in active ingredient area)
