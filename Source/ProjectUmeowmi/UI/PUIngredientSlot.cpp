@@ -268,8 +268,22 @@ void UPUIngredientSlot::UpdateIngredientIcon()
     {
         IngredientIcon->SetBrushFromTexture(TextureToUse);
         IngredientIcon->SetVisibility(ESlateVisibility::Visible);
+        
+        // Grey out the icon if quantity is 0
+        if (IngredientInstance.Quantity <= 0)
+        {
+            // Grey color: 0.5, 0.5, 0.5, 1.0
+            IngredientIcon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture and GREYED OUT (quantity is 0) for location: %d (Texture: %s)"),
+                (int32)Location, *TextureToUse->GetName());
+        }
+        else
+        {
+            // Normal white color: 1.0, 1.0, 1.0, 1.0
+            IngredientIcon->SetColorAndOpacity(FLinearColor::White);
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture for location: %d (Texture: %s)"),
             (int32)Location, *TextureToUse->GetName());
+        }
     }
     else
     {
@@ -1237,6 +1251,56 @@ void UPUIngredientSlot::ResetQuantity()
     OnQuantityChanged(RemainingQuantity);
 }
 
+void UPUIngredientSlot::ResetQuantityFromDishData()
+{
+    // Find the parent dish customization widget to get the dish data
+    UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(GetTypedOuter<UPUDishCustomizationWidget>());
+    if (!DishWidget)
+    {
+        // Try to find it by traversing up the widget hierarchy
+        UWidget* Parent = GetParent();
+        while (Parent && !DishWidget)
+        {
+            DishWidget = Cast<UPUDishCustomizationWidget>(Parent);
+            if (Parent->GetParent())
+            {
+                Parent = Parent->GetParent();
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+    
+    if (DishWidget && DishWidget->GetCustomizationComponent())
+    {
+        const FPUDishBase& CurrentDish = DishWidget->GetCustomizationComponent()->GetCurrentDishData();
+        FIngredientInstance UpdatedInstance;
+        if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+        {
+            // Reset to the original quantity from the dish data
+            IngredientInstance.Quantity = UpdatedInstance.Quantity;
+            RemainingQuantity = IngredientInstance.Quantity;
+            MaxQuantity = IngredientInstance.Quantity;
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantityFromDishData - Reset quantity to %d from dish data"), IngredientInstance.Quantity);
+            
+            // Update all visual displays
+            UpdateQuantityDisplay();
+            UpdateIngredientIcon();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ResetQuantityFromDishData - Could not find ingredient instance with ID %d"), IngredientInstance.InstanceID);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ResetQuantityFromDishData - Could not find dish customization widget or component"));
+    }
+}
+
 void UPUIngredientSlot::UpdatePlatingDisplay()
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePlatingDisplay - Updating plating display"));
@@ -1451,11 +1515,12 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
     }
     
     // Find the dish customization component and spawn the ingredient
+    UPUDishCustomizationComponent* DishComponent = nullptr;
     for (AActor* Actor : FoundActors)
     {
         if (Actor)
         {
-            UPUDishCustomizationComponent* DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
+            DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
             if (DishComponent)
             {
                 UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Calling SpawnIngredientIn3DByInstanceID on customization component"));
@@ -1464,6 +1529,19 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                 break;
             }
         }
+    }
+    
+    // After spawning, decrease the quantity by 1 and update the display
+    // (PlaceIngredient tracks placements in the component, but we need to update our local display)
+    if (DishComponent && IngredientInstance.Quantity > 0)
+    {
+        // Decrease quantity by 1 since we just spawned one
+        IngredientInstance.Quantity--;
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Decreased quantity to %d (spawned 1)"), IngredientInstance.Quantity);
+        
+        // Update the display to reflect the new quantity
+        UpdateQuantityDisplay();
+        UpdateIngredientIcon();
     }
     
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - END"));

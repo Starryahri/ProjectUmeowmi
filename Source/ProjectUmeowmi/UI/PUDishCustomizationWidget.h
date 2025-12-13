@@ -137,6 +137,10 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Planning")
     void OnPlanningCompleted(const FPUPlanningData& InPlanningData);
 
+    // Get created ingredient slots (for reset functionality)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    const TArray<class UPUIngredientSlot*>& GetCreatedIngredientSlots() const { return CreatedIngredientSlots; }
+
 protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")

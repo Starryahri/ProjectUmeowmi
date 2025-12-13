@@ -16,6 +16,7 @@
 #include "Engine/GameViewportClient.h"
 #include "../UI/PUDishCustomizationWidget.h"
 #include "../UI/PUPlatingWidget.h"
+#include "../UI/PUIngredientSlot.h"
 #include "Engine/StaticMeshActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "PUIngredientMesh.h"
@@ -1843,25 +1844,23 @@ void UPUDishCustomizationComponent::ResetPlating()
     PlacedIngredientQuantities.Empty();
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Cleared placed ingredient quantities"));
     
-    // Reset all ingredient button quantities
+    // Reset all ingredient slot quantities (for plating stage)
     if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
     {
-        // Get the plating button map from the widget
-        TMap<int32, class UPUIngredientButton*> PlatingButtons = DishWidget->GetPlatingIngredientButtonMap();
+        // Get the created ingredient slots from the widget
+        const TArray<class UPUIngredientSlot*>& IngredientSlots = DishWidget->GetCreatedIngredientSlots();
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Found %d plating buttons to reset"), 
-            PlatingButtons.Num());
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Found %d ingredient slots to reset"), 
+            IngredientSlots.Num());
         
-        // Reset each button's quantity
-        for (auto& ButtonPair : PlatingButtons)
+        // Reset each slot's quantity from the dish data
+        for (UPUIngredientSlot* IngredientSlot : IngredientSlots)
         {
-            int32 InstanceID = ButtonPair.Key;
-            UPUIngredientButton* IngredientButton = ButtonPair.Value;
-            
-            if (IngredientButton)
+            if (IngredientSlot && IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Plating)
             {
-                IngredientButton->ResetQuantity();
-                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Reset button for InstanceID: %d"), InstanceID);
+                IngredientSlot->ResetQuantityFromDishData();
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Reset slot for InstanceID: %d"), 
+                    IngredientSlot->GetIngredientInstance().InstanceID);
             }
         }
     }

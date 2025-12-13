@@ -111,6 +111,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
     void ResetQuantity();
 
+    // Reset quantity from the dish data (for plating reset)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    void ResetQuantityFromDishData();
+
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
     bool CanDrag() const { return RemainingQuantity > 0; }
 
