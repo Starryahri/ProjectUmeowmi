@@ -209,7 +209,7 @@ protected:
     bool bIsSelected = false;
 
     // Location of this slot
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot", meta = (ExposeOnSpawn = "true"))
     EPUIngredientSlotLocation Location = EPUIngredientSlotLocation::ActiveIngredientArea;
 
     // Optional: Reference to preparation data table for looking up preparation names

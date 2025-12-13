@@ -269,8 +269,8 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         IngredientIcon->SetBrushFromTexture(TextureToUse);
         IngredientIcon->SetVisibility(ESlateVisibility::Visible);
         
-        // Grey out the icon if quantity is 0
-        if (IngredientInstance.Quantity <= 0)
+        // Grey out the icon if quantity is 0, but NOT for Pantry or Prep locations
+        if (IngredientInstance.Quantity <= 0 && Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep)
         {
             // Grey color: 0.5, 0.5, 0.5, 1.0
             IngredientIcon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
@@ -669,6 +669,13 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
         // Set the ingredient instance
         SetIngredientInstance(NewInstance);
 
+        // Ensure quantity control stays hidden in plating stage after drop
+        if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
+        {
+            QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Ensuring quantity control stays hidden in plating stage after drop"));
+        }
+
         // Broadcast drop event
         OnIngredientDroppedOnSlot.Broadcast(this);
 
@@ -697,6 +704,13 @@ void UPUIngredientSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent,
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragLeave - Drag left slot: %s"),
             *GetName());
         OnDragLeaveSlot();
+    }
+    
+    // Ensure quantity control stays hidden in plating stage after drag ends
+    if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
+    {
+        QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragLeave - Ensuring quantity control stays hidden in plating stage"));
     }
 }
 
@@ -1171,6 +1185,13 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s"), 
             *IngredientInstance.IngredientData.DisplayName.ToString());
+        
+        // Hide quantity control widget when dragging in plating stage
+        if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
+        {
+            QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Hiding quantity control during drag in plating stage"));
+        }
         
         // Start drag detection - this will call the Blueprint OnDragDetected event
         // Use DetectDrag which will trigger OnDragDetected when the mouse moves
