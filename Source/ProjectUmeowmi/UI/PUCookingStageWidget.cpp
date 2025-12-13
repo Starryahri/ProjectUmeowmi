@@ -2198,6 +2198,14 @@ void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
             // Set the location to ActiveIngredientArea
             IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
             
+            // Set the preparation data table FIRST (before setting ingredient instance)
+            // This ensures preparations display correctly when UpdateDisplay() is called
+            if (DishCustomizationComponent && DishCustomizationComponent->PreparationDataTable)
+            {
+                IngredientSlot->SetPreparationDataTable(DishCustomizationComponent->PreparationDataTable);
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Set preparation data table on slot"));
+            }
+            
             // If we have an ingredient instance for this slot, set it
             if (i < CurrentDishData.IngredientInstances.Num())
             {
@@ -2206,14 +2214,22 @@ void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
                 // Validate ingredient instance
                 if (IngredientInstance.IngredientData.IngredientTag.IsValid())
                 {
-                    // Set the ingredient instance
+                    // Set the ingredient instance (this will call UpdateDisplay() internally)
                     IngredientSlot->SetIngredientInstance(IngredientInstance);
-                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Created slot with ingredient: %s (ID: %d, Qty: %d)"), 
-                        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+                    
+                    // Update display again to ensure preparations are shown (in case UpdateDisplay was called before prep data table was set)
+                    IngredientSlot->UpdateDisplay();
+                    
+                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Created slot with ingredient: %s (ID: %d, Qty: %d, Preparations: %d)"), 
+                        *IngredientInstance.IngredientData.DisplayName.ToString(), 
+                        IngredientInstance.InstanceID, 
+                        IngredientInstance.Quantity,
+                        IngredientInstance.Preparations.Num());
                 }
                 else
                 {
                     UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientSlotsFromDishData - Invalid ingredient instance at index %d, creating empty slot"), i);
+                    IngredientSlot->UpdateDisplay();
                 }
             }
             else
@@ -2222,12 +2238,6 @@ void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
                 UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Created empty slot %d"), i);
                 // Call UpdateDisplay to ensure empty slot clears quantity control and other UI elements
                 IngredientSlot->UpdateDisplay();
-            }
-            
-            // Set the preparation data table if we have access to it
-            if (DishCustomizationComponent && DishCustomizationComponent->PreparationDataTable)
-            {
-                IngredientSlot->SetPreparationDataTable(DishCustomizationComponent->PreparationDataTable);
             }
             
             // Bind to slot's ingredient changed event so we can update dish data and flavor graphs

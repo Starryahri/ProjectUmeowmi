@@ -517,8 +517,21 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
                                 // Copy the base ingredient data
                                 Instance.IngredientData = *FoundIngredient;
                                 
-                                // Apply the preparations from the convenient field
-                                Instance.IngredientData.ActivePreparations = Instance.Preparations;
+                                // IMPORTANT: If the ingredient data table row has ActivePreparations set (like Prep.Char in bbqduck),
+                                // copy them to Instance.Preparations so they're preserved
+                                if (Instance.Preparations.Num() == 0 && Instance.IngredientData.ActivePreparations.Num() > 0)
+                                {
+                                    Instance.Preparations = Instance.IngredientData.ActivePreparations;
+                                    UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Copied %d ActivePreparations from data table to Instance.Preparations"), 
+                                        Instance.IngredientData.ActivePreparations.Num());
+                                }
+                                
+                                // Sync both ways: if Instance.Preparations has values, use those; otherwise use ActivePreparations from data table
+                                if (Instance.Preparations.Num() > 0)
+                                {
+                                    Instance.IngredientData.ActivePreparations = Instance.Preparations;
+                                }
+                                // If Instance.Preparations is empty but ActivePreparations has values, they're already synced above
                                 
                                 // Apply each preparation's modifiers
                                 if (Instance.IngredientData.PreparationDataTable.IsValid())

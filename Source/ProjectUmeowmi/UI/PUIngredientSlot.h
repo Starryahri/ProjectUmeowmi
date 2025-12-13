@@ -327,6 +327,7 @@ private:
     // Helper functions
     void UpdateIngredientIcon();
     void UpdatePrepIcons();
+    UTexture2D* GetPreparationTexture(const FGameplayTag& PreparationTag) const;
     void UpdateQuantityControl();
     void ClearDisplay();
 

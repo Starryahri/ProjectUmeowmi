@@ -87,6 +87,22 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     // Store the instance data
     IngredientInstance = InIngredientInstance;
     
+    // IMPORTANT: Sync ActivePreparations FROM IngredientData TO Preparations
+    // If the ingredient data table row has ActivePreparations set (like Prep.Char in bbqduck),
+    // copy them to the instance's Preparations field so they're displayed
+    if (IngredientInstance.Preparations.Num() == 0 && IngredientInstance.IngredientData.ActivePreparations.Num() > 0)
+    {
+        IngredientInstance.Preparations = IngredientInstance.IngredientData.ActivePreparations;
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Synced %d ActivePreparations from IngredientData to Preparations"), 
+            IngredientInstance.IngredientData.ActivePreparations.Num());
+    }
+    
+    // Also sync the other way for GetCurrentDisplayName() to work
+    // This ensures GetCurrentDisplayName() can look up preparations from the data table
+    IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Final: Preparations=%d, ActivePreparations=%d"), 
+        IngredientInstance.Preparations.Num(), IngredientInstance.IngredientData.ActivePreparations.Num());
+    
     // Set plating-specific properties
     MaxQuantity = InIngredientInstance.Quantity;
     RemainingQuantity = MaxQuantity;
@@ -225,6 +241,43 @@ void UPUIngredientSlot::UpdateIngredientIcon()
     }
 }
 
+UTexture2D* UPUIngredientSlot::GetPreparationTexture(const FGameplayTag& PreparationTag) const
+{
+    if (!PreparationDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - PreparationDataTable not set"));
+        return nullptr;
+    }
+
+    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+    FString PrepFullTag = PreparationTag.ToString();
+    int32 PrepLastPeriodIndex;
+    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+    {
+        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+        FName PrepRowName = FName(*PrepName);
+        
+        if (FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetPreparationTexture")))
+        {
+            if (Preparation->PreviewTexture)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationTexture - Found texture for preparation: %s"), *PrepName);
+                return Preparation->PreviewTexture;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation %s has no PreviewTexture"), *PrepName);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation not found in data table: %s"), *PrepName);
+        }
+    }
+    
+    return nullptr;
+}
+
 void UPUIngredientSlot::UpdatePrepIcons()
 {
     if (!bHasIngredient)
@@ -236,7 +289,10 @@ void UPUIngredientSlot::UpdatePrepIcons()
         return;
     }
 
-    int32 PrepCount = IngredientInstance.Preparations.Num();
+    // Get preparation tags
+    TArray<FGameplayTag> PrepTags;
+    IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
+    int32 PrepCount = PrepTags.Num();
 
     if (PrepCount >= 3)
     {
@@ -255,20 +311,46 @@ void UPUIngredientSlot::UpdatePrepIcons()
         // Show up to 2 prep icons
         if (SuspiciousIcon) SuspiciousIcon->SetVisibility(ESlateVisibility::Collapsed);
 
-        // Show first prep icon
+        // Show first prep icon with texture
         if (PrepIcon1)
         {
             PrepIcon1->SetVisibility(ESlateVisibility::Visible);
-            // TODO: Set prep icon texture based on first preparation tag
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Showing prep icon 1"));
+            
+            // Get texture for first preparation
+            if (PrepTags.Num() > 0)
+            {
+                UTexture2D* PrepTexture = GetPreparationTexture(PrepTags[0]);
+                if (PrepTexture)
+                {
+                    PrepIcon1->SetBrushFromTexture(PrepTexture);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Set prep icon 1 texture: %s"), *PrepTexture->GetName());
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepIcons - No texture found for first preparation: %s"), *PrepTags[0].ToString());
+                }
+            }
         }
 
         // Show second prep icon if available
         if (PrepCount >= 2 && PrepIcon2)
         {
             PrepIcon2->SetVisibility(ESlateVisibility::Visible);
-            // TODO: Set prep icon texture based on second preparation tag
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Showing prep icon 2"));
+            
+            // Get texture for second preparation
+            if (PrepTags.Num() > 1)
+            {
+                UTexture2D* PrepTexture = GetPreparationTexture(PrepTags[1]);
+                if (PrepTexture)
+                {
+                    PrepIcon2->SetBrushFromTexture(PrepTexture);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Set prep icon 2 texture: %s"), *PrepTexture->GetName());
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepIcons - No texture found for second preparation: %s"), *PrepTags[1].ToString());
+                }
+            }
         }
         else if (PrepIcon2)
         {
