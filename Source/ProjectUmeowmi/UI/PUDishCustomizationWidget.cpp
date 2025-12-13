@@ -551,9 +551,9 @@ void UPUDishCustomizationWidget::EnablePlatingButtons()
 }
 
 
-void UPUDishCustomizationWidget::SetIngredientSlotContainer(UPanelWidget* Container)
+void UPUDishCustomizationWidget::SetIngredientSlotContainer(UPanelWidget* Container, EPUIngredientSlotLocation SlotLocation)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Setting ingredient slot container"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Setting ingredient slot container (Location: %d)"), (int32)SlotLocation);
     
     if (!Container)
     {
@@ -593,11 +593,15 @@ void UPUDishCustomizationWidget::SetIngredientSlotContainer(UPanelWidget* Contai
         {
             if (IngredientSlot)
             {
+                // Set location to the specified location for all slots
+                IngredientSlot->SetLocation(SlotLocation);
+                
                 if (!IngredientSlot->GetParent())
                 {
                     Container->AddChild(IngredientSlot);
                     SlotsAdded++;
-                    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Added slot to container (Slot: %s)"), *IngredientSlot->GetName());
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::SetIngredientSlotContainer - Added slot to container (Slot: %s, Location: %d)"), 
+                        *IngredientSlot->GetName(), (int32)SlotLocation);
                 }
                 else
                 {

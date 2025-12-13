@@ -42,6 +42,23 @@ void UPUIngredientSlot::NativeConstruct()
     // Initialize plate background (always 100% opacity, outline hidden by default)
     UpdatePlateBackgroundOpacity();
 
+    // Hide QuantityText in prep and cooking stages (shown in plating)
+    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        if (QuantityText)
+        {
+            QuantityText->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+    // Hide PreparationText in prep, cooking, and plating stages
+    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating)
+    {
+        if (PreparationText)
+        {
+            PreparationText->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+
     // If InitialIngredientInstance is set (from Blueprint widget creation), apply it
     // SetIngredientInstance will call UpdateDisplay() internally
     if (InitialIngredientInstance.IngredientData.IngredientTag.IsValid())
@@ -163,6 +180,23 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
         Location = InLocation;
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetLocation - Location changed to: %d"), (int32)Location);
 
+        // Immediately hide QuantityText if in prep or cooking stage (shown in plating)
+    // Hide QuantityText in prep and cooking stages (shown in plating)
+    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            if (QuantityText)
+            {
+                QuantityText->SetVisibility(ESlateVisibility::Collapsed);
+            }
+        }
+        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating)
+        {
+            if (PreparationText)
+            {
+                PreparationText->SetVisibility(ESlateVisibility::Collapsed);
+            }
+        }
+
         // Update display when location changes (texture may change)
         UpdateDisplay();
 
@@ -194,6 +228,10 @@ void UPUIngredientSlot::UpdateDisplay()
         UpdateIngredientIcon();
         UpdatePrepIcons();
         UpdateQuantityControl();
+        
+        // Update quantity and preparation text displays (they will hide themselves if in prep/cooking stage)
+        UpdateQuantityDisplay();
+        UpdatePreparationDisplay();
     }
 }
 
@@ -453,6 +491,17 @@ void UPUIngredientSlot::UpdateQuantityControl()
     // Update quantity control with current ingredient instance
     if (QuantityControlWidget)
     {
+        // Hide quantity control in plating, prep, and pantry stages
+        // Show it in cooking stage (ActiveIngredientArea)
+        if (Location == EPUIngredientSlotLocation::Plating || 
+            Location == EPUIngredientSlotLocation::Prep || 
+            Location == EPUIngredientSlotLocation::Pantry)
+        {
+            QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Hiding quantity control (Location: %d)"), (int32)Location);
+            return;
+        }
+        
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Setting ingredient instance on quantity control"));
         UE_LOG(LogTemp, Display, TEXT("🎯   Slot Instance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d"),
             IngredientInstance.InstanceID,
@@ -1208,9 +1257,27 @@ void UPUIngredientSlot::UpdateQuantityDisplay()
 {
     if (QuantityText)
     {
-        FString QuantityString = FString::Printf(TEXT("x%d"), RemainingQuantity);
-        QuantityText->SetText(FText::FromString(QuantityString));
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Updated quantity: %s"), *QuantityString);
+        // Hide QuantityText in prep and cooking stages (show in plating)
+        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            QuantityText->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d)"), (int32)Location);
+        }
+        else if (bHasIngredient && IngredientInstance.InstanceID != 0)
+        {
+            // Read quantity directly from the ingredient instance
+            int32 Quantity = IngredientInstance.Quantity;
+            FString QuantityString = FString::Printf(TEXT("x%d"), Quantity);
+            QuantityText->SetText(FText::FromString(QuantityString));
+            QuantityText->SetVisibility(ESlateVisibility::Visible);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Updated quantity: %s (from IngredientInstance.Quantity)"), *QuantityString);
+        }
+        else
+        {
+            // No ingredient, hide the text
+            QuantityText->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - No ingredient, hiding QuantityText"));
+        }
     }
 }
 
@@ -1218,9 +1285,19 @@ void UPUIngredientSlot::UpdatePreparationDisplay()
 {
     if (PreparationText)
     {
-        FString IconText = GetPreparationIconText();
-        PreparationText->SetText(FText::FromString(IconText));
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Updated preparation icons: %s"), *IconText);
+        // Hide PreparationText in prep, cooking, and plating stages
+        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating)
+        {
+            PreparationText->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Hiding PreparationText (Location: %d)"), (int32)Location);
+        }
+        else
+        {
+            FString IconText = GetPreparationIconText();
+            PreparationText->SetText(FText::FromString(IconText));
+            PreparationText->SetVisibility(ESlateVisibility::Visible);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Updated preparation icons: %s"), *IconText);
+        }
     }
     
     // Call Blueprint event

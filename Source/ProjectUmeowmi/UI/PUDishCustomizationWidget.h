@@ -6,6 +6,7 @@
 #include "PUIngredientButton.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
+#include "PUIngredientSlot.h"
 #include "PUDishCustomizationWidget.generated.h"
 
 class UPUDishCustomizationComponent;
@@ -80,7 +81,7 @@ public:
     void CreatePlatingIngredientButtons();
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
-    void SetIngredientSlotContainer(UPanelWidget* Container);
+    void SetIngredientSlotContainer(UPanelWidget* Container, EPUIngredientSlotLocation SlotLocation = EPUIngredientSlotLocation::Prep);
 
     // Planning stage functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
