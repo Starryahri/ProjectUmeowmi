@@ -302,8 +302,16 @@ UPUIngredientDragDropOperation* UPUPlatingWidget::CreateIngredientDragDropOperat
 
     if (DragOperation)
     {
-        // Set up the drag operation with ingredient data
-        DragOperation->SetupIngredientDrag(IngredientTag, IngredientData, InstanceID, Quantity);
+        // Create ingredient instance from parameters
+        FIngredientInstance IngredientInstance;
+        IngredientInstance.InstanceID = InstanceID;
+        IngredientInstance.Quantity = Quantity;
+        IngredientInstance.IngredientData = IngredientData;
+        IngredientInstance.IngredientTag = IngredientTag;
+        IngredientInstance.Preparations = IngredientData.ActivePreparations;
+        
+        // Set up the drag operation with ingredient instance
+        DragOperation->SetupIngredientDrag(IngredientInstance);
         
         UE_LOG(LogTemp, Display, TEXT("✅ UPUPlatingWidget::CreateIngredientDragDropOperation - Successfully created drag operation"));
     }

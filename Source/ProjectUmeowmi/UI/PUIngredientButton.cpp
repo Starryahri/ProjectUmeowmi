@@ -407,13 +407,8 @@ UPUIngredientDragDropOperation* UPUIngredientButton::CreateIngredientDragDropOpe
 
     if (DragOperation)
     {
-        // Set up the drag operation with ingredient data
-        DragOperation->SetupIngredientDrag(
-            IngredientInstance.IngredientData.IngredientTag,
-            IngredientInstance.IngredientData,
-            IngredientInstance.InstanceID,
-            IngredientInstance.Quantity
-        );
+        // Set up the drag operation with ingredient instance
+        DragOperation->SetupIngredientDrag(IngredientInstance);
         
         UE_LOG(LogTemp, Display, TEXT("✅ PUIngredientButton::CreateIngredientDragDropOperation - Successfully created drag operation"));
     }

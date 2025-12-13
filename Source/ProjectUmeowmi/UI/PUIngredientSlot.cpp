@@ -11,6 +11,7 @@
 #include "../DishCustomization/PUPreparationBase.h"
 #include "Engine/DataTable.h"
 #include "PUDishCustomizationWidget.h"
+#include "PUCookingStageWidget.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SlateWrapperTypes.h"
@@ -232,6 +233,21 @@ void UPUIngredientSlot::UpdateDisplay()
         // Update quantity and preparation text displays (they will hide themselves if in prep/cooking stage)
         UpdateQuantityDisplay();
         UpdatePreparationDisplay();
+        
+        // FORCE quantity control to be visible in cooking stage after UpdateDisplay
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            if (QuantityControlWidget)
+            {
+                QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlWidget to Visible in cooking stage"));
+            }
+            if (QuantityControlContainer)
+            {
+                QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlContainer to Visible in cooking stage"));
+            }
+        }
     }
 }
 
@@ -505,6 +521,9 @@ void UPUIngredientSlot::UpdateQuantityControl()
     // Update quantity control with current ingredient instance
     if (QuantityControlWidget)
     {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget EXISTS, Location: %d (ActiveIngredientArea=%d)"),
+            (int32)Location, (int32)EPUIngredientSlotLocation::ActiveIngredientArea);
+        
         // Hide quantity control in plating, prep, and pantry stages
         // Show it in cooking stage (ActiveIngredientArea)
         if (Location == EPUIngredientSlotLocation::Plating || 
@@ -512,16 +531,22 @@ void UPUIngredientSlot::UpdateQuantityControl()
             Location == EPUIngredientSlotLocation::Pantry)
         {
             QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Hiding quantity control (Location: %d)"), (int32)Location);
+            if (QuantityControlContainer)
+            {
+                QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
+            }
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Hiding quantity control and container (Location: %d)"), (int32)Location);
             return;
         }
         
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - SHOWING quantity control (Location: %d = ActiveIngredientArea)"), (int32)Location);
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Setting ingredient instance on quantity control"));
-        UE_LOG(LogTemp, Display, TEXT("🎯   Slot Instance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d"),
+        UE_LOG(LogTemp, Display, TEXT("🎯   Slot Instance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d, HasIngredient: %s"),
             IngredientInstance.InstanceID,
             IngredientInstance.Quantity,
             *IngredientInstance.IngredientData.DisplayName.ToString(),
-            IngredientInstance.Preparations.Num());
+            IngredientInstance.Preparations.Num(),
+            bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
         
         // Verify the instance has a valid ID before setting
         if (IngredientInstance.InstanceID == 0)
@@ -532,10 +557,29 @@ void UPUIngredientSlot::UpdateQuantityControl()
         QuantityControlWidget->SetIngredientInstance(IngredientInstance);
         QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
         
+        // Ensure the container is also visible
+        if (QuantityControlContainer)
+        {
+            QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Set QuantityControlContainer to Visible"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlContainer is NULL! Container cannot be shown."));
+        }
+        
         // Verify it was set correctly
         const FIngredientInstance& SetInstance = QuantityControlWidget->GetIngredientInstance();
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - After setting, Quantity Control has Instance ID: %d, Qty: %d"),
-            SetInstance.InstanceID, SetInstance.Quantity);
+        ESlateVisibility CurrentVisibility = QuantityControlWidget->GetVisibility();
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - After setting, Quantity Control has Instance ID: %d, Qty: %d, Visibility: %d"),
+            SetInstance.InstanceID, SetInstance.Quantity, (int32)CurrentVisibility);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget is NULL! Cannot show quantity control."));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   QuantityControlContainer: %s, QuantityControlClass: %s"),
+            QuantityControlContainer ? TEXT("EXISTS") : TEXT("NULL"),
+            QuantityControlClass ? TEXT("SET") : TEXT("NULL"));
     }
 }
 
@@ -560,27 +604,46 @@ void UPUIngredientSlot::ClearDisplay()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
-    // Remove quantity control - first check if we have a reference, then search container
-    if (QuantityControlWidget)
+    // DON'T remove quantity control in cooking stage (ActiveIngredientArea) - just hide it
+    // Only remove it completely in other stages
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
     {
+        // In cooking stage, just hide it, don't remove it
+        if (QuantityControlWidget)
+        {
+            QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control in cooking stage (not removing)"));
+        }
         if (QuantityControlContainer)
         {
-            QuantityControlContainer->RemoveChild(QuantityControlWidget);
+            QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control container in cooking stage (not removing)"));
         }
-        QuantityControlWidget->RemoveFromParent();
-        QuantityControlWidget = nullptr;
     }
-    else if (QuantityControlContainer)
+    else
     {
-        // Search for any quantity control widget in the container (in case it was placed in Blueprint)
-        for (int32 i = QuantityControlContainer->GetChildrenCount() - 1; i >= 0; i--)
+        // Remove quantity control - first check if we have a reference, then search container
+        if (QuantityControlWidget)
         {
-            if (UPUIngredientQuantityControl* FoundWidget = Cast<UPUIngredientQuantityControl>(QuantityControlContainer->GetChildAt(i)))
+            if (QuantityControlContainer)
             {
-                QuantityControlContainer->RemoveChild(FoundWidget);
-                FoundWidget->RemoveFromParent();
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Removed quantity control widget found in container"));
-                break;
+                QuantityControlContainer->RemoveChild(QuantityControlWidget);
+            }
+            QuantityControlWidget->RemoveFromParent();
+            QuantityControlWidget = nullptr;
+        }
+        else if (QuantityControlContainer)
+        {
+            // Search for any quantity control widget in the container (in case it was placed in Blueprint)
+            for (int32 i = QuantityControlContainer->GetChildrenCount() - 1; i >= 0; i--)
+            {
+                if (UPUIngredientQuantityControl* FoundWidget = Cast<UPUIngredientQuantityControl>(QuantityControlContainer->GetChildAt(i)))
+                {
+                    QuantityControlContainer->RemoveChild(FoundWidget);
+                    FoundWidget->RemoveFromParent();
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Removed quantity control widget found in container"));
+                    break;
+                }
             }
         }
     }
@@ -637,12 +700,19 @@ bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDra
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragOver - Drag over slot: %s"),
-            *GetName());
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragOver - Drag over slot: %s (Location: %d, Empty: %s)"),
+            *GetName(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
 
-        // Call Blueprint event for visual feedback
+        // In cooking stage, allow drag over whether slot is empty or not (for swapping)
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            // Call Blueprint event for visual feedback
+            OnDragOverSlot();
+            return true;
+        }
+
+        // For other stages, allow drag over as before
         OnDragOverSlot();
-
         return true;
     }
 
@@ -654,20 +724,170 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Drop on slot: %s (Ingredient: %s)"),
-            *GetName(), *IngredientDragOp->IngredientData.DisplayName.ToString());
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Drop on slot: %s (Ingredient: %s, Location: %d, Empty: %s)"),
+            *GetName(), *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
 
-        // Create ingredient instance from drag operation
-        FIngredientInstance NewInstance;
-        NewInstance.InstanceID = IngredientDragOp->InstanceID;
-        NewInstance.Quantity = IngredientDragOp->Quantity;
-        NewInstance.IngredientData = IngredientDragOp->IngredientData;
-        NewInstance.IngredientTag = IngredientDragOp->IngredientTag;
-        // Sync Preparations with ActivePreparations from IngredientData
-        NewInstance.Preparations = IngredientDragOp->IngredientData.ActivePreparations;
+        // In cooking stage, handle both empty slots (move) and occupied slots (swap)
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            // Store the target slot's ingredient instance if it exists (for swapping)
+            FIngredientInstance TargetSlotIngredient = IngredientInstance;
+            bool bTargetSlotHasIngredient = !IsEmpty();
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Cooking stage drop (Target empty: %s)"), 
+                bTargetSlotHasIngredient ? TEXT("FALSE") : TEXT("TRUE"));
+            
+            if (bTargetSlotHasIngredient)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯   Target slot has ingredient - ID: %d, Qty: %d, Ingredient: %s"),
+                    TargetSlotIngredient.InstanceID,
+                    TargetSlotIngredient.Quantity,
+                    *TargetSlotIngredient.IngredientData.DisplayName.ToString());
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯   Drag Operation IngredientInstance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d"),
+                IngredientDragOp->IngredientInstance.InstanceID,
+                IngredientDragOp->IngredientInstance.Quantity,
+                *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(),
+                IngredientDragOp->IngredientInstance.Preparations.Num());
 
-        // Set the ingredient instance
-        SetIngredientInstance(NewInstance);
+            // Set the target slot with the dragged ingredient
+            SetIngredientInstance(IngredientDragOp->IngredientInstance);
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - After SetIngredientInstance, slot has - ID: %d, Qty: %d, HasIngredient: %s, Location: %d"),
+                IngredientInstance.InstanceID,
+                IngredientInstance.Quantity,
+                bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
+                (int32)Location);
+            
+            // FORCE update and show quantity control after drop
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - FORCING quantity control to be visible after drop"));
+            UpdateQuantityControl();
+            
+            // Double-check visibility is set correctly
+            if (QuantityControlWidget)
+            {
+                QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Explicitly set QuantityControlWidget to Visible"));
+            }
+            if (QuantityControlContainer)
+            {
+                QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Explicitly set QuantityControlContainer to Visible"));
+            }
+
+            // Find the source slot (the slot we dragged from) in the cooking stage
+            // If target slot was empty: clear the source slot (move)
+            // If target slot had an ingredient: swap by setting source slot with target's ingredient (swap)
+            // Try to find the parent widget (could be PUDishCustomizationWidget or PUCookingStageWidget)
+            UUserWidget* ParentWidget = GetTypedOuter<UUserWidget>();
+            TArray<UPUIngredientSlot*> AllSlots;
+            
+            // Try PUDishCustomizationWidget first
+            if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(ParentWidget))
+            {
+                AllSlots = DishWidget->GetCreatedIngredientSlots();
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget, got %d slots"), AllSlots.Num());
+            }
+            // Try PUCookingStageWidget
+            else if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(ParentWidget))
+            {
+                AllSlots = CookingWidget->GetCreatedIngredientSlots();
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found UPUCookingStageWidget, got %d slots"), AllSlots.Num());
+            }
+            else
+            {
+                // Try to find it by traversing up the widget hierarchy
+                UWidget* Parent = GetParent();
+                while (Parent)
+                {
+                    if (UPUDishCustomizationWidget* FoundDishWidget = Cast<UPUDishCustomizationWidget>(Parent))
+                    {
+                        AllSlots = FoundDishWidget->GetCreatedIngredientSlots();
+                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget via hierarchy, got %d slots"), AllSlots.Num());
+                        break;
+                    }
+                    if (UPUCookingStageWidget* FoundCookingWidget = Cast<UPUCookingStageWidget>(Parent))
+                    {
+                        AllSlots = FoundCookingWidget->GetCreatedIngredientSlots();
+                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found UPUCookingStageWidget via hierarchy, got %d slots"), AllSlots.Num());
+                        break;
+                    }
+                    if (Parent->GetParent())
+                    {
+                        Parent = Parent->GetParent();
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+
+            // Find the source slot with the same InstanceID in the cooking stage
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Searching %d slots for source slot with InstanceID: %d"), 
+                AllSlots.Num(), IngredientDragOp->IngredientInstance.InstanceID);
+            
+            bool bFoundSourceSlot = false;
+            for (UPUIngredientSlot* SourceSlot : AllSlots)
+            {
+                if (SourceSlot && SourceSlot != this)
+                {
+                    const FIngredientInstance& SourceInstance = SourceSlot->GetIngredientInstance();
+                    UE_LOG(LogTemp, Display, TEXT("🎯   Checking slot: %s (Location: %d, InstanceID: %d, HasIngredient: %s)"),
+                        *SourceSlot->GetName(),
+                        (int32)SourceSlot->GetLocation(),
+                        SourceInstance.InstanceID,
+                        SourceSlot->IsEmpty() ? TEXT("FALSE") : TEXT("TRUE"));
+                    
+                    if (SourceSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea &&
+                        SourceInstance.InstanceID == IngredientDragOp->IngredientInstance.InstanceID &&
+                        !SourceSlot->IsEmpty())
+                    {
+                        if (bTargetSlotHasIngredient)
+                        {
+                            // SWAP: Set source slot with target slot's ingredient
+                            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - SWAPPING: Setting source slot %s with target slot's ingredient (ID: %d)"), 
+                                *SourceSlot->GetName(), TargetSlotIngredient.InstanceID);
+                            SourceSlot->SetIngredientInstance(TargetSlotIngredient);
+                            
+                            // Update quantity control on source slot after swap
+                            SourceSlot->UpdateQuantityControl();
+                            if (UPUIngredientQuantityControl* SourceQuantityControl = SourceSlot->GetQuantityControl())
+                            {
+                                SourceQuantityControl->SetVisibility(ESlateVisibility::Visible);
+                            }
+                            if (UPanelWidget* SourceQuantityContainer = SourceSlot->GetQuantityControlContainer())
+                            {
+                                SourceQuantityContainer->SetVisibility(ESlateVisibility::Visible);
+                            }
+                        }
+                        else
+                        {
+                            // MOVE: Clear the source slot
+                            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - MOVING: Clearing source slot: %s"), *SourceSlot->GetName());
+                            SourceSlot->ClearSlot();
+                        }
+                        bFoundSourceSlot = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!bFoundSourceSlot)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeOnDrop - Could not find source slot with InstanceID: %d!"), 
+                    IngredientDragOp->IngredientInstance.InstanceID);
+            }
+
+            // Broadcast drop event
+            OnIngredientDroppedOnSlot.Broadcast(this);
+
+            return true;
+        }
+
+        // For other stages (plating, etc.), use the ingredient instance directly from the drag operation
+        SetIngredientInstance(IngredientDragOp->IngredientInstance);
 
         // Ensure quantity control stays hidden in plating stage after drop
         if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
@@ -1180,6 +1400,30 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
         *InMouseEvent.GetEffectingButton().ToString());
     
+    // Check if the click is on the quantity control widget - if so, let it handle the click
+    // This prevents drag detection from interfering with button clicks
+    if (QuantityControlWidget && QuantityControlWidget->GetVisibility() == ESlateVisibility::Visible && QuantityControlContainer)
+    {
+        // Get the quantity control container's geometry
+        FGeometry ContainerGeometry = QuantityControlContainer->GetCachedGeometry();
+        
+        // Check if the click position is within the container's bounds
+        FVector2D ClickPosition = InMouseEvent.GetScreenSpacePosition();
+        FVector2D ContainerAbsolutePosition = ContainerGeometry.GetAbsolutePosition();
+        FVector2D ContainerSize = ContainerGeometry.GetAbsoluteSize();
+        
+        // Check if click is within container bounds
+        if (ClickPosition.X >= ContainerAbsolutePosition.X && 
+            ClickPosition.X <= ContainerAbsolutePosition.X + ContainerSize.X &&
+            ClickPosition.Y >= ContainerAbsolutePosition.Y && 
+            ClickPosition.Y <= ContainerAbsolutePosition.Y + ContainerSize.Y)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Click is on quantity control (pos: %.2f,%.2f, container: %.2f,%.2f size: %.2f,%.2f), letting it handle the event"), 
+                ClickPosition.X, ClickPosition.Y, ContainerAbsolutePosition.X, ContainerAbsolutePosition.Y, ContainerSize.X, ContainerSize.Y);
+            return FReply::Unhandled(); // Let the quantity control buttons handle the click
+        }
+    }
+    
     // Only handle left mouse button and only if drag is enabled and slot has an ingredient
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDragEnabled && bHasIngredient)
     {
@@ -1229,13 +1473,8 @@ UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOpera
 
     if (DragOperation)
     {
-        // Set up the drag operation with ingredient data
-        DragOperation->SetupIngredientDrag(
-            IngredientInstance.IngredientData.IngredientTag,
-            IngredientInstance.IngredientData,
-            IngredientInstance.InstanceID,
-            IngredientInstance.Quantity
-        );
+        // Set up the drag operation with ingredient instance
+        DragOperation->SetupIngredientDrag(IngredientInstance);
         
         UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Successfully created drag operation"));
     }
@@ -1544,6 +1783,13 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
             DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
             if (DishComponent)
             {
+                // Check if we're in plating mode before spawning
+                if (!DishComponent->IsPlatingMode())
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Not in plating mode, aborting spawn"));
+                    return;
+                }
+                
                 UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Calling SpawnIngredientIn3DByInstanceID on customization component"));
                 DishComponent->SpawnIngredientIn3DByInstanceID(IngredientInstance.InstanceID, SpawnPosition);
                 UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - SpawnIngredientIn3DByInstanceID call completed"));
@@ -1552,9 +1798,16 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
         }
     }
     
+    // If we didn't find a component or weren't in plating mode, return early
+    if (!DishComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Could not find dish customization component"));
+        return;
+    }
+    
     // After spawning, decrease the quantity by 1 and update the display
     // (PlaceIngredient tracks placements in the component, but we need to update our local display)
-    if (DishComponent && IngredientInstance.Quantity > 0)
+    if (IngredientInstance.Quantity > 0)
     {
         // Decrease quantity by 1 since we just spawned one
         IngredientInstance.Quantity--;

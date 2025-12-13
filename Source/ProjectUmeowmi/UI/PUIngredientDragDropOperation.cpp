@@ -3,29 +3,21 @@
 
 UPUIngredientDragDropOperation::UPUIngredientDragDropOperation()
 {
-    InstanceID = 0; // Will be set when SetupIngredientDrag is called
-    Quantity = 1;
+    // IngredientInstance will be set when SetupIngredientDrag is called
 }
 
-void UPUIngredientDragDropOperation::SetupIngredientDrag(const FGameplayTag& InIngredientTag, const FPUIngredientBase& InIngredientData, int32 InInstanceID, int32 InQuantity)
+void UPUIngredientDragDropOperation::SetupIngredientDrag(const FIngredientInstance& InIngredientInstance)
 {
-    IngredientTag = InIngredientTag;
-    IngredientData = InIngredientData;
+    IngredientInstance = InIngredientInstance;
     
-    // Generate a unique ID if none provided (InInstanceID == 0)
-    if (InInstanceID == 0)
+    // Generate a unique ID if none provided (InstanceID == 0)
+    if (IngredientInstance.InstanceID == 0)
     {
         // Use GUID-based unique ID generation
-        InstanceID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
-        UE_LOG(LogTemp, Display, TEXT("🔍 Generated GUID-based InstanceID: %d"), InstanceID);
+        IngredientInstance.InstanceID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
+        UE_LOG(LogTemp, Display, TEXT("🔍 Generated GUID-based InstanceID: %d"), IngredientInstance.InstanceID);
     }
-    else
-    {
-        InstanceID = InInstanceID;
-    }
-    
-    Quantity = InQuantity;
 
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetupIngredientDrag - Set up drag for ingredient %s (ID: %d, Qty: %d)"), 
-        *IngredientTag.ToString(), InstanceID, Quantity);
+        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
 } 

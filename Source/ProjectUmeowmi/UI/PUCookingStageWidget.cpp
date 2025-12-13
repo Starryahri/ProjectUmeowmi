@@ -687,10 +687,10 @@ void UPUCookingStageWidget::FindQuantityControlsRecursive(UWidget* ParentWidget,
     }
 }
 
-void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex, const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity)
+void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex, const FIngredientInstance& IngredientInstance)
 {
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Ingredient %s dropped on implement %d (ID: %d, Qty: %d)"), 
-        *IngredientTag.ToString(), ImplementIndex, InstanceID, Quantity);
+        *IngredientInstance.IngredientData.DisplayName.ToString(), ImplementIndex, IngredientInstance.InstanceID, IngredientInstance.Quantity);
     
     // Validate implement index
     if (ImplementIndex < 0 || ImplementIndex >= SpawnedCookingImplements.Num())
@@ -711,18 +711,18 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
     const FGameplayTagContainer AllowedTags = GetPreparationTagsForImplement(ImplementIndex);
     
     // First, try to update existing quantity control if it exists
-    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call UpdateExistingQuantityControl for InstanceID: %d"), InstanceID);
-    bool bFoundExisting = UpdateExistingQuantityControl(InstanceID, AllowedTags);
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to call UpdateExistingQuantityControl for InstanceID: %d"), IngredientInstance.InstanceID);
+    bool bFoundExisting = UpdateExistingQuantityControl(IngredientInstance.InstanceID, AllowedTags);
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: UpdateExistingQuantityControl returned: %s"), bFoundExisting ? TEXT("TRUE") : TEXT("FALSE"));
     
     if (bFoundExisting)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Updated existing quantity control for InstanceID: %d"), InstanceID);
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Updated existing quantity control for InstanceID: %d"), IngredientInstance.InstanceID);
         
         // Update the dish data to reflect the new preparations
         for (FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
         {
-            if (Instance.InstanceID == InstanceID)
+            if (Instance.InstanceID == IngredientInstance.InstanceID)
             {
                 // Apply the new preparations to the dish data as well
                 TArray<FGameplayTag> PreparationTags;
@@ -751,8 +751,8 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
     {
         UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: No existing quantity control found, creating new one"));
         
-        // Create quantity control from dropped ingredient
-        CreateQuantityControlFromDroppedIngredient(IngredientData, InstanceID, Quantity);
+        // Create quantity control from dropped ingredient instance
+        CreateQuantityControlFromDroppedIngredient(IngredientInstance.IngredientData, IngredientInstance.InstanceID, IngredientInstance.Quantity);
         
         UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: CreateQuantityControlFromDroppedIngredient completed"));
     }
@@ -764,7 +764,7 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
         ? CookingImplementNames[ImplementIndex]
         : FString::Printf(TEXT("Implement %d"), ImplementIndex);
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Applied %s to %s"), 
-        *IngredientData.DisplayName.ToString(), *ImplementName);
+        *IngredientInstance.IngredientData.DisplayName.ToString(), *ImplementName);
     
     // TODO: Implement additional cooking logic here
     // This is where you would:
@@ -2198,6 +2198,10 @@ void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
             // Set the location to ActiveIngredientArea
             IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
             
+            // Enable drag and drop for cooking stage slots (to allow moving ingredients between slots)
+            IngredientSlot->SetDragEnabled(true);
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Enabled drag for cooking stage slot"));
+            
             // Set the preparation data table FIRST (before setting ingredient instance)
             // This ensures preparations display correctly when UpdateDisplay() is called
             if (DishCustomizationComponent && DishCustomizationComponent->PreparationDataTable)
@@ -2471,7 +2475,7 @@ bool UPUCookingStageWidget::NativeOnDrop(const FGeometry& MyGeometry, const FDra
 			if (ImplementIdx == SelectedImplementIndex)
 			{
 				UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDrop - Dropping on active implement %d"), ImplementIdx);
-				OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
+				OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientInstance);
 				RotateCarouselToSelection(ImplementIdx);
 				return true;
 			}
@@ -2507,7 +2511,7 @@ void UPUCookingStageWidget::NativeOnDragCancelled(const FDragDropEvent& InDragDr
 			if (ImplementIdx == SelectedImplementIndex)
 			{
 				UE_LOG(LogTemp, Display, TEXT("🍳 NativeOnDragCancelled - Dropped on active implement %d"), ImplementIdx);
-				OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientTag, IngredientOp->IngredientData, IngredientOp->InstanceID, IngredientOp->Quantity);
+				OnIngredientDroppedOnImplement(ImplementIdx, IngredientOp->IngredientInstance);
 				RotateCarouselToSelection(ImplementIdx);
 			}
 			else

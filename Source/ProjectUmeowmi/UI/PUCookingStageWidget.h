@@ -118,10 +118,14 @@ public:
 
     // Drag and Drop Functions
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Drag Drop")
-    void OnIngredientDroppedOnImplement(int32 ImplementIndex, const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity);
+    void OnIngredientDroppedOnImplement(int32 ImplementIndex, const FIngredientInstance& IngredientInstance);
 
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Drag Drop")
     bool IsDragOverImplement(int32 ImplementIndex, const FVector2D& ScreenPosition) const;
+
+    // Get created ingredient slots (for drag and drop functionality)
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    const TArray<class UPUIngredientSlot*>& GetCreatedIngredientSlots() const { return CreatedIngredientSlots; }
 
     // Native drag and drop events
     virtual bool NativeOnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
