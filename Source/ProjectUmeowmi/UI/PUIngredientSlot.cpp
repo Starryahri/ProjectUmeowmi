@@ -730,6 +730,21 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
         // In cooking stage, handle both empty slots (move) and occupied slots (swap)
         if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
         {
+            // SAFETY CHECK: If InstanceID is 0, this is from pantry - generate new GUID and set quantity to 1
+            if (IngredientDragOp->IngredientInstance.InstanceID == 0)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::NativeOnDrop - Detected pantry drag (ID: 0), generating new GUID and setting quantity to 1"));
+                IngredientDragOp->IngredientInstance.InstanceID = GenerateGUIDBasedInstanceID();
+                IngredientDragOp->IngredientInstance.Quantity = 1;
+                // Ensure IngredientTag is set (should be from IngredientData, but set it explicitly for consistency)
+                if (!IngredientDragOp->IngredientInstance.IngredientTag.IsValid() && IngredientDragOp->IngredientInstance.IngredientData.IngredientTag.IsValid())
+                {
+                    IngredientDragOp->IngredientInstance.IngredientTag = IngredientDragOp->IngredientInstance.IngredientData.IngredientTag;
+                }
+                UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::NativeOnDrop - Generated new InstanceID: %d, Quantity: 1, Tag: %s"), 
+                    IngredientDragOp->IngredientInstance.InstanceID, *IngredientDragOp->IngredientInstance.IngredientTag.ToString());
+            }
+            
             // Store the target slot's ingredient instance if it exists (for swapping)
             FIngredientInstance TargetSlotIngredient = IngredientInstance;
             bool bTargetSlotHasIngredient = !IsEmpty();
@@ -936,12 +951,30 @@ void UPUIngredientSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent,
 
 FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s)"),
-        *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s, Location: %d)"),
+        *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
+
+    // Special handling for pantry slots - clicking should select the ingredient (not drag)
+    if (Location == EPUIngredientSlotLocation::Pantry && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        // Pantry slots: if we have valid ingredient data, treat click as selection (not drag)
+        if (IngredientInstance.IngredientData.IngredientTag.IsValid())
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Pantry slot clicked, triggering OnEmptySlotClicked for selection"));
+            // Use OnEmptySlotClicked event for pantry slot selection (bound to OnPantrySlotClicked in cooking stage)
+            OnEmptySlotClicked.Broadcast(this);
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeOnMouseButtonDown - Pantry slot clicked but no valid ingredient tag"));
+        }
+    }
 
     // If drag is enabled and we have an ingredient, don't handle left clicks here
     // Let the drag system handle it (NativeOnPreviewMouseButtonDown will handle drag)
-    if (bDragEnabled && bHasIngredient && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    // BUT: Don't do this for pantry slots - we want clicks to work for selection
+    if (Location != EPUIngredientSlotLocation::Pantry && bDragEnabled && bHasIngredient && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Drag enabled, letting drag system handle left click"));
         return FReply::Unhandled(); // Let drag system handle it
@@ -949,10 +982,13 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
 
     if (IsEmpty())
     {
-        // Empty slot clicked - open pantry
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Empty slot clicked, opening pantry"));
-        OnEmptySlotClicked.Broadcast(this);
-        return FReply::Handled();
+        // Empty slot clicked - open pantry (only for non-pantry locations)
+        if (Location != EPUIngredientSlotLocation::Pantry)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Empty slot clicked, opening pantry"));
+            OnEmptySlotClicked.Broadcast(this);
+            return FReply::Handled();
+        }
     }
 
     // Slot has ingredient - handle left/right click (only if drag is disabled for left click)
@@ -1424,11 +1460,33 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         }
     }
     
-    // Only handle left mouse button and only if drag is enabled and slot has an ingredient
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDragEnabled && bHasIngredient)
+    // Only handle left mouse button and only if drag is enabled
+    // For pantry slots, we want clicks to work for selection, but still allow dragging if mouse moves
+    bool bCanDrag = false;
+    bool bIsPantrySlot = (Location == EPUIngredientSlotLocation::Pantry);
+    
+    if (bIsPantrySlot)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s"), 
-            *IngredientInstance.IngredientData.DisplayName.ToString());
+        // For pantry slots, we want clicks to work for selection
+        // Don't set up drag detection here - let the click handler process it
+        // If user wants to drag, they can do it by actually dragging (we'll handle that separately if needed)
+        if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Pantry slot clicked, allowing click handler to process (no drag detection)"));
+            // Return Unhandled so NativeOnMouseButtonDown can process the click for selection
+            return FReply::Unhandled();
+        }
+    }
+    else
+    {
+        // Other slots require bHasIngredient to be true for dragging
+        bCanDrag = bDragEnabled && bHasIngredient;
+    }
+    
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bCanDrag && !bIsPantrySlot)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s (Location: %d)"), 
+            *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
         
         // Hide quantity control widget when dragging in plating stage
         if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
@@ -1465,8 +1523,8 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
 
 UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOperation() const
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d)"), 
-        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d, Location: %d)"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity, (int32)Location);
 
     // Create the drag drop operation
     UPUIngredientDragDropOperation* DragOperation = NewObject<UPUIngredientDragDropOperation>(GetWorld(), UPUIngredientDragDropOperation::StaticClass());
@@ -1474,9 +1532,23 @@ UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOpera
     if (DragOperation)
     {
         // Set up the drag operation with ingredient instance
+        // This will generate a new GUID if InstanceID is 0 (pantry slots)
         DragOperation->SetupIngredientDrag(IngredientInstance);
         
-        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Successfully created drag operation"));
+        // Create and set the drag visual widget with the ingredient icon
+        UPUIngredientSlot* DragVisual = CreateDragVisualWidget();
+        if (DragVisual)
+        {
+            DragOperation->SetDragVisualWidget(DragVisual);
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Created drag visual widget with ingredient icon"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::CreateIngredientDragDropOperation - Failed to create drag visual widget"));
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Successfully created drag operation (After Setup: ID: %d, Qty: %d)"), 
+            DragOperation->IngredientInstance.InstanceID, DragOperation->IngredientInstance.Quantity);
     }
     else
     {
@@ -1484,6 +1556,87 @@ UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOpera
     }
 
     return DragOperation;
+}
+
+UPUIngredientSlot* UPUIngredientSlot::CreateDragVisualWidget() const
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::CreateDragVisualWidget - Creating drag visual widget for ingredient: %s"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString());
+
+    if (!GetWorld())
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::CreateDragVisualWidget - No world context available"));
+        return nullptr;
+    }
+
+    // Get the slot class to use (same as this widget's class)
+    TSubclassOf<UPUIngredientSlot> SlotClass = GetClass();
+    if (!SlotClass)
+    {
+        SlotClass = UPUIngredientSlot::StaticClass();
+    }
+
+    // Create a new slot widget for the drag visual
+    UPUIngredientSlot* DragVisualWidget = CreateWidget<UPUIngredientSlot>(GetWorld(), SlotClass);
+    if (DragVisualWidget)
+    {
+        // IMPORTANT: Set location to ActiveIngredientArea for drag visual (not Pantry)
+        // This ensures the icon shows properly regardless of source location
+        DragVisualWidget->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
+        
+        // Create a copy of the ingredient instance for the drag visual
+        // Ensure it has quantity > 0 so bHasIngredient is set to true
+        FIngredientInstance VisualInstance = IngredientInstance;
+        if (VisualInstance.Quantity <= 0)
+        {
+            VisualInstance.Quantity = 1; // Set to 1 for visual purposes
+        }
+        if (VisualInstance.InstanceID == 0)
+        {
+            // If InstanceID is 0, use a temporary ID (not a real GUID, just for display)
+            VisualInstance.InstanceID = 999999; // Temporary ID for visual
+        }
+        
+        // Set the ingredient instance (this will update the display including the icon)
+        DragVisualWidget->SetIngredientInstance(VisualInstance);
+        
+        // Disable drag on the visual (it's just for display)
+        DragVisualWidget->SetDragEnabled(false);
+        
+        // Force update the icon explicitly to ensure it's visible
+        if (DragVisualWidget->IngredientIcon && IngredientInstance.IngredientData.PreviewTexture)
+        {
+            DragVisualWidget->IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
+            DragVisualWidget->IngredientIcon->SetVisibility(ESlateVisibility::Visible);
+            DragVisualWidget->IngredientIcon->SetColorAndOpacity(FLinearColor::White);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::CreateDragVisualWidget - Explicitly set ingredient icon texture: %s"), 
+                *IngredientInstance.IngredientData.PreviewTexture->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::CreateDragVisualWidget - IngredientIcon is null or PreviewTexture is null"));
+            if (!DragVisualWidget->IngredientIcon)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️   IngredientIcon component not found in drag visual widget"));
+            }
+            if (!IngredientInstance.IngredientData.PreviewTexture)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️   PreviewTexture is null for ingredient: %s"), 
+                    *IngredientInstance.IngredientData.DisplayName.ToString());
+            }
+        }
+        
+        // Update display to ensure everything is set correctly
+        DragVisualWidget->UpdateDisplay();
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateDragVisualWidget - Successfully created drag visual widget with ingredient icon"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::CreateDragVisualWidget - Failed to create drag visual widget"));
+    }
+
+    return DragVisualWidget;
 }
 
 void UPUIngredientSlot::DecreaseQuantity()

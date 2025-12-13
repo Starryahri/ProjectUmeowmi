@@ -104,6 +104,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Drag")
     class UPUIngredientDragDropOperation* CreateIngredientDragDropOperation() const;
 
+    // Create a drag visual widget (for use in Blueprint OnDragDetected)
+    // This creates a copy of the slot widget with the ingredient icon properly set
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Drag")
+    class UPUIngredientSlot* CreateDragVisualWidget() const;
+
     // Plating-specific functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
     void DecreaseQuantity();

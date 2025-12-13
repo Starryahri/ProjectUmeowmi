@@ -22,4 +22,8 @@ public:
     // Set up the drag operation with ingredient instance
     UFUNCTION(BlueprintCallable, Category = "Ingredient Drag Drop")
     void SetupIngredientDrag(const FIngredientInstance& InIngredientInstance);
+
+    // Set the drag visual widget (should be called from Blueprint OnDragDetected)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Drag Drop")
+    void SetDragVisualWidget(UWidget* VisualWidget);
 }; 

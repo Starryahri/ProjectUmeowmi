@@ -23,6 +23,8 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Engine/GameViewportClient.h"
+#include "Components/HorizontalBox.h"
+#include "Blueprint/WidgetTree.h"
 
 FGameplayTagContainer UPUCookingStageWidget::GetPreparationTagsForImplement(int32 ImplementIndex) const
 {
@@ -2140,7 +2142,13 @@ void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
     
     // Clear any existing slots
     CreatedIngredientSlots.Empty();
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Cleared existing slots"));
+    
+    // Clear shelving widgets for pantry
+    CreatedPantryShelvingWidgets.Empty();
+    CurrentPantryShelvingWidget.Reset();
+    CurrentPantryShelvingWidgetSlotCount = 0;
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Cleared existing slots and shelving widgets"));
     
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Found %d ingredient instances in dish data"), CurrentDishData.IngredientInstances.Num());
     
@@ -2246,6 +2254,9 @@ void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
             
             // Bind to slot's ingredient changed event so we can update dish data and flavor graphs
             IngredientSlot->OnSlotIngredientChanged.AddDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
+            
+            // Bind empty slot click event to open pantry
+            IngredientSlot->OnEmptySlotClicked.AddDynamic(this, &UPUCookingStageWidget::OnEmptySlotClicked);
             
             // Add to our array
             CreatedIngredientSlots.Add(IngredientSlot);
@@ -2545,4 +2556,505 @@ void UPUCookingStageWidget::NativeOnDragLeave(const FDragDropEvent& InDragDropEv
             HoveredImplementIndex = INDEX_NONE;
         }
     }
+}
+
+// ============================================================================
+// Pantry Functions
+// ============================================================================
+
+void UPUCookingStageWidget::SetPantryContainer(UPanelWidget* Container)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetPantryContainer - Setting pantry container"));
+    
+    if (Container)
+    {
+        PantryContainer = Container;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetPantryContainer - Container set successfully"));
+        
+        // If we already have created pantry shelving widgets, add them to the new container
+        if (CreatedPantryShelvingWidgets.Num() > 0)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetPantryContainer - Adding %d existing pantry shelving widgets to container"), CreatedPantryShelvingWidgets.Num());
+            for (UUserWidget* ShelvingWidget : CreatedPantryShelvingWidgets)
+            {
+                if (ShelvingWidget && !ShelvingWidget->GetParent())
+                {
+                    Container->AddChild(ShelvingWidget);
+                }
+            }
+        }
+        else if (!bPantrySlotsCreated)
+        {
+            // If container is set but slots haven't been created yet, populate them now
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetPantryContainer - Container set but slots not created, populating now"));
+            PopulatePantrySlots();
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetPantryContainer - Container is null"));
+    }
+}
+
+void UPUCookingStageWidget::SetPantryContainerByName(const FName& ContainerName)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetPantryContainerByName - Searching for container named: %s"), *ContainerName.ToString());
+    
+    // Search for the widget by name in the widget hierarchy
+    UWidget* FoundWidget = GetWidgetFromName(ContainerName);
+    
+    if (!FoundWidget)
+    {
+        // Try searching recursively through the widget tree
+        FoundWidget = WidgetTree ? WidgetTree->FindWidget(ContainerName) : nullptr;
+    }
+    
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        SetPantryContainer(PanelWidget);
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetPantryContainerByName - Found and set container: %s"), *ContainerName.ToString());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetPantryContainerByName - Could not find container widget named: %s"), *ContainerName.ToString());
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   Make sure the widget exists and is a UPanelWidget (HorizontalBox, VerticalBox, etc.)"));
+    }
+}
+
+void UPUCookingStageWidget::PopulatePantrySlots()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::PopulatePantrySlots - Populating pantry slots"));
+    
+    // Check if slots were already created
+    if (bPantrySlotsCreated)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::PopulatePantrySlots - Pantry slots already created, skipping"));
+        return;
+    }
+    
+    // Clear any existing shelving widgets and reset state
+    CreatedPantryShelvingWidgets.Empty();
+    CurrentPantryShelvingWidget.Reset();
+    CurrentPantryShelvingWidgetSlotCount = 0;
+    
+    // Check if we have a valid world context
+    if (!GetWorld())
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::PopulatePantrySlots - No world context available"));
+        return;
+    }
+    
+    // Check if we have a customization component to get ingredient data
+    if (!DishCustomizationComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::PopulatePantrySlots - No dish customization component available"));
+        return;
+    }
+    
+    // Get all available ingredients from the component
+    TArray<FPUIngredientBase> AvailableIngredients = DishCustomizationComponent->GetIngredientData();
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::PopulatePantrySlots - Found %d available ingredients"), AvailableIngredients.Num());
+    
+    // Get the container to use
+    UPanelWidget* ContainerToUse = nullptr;
+    if (PantryContainer.IsValid())
+    {
+        ContainerToUse = PantryContainer.Get();
+    }
+    
+    if (!ContainerToUse)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::PopulatePantrySlots - No pantry container set! Slots cannot be added."));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetPantryContainer() is called."));
+        // Don't mark as created if we don't have a container - we'll try again when container is set
+        return;
+    }
+    
+    // Create pantry slots for each available ingredient
+    for (const FPUIngredientBase& IngredientData : AvailableIngredients)
+    {
+        // Create ingredient slot using the Blueprint class
+        TSubclassOf<UPUIngredientSlot> SlotClass;
+        if (IngredientSlotClass)
+        {
+            SlotClass = IngredientSlotClass;
+        }
+        else
+        {
+            SlotClass = UPUIngredientSlot::StaticClass();
+        }
+        
+        UPUIngredientSlot* PantrySlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
+        if (PantrySlot)
+        {
+            // Set the location to Pantry
+            PantrySlot->SetLocation(EPUIngredientSlotLocation::Pantry);
+            
+            // Enable drag and drop for pantry slots
+            PantrySlot->SetDragEnabled(true);
+            
+            // Create a minimal ingredient instance with just the ingredient data (quantity 0)
+            // This allows the slot to display the pantry texture while remaining "empty"
+            FIngredientInstance PantryInstance;
+            PantryInstance.IngredientData = IngredientData;
+            PantryInstance.IngredientTag = IngredientData.IngredientTag; // Set the convenient tag field
+            PantryInstance.Quantity = 0; // Empty slot, but has ingredient data for display
+            PantryInstance.InstanceID = 0; // Not a real instance, just for display
+            
+            // Set the ingredient instance (slot will handle displaying pantry texture)
+            PantrySlot->SetIngredientInstance(PantryInstance);
+            
+            // Update the display
+            PantrySlot->UpdateDisplay();
+            
+            // Set the preparation data table if we have access to it
+            if (DishCustomizationComponent && DishCustomizationComponent->PreparationDataTable)
+            {
+                PantrySlot->SetPreparationDataTable(DishCustomizationComponent->PreparationDataTable);
+            }
+            
+            // Store slot reference in map for O(1) lookup
+            PantrySlotMap.Add(IngredientData.IngredientTag, PantrySlot);
+            
+            // Also add to array
+            CreatedPantrySlots.Add(PantrySlot);
+            
+            // Bind pantry slot click event to handle ingredient selection
+            PantrySlot->OnEmptySlotClicked.AddDynamic(this, &UPUCookingStageWidget::OnPantrySlotClicked);
+            
+            // Add to shelving widget (which will be added to container)
+            if (ContainerToUse)
+            {
+                // Get or create a current shelving widget
+                UUserWidget* ShelvingWidget = GetOrCreateCurrentPantryShelvingWidget(ContainerToUse);
+                if (ShelvingWidget)
+                {
+                    // Add slot to the shelving widget
+                    if (AddSlotToCurrentPantryShelvingWidget(PantrySlot))
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::PopulatePantrySlots - Added pantry slot to shelving widget for: %s"), 
+                            *IngredientData.DisplayName.ToString());
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::PopulatePantrySlots - Failed to add slot to shelving widget"));
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::PopulatePantrySlots - Failed to get or create shelving widget"));
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::PopulatePantrySlots - Pantry slot created but not added to container (container not set yet)"));
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::PopulatePantrySlots - Created pantry slot for: %s"), 
+                *IngredientData.DisplayName.ToString());
+        }
+    }
+    
+    // Only mark as created if we actually created slots and have a container
+    if (CreatedPantrySlots.Num() > 0 && ContainerToUse)
+    {
+        bPantrySlotsCreated = true;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::PopulatePantrySlots - Successfully created %d pantry slots in %d shelving widgets"), 
+            CreatedPantrySlots.Num(), CreatedPantryShelvingWidgets.Num());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::PopulatePantrySlots - Created %d slots but container not set, not marking as created"), 
+            CreatedPantrySlots.Num());
+    }
+}
+
+void UPUCookingStageWidget::OpenPantry()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OpenPantry - Opening pantry"));
+    
+    // Populate pantry slots if not already populated
+    if (!bPantrySlotsCreated)
+    {
+        PopulatePantrySlots();
+    }
+    
+    // Set pantry open flag
+    bPantryOpen = true;
+    
+    // Call Blueprint event to trigger UMG animation
+    OnPantryOpened();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OpenPantry - Pantry opened (Blueprint will handle animation)"));
+}
+
+void UPUCookingStageWidget::ClosePantry()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ClosePantry - Closing pantry"));
+    
+    // Set pantry open flag
+    bPantryOpen = false;
+    
+    // Clear pending empty slot
+    PendingEmptySlot.Reset();
+    
+    // Call Blueprint event to trigger UMG animation (normal close - play forward or hide)
+    OnPantryClosed();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ClosePantry - Pantry closed (Blueprint will handle animation)"));
+}
+
+void UPUCookingStageWidget::ClosePantryFromDrag()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ClosePantryFromDrag - Closing pantry from drag operation"));
+    
+    // Set pantry open flag
+    bPantryOpen = false;
+    
+    // Clear pending empty slot
+    PendingEmptySlot.Reset();
+    
+    // Call Blueprint event to trigger UMG animation in reverse
+    OnPantryClosedFromDrag();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::ClosePantryFromDrag - Pantry closed from drag (Blueprint will play animation in reverse)"));
+}
+
+UUserWidget* UPUCookingStageWidget::GetOrCreateCurrentPantryShelvingWidget(UPanelWidget* ContainerToUse)
+{
+    // Check if we need a new shelving widget
+    // Need a new one if: no current widget, or current widget has 3 slots
+    if (!CurrentPantryShelvingWidget.IsValid() || CurrentPantryShelvingWidgetSlotCount >= 3)
+    {
+        // Create a new shelving widget
+        if (!ShelvingWidgetClass)
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::GetOrCreateCurrentPantryShelvingWidget - ShelvingWidgetClass not set!"));
+            return nullptr;
+        }
+        
+        if (!GetWorld())
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::GetOrCreateCurrentPantryShelvingWidget - No world context available"));
+            return nullptr;
+        }
+        
+        UUserWidget* NewShelvingWidget = CreateWidget<UUserWidget>(this, ShelvingWidgetClass);
+        if (!NewShelvingWidget)
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::GetOrCreateCurrentPantryShelvingWidget - Failed to create shelving widget"));
+            return nullptr;
+        }
+        
+        // Add the shelving widget to the container
+        if (ContainerToUse)
+        {
+            ContainerToUse->AddChild(NewShelvingWidget);
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::GetOrCreateCurrentPantryShelvingWidget - Created and added new shelving widget (Total: %d)"), 
+                CreatedPantryShelvingWidgets.Num() + 1);
+        }
+        
+        // Track the new shelving widget
+        CreatedPantryShelvingWidgets.Add(NewShelvingWidget);
+        CurrentPantryShelvingWidget = NewShelvingWidget;
+        CurrentPantryShelvingWidgetSlotCount = 0;
+        
+        return NewShelvingWidget;
+    }
+    
+    // Return the current shelving widget
+    return CurrentPantryShelvingWidget.Get();
+}
+
+bool UPUCookingStageWidget::AddSlotToCurrentPantryShelvingWidget(UPUIngredientSlot* IngredientSlot)
+{
+    if (!IngredientSlot)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::AddSlotToCurrentPantryShelvingWidget - IngredientSlot is null"));
+        return false;
+    }
+    
+    if (!CurrentPantryShelvingWidget.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::AddSlotToCurrentPantryShelvingWidget - CurrentPantryShelvingWidget is not valid"));
+        return false;
+    }
+    
+    // Find the HorizontalBox inside the shelving widget
+    // First, try to get it by name
+    UWidget* FoundWidget = CurrentPantryShelvingWidget->GetWidgetFromName(ShelvingHorizontalBoxName);
+    if (!FoundWidget)
+    {
+        // If not found by name, try common names
+        FoundWidget = CurrentPantryShelvingWidget->GetWidgetFromName(TEXT("HorizontalBox"));
+        if (!FoundWidget)
+        {
+            FoundWidget = CurrentPantryShelvingWidget->GetWidgetFromName(TEXT("SlotContainer"));
+        }
+    }
+    
+    // Try to cast to HorizontalBox
+    if (UHorizontalBox* HorizontalBox = Cast<UHorizontalBox>(FoundWidget))
+    {
+        HorizontalBox->AddChild(IngredientSlot);
+        CurrentPantryShelvingWidgetSlotCount++;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::AddSlotToCurrentPantryShelvingWidget - Added slot to HorizontalBox (Slot count: %d/3)"), 
+            CurrentPantryShelvingWidgetSlotCount);
+        return true;
+    }
+    
+    // Try casting to any panel widget
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        PanelWidget->AddChild(IngredientSlot);
+        CurrentPantryShelvingWidgetSlotCount++;
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::AddSlotToCurrentPantryShelvingWidget - Added slot to panel widget (Slot count: %d/3)"), 
+            CurrentPantryShelvingWidgetSlotCount);
+        return true;
+    }
+    
+    // If still not found, log error with helpful message
+    UE_LOG(LogTemp, Error, TEXT("❌ PUCookingStageWidget::AddSlotToCurrentPantryShelvingWidget - Could not find HorizontalBox or panel widget in WBP_Shelving!"));
+    UE_LOG(LogTemp, Error, TEXT("   Searched for widget named: '%s', 'HorizontalBox', 'SlotContainer'"), *ShelvingHorizontalBoxName.ToString());
+    UE_LOG(LogTemp, Error, TEXT("   Please ensure WBP_Shelving contains a HorizontalBox (or other panel widget) with one of these names."));
+    return false;
+}
+
+void UPUCookingStageWidget::OnPantryButtonClicked()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantryButtonClicked - Pantry button clicked"));
+    
+    if (bPantryOpen)
+    {
+        ClosePantry();
+    }
+    else
+    {
+        OpenPantry();
+    }
+}
+
+void UPUCookingStageWidget::OnPantrySlotClicked(UPUIngredientSlot* IngredientSlot)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Pantry slot clicked (Slot: %s)"), 
+        IngredientSlot ? *IngredientSlot->GetName() : TEXT("NULL"));
+    
+    if (!IngredientSlot)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - IngredientSlot is null!"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - PantrySlotMap has %d entries"), PantrySlotMap.Num());
+    
+    // Find the ingredient data from the pantry slot map
+    bool bFoundSlot = false;
+    for (auto& SlotPair : PantrySlotMap)
+    {
+        if (SlotPair.Value == IngredientSlot)
+        {
+            bFoundSlot = true;
+            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Found slot in map with tag: %s"), 
+                *SlotPair.Key.ToString());
+            
+            // Found the slot, get the ingredient data from the component
+            if (DishCustomizationComponent)
+            {
+                TArray<FPUIngredientBase> AvailableIngredients = DishCustomizationComponent->GetIngredientData();
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Available ingredients: %d"), AvailableIngredients.Num());
+                
+                const FPUIngredientBase* FoundIngredient = AvailableIngredients.FindByPredicate([&SlotPair](const FPUIngredientBase& Ingredient) {
+                    return Ingredient.IngredientTag == SlotPair.Key;
+                });
+                
+                if (FoundIngredient)
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Found ingredient: %s, PendingEmptySlot valid: %s"), 
+                        *FoundIngredient->DisplayName.ToString(), PendingEmptySlot.IsValid() ? TEXT("YES") : TEXT("NO"));
+                    
+                    // If we have a pending empty slot, populate it
+                    if (PendingEmptySlot.IsValid())
+                    {
+                        UPUIngredientSlot* EmptySlot = PendingEmptySlot.Get();
+                        
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populating empty slot: %s"), 
+                            *EmptySlot->GetName());
+                        
+                        // Create a new ingredient instance with GUID-based ID and quantity 1
+                        FIngredientInstance NewInstance;
+                        NewInstance.IngredientData = *FoundIngredient;
+                        NewInstance.InstanceID = GenerateGUIDBasedInstanceID();
+                        NewInstance.Quantity = 1;
+                        NewInstance.IngredientTag = FoundIngredient->IngredientTag; // Set the convenient tag field
+                        
+                        // Set the ingredient instance on the empty slot
+                        EmptySlot->SetIngredientInstance(NewInstance);
+                        
+                        // Bind to slot's ingredient changed event (check if already bound to avoid duplicates)
+                        EmptySlot->OnSlotIngredientChanged.AddUniqueDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
+                        
+                        // Update dish data
+                        CurrentDishData.IngredientInstances.Add(NewInstance);
+                        OnDishDataChanged(CurrentDishData);
+                        
+                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populated empty slot with: %s (ID: %d, Qty: 1)"), 
+                            *FoundIngredient->DisplayName.ToString(), NewInstance.InstanceID);
+                        
+                        // Clear pending empty slot
+                        PendingEmptySlot.Reset();
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - No pending empty slot! Pantry slot clicked but no empty slot to populate."));
+                    }
+                    
+                    // Close the pantry
+                    ClosePantry();
+                    
+                    return;
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - Could not find ingredient with tag: %s"), 
+                        *SlotPair.Key.ToString());
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - DishCustomizationComponent is null!"));
+            }
+            break; // Found the slot, exit loop
+        }
+    }
+    
+    if (!bFoundSlot)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - Could not find clicked slot in PantrySlotMap!"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   Clicked slot: %s"), *IngredientSlot->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   PantrySlotMap entries: %d"), PantrySlotMap.Num());
+    }
+}
+
+void UPUCookingStageWidget::OnEmptySlotClicked(UPUIngredientSlot* IngredientSlot)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnEmptySlotClicked - Empty slot clicked in active ingredient area"));
+    
+    if (!IngredientSlot)
+    {
+        return;
+    }
+    
+    // Only handle empty slots in the active ingredient area
+    if (IngredientSlot->GetLocation() != EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        return;
+    }
+    
+    // Store the empty slot reference for later population
+    PendingEmptySlot = IngredientSlot;
+    
+    // Open the pantry
+    OpenPantry();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnEmptySlotClicked - Pantry opened for empty slot selection"));
 }

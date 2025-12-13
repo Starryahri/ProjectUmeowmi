@@ -98,6 +98,16 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget")
     void OnDishDataChanged(const FPUDishBase& DishData);
 
+    UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget|Pantry")
+    void OnPantryOpened();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget|Pantry")
+    void OnPantryClosed();
+
+    // Called when pantry is closed due to drag operation (play animation in reverse)
+    UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget|Pantry")
+    void OnPantryClosedFromDrag();
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Cooking Stage Widget|Events")
     FOnCookingCompleted OnCookingCompleted;
@@ -167,6 +177,49 @@ public:
     // Recursive helper function to find quantity controls
     void FindQuantityControlsRecursive(UWidget* ParentWidget, TArray<UPUIngredientQuantityControl*>& OutQuantityControls);
 
+    // Pantry Functions
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    void PopulatePantrySlots();
+
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    void OpenPantry();
+
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    void ClosePantry();
+
+    // Close pantry from drag operation (triggers reverse animation event)
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    void ClosePantryFromDrag();
+
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    bool IsPantryOpen() const { return bPantryOpen; }
+
+    // Handle pantry button click
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    void OnPantryButtonClicked();
+
+    // Handle pantry slot click (when selecting ingredient from pantry)
+    UFUNCTION()
+    void OnPantrySlotClicked(class UPUIngredientSlot* IngredientSlot);
+
+    // Handle empty slot click (opens pantry)
+    UFUNCTION()
+    void OnEmptySlotClicked(class UPUIngredientSlot* IngredientSlot);
+
+    // Helper function to get or create a current shelving widget
+    UUserWidget* GetOrCreateCurrentPantryShelvingWidget(UPanelWidget* ContainerToUse);
+    
+    // Helper function to add a slot to the current shelving widget
+    bool AddSlotToCurrentPantryShelvingWidget(class UPUIngredientSlot* IngredientSlot);
+
+    // Set the pantry container widget (by reference)
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    void SetPantryContainer(UPanelWidget* Container);
+
+    // Set the pantry container widget (by name - searches widget hierarchy)
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Pantry")
+    void SetPantryContainerByName(const FName& ContainerName);
+
 
 protected:
     // Current dish data (being built during cooking)
@@ -189,6 +242,14 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<class UPUIngredientSlot> IngredientSlotClass;
+
+    // Shelving widget class for organizing pantry slots (holds up to 3 slots)
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes|Pantry")
+    TSubclassOf<UUserWidget> ShelvingWidgetClass;
+
+    // Name of the HorizontalBox widget inside WBP_Shelving (default: "SlotContainer" or "HorizontalBox")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes|Pantry", meta = (ToolTip = "Name of the HorizontalBox widget inside WBP_Shelving where slots will be added"))
+    FName ShelvingHorizontalBoxName = TEXT("SlotContainer");
 
     // Ingredient Button Management Properties (DEPRECATED - use slots instead)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Ingredients")
@@ -221,6 +282,42 @@ protected:
     // Widget reference for quantity control container (set in Blueprint)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Ingredients")
     TWeakObjectPtr<class UPanelWidget> QuantityControlContainer;
+
+    // Pantry Management Properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Pantry")
+    TArray<class UPUIngredientSlot*> CreatedPantrySlots;
+
+    // Flag to prevent double creation
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Pantry")
+    bool bPantrySlotsCreated = false;
+
+    // Flag to track if pantry is open
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Pantry")
+    bool bPantryOpen = false;
+
+    // Widget reference for pantry container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Pantry")
+    TWeakObjectPtr<class UPanelWidget> PantryContainer;
+
+    // Store references to pantry slots by ingredient tag (for quick lookup)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Pantry")
+    TMap<FGameplayTag, class UPUIngredientSlot*> PantrySlotMap;
+
+    // Reference to the empty slot that triggered pantry open (for populating after selection)
+    UPROPERTY()
+    TWeakObjectPtr<class UPUIngredientSlot> PendingEmptySlot;
+
+    // Shelving widget management (for pantry slots)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Pantry")
+    TArray<UUserWidget*> CreatedPantryShelvingWidgets;
+
+    // Current shelving widget being filled (nullptr if we need to create a new one)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Pantry")
+    TWeakObjectPtr<UUserWidget> CurrentPantryShelvingWidget;
+
+    // Number of slots in the current shelving widget (0-3)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cooking Stage Widget|Pantry")
+    int32 CurrentPantryShelvingWidgetSlotCount = 0;
 
     // Carousel Properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Stage Widget|Carousel")
