@@ -10,6 +10,11 @@
 #include "Input/Events.h"
 #include "../DishCustomization/PUPreparationBase.h"
 #include "Engine/DataTable.h"
+#include "PUDishCustomizationWidget.h"
+#include "../DishCustomization/PUDishCustomizationComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Components/SlateWrapperTypes.h"
+#include "GameplayTagContainer.h"
 
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -18,6 +23,7 @@ UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer
     , QuantityControlWidget(nullptr)
     , RadialMenuWidget(nullptr)
     , bRadialMenuVisible(false)
+    , bDragEnabled(true)  // Enable drag by default for testing
 {
 }
 
@@ -33,11 +39,22 @@ void UPUIngredientSlot::NativeConstruct()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
-    // Initialize plate background opacity based on selection state
+    // Initialize plate background (always 100% opacity, outline hidden by default)
     UpdatePlateBackgroundOpacity();
 
-    // Update display on construction
+    // If InitialIngredientInstance is set (from Blueprint widget creation), apply it
+    // SetIngredientInstance will call UpdateDisplay() internally
+    if (InitialIngredientInstance.IngredientData.IngredientTag.IsValid())
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeConstruct - Initial ingredient instance found, applying: %s"), 
+            *InitialIngredientInstance.IngredientData.DisplayName.ToString());
+        SetIngredientInstance(InitialIngredientInstance);
+    }
+    else
+    {
+        // Update display on construction (only if no initial instance was set)
     UpdateDisplay();
+    }
 }
 
 void UPUIngredientSlot::NativeDestruct()
@@ -69,6 +86,10 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
 
     // Store the instance data
     IngredientInstance = InIngredientInstance;
+    
+    // Set plating-specific properties
+    MaxQuantity = InIngredientInstance.Quantity;
+    RemainingQuantity = MaxQuantity;
     
     // If quantity is 0, treat as empty (but still store ingredient data for pantry texture display)
     // Also check if InstanceID is 0 - if so, this is likely a pantry slot placeholder
@@ -536,8 +557,16 @@ void UPUIngredientSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent,
 
 FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s"),
-        *GetName());
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s)"),
+        *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+
+    // If drag is enabled and we have an ingredient, don't handle left clicks here
+    // Let the drag system handle it (NativeOnPreviewMouseButtonDown will handle drag)
+    if (bDragEnabled && bHasIngredient && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Drag enabled, letting drag system handle left click"));
+        return FReply::Unhandled(); // Let drag system handle it
+    }
 
     if (IsEmpty())
     {
@@ -547,11 +576,11 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         return FReply::Handled();
     }
 
-    // Slot has ingredient - handle left/right click
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    // Slot has ingredient - handle left/right click (only if drag is disabled for left click)
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bDragEnabled)
     {
-        // Left click - show prep radial menu
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click, showing prep radial menu"));
+        // Left click - show prep radial menu (only when drag is disabled)
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click (drag disabled), showing prep radial menu"));
         ShowRadialMenu(true);
         return FReply::Handled();
     }
@@ -655,13 +684,29 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    // Change plate background opacity to 1.0 on hover (always, regardless of selection)
+    // Show outline on hover by setting outline alpha to visible
     if (PlateBackground)
     {
-        FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
-        CurrentColor.A = 1.0f;
-        PlateBackground->SetColorAndOpacity(CurrentColor);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Set plate background opacity to 1.0"));
+        FSlateBrush Brush = PlateBackground->GetBrush();
+        if (Brush.OutlineSettings.Width > 0.0f)
+        {
+            // Enable outline by making it visible
+            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
+            OutlineColor.A = 1.0f;
+            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+            PlateBackground->SetBrush(Brush);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Showing outline on plate background"));
+        }
+        else
+        {
+            // If no outline settings, set outline width and color
+            Brush.OutlineSettings.Width = 2.0f;
+            FLinearColor OutlineColor = FLinearColor::White;
+            OutlineColor.A = 1.0f;
+            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+            PlateBackground->SetBrush(Brush);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Enabled outline on plate background"));
+        }
     }
 }
 
@@ -675,8 +720,18 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
     // Hide hover text
     UpdateHoverTextVisibility(false);
 
-    // Restore plate background opacity based on selection state
-    UpdatePlateBackgroundOpacity();
+    // Hide outline on hover leave, but keep it visible if selected
+    if (PlateBackground)
+    {
+        FSlateBrush Brush = PlateBackground->GetBrush();
+        FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
+        // Keep outline visible if slot is selected, otherwise hide it
+        OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
+        Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+        PlateBackground->SetBrush(Brush);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Outline alpha set to: %.2f (Selected: %s)"), 
+            OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
+    }
 }
 
 void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent)
@@ -689,13 +744,27 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    // Change plate background opacity to 1.0 on focus (always, regardless of selection)
+    // Show outline on focus
     if (PlateBackground)
     {
-        FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
-        CurrentColor.A = 1.0f;
-        PlateBackground->SetColorAndOpacity(CurrentColor);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Set plate background opacity to 1.0"));
+        FSlateBrush Brush = PlateBackground->GetBrush();
+        if (Brush.OutlineSettings.Width > 0.0f)
+        {
+            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
+            OutlineColor.A = 1.0f;
+            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+            PlateBackground->SetBrush(Brush);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Showing outline on plate background"));
+        }
+        else
+        {
+            Brush.OutlineSettings.Width = 2.0f;
+            FLinearColor OutlineColor = FLinearColor::White;
+            OutlineColor.A = 1.0f;
+            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+            PlateBackground->SetBrush(Brush);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Enabled outline on plate background"));
+        }
     }
 }
 
@@ -709,8 +778,18 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
     // Hide hover text
     UpdateHoverTextVisibility(false);
 
-    // Restore plate background opacity based on selection state
-    UpdatePlateBackgroundOpacity();
+    // Hide outline on focus removal, but keep it visible if selected
+    if (PlateBackground)
+    {
+        FSlateBrush Brush = PlateBackground->GetBrush();
+        FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
+        // Keep outline visible if slot is selected, otherwise hide it
+        OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
+        Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+        PlateBackground->SetBrush(Brush);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Outline alpha set to: %.2f (Selected: %s)"), 
+            OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
+    }
 }
 
 FText UPUIngredientSlot::GetIngredientDisplayText() const
@@ -822,6 +901,20 @@ void UPUIngredientSlot::SetSelected(bool bSelected)
     {
         bIsSelected = bSelected;
         UpdatePlateBackgroundOpacity();
+        
+        // Update outline visibility based on selection state
+        if (PlateBackground)
+        {
+            FSlateBrush Brush = PlateBackground->GetBrush();
+            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
+            // Show outline if selected, hide if not selected
+            OutlineColor.A = bSelected ? 1.0f : 0.0f;
+            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+            PlateBackground->SetBrush(Brush);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Outline alpha set to: %.2f (Selected: %s)"), 
+                OutlineColor.A, bSelected ? TEXT("TRUE") : TEXT("FALSE"));
+        }
+        
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Selection changed to: %s"), bSelected ? TEXT("TRUE") : TEXT("FALSE"));
     }
 }
@@ -833,12 +926,466 @@ void UPUIngredientSlot::UpdatePlateBackgroundOpacity()
         return;
     }
 
-    // Set opacity to 1.0 if selected, otherwise 0.6
-    // Note: Hover state is handled separately in NativeOnMouseEnter/Leave
+    // Always keep plate background at 100% opacity
+    // Selection and hover states are now handled by outline instead
     FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
-    CurrentColor.A = bIsSelected ? 1.0f : 0.6f;
+    CurrentColor.A = 1.0f;
     PlateBackground->SetColorAndOpacity(CurrentColor);
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePlateBackgroundOpacity - Set opacity to: %.2f (Selected: %s)"),
-        CurrentColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    // Set outline visibility based on selection state (shown if selected, hidden if not)
+    FSlateBrush Brush = PlateBackground->GetBrush();
+    FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
+    OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
+    Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+    PlateBackground->SetBrush(Brush);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePlateBackgroundOpacity - Set opacity to: 1.0 (always 100%%), outline alpha: %.2f (Selected: %s)"), 
+        OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
+}
+
+TArray<FPUIngredientBase> UPUIngredientSlot::GetIngredientData() const
+{
+    // Try to find the parent dish customization widget to get the component
+    UWidget* ParentWidget = GetParent();
+    while (ParentWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(ParentWidget))
+        {
+            if (UPUDishCustomizationComponent* Component = DishWidget->GetCustomizationComponent())
+            {
+                return Component->GetIngredientData();
+            }
+        }
+        ParentWidget = ParentWidget->GetParent();
+    }
+    
+    // If we can't find the parent widget, try to get it from the widget hierarchy
+    UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
+    while (RootWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(RootWidget))
+        {
+            if (UPUDishCustomizationComponent* Component = DishWidget->GetCustomizationComponent())
+            {
+                return Component->GetIngredientData();
+            }
+        }
+        RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetIngredientData - Could not find customization component"));
+    return TArray<FPUIngredientBase>();
+}
+
+int32 UPUIngredientSlot::GenerateGUIDBasedInstanceID()
+{
+    // Generate a GUID and convert it to a unique integer
+    FGuid NewGUID = FGuid::NewGuid();
+    
+    // Convert GUID to a unique integer using hash
+    int32 UniqueID = GetTypeHash(NewGUID);
+    
+    // Ensure it's positive (hash can be negative)
+    UniqueID = FMath::Abs(UniqueID);
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GenerateGUIDBasedInstanceID - Generated GUID-based InstanceID: %d from GUID: %s"), 
+        UniqueID, *NewGUID.ToString());
+    
+    return UniqueID;
+}
+
+int32 UPUIngredientSlot::GenerateUniqueInstanceID() const
+{
+    // Call the static GUID-based function
+    int32 UniqueID = GenerateGUIDBasedInstanceID();
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GenerateUniqueInstanceID - Generated unique ID %d for ingredient slot"), UniqueID);
+    
+    return UniqueID;
+}
+
+void UPUIngredientSlot::SetDragEnabled(bool bEnabled)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDragEnabled - Setting drag enabled to %s"), 
+        bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    bDragEnabled = bEnabled;
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDragEnabled - Drag enabled set to: %s"), bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+}
+
+FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Preview mouse button down (Drag enabled: %s, HasIngredient: %s, Button: %s)"), 
+        bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), 
+        bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
+        *InMouseEvent.GetEffectingButton().ToString());
+    
+    // Only handle left mouse button and only if drag is enabled and slot has an ingredient
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDragEnabled && bHasIngredient)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s"), 
+            *IngredientInstance.IngredientData.DisplayName.ToString());
+        
+        // Start drag detection - this will call the Blueprint OnDragDetected event
+        // Use DetectDrag which will trigger OnDragDetected when the mouse moves
+        FReply Reply = FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - DetectDrag called, Reply.IsEventHandled: %s"), 
+            Reply.IsEventHandled() ? TEXT("TRUE") : TEXT("FALSE"));
+        return Reply;
+    }
+    else
+    {
+        if (!bDragEnabled)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Drag not enabled"));
+        }
+        if (!bHasIngredient)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Slot has no ingredient"));
+        }
+        if (InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Not left mouse button"));
+        }
+    }
+    
+    return FReply::Unhandled();
+}
+
+UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOperation() const
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d)"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+
+    // Create the drag drop operation
+    UPUIngredientDragDropOperation* DragOperation = NewObject<UPUIngredientDragDropOperation>(GetWorld(), UPUIngredientDragDropOperation::StaticClass());
+
+    if (DragOperation)
+    {
+        // Set up the drag operation with ingredient data
+        DragOperation->SetupIngredientDrag(
+            IngredientInstance.IngredientData.IngredientTag,
+            IngredientInstance.IngredientData,
+            IngredientInstance.InstanceID,
+            IngredientInstance.Quantity
+        );
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Successfully created drag operation"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::CreateIngredientDragDropOperation - Failed to create drag operation"));
+    }
+
+    return DragOperation;
+}
+
+void UPUIngredientSlot::DecreaseQuantity()
+{
+    if (RemainingQuantity > 0)
+    {
+        RemainingQuantity--;
+        UpdateQuantityDisplay();
+        
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::DecreaseQuantity - Quantity decreased to %d"), RemainingQuantity);
+        
+        // Call Blueprint event
+        OnQuantityChanged(RemainingQuantity);
+    }
+}
+
+void UPUIngredientSlot::ResetQuantity()
+{
+    RemainingQuantity = MaxQuantity;
+    UpdateQuantityDisplay();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantity - Quantity reset to %d"), RemainingQuantity);
+    
+    // Call Blueprint event
+    OnQuantityChanged(RemainingQuantity);
+}
+
+void UPUIngredientSlot::UpdatePlatingDisplay()
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePlatingDisplay - Updating plating display"));
+    
+    // Update the ingredient icon/texture
+    if (IngredientIcon)
+    {
+        IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePlatingDisplay - Updated icon texture"));
+    }
+    
+    // Update quantity and preparation displays
+    UpdateQuantityDisplay();
+    UpdatePreparationDisplay();
+}
+
+void UPUIngredientSlot::UpdateQuantityDisplay()
+{
+    if (QuantityText)
+    {
+        FString QuantityString = FString::Printf(TEXT("x%d"), RemainingQuantity);
+        QuantityText->SetText(FText::FromString(QuantityString));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Updated quantity: %s"), *QuantityString);
+    }
+}
+
+void UPUIngredientSlot::UpdatePreparationDisplay()
+{
+    if (PreparationText)
+    {
+        FString IconText = GetPreparationIconText();
+        PreparationText->SetText(FText::FromString(IconText));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Updated preparation icons: %s"), *IconText);
+    }
+    
+    // Call Blueprint event
+    OnPreparationStateChanged();
+}
+
+FString UPUIngredientSlot::GetPreparationDisplayText() const
+{
+    if (IngredientInstance.Preparations.Num() == 0)
+    {
+        return TEXT("");
+    }
+    
+    FString PrepNames;
+    for (const FGameplayTag& Prep : IngredientInstance.Preparations)
+    {
+        if (!PrepNames.IsEmpty()) 
+        {
+            PrepNames += TEXT(", ");
+        }
+        PrepNames += Prep.ToString().Replace(TEXT("Prep."), TEXT(""));
+    }
+    
+    return PrepNames;
+}
+
+FString UPUIngredientSlot::GetPreparationIconText() const
+{
+    if (IngredientInstance.Preparations.Num() == 0)
+    {
+        return TEXT("");
+    }
+    
+    FString IconString;
+    for (const FGameplayTag& Prep : IngredientInstance.Preparations)
+    {
+        FString PrepName = Prep.ToString().Replace(TEXT("Prep."), TEXT(""));
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Processing preparation tag: %s (cleaned: %s)"), 
+            *Prep.ToString(), *PrepName);
+        
+        // Map preparation tags to text abbreviations
+        if (PrepName.Contains(TEXT("Dehydrate")) || PrepName.Contains(TEXT("Dried")))
+        {
+            IconString += TEXT("[D]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Dehydrate/Dried: [D]"));
+        }
+        else if (PrepName.Contains(TEXT("Mince")) || PrepName.Contains(TEXT("Minced")))
+        {
+            IconString += TEXT("[M]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Mince/Minced: [M]"));
+        }
+        else if (PrepName.Contains(TEXT("Boiled")))
+        {
+            IconString += TEXT("[B]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Boiled: [B]"));
+        }
+        else if (PrepName.Contains(TEXT("Chopped")))
+        {
+            IconString += TEXT("[C]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Chopped: [C]"));
+        }
+        else if (PrepName.Contains(TEXT("Caramelized")))
+        {
+            IconString += TEXT("[CR]");
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Caramelized: [CR]"));
+        }
+        else
+        {
+            // Default abbreviation for unknown preparations
+            IconString += TEXT("[?]");
+            UE_LOG(LogTemp, Warning, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Unknown preparation: %s (cleaned: %s)"), 
+                *Prep.ToString(), *PrepName);
+        }
+    }
+    
+    return IconString;
+}
+
+void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPosition)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
+        *IngredientInstance.IngredientData.DisplayName.ToString(), ScreenPosition.X, ScreenPosition.Y);
+
+    // Convert screen position to world position using raycast
+    APlayerController* PlayerController = GetOwningPlayer();
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - No player controller"));
+        return;
+    }
+
+    // Get camera location and rotation
+    FVector CameraLocation;
+    FRotator CameraRotation;
+    PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
+    
+    // Get viewport size
+    int32 ViewportSizeX, ViewportSizeY;
+    PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Viewport: %dx%d, Mouse: (%.0f,%.0f)"), 
+        ViewportSizeX, ViewportSizeY, ScreenPosition.X, ScreenPosition.Y);
+    
+    // Find the dish customization station in the world
+    TArray<AActor*> FoundActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AActor::StaticClass(), FoundActors);
+    
+    AActor* DishStation = nullptr;
+    for (AActor* Actor : FoundActors)
+    {
+        if (Actor && (Actor->GetName().Contains(TEXT("CookingStation")) || Actor->GetName().Contains(TEXT("DishCustomization"))))
+        {
+            DishStation = Actor;
+            break;
+        }
+    }
+    
+    // Declare spawn position at function level
+    FVector SpawnPosition;
+    
+    if (DishStation)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
+        
+        // Get the station's location and bounds
+        FVector StationLocation = DishStation->GetActorLocation();
+        FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
+        
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Station location: (%.2f,%.2f,%.2f), bounds: (%.2f,%.2f,%.2f)"), 
+            StationLocation.X, StationLocation.Y, StationLocation.Z, StationBounds.X, StationBounds.Y, StationBounds.Z);
+        
+        // Calculate spawn position on the station surface
+        // Use a small random offset to avoid stacking ingredients exactly on top of each other
+        float RandomOffsetX = FMath::RandRange(-50.0f, 50.0f);
+        float RandomOffsetY = FMath::RandRange(-50.0f, 50.0f);
+        
+        SpawnPosition = StationLocation + FVector(RandomOffsetX, RandomOffsetY, StationBounds.Z * 0.2f);
+        
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Spawning on dish customization station at: (%.2f,%.2f,%.2f)"), 
+            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ No dish customization station found! Spawning at default position."));
+        
+        // Fallback: spawn near the player
+        SpawnPosition = CameraLocation + (CameraRotation.Vector() * 300.0f);
+        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Fallback spawn position: (%.2f,%.2f,%.2f)"), 
+            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+    }
+    
+    // Find the dish customization component and spawn the ingredient
+    for (AActor* Actor : FoundActors)
+    {
+        if (Actor)
+        {
+            UPUDishCustomizationComponent* DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
+            if (DishComponent)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Calling SpawnIngredientIn3DByInstanceID on customization component"));
+                DishComponent->SpawnIngredientIn3DByInstanceID(IngredientInstance.InstanceID, SpawnPosition);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - SpawnIngredientIn3DByInstanceID call completed"));
+                break;
+            }
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - END"));
+}
+
+void UPUIngredientSlot::SetTextVisibility(bool bShowQuantity, bool bShowDescription)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Setting text visibility: Quantity=%s, Description=%s"), 
+        bShowQuantity ? TEXT("TRUE") : TEXT("FALSE"), bShowDescription ? TEXT("TRUE") : TEXT("FALSE"));
+    
+    // Control quantity text visibility
+    if (QuantityText)
+    {
+        QuantityText->SetVisibility(bShowQuantity ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Set quantity text visibility to: %s"), 
+            bShowQuantity ? TEXT("Visible") : TEXT("Hidden"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SetTextVisibility - QuantityText component not found"));
+    }
+    
+    // Control preparation/description text visibility
+    if (PreparationText)
+    {
+        PreparationText->SetVisibility(bShowDescription ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Set preparation text visibility to: %s"), 
+            bShowDescription ? TEXT("Visible") : TEXT("Hidden"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SetTextVisibility - PreparationText component not found"));
+    }
+}
+
+void UPUIngredientSlot::HideAllText()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Hiding all text elements"));
+    LogTextComponentStatus();
+    SetTextVisibility(false, false);
+    
+    // Force hide using different visibility modes
+    if (QuantityText)
+    {
+        QuantityText->SetVisibility(ESlateVisibility::Collapsed);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Force collapsed quantity text"));
+    }
+    
+    if (PreparationText)
+    {
+        PreparationText->SetVisibility(ESlateVisibility::Collapsed);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Force collapsed preparation text"));
+    }
+}
+
+void UPUIngredientSlot::ShowAllText()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowAllText - Showing all text elements"));
+    LogTextComponentStatus();
+    SetTextVisibility(true, true);
+}
+
+void UPUIngredientSlot::LogTextComponentStatus()
+{
+    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::LogTextComponentStatus - Checking text component status"));
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 QuantityText: %s"), QuantityText ? TEXT("FOUND") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("🔍 PreparationText: %s"), PreparationText ? TEXT("FOUND") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("🔍 HoverText: %s"), HoverText ? TEXT("FOUND") : TEXT("NULL"));
+    UE_LOG(LogTemp, Display, TEXT("🔍 IngredientIcon: %s"), IngredientIcon ? TEXT("FOUND") : TEXT("NULL"));
+    
+    if (QuantityText)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 QuantityText visibility: %s"), 
+            QuantityText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
+    }
+    
+    if (PreparationText)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 PreparationText visibility: %s"), 
+            PreparationText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
+    }
 }
 

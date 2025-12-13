@@ -43,6 +43,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
 
+    // GUID-based unique ID generation for ingredient instances
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    static int32 GenerateGUIDBasedInstanceID();
+
     // End customization function for UI buttons
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void EndCustomizationFromUI();
@@ -174,6 +178,14 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<class UPUIngredientSlot> IngredientSlotClass;
 
+    // Shelving widget class for organizing slots (holds up to 3 slots)
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
+    TSubclassOf<UUserWidget> ShelvingWidgetClass;
+
+    // Name of the HorizontalBox widget inside WBP_Shelving (default: "SlotContainer" or "HorizontalBox")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes", meta = (ToolTip = "Name of the HorizontalBox widget inside WBP_Shelving where slots will be added"))
+    FName ShelvingHorizontalBoxName = TEXT("SlotContainer");
+
     // Container for ingredient buttons
     UPROPERTY(BlueprintReadOnly, Category = "Dish Customization Widget|Plating")
     TWeakObjectPtr<UPanelWidget> IngredientButtonContainer;
@@ -189,6 +201,18 @@ protected:
     // Widget reference for ingredient slot container (set in Blueprint)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Ingredients")
     TWeakObjectPtr<class UPanelWidget> IngredientSlotContainer;
+
+    // Shelving widget management (for pantry and prep slots)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Ingredients")
+    TArray<UUserWidget*> CreatedShelvingWidgets;
+
+    // Current shelving widget being filled (nullptr if we need to create a new one)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Ingredients")
+    TWeakObjectPtr<UUserWidget> CurrentShelvingWidget;
+
+    // Number of slots in the current shelving widget (0-3)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Ingredients")
+    int32 CurrentShelvingWidgetSlotCount = 0;
 
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
@@ -233,4 +257,10 @@ private:
     // Handle pantry slot clicks
     UFUNCTION()
     void OnPantrySlotClicked(class UPUIngredientSlot* IngredientSlot);
+
+    // Helper function to get or create a current shelving widget
+    UUserWidget* GetOrCreateCurrentShelvingWidget(UPanelWidget* ContainerToUse);
+    
+    // Helper function to add a slot to the current shelving widget
+    bool AddSlotToCurrentShelvingWidget(class UPUIngredientSlot* IngredientSlot);
 }; 

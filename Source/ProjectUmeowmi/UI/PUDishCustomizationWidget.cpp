@@ -5,6 +5,7 @@
 #include "PUIngredientQuantityControl.h"
 #include "PUIngredientSlot.h"
 #include "Components/Button.h"
+#include "Components/HorizontalBox.h"
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -174,6 +175,23 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
     }
 }
 
+int32 UPUDishCustomizationWidget::GenerateGUIDBasedInstanceID()
+{
+    // Generate a GUID and convert it to a unique integer
+    FGuid NewGUID = FGuid::NewGuid();
+    
+    // Convert GUID to a unique integer using hash
+    int32 UniqueID = GetTypeHash(NewGUID);
+    
+    // Ensure it's positive (hash can be negative)
+    UniqueID = FMath::Abs(UniqueID);
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 PUDishCustomizationWidget::GenerateGUIDBasedInstanceID - Generated GUID-based InstanceID: %d from GUID: %s"), 
+        UniqueID, *NewGUID.ToString());
+    
+    return UniqueID;
+}
+
 void UPUDishCustomizationWidget::CreateIngredientButtons()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating ingredient buttons"));
@@ -226,10 +244,15 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Creating ingredient slots from available ingredients"));
     
-    // Clear existing slots
+    // Clear existing slots and shelving widgets
     CreatedIngredientSlots.Empty();
     IngredientSlotMap.Empty();
     bIngredientSlotsCreated = false;
+    
+    // Clear shelving widgets
+    CreatedShelvingWidgets.Empty();
+    CurrentShelvingWidget.Reset();
+    CurrentShelvingWidgetSlotCount = 0;
     
     // Check if we have a valid world context
     if (!GetWorld())
@@ -311,12 +334,28 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
                 // Call Blueprint event for slot creation (pass empty instance with ingredient data for reference)
                 OnIngredientSlotCreated(IngredientSlot, PantryInstance);
                 
-                // Add to the UI container if available
+                // Add to shelving widget (which will be added to container)
                 if (ContainerToUse)
                 {
-                    ContainerToUse->AddChild(IngredientSlot);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Added slot to container for: %s"), 
-                        *IngredientData.DisplayName.ToString());
+                    // Get or create a current shelving widget
+                    UUserWidget* ShelvingWidget = GetOrCreateCurrentShelvingWidget(ContainerToUse);
+                    if (ShelvingWidget)
+                    {
+                        // Add slot to the shelving widget
+                        if (AddSlotToCurrentShelvingWidget(IngredientSlot))
+                        {
+                            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Added slot to shelving widget for: %s"), 
+                                *IngredientData.DisplayName.ToString());
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - Failed to add slot to shelving widget"));
+                        }
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - Failed to get or create shelving widget"));
+                    }
                 }
                 else
                 {
@@ -444,6 +483,11 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
             // Bind to slot's ingredient changed event so we can update dish data
             IngredientSlot->OnSlotIngredientChanged.AddDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
             
+            // Enable drag functionality for plating stage
+            IngredientSlot->SetDragEnabled(true);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Enabled drag for slot: %s"), 
+                *Instance.IngredientData.DisplayName.ToString());
+            
             // Add to our array
             CreatedIngredientSlots.Add(IngredientSlot);
             
@@ -487,15 +531,18 @@ void UPUDishCustomizationWidget::EnablePlatingButtons()
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabling all plating slots (replacing buttons)"));
 
-    // Update all slots to ensure they're displaying correctly
+    // Update all slots to ensure they're displaying correctly and enable drag
     for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
     {
         if (IngredientSlot)
         {
+            // Enable drag functionality for plating stage
+            IngredientSlot->SetDragEnabled(true);
+            
             // Update the slot display (this will refresh icons, quantity control, etc.)
             IngredientSlot->UpdateDisplay();
             
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Updated slot display for: %s"), 
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabled drag and updated slot display for: %s"), 
                 IngredientSlot->IsEmpty() ? TEXT("Empty Slot") : *IngredientSlot->GetIngredientInstance().IngredientData.DisplayName.ToString());
         }
     }
@@ -1048,9 +1095,12 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsFromDishData()
         return;
     }
     
-    // Clear any existing slots
+    // Clear any existing slots and shelving widgets
     CreatedIngredientSlots.Empty();
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Cleared existing slots"));
+    CreatedShelvingWidgets.Empty();
+    CurrentShelvingWidget.Reset();
+    CurrentShelvingWidgetSlotCount = 0;
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Cleared existing slots and shelving widgets"));
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Found %d ingredient instances in dish data"), CurrentDishData.IngredientInstances.Num());
     
@@ -1143,6 +1193,13 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsFromDishData()
             // Bind to slot's ingredient changed event so we can update dish data and flavor graphs
             IngredientSlot->OnSlotIngredientChanged.AddDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
             
+            // Enable drag functionality for all slots (for testing - can be disabled per slot if needed)
+            if (IngredientSlot->IsEmpty() == false)
+            {
+                IngredientSlot->SetDragEnabled(true);
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Enabled drag for slot with ingredient"));
+            }
+            
             // Add to our array
             CreatedIngredientSlots.Add(IngredientSlot);
             
@@ -1157,11 +1214,27 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsFromDishData()
                 }
             }
             
-            // Add to the UI container if available
+            // Add to shelving widget (which will be added to container)
             if (ContainerToUse)
             {
-                ContainerToUse->AddChild(IngredientSlot);
-                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Added slot to container"));
+                // Get or create a current shelving widget
+                UUserWidget* ShelvingWidget = GetOrCreateCurrentShelvingWidget(ContainerToUse);
+                if (ShelvingWidget)
+                {
+                    // Add slot to the shelving widget
+                    if (AddSlotToCurrentShelvingWidget(IngredientSlot))
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Added slot to shelving widget"));
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Failed to add slot to shelving widget"));
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Failed to get or create shelving widget"));
+                }
             }
             else
             {
@@ -1174,8 +1247,109 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsFromDishData()
         }
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Successfully created %d ingredient slots"), CreatedIngredientSlots.Num());
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsFromDishData - Successfully created %d ingredient slots in %d shelving widgets"), 
+        CreatedIngredientSlots.Num(), CreatedShelvingWidgets.Num());
     
     // Mark that slots have been created
     bIngredientSlotsCreated = true;
+}
+
+UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentShelvingWidget(UPanelWidget* ContainerToUse)
+{
+    // Check if we need a new shelving widget
+    // Need a new one if: no current widget, or current widget has 3 slots
+    if (!CurrentShelvingWidget.IsValid() || CurrentShelvingWidgetSlotCount >= 3)
+    {
+        // Create a new shelving widget
+        if (!ShelvingWidgetClass)
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::GetOrCreateCurrentShelvingWidget - ShelvingWidgetClass not set!"));
+            return nullptr;
+        }
+        
+        if (!GetWorld())
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::GetOrCreateCurrentShelvingWidget - No world context available"));
+            return nullptr;
+        }
+        
+        UUserWidget* NewShelvingWidget = CreateWidget<UUserWidget>(this, ShelvingWidgetClass);
+        if (!NewShelvingWidget)
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::GetOrCreateCurrentShelvingWidget - Failed to create shelving widget"));
+            return nullptr;
+        }
+        
+        // Add the shelving widget to the container
+        if (ContainerToUse)
+        {
+            ContainerToUse->AddChild(NewShelvingWidget);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::GetOrCreateCurrentShelvingWidget - Created and added new shelving widget (Total: %d)"), 
+                CreatedShelvingWidgets.Num() + 1);
+        }
+        
+        // Track the new shelving widget
+        CreatedShelvingWidgets.Add(NewShelvingWidget);
+        CurrentShelvingWidget = NewShelvingWidget;
+        CurrentShelvingWidgetSlotCount = 0;
+        
+        return NewShelvingWidget;
+    }
+    
+    // Return the current shelving widget
+    return CurrentShelvingWidget.Get();
+}
+
+bool UPUDishCustomizationWidget::AddSlotToCurrentShelvingWidget(UPUIngredientSlot* IngredientSlot)
+{
+    if (!IngredientSlot)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::AddSlotToCurrentShelvingWidget - IngredientSlot is null"));
+        return false;
+    }
+    
+    if (!CurrentShelvingWidget.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::AddSlotToCurrentShelvingWidget - CurrentShelvingWidget is not valid"));
+        return false;
+    }
+    
+    // Find the HorizontalBox inside the shelving widget
+    // First, try to get it by name
+    UWidget* FoundWidget = CurrentShelvingWidget->GetWidgetFromName(ShelvingHorizontalBoxName);
+    if (!FoundWidget)
+    {
+        // If not found by name, try common names
+        FoundWidget = CurrentShelvingWidget->GetWidgetFromName(TEXT("HorizontalBox"));
+        if (!FoundWidget)
+        {
+            FoundWidget = CurrentShelvingWidget->GetWidgetFromName(TEXT("SlotContainer"));
+        }
+    }
+    
+    // Try to cast to HorizontalBox
+    if (UHorizontalBox* HorizontalBox = Cast<UHorizontalBox>(FoundWidget))
+    {
+        HorizontalBox->AddChild(IngredientSlot);
+        CurrentShelvingWidgetSlotCount++;
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::AddSlotToCurrentShelvingWidget - Added slot to HorizontalBox (Slot count: %d/3)"), 
+            CurrentShelvingWidgetSlotCount);
+        return true;
+    }
+    
+    // Try casting to any panel widget
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        PanelWidget->AddChild(IngredientSlot);
+        CurrentShelvingWidgetSlotCount++;
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::AddSlotToCurrentShelvingWidget - Added slot to panel widget (Slot count: %d/3)"), 
+            CurrentShelvingWidgetSlotCount);
+        return true;
+    }
+    
+    // If still not found, log error with helpful message
+    UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::AddSlotToCurrentShelvingWidget - Could not find HorizontalBox or panel widget in WBP_Shelving!"));
+    UE_LOG(LogTemp, Error, TEXT("   Searched for widget named: '%s', 'HorizontalBox', 'SlotContainer'"), *ShelvingHorizontalBoxName.ToString());
+    UE_LOG(LogTemp, Error, TEXT("   Please ensure WBP_Shelving contains a HorizontalBox (or other panel widget) with one of these names."));
+    return false;
 }

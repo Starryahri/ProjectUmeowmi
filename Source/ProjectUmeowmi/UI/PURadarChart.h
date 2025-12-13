@@ -102,7 +102,7 @@ protected:
     static const int32 MinSegmentCount = 1;
     
     /** Maximum number of segments allowed in the radar chart */
-    static const int32 MaxSegmentCount = 10;
+    static const int32 MaxSegmentCount = 12;
     
     /** Full sequence of all possible properties in order */
     TArray<EIngredientPropertyType> FullPropertySequence;

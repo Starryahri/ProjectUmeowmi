@@ -13,7 +13,12 @@ class UImage;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIngredientButtonClicked, const FPUIngredientBase&, IngredientData);
 
-UCLASS(BlueprintType, Blueprintable)
+/**
+ * @deprecated This class is deprecated. Use UPUIngredientSlot instead.
+ * All functionality has been migrated to PUIngredientSlot.
+ * This class will be removed in a future version.
+ */
+UCLASS(BlueprintType, Blueprintable, meta = (Deprecated))
 class PROJECTUMEOWMI_API UPUIngredientButton : public UUserWidget
 {
     GENERATED_BODY()
@@ -25,96 +30,121 @@ public:
     virtual void NativeDestruct() override;
 
     // Set the ingredient data for this button
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button")
+    // @deprecated Use UPUIngredientSlot::SetIngredientInstance instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void SetIngredientData(const FPUIngredientBase& InIngredientData);
 
     // Get the current ingredient data
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button")
+    // @deprecated Use UPUIngredientSlot::GetIngredientInstance instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     const FPUIngredientBase& GetIngredientData() const { return IngredientData; }
 
     // Get UI components (Blueprint accessible)
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Components")
+    // @deprecated Use UPUIngredientSlot instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Components", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     UButton* GetIngredientButton() const { return IngredientButton; }
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Components")
+    // @deprecated Use UPUIngredientSlot instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Components", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     UTextBlock* GetIngredientNameText() const { return IngredientNameText; }
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Components")
+    // @deprecated Use UPUIngredientSlot::GetIngredientIcon instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Components", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     UImage* GetIngredientIcon() const { return IngredientIcon; }
 
     // Event when button is clicked
-    UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
+    // @deprecated Use UPUIngredientSlot events instead
+    UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events", meta = (DeprecatedProperty, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     FOnIngredientButtonClicked OnIngredientButtonClicked;
 
     // Events when button is hovered/unhovered
-    UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
+    // @deprecated Use UPUIngredientSlot events instead
+    UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events", meta = (DeprecatedProperty, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     FOnIngredientButtonClicked OnIngredientButtonHovered;
 
     // Native drag events (only enabled in cooking stage)
     virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
     // Enable/disable drag functionality
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    // @deprecated Use UPUIngredientSlot::SetDragEnabled instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void SetDragEnabled(bool bEnabled);
 
     // Check if drag is enabled
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    // @deprecated Use UPUIngredientSlot::IsDragEnabled instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     bool IsDragEnabled() const { return bDragEnabled; }
 
 
     // Generate a unique instance ID for this ingredient
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag")
+    // @deprecated Use UPUIngredientSlot::GenerateUniqueInstanceID instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Drag", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     int32 GenerateUniqueInstanceID() const;
 
     // Plating-specific functions
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::SetIngredientInstance instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void SetIngredientInstance(const FIngredientInstance& InInstance);
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::GetIngredientInstance instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     const FIngredientInstance& GetIngredientInstance() const { return IngredientInstance; }
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::DecreaseQuantity instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void DecreaseQuantity();
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::ResetQuantity instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void ResetQuantity();
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::CanDrag instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     bool CanDrag() const { return RemainingQuantity > 0; }
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::GetRemainingQuantity instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     int32 GetRemainingQuantity() const { return RemainingQuantity; }
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::GetMaxQuantity instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     int32 GetMaxQuantity() const { return MaxQuantity; }
 
-    UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events")
+    // @deprecated Use UPUIngredientSlot events instead
+    UPROPERTY(BlueprintAssignable, Category = "Ingredient Button|Events", meta = (DeprecatedProperty, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     FOnIngredientButtonClicked OnIngredientButtonUnhovered;
 
     // Plating helper functions
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::UpdatePlatingDisplay instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void UpdatePlatingDisplay();
 
     // Spawn ingredient at position (moved from plating widget)
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::SpawnIngredientAtPosition instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void SpawnIngredientAtPosition(const FVector2D& ScreenPosition);
 
     // Create drag drop operation (moved from plating widget)
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating")
+    // @deprecated Use UPUIngredientSlot::CreateIngredientDragDropOperation instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Plating", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     class UPUIngredientDragDropOperation* CreateIngredientDragDropOperation() const;
 
     // Text visibility control for different stages
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    // @deprecated Use UPUIngredientSlot::SetTextVisibility instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void SetTextVisibility(bool bShowQuantity, bool bShowDescription);
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    // @deprecated Use UPUIngredientSlot::HideAllText instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void HideAllText();
 
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    // @deprecated Use UPUIngredientSlot::ShowAllText instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void ShowAllText();
 
     // Debug method to check text component status
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display")
+    // @deprecated Use UPUIngredientSlot::LogTextComponentStatus instead
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Button|Display", meta = (DeprecatedFunction, DeprecationMessage = "PUIngredientButton is deprecated. Use PUIngredientSlot instead."))
     void LogTextComponentStatus();
 
 protected:

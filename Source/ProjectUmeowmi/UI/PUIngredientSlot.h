@@ -74,9 +74,71 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Data")
     void SetPreparationDataTable(UDataTable* InPreparationDataTable) { PreparationDataTable = InPreparationDataTable; }
 
+    // Get ingredient data from the parent dish customization widget
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Data")
+    TArray<FPUIngredientBase> GetIngredientData() const;
+
+    // GUID-based unique ID generation for ingredient instances
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Data")
+    static int32 GenerateGUIDBasedInstanceID();
+
+    // Generate a unique instance ID for this ingredient slot
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Data")
+    int32 GenerateUniqueInstanceID() const;
+
     // Update all display elements
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
     void UpdateDisplay();
+
+    // Drag and drop functions
+    // Enable/disable drag functionality
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Drag")
+    void SetDragEnabled(bool bEnabled);
+
+    // Check if drag is enabled
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Drag")
+    bool IsDragEnabled() const { return bDragEnabled; }
+
+    // Create drag drop operation
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Drag")
+    class UPUIngredientDragDropOperation* CreateIngredientDragDropOperation() const;
+
+    // Plating-specific functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    void DecreaseQuantity();
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    void ResetQuantity();
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    bool CanDrag() const { return RemainingQuantity > 0; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    int32 GetRemainingQuantity() const { return RemainingQuantity; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    int32 GetMaxQuantity() const { return MaxQuantity; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    void UpdatePlatingDisplay();
+
+    // Spawn ingredient at position (moved from plating widget)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    void SpawnIngredientAtPosition(const FVector2D& ScreenPosition);
+
+    // Text visibility control for different stages
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
+    void SetTextVisibility(bool bShowQuantity, bool bShowDescription);
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
+    void HideAllText();
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
+    void ShowAllText();
+
+    // Debug method to check text component status
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
+    void LogTextComponentStatus();
 
     // Get UI components (Blueprint accessible)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
@@ -128,6 +190,11 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot")
     FIngredientInstance IngredientInstance;
 
+    // Initial ingredient instance (can be set in Blueprint when creating the widget)
+    // This will be applied in NativeConstruct if set
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Initialization", meta = (ExposeOnSpawn = "true"))
+    FIngredientInstance InitialIngredientInstance;
+
     // Flag to track if slot has an ingredient
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot")
     bool bHasIngredient = false;
@@ -149,7 +216,7 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UImage* IngredientIcon;
 
-    // Plate background image (opacity changes on hover)
+    // Plate background image (always at 100% opacity, outline shown on hover)
     UPROPERTY(meta = (BindWidget))
     UImage* PlateBackground;
 
@@ -194,6 +261,25 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Radial Menu")
     bool bRadialMenuVisible = false;
 
+    // Whether drag functionality is enabled
+    // Set to true by default for testing - can be disabled in Blueprint if needed
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Drag")
+    bool bDragEnabled = true;
+
+    // Plating-specific properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Plating")
+    int32 RemainingQuantity = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Plating")
+    int32 MaxQuantity = 0;
+
+    // Plating-specific UI components
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* QuantityText;
+
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* PreparationText;
+
     // Native drag and drop events
     virtual bool NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
     virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
@@ -202,6 +288,9 @@ protected:
 
     // Native mouse events for click handling
     virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+    // Native drag detection
+    virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
     // Native hover events
     virtual void NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
@@ -227,6 +316,13 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Slot")
     void OnDragLeaveSlot();
 
+    // Plating-specific Blueprint events
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Slot|Plating")
+    void OnQuantityChanged(int32 NewQuantity);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Slot|Plating")
+    void OnPreparationStateChanged();
+
 private:
     // Helper functions
     void UpdateIngredientIcon();
@@ -245,6 +341,12 @@ private:
 
     // Update plate background opacity based on selection state
     void UpdatePlateBackgroundOpacity();
+
+    // Plating helper functions
+    void UpdateQuantityDisplay();
+    void UpdatePreparationDisplay();
+    FString GetPreparationDisplayText() const;
+    FString GetPreparationIconText() const;
 
     // Quantity control event handlers
     UFUNCTION()

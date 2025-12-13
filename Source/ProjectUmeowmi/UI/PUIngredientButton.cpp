@@ -19,7 +19,7 @@ void UPUIngredientButton::NativeConstruct()
 {
     Super::NativeConstruct();
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::NativeConstruct - Widget constructed: %s"), *GetName());
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ DEPRECATED: PUIngredientButton is deprecated. Use PUIngredientSlot instead. Widget constructed: %s"), *GetName());
     
     // Bind button events
     if (IngredientButton)
