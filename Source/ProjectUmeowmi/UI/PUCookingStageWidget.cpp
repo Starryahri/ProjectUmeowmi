@@ -2987,14 +2987,18 @@ void UPUCookingStageWidget::OnPantrySlotClicked(UPUIngredientSlot* IngredientSlo
                         NewInstance.Quantity = 1;
                         NewInstance.IngredientTag = FoundIngredient->IngredientTag; // Set the convenient tag field
                         
-                        // Set the ingredient instance on the empty slot
-                        EmptySlot->SetIngredientInstance(NewInstance);
+                        // IMPORTANT: Add to dish data FIRST before setting the ingredient instance
+                        // This prevents OnQuantityControlChanged from adding a duplicate when SetIngredientInstance broadcasts
+                        CurrentDishData.IngredientInstances.Add(NewInstance);
                         
                         // Bind to slot's ingredient changed event (check if already bound to avoid duplicates)
                         EmptySlot->OnSlotIngredientChanged.AddUniqueDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
                         
-                        // Update dish data
-                        CurrentDishData.IngredientInstances.Add(NewInstance);
+                        // Set the ingredient instance on the empty slot (this will broadcast OnSlotIngredientChanged)
+                        // Since we already added it to dish data, OnQuantityControlChanged will find it and update it instead of adding a duplicate
+                        EmptySlot->SetIngredientInstance(NewInstance);
+                        
+                        // Broadcast dish data change
                         OnDishDataChanged(CurrentDishData);
                         
                         UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populated empty slot with: %s (ID: %d, Qty: 1)"), 
