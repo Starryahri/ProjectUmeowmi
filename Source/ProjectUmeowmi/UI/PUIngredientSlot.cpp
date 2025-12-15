@@ -16,6 +16,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Components/SlateWrapperTypes.h"
 #include "GameplayTagContainer.h"
+#include "PURadialMenu.h"
+#include "../DishCustomization/PUDishBlueprintLibrary.h"
 
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -664,16 +666,23 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
         return nullptr;
     }
 
-    // TODO: When PantryTexture field is added to FPUIngredientBase, use it here
-    // For now, we'll use PreviewTexture for all locations as a placeholder
+    // Use PantryTexture for pantry slots, with PreviewTexture as fallback
     if (Location == EPUIngredientSlotLocation::Pantry)
     {
-        // TODO: Return IngredientInstance.IngredientData.PantryTexture when available
-        // For now, fallback to PreviewTexture
-        UTexture2D* Texture = IngredientInstance.IngredientData.PreviewTexture;
+        // Use PantryTexture if available, otherwise fallback to PreviewTexture
+        UTexture2D* Texture = IngredientInstance.IngredientData.PantryTexture;
         if (!Texture)
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Pantry slot has no PreviewTexture for ingredient: %s"),
+            Texture = IngredientInstance.IngredientData.PreviewTexture;
+            if (Texture)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Pantry slot using PreviewTexture as fallback for ingredient: %s"),
+                    *IngredientInstance.IngredientData.DisplayName.ToString());
+            }
+        }
+        if (!Texture)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Pantry slot has no PantryTexture or PreviewTexture for ingredient: %s"),
                 *IngredientInstance.IngredientData.DisplayName.ToString());
         }
         return Texture;
@@ -1021,42 +1030,134 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Showing radial menu (Prep: %s)"),
         bIsPrepMenu ? TEXT("TRUE") : TEXT("FALSE"));
 
-    // TODO: Implement radial menu creation and display
-    // For now, this is stubbed
-    if (RadialMenuWidgetClass)
+    if (!RadialMenuWidgetClass)
     {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - RadialMenuWidgetClass not set"));
+        return;
+    }
+
+    // Create the menu widget if it doesn't exist
+    if (!RadialMenuWidget)
+    {
+        RadialMenuWidget = CreateWidget<UPURadialMenu>(GetWorld(), RadialMenuWidgetClass);
         if (!RadialMenuWidget)
         {
-            RadialMenuWidget = CreateWidget<UUserWidget>(GetWorld(), RadialMenuWidgetClass);
-            if (RadialMenuWidget)
+            UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::ShowRadialMenu - Failed to create radial menu widget"));
+            return;
+        }
+
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu widget created"));
+    }
+
+    // Bind to menu events only once to avoid duplicate callbacks
+    if (!bRadialMenuEventsBound && RadialMenuWidget)
+    {
+        RadialMenuWidget->OnMenuItemSelected.AddUniqueDynamic(this, &UPUIngredientSlot::OnRadialMenuItemSelected);
+        RadialMenuWidget->OnMenuClosed.AddUniqueDynamic(this, &UPUIngredientSlot::OnRadialMenuClosed);
+        bRadialMenuEventsBound = true;
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Bound radial menu events"));
+    }
+
+    // Get the slot's screen position
+    FVector2D SlotScreenPosition = GetSlotScreenPosition();
+    
+    // Build menu items based on bIsPrepMenu
+    TArray<FRadialMenuItem> MenuItems;
+    
+    if (bIsPrepMenu)
+    {
+        MenuItems = BuildPreparationMenuItems();
+    }
+    else
+    {
+        MenuItems = BuildActionMenuItems();
+    }
+    
+    if (MenuItems.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - No menu items to display"));
+        return;
+    }
+
+    // Add to container if available, otherwise add to viewport (do this BEFORE setting menu items)
+    if (RadialMenuContainer)
+    {
+        // Add to container first (if not already added)
+        if (!RadialMenuWidget->GetParent())
+        {
+            RadialMenuContainer->AddChild(RadialMenuWidget);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Added menu to container: %s"), *RadialMenuContainer->GetName());
+        }
+        
+        // Get container size - use multiple methods to ensure we get valid size
+        FVector2D ContainerSize = RadialMenuContainer->GetDesiredSize();
+        if (ContainerSize.X == 0 || ContainerSize.Y == 0)
+        {
+            FGeometry ContainerGeometry = RadialMenuContainer->GetCachedGeometry();
+            if (ContainerGeometry.GetLocalSize().X > 0 && ContainerGeometry.GetLocalSize().Y > 0)
             {
-                // Add to viewport or parent widget
-                // TODO: Determine proper parent/positioning
-                RadialMenuWidget->AddToViewport();
-                bRadialMenuVisible = true;
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu created (STUBBED)"));
+                ContainerSize = ContainerGeometry.GetLocalSize();
             }
+            else if (ContainerGeometry.GetAbsoluteSize().X > 0 && ContainerGeometry.GetAbsoluteSize().Y > 0)
+            {
+                ContainerSize = ContainerGeometry.GetAbsoluteSize();
+            }
+        }
+        
+        // If we have container size, use container center directly (more reliable than converting screen position)
+        if (ContainerSize.X > 0 && ContainerSize.Y > 0)
+        {
+            FVector2D ContainerCenter = ContainerSize * 0.5f;
+            
+            // Set menu items and show at container center
+            RadialMenuWidget->SetMenuItems(MenuItems);
+            RadialMenuWidget->ShowMenuAtPosition(ContainerCenter);
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Using container center: (%.2f, %.2f)"), 
+                ContainerCenter.X, ContainerCenter.Y);
         }
         else
         {
-            RadialMenuWidget->SetVisibility(ESlateVisibility::Visible);
-            bRadialMenuVisible = true;
+            // Fallback: try to convert screen position to container-relative
+            FGeometry ContainerGeometry = RadialMenuContainer->GetCachedGeometry();
+            FVector2D ContainerScreenPosition = ContainerGeometry.GetAbsolutePosition();
+            FVector2D ContainerRelativePosition = SlotScreenPosition - ContainerScreenPosition;
+            
+            // Set menu items and show
+            RadialMenuWidget->SetMenuItems(MenuItems);
+            RadialMenuWidget->ShowMenuAtPosition(ContainerRelativePosition);
+            
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Container size not available, using converted position"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - RadialMenuWidgetClass not set"));
+        // Fallback to viewport if no container
+        // Set menu items and show
+        RadialMenuWidget->SetMenuItems(MenuItems);
+        RadialMenuWidget->ShowMenuAtPosition(SlotScreenPosition);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - No container set, added to viewport"));
     }
+    
+    bRadialMenuVisible = true;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu shown with %d items"), MenuItems.Num());
 }
 
 void UPUIngredientSlot::HideRadialMenu()
 {
     if (RadialMenuWidget)
     {
-        RadialMenuWidget->SetVisibility(ESlateVisibility::Collapsed);
+        RadialMenuWidget->HideMenu();
         bRadialMenuVisible = false;
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideRadialMenu - Radial menu hidden"));
     }
+}
+
+void UPUIngredientSlot::SetRadialMenuContainer(UPanelWidget* InContainer)
+{
+    RadialMenuContainer = InContainer;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetRadialMenuContainer - Set radial menu container: %s"), 
+        InContainer ? *InContainer->GetName() : TEXT("NULL"));
 }
 
 void UPUIngredientSlot::OnQuantityControlChanged(const FIngredientInstance& InIngredientInstance)
@@ -1435,6 +1536,14 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), 
         bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
         *InMouseEvent.GetEffectingButton().ToString());
+
+    // If the radial menu is currently visible, don't start drag detection from this slot.
+    // Let the radial menu / its buttons handle the click so a single click selects an item.
+    if (bRadialMenuVisible)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Radial menu visible, skipping drag detection"));
+        return FReply::Unhandled();
+    }
     
     // Check if the click is on the quantity control widget - if so, let it handle the click
     // This prevents drag detection from interfering with button clicks
@@ -2051,5 +2160,342 @@ void UPUIngredientSlot::LogTextComponentStatus()
         UE_LOG(LogTemp, Display, TEXT("🔍 PreparationText visibility: %s"), 
             PreparationText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
     }
+}
+
+void UPUIngredientSlot::OnRadialMenuItemSelected(const FRadialMenuItem& SelectedItem)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::OnRadialMenuItemSelected - Item selected: %s (Tag: %s)"),
+        *SelectedItem.Label.ToString(), *SelectedItem.ActionTag.ToString());
+
+    if (!SelectedItem.bIsEnabled)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::OnRadialMenuItemSelected - Item is disabled, ignoring selection"));
+        return;
+    }
+
+    // Check if it's a preparation tag or action tag
+    FString TagString = SelectedItem.ActionTag.ToString();
+    if (TagString.StartsWith(TEXT("Prep.")))
+    {
+        // It's a preparation - toggle it (apply if not applied, remove if applied)
+        if (SelectedItem.bIsApplied)
+        {
+            RemovePreparationFromIngredient(SelectedItem.ActionTag);
+        }
+        else
+        {
+            ApplyPreparationToIngredient(SelectedItem.ActionTag);
+        }
+    }
+    else if (TagString.StartsWith(TEXT("Action.")))
+    {
+        // It's an action - execute it
+        ExecuteAction(SelectedItem.ActionTag);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::OnRadialMenuItemSelected - Unknown action tag: %s"), *TagString);
+    }
+    
+    // Hide the menu after selection
+    HideRadialMenu();
+}
+
+void UPUIngredientSlot::OnRadialMenuClosed()
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::OnRadialMenuClosed - Radial menu closed"));
+    bRadialMenuVisible = false;
+}
+
+FVector2D UPUIngredientSlot::GetSlotScreenPosition() const
+{
+    // Get the slot widget's geometry
+    FGeometry SlotGeometry = GetCachedGeometry();
+    
+    // Get the absolute position and size
+    FVector2D AbsolutePosition = SlotGeometry.GetAbsolutePosition();
+    FVector2D AbsoluteSize = SlotGeometry.GetAbsoluteSize();
+    
+    // Calculate center position of the slot
+    FVector2D CenterPosition = AbsolutePosition + (AbsoluteSize * 0.5f);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetSlotScreenPosition - Slot center: (%.2f, %.2f)"),
+        CenterPosition.X, CenterPosition.Y);
+    
+    return CenterPosition;
+}
+
+TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
+{
+    TArray<FRadialMenuItem> MenuItems;
+
+    if (!bHasIngredient)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - Slot has no ingredient"));
+        return MenuItems;
+    }
+
+    // Check if we have a preparation data table
+    if (!IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - No preparation data table available"));
+        return MenuItems;
+    }
+
+    UDataTable* LoadedPreparationDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
+    if (!LoadedPreparationDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - Failed to load preparation data table"));
+        return MenuItems;
+    }
+
+    // Get all preparations from the data table
+    TArray<FPUPreparationBase*> PreparationRows;
+    LoadedPreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("BuildPreparationMenuItems"), PreparationRows);
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Found %d total preparations"), PreparationRows.Num());
+
+    // Build menu items for each preparation
+    for (FPUPreparationBase* PreparationData : PreparationRows)
+    {
+        if (!PreparationData || !PreparationData->PreparationTag.IsValid())
+        {
+            continue;
+        }
+
+        // Check if this preparation is compatible with the ingredient
+        // We need to check compatibility with current preparations
+        bool bIsCompatible = PreparationData->CanApplyToIngredient(IngredientInstance.Preparations);
+        
+        // Check if this preparation is already applied
+        bool bIsApplied = IngredientInstance.Preparations.HasTag(PreparationData->PreparationTag);
+
+        // Create menu item
+        FRadialMenuItem MenuItem;
+        MenuItem.Label = PreparationData->DisplayName.IsEmpty() ? 
+            FText::FromString(PreparationData->PreparationTag.ToString()) : 
+            PreparationData->DisplayName;
+        MenuItem.Icon = PreparationData->PreviewTexture;
+        MenuItem.ActionTag = PreparationData->PreparationTag;
+        MenuItem.bIsEnabled = bIsCompatible || bIsApplied; // Enable if compatible or already applied (to allow removal)
+        MenuItem.bIsApplied = bIsApplied;
+        MenuItem.Tooltip = PreparationData->Description;
+
+        MenuItems.Add(MenuItem);
+
+        UE_LOG(LogTemp, Display, TEXT("🎯   Preparation: %s (Compatible: %s, Applied: %s)"),
+            *MenuItem.Label.ToString(),
+            bIsCompatible ? TEXT("YES") : TEXT("NO"),
+            bIsApplied ? TEXT("YES") : TEXT("NO"));
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Built %d menu items"), MenuItems.Num());
+    return MenuItems;
+}
+
+TArray<FRadialMenuItem> UPUIngredientSlot::BuildActionMenuItems() const
+{
+    TArray<FRadialMenuItem> MenuItems;
+
+    if (!bHasIngredient)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildActionMenuItems - Slot has no ingredient"));
+        return MenuItems;
+    }
+
+    // Action: Remove Ingredient
+    FRadialMenuItem RemoveItem;
+    RemoveItem.Label = FText::FromString(TEXT("Remove"));
+    RemoveItem.ActionTag = FGameplayTag::RequestGameplayTag(FName("Action.Remove"));
+    RemoveItem.bIsEnabled = true;
+    RemoveItem.Tooltip = FText::FromString(TEXT("Remove this ingredient from the dish"));
+    MenuItems.Add(RemoveItem);
+
+    // Action: Clear Preparations (only if there are preparations)
+    if (IngredientInstance.Preparations.Num() > 0)
+    {
+        FRadialMenuItem ClearPrepsItem;
+        ClearPrepsItem.Label = FText::FromString(TEXT("Clear Preparations"));
+        ClearPrepsItem.ActionTag = FGameplayTag::RequestGameplayTag(FName("Action.ClearPreparations"));
+        ClearPrepsItem.bIsEnabled = true;
+        ClearPrepsItem.Tooltip = FText::FromString(TEXT("Remove all preparations from this ingredient"));
+        MenuItems.Add(ClearPrepsItem);
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildActionMenuItems - Built %d action menu items"), MenuItems.Num());
+    return MenuItems;
+}
+
+bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& PreparationTag)
+{
+    if (!bHasIngredient || IngredientInstance.InstanceID == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Invalid ingredient instance"));
+        return false;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Applying preparation %s to instance %d"),
+        *PreparationTag.ToString(), IngredientInstance.InstanceID);
+
+    // Find the dish customization component to get the dish data
+    UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
+    if (!DishComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Could not find dish customization component"));
+        return false;
+    }
+
+    // Get the current dish data
+    FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
+
+    // Apply the preparation using the blueprint library
+    bool bSuccess = UPUDishBlueprintLibrary::ApplyPreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+    
+    if (bSuccess)
+    {
+        // Update the dish data in the component
+        DishComponent->UpdateCurrentDishData(CurrentDish);
+        
+        // Update the ingredient instance to reflect the change
+        FIngredientInstance UpdatedInstance;
+        if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+        {
+            SetIngredientInstance(UpdatedInstance);
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
+    }
+
+    return bSuccess;
+}
+
+bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& PreparationTag)
+{
+    if (!bHasIngredient || IngredientInstance.InstanceID == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Invalid ingredient instance"));
+        return false;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Removing preparation %s from instance %d"),
+        *PreparationTag.ToString(), IngredientInstance.InstanceID);
+
+    // Find the dish customization component to get the dish data
+    UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
+    if (!DishComponent)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Could not find dish customization component"));
+        return false;
+    }
+
+    // Get the current dish data
+    FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
+
+    // Remove the preparation using the blueprint library
+    bool bSuccess = UPUDishBlueprintLibrary::RemovePreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+    
+    if (bSuccess)
+    {
+        // Update the dish data in the component
+        DishComponent->UpdateCurrentDishData(CurrentDish);
+        
+        // Update the ingredient instance to reflect the change
+        FIngredientInstance UpdatedInstance;
+        if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+        {
+            SetIngredientInstance(UpdatedInstance);
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
+    }
+
+    return bSuccess;
+}
+
+void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
+{
+    FString ActionString = ActionTag.ToString();
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Executing action: %s"), *ActionString);
+
+    if (ActionString == TEXT("Action.Remove"))
+    {
+        // Remove the ingredient instance
+        UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
+        if (DishComponent)
+        {
+            FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
+            bool bSuccess = UPUDishBlueprintLibrary::RemoveIngredientInstanceByID(CurrentDish, IngredientInstance.InstanceID);
+            if (bSuccess)
+            {
+                DishComponent->UpdateCurrentDishData(CurrentDish);
+                ClearSlot();
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully"));
+            }
+        }
+    }
+    else if (ActionString == TEXT("Action.ClearPreparations"))
+    {
+        // Remove all preparations
+        TArray<FGameplayTag> PreparationTags;
+        IngredientInstance.Preparations.GetGameplayTagArray(PreparationTags);
+        
+        for (const FGameplayTag& PrepTag : PreparationTags)
+        {
+            RemovePreparationFromIngredient(PrepTag);
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - All preparations cleared"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ExecuteAction - Unknown action: %s"), *ActionString);
+    }
+}
+
+UPUDishCustomizationComponent* UPUIngredientSlot::GetDishCustomizationComponent() const
+{
+    // Try to find the dish customization component by traversing up the widget hierarchy
+    UWidget* Parent = GetParent();
+    while (Parent)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(Parent))
+        {
+            return DishWidget->GetCustomizationComponent();
+        }
+        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(Parent))
+        {
+            // Cooking stage widget might have a reference to the component
+            // Try to get it from the parent widget hierarchy
+            UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
+            while (RootWidget)
+            {
+                if (UPUDishCustomizationWidget* FoundDishWidget = Cast<UPUDishCustomizationWidget>(RootWidget))
+                {
+                    return FoundDishWidget->GetCustomizationComponent();
+                }
+                RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
+            }
+        }
+        Parent = Parent->GetParent();
+    }
+    
+    // Try to get it from the outer widget
+    UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
+    while (RootWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(RootWidget))
+        {
+            return DishWidget->GetCustomizationComponent();
+        }
+        RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
+    }
+    
+    return nullptr;
 }
 

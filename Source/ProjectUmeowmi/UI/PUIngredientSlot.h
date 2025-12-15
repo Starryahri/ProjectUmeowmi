@@ -5,13 +5,13 @@
 #include "../DishCustomization/PUDishBase.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUIngredientDragDropOperation.h"
+#include "PURadialMenu.h"
 #include "PUIngredientSlot.generated.h"
 
 class UButton;
 class UTextBlock;
 class UImage;
 class UPUIngredientQuantityControl;
-class UUserWidget; // For radial menu (stubbed)
 
 // Location enum for ingredient slots
 UENUM(BlueprintType)
@@ -185,6 +185,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
     bool IsRadialMenuVisible() const { return bRadialMenuVisible; }
 
+    // Set the container for the radial menu (can be called from Blueprint)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
+    void SetRadialMenuContainer(class UPanelWidget* InContainer);
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Slot|Events")
     FOnIngredientDroppedOnSlot OnIngredientDroppedOnSlot;
@@ -259,17 +263,26 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UTextBlock* HoverText;
 
-    // Radial menu widget class (stubbed)
+    // Radial menu widget class
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ingredient Slot|Radial Menu")
-    TSubclassOf<UUserWidget> RadialMenuWidgetClass;
+    TSubclassOf<UPURadialMenu> RadialMenuWidgetClass;
 
-    // Radial menu widget instance (stubbed)
+    // Container for radial menu (should be an Overlay, Canvas Panel, or any Panel Widget)
+    // If set, menu will be added to this container instead of viewport
+    // Can be set via SetRadialMenuContainer() function from Blueprint
     UPROPERTY()
-    UUserWidget* RadialMenuWidget = nullptr;
+    class UPanelWidget* RadialMenuContainer;
+
+    // Radial menu widget instance
+    UPROPERTY()
+    UPURadialMenu* RadialMenuWidget = nullptr;
 
     // Radial menu visibility flag
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Radial Menu")
     bool bRadialMenuVisible = false;
+
+    // Guard to avoid binding radial menu events multiple times
+    bool bRadialMenuEventsBound = false;
 
     // Whether drag functionality is enabled
     // Set to true by default for testing - can be disabled in Blueprint if needed
@@ -365,6 +378,24 @@ private:
 
     UFUNCTION()
     void OnQuantityControlRemoved(int32 InstanceID, UPUIngredientQuantityControl* InQuantityControlWidget);
+
+    // Radial menu event handlers
+    UFUNCTION()
+    void OnRadialMenuItemSelected(const FRadialMenuItem& SelectedItem);
+
+    UFUNCTION()
+    void OnRadialMenuClosed();
+
+    // Helper function to get slot's screen position
+    FVector2D GetSlotScreenPosition() const;
+
+    // Helper functions for radial menu
+    TArray<FRadialMenuItem> BuildPreparationMenuItems() const;
+    TArray<FRadialMenuItem> BuildActionMenuItems() const;
+    bool ApplyPreparationToIngredient(const FGameplayTag& PreparationTag);
+    bool RemovePreparationFromIngredient(const FGameplayTag& PreparationTag);
+    void ExecuteAction(const FGameplayTag& ActionTag);
+    class UPUDishCustomizationComponent* GetDishCustomizationComponent() const;
 
 };
 

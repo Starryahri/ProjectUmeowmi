@@ -124,6 +124,9 @@ public:
     UTexture2D* PreviewTexture;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    UTexture2D* PantryTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UMaterialInterface> MaterialInstance;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
