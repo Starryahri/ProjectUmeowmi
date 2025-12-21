@@ -12,7 +12,7 @@
 AProjectUmeowmiGameMode::AProjectUmeowmiGameMode()
 {
 	// set default pawn class to our Blueprinted character
-	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/Characters/Bao/Blueprints/BP_Bao"));
+	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/LuckyFatCatDiner/Characters/Bao/Blueprints/BP_Bao"));
 	if (PlayerPawnBPClass.Class != NULL)
 	{
 		DefaultPawnClass = PlayerPawnBPClass.Class;
