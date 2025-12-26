@@ -96,14 +96,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Naming")
     FText CustomName;
 
-    // Get the total value for a specific property across all ingredients
-    float GetTotalValueForProperty(const FName& PropertyName) const;
+    // Get the total value for a specific flavor aspect across all ingredients
+    float GetTotalFlavorAspect(const FName& AspectName) const;
 
-    // Get all properties that match a specific tag
-    TArray<FIngredientProperty> GetPropertiesWithTag(const FGameplayTag& Tag) const;
-
-    // Get the total value for all properties with a specific tag
-    float GetTotalValueForTag(const FGameplayTag& Tag) const;
+    // Get the total value for a specific texture aspect across all ingredients
+    float GetTotalTextureAspect(const FName& AspectName) const;
 
     // Check if the dish has a specific ingredient
     bool HasIngredient(const FGameplayTag& IngredientTag) const;

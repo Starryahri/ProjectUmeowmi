@@ -30,29 +30,29 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Preparation")
     static FText GetCurrentDisplayName(const FPUIngredientBase& Ingredient);
 
-    /** Get the value of a specific property for an ingredient */
-    UFUNCTION(BlueprintCallable, Category = "Ingredient|Properties")
-    static float GetPropertyValue(const FPUIngredientBase& Ingredient, const FName& PropertyName);
+    /** Get the value of a specific flavor aspect for an ingredient */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Aspects")
+    static float GetFlavorAspect(const FPUIngredientBase& Ingredient, const FName& AspectName);
 
-    /** Set the value of a specific property for an ingredient */
-    UFUNCTION(BlueprintCallable, Category = "Ingredient|Properties")
-    static void SetPropertyValue(UPARAM(ref) FPUIngredientBase& Ingredient, const FName& PropertyName, float Value);
+    /** Get the value of a specific texture aspect for an ingredient */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Aspects")
+    static float GetTextureAspect(const FPUIngredientBase& Ingredient, const FName& AspectName);
 
-    /** Check if an ingredient has a specific property */
-    UFUNCTION(BlueprintCallable, Category = "Ingredient|Properties")
-    static bool HasProperty(const FPUIngredientBase& Ingredient, const FName& PropertyName);
+    /** Set the value of a specific flavor aspect for an ingredient */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Aspects")
+    static void SetFlavorAspect(UPARAM(ref) FPUIngredientBase& Ingredient, const FName& AspectName, float Value);
 
-    /** Get all properties that have a specific tag */
-    UFUNCTION(BlueprintCallable, Category = "Ingredient|Properties")
-    static TArray<FIngredientProperty> GetPropertiesByTag(const FPUIngredientBase& Ingredient, const FGameplayTag& Tag);
+    /** Set the value of a specific texture aspect for an ingredient */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Aspects")
+    static void SetTextureAspect(UPARAM(ref) FPUIngredientBase& Ingredient, const FName& AspectName, float Value);
 
-    /** Check if an ingredient has any properties with a specific tag */
-    UFUNCTION(BlueprintCallable, Category = "Ingredient|Properties")
-    static bool HasPropertiesWithTag(const FPUIngredientBase& Ingredient, const FGameplayTag& Tag);
+    /** Get the total value of all flavor aspects */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Aspects")
+    static float GetTotalFlavorValue(const FPUIngredientBase& Ingredient);
 
-    /** Get the total value of all properties with a specific tag */
-    UFUNCTION(BlueprintCallable, Category = "Ingredient|Properties")
-    static float GetTotalValueForTag(const FPUIngredientBase& Ingredient, const FGameplayTag& Tag);
+    /** Get the total value of all texture aspects */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Aspects")
+    static float GetTotalTextureValue(const FPUIngredientBase& Ingredient);
 
     /** Get all special effects at a specific quantity */
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Effects")

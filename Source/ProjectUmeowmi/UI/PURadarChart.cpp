@@ -141,34 +141,46 @@ bool UPURadarChart::SetSegmentNames(const TArray<FString>& InNames)
 
 bool UPURadarChart::SetValuesFromIngredient(const FPUIngredientBase& Ingredient)
 {
-    // Set the number of segments based on the number of natural properties
-    if (!SetSegmentCount(Ingredient.NaturalProperties.Num()))
+    // Set the number of segments based on the total number of aspects (12 total: 6 flavors + 6 textures)
+    const int32 TotalAspects = 12;
+    if (!SetSegmentCount(TotalAspects))
     {
         UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromIngredient: Failed to set segment count"));
         return false;
     }
 
-    // Get the values and display names from the ingredient's properties
+    // Get the values and display names from the ingredient's aspects
     TArray<float> Values;
     TArray<FString> DisplayNames;
     
-    for (const FIngredientProperty& Property : Ingredient.NaturalProperties)
-    {
-        // Get the display name from the property type
-        FString DisplayName;
-        if (Property.PropertyType == EIngredientPropertyType::Custom)
-        {
-            DisplayName = Property.CustomPropertyName.ToString();
-        }
-        else
-        {
-            DisplayName = UEnum::GetDisplayValueAsText(Property.PropertyType).ToString();
-        }
-        
-        DisplayNames.Add(DisplayName);
-        Values.Add(Property.Value);
-    }
-
+    // Add flavor aspects (in order: Umami, Salt, Sweet, Sour, Bitter, Spicy)
+    Values.Add(Ingredient.FlavorAspects.Umami);
+    DisplayNames.Add(TEXT("Umami"));
+    Values.Add(Ingredient.FlavorAspects.Salt);
+    DisplayNames.Add(TEXT("Salt"));
+    Values.Add(Ingredient.FlavorAspects.Sweet);
+    DisplayNames.Add(TEXT("Sweet"));
+    Values.Add(Ingredient.FlavorAspects.Sour);
+    DisplayNames.Add(TEXT("Sour"));
+    Values.Add(Ingredient.FlavorAspects.Bitter);
+    DisplayNames.Add(TEXT("Bitter"));
+    Values.Add(Ingredient.FlavorAspects.Spicy);
+    DisplayNames.Add(TEXT("Spicy"));
+    
+    // Add texture aspects
+    Values.Add(Ingredient.TextureAspects.Rich);
+    DisplayNames.Add(TEXT("Rich"));
+    Values.Add(Ingredient.TextureAspects.Juicy);
+    DisplayNames.Add(TEXT("Juicy"));
+    Values.Add(Ingredient.TextureAspects.Tender);
+    DisplayNames.Add(TEXT("Tender"));
+    Values.Add(Ingredient.TextureAspects.Chewy);
+    DisplayNames.Add(TEXT("Chewy"));
+    Values.Add(Ingredient.TextureAspects.Crispy);
+    DisplayNames.Add(TEXT("Crispy"));
+    Values.Add(Ingredient.TextureAspects.Crumbly);
+    DisplayNames.Add(TEXT("Crumbly"));
+    
     // Set the segment names using the display names
     SetSegmentNames(DisplayNames);
 
@@ -365,28 +377,29 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Starting flavor profile setup"));
     
-    // Define the flavor properties we want to check
-    TArray<FName> FlavorPropertyNames = {
-        TEXT("Sweetness"),
-        TEXT("Saltiness"),
-        TEXT("Sourness"),
-        TEXT("Bitterness"),
-        TEXT("Umami")
+    // Define all flavor aspects in order (Umami, Salt, Sweet, Sour, Bitter, Spicy)
+    TArray<FName> FlavorAspectNames = {
+        TEXT("Umami"),
+        TEXT("Salt"),
+        TEXT("Sweet"),
+        TEXT("Sour"),
+        TEXT("Bitter"),
+        TEXT("Spicy")
     };
     
-    // Check which properties actually have values
-    TArray<FName> PropertiesWithValues;
-    for (const FName& PropertyName : FlavorPropertyNames)
+    // Check which aspects actually have values
+    TArray<FName> AspectsWithValues;
+    for (const FName& AspectName : FlavorAspectNames)
     {
-        float PropertyValue = Dish.GetTotalValueForProperty(PropertyName);
-        if (PropertyValue > 0.0f)
+        float AspectValue = Dish.GetTotalFlavorAspect(AspectName);
+        if (AspectValue > 0.0f)
         {
-            PropertiesWithValues.Add(PropertyName);
+            AspectsWithValues.Add(AspectName);
         }
     }
     
-    // Calculate total segments needed (minimum 3, or more if we have more properties with values)
-    int32 TotalSegments = FMath::Max(MIN_SEGMENTS, PropertiesWithValues.Num());
+    // Calculate total segments needed (minimum 3, or more if we have more aspects with values)
+    int32 TotalSegments = FMath::Max(MIN_SEGMENTS, AspectsWithValues.Num());
     
     // Set the number of segments
     if (!SetSegmentCount(TotalSegments))
@@ -408,27 +421,27 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
         DisplayNames.Add(TEXT("???")); // Placeholder text
     }
     
-    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Found %d properties with values"), PropertiesWithValues.Num());
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Found %d aspects with values"), AspectsWithValues.Num());
     
-    // Fill in the first slots with actual flavor properties that have values, leave remaining as placeholders
+    // Fill in the first slots with actual flavor aspects that have values, leave remaining as placeholders
     int32 SegmentIndex = 0;
-    for (const FName& PropertyName : PropertiesWithValues)
+    for (const FName& AspectName : AspectsWithValues)
     {
         if (SegmentIndex < TotalSegments)
         {
-            float PropertyValue = Dish.GetTotalValueForProperty(PropertyName);
-            Values[SegmentIndex] = PropertyValue;
-            DisplayNames[SegmentIndex] = PropertyName.ToString();
+            float AspectValue = Dish.GetTotalFlavorAspect(AspectName);
+            Values[SegmentIndex] = AspectValue;
+            DisplayNames[SegmentIndex] = AspectName.ToString();
             
             UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Set segment %d to %s (Value: %.2f)"), 
-                SegmentIndex, *PropertyName.ToString(), PropertyValue);
+                SegmentIndex, *AspectName.ToString(), AspectValue);
             
             SegmentIndex++;
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Too many flavor properties, skipping %s"), 
-                *PropertyName.ToString());
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Too many flavor aspects, skipping %s"), 
+                *AspectName.ToString());
         }
     }
     
@@ -460,29 +473,29 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Starting texture profile setup"));
     
-    // Define the texture properties we want to check
-    TArray<FName> TexturePropertyNames = {
-        TEXT("Watery"),
-        TEXT("Firm"),
-        TEXT("Crunchy"),
-        TEXT("Creamy"),
+    // Define all texture aspects in order
+    TArray<FName> TextureAspectNames = {
+        TEXT("Rich"),
+        TEXT("Juicy"),
+        TEXT("Tender"),
         TEXT("Chewy"),
+        TEXT("Crispy"),
         TEXT("Crumbly")
     };
     
-    // Check which properties actually have values
-    TArray<FName> PropertiesWithValues;
-    for (const FName& PropertyName : TexturePropertyNames)
+    // Check which aspects actually have values
+    TArray<FName> AspectsWithValues;
+    for (const FName& AspectName : TextureAspectNames)
     {
-        float PropertyValue = Dish.GetTotalValueForProperty(PropertyName);
-        if (PropertyValue > 0.0f)
+        float AspectValue = Dish.GetTotalTextureAspect(AspectName);
+        if (AspectValue > 0.0f)
         {
-            PropertiesWithValues.Add(PropertyName);
+            AspectsWithValues.Add(AspectName);
         }
     }
     
-    // Calculate total segments needed (minimum 3, or more if we have more properties with values)
-    int32 TotalSegments = FMath::Max(MIN_SEGMENTS, PropertiesWithValues.Num());
+    // Calculate total segments needed (minimum 3, or more if we have more aspects with values)
+    int32 TotalSegments = FMath::Max(MIN_SEGMENTS, AspectsWithValues.Num());
     
     // Set the number of segments
     if (!SetSegmentCount(TotalSegments))
@@ -504,27 +517,27 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
         DisplayNames.Add(TEXT("???")); // Placeholder text
     }
     
-    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Found %d properties with values"), PropertiesWithValues.Num());
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Found %d aspects with values"), AspectsWithValues.Num());
     
-    // Fill in the first slots with actual texture properties that have values, leave remaining as placeholders
+    // Fill in the first slots with actual texture aspects that have values, leave remaining as placeholders
     int32 SegmentIndex = 0;
-    for (const FName& PropertyName : PropertiesWithValues)
+    for (const FName& AspectName : AspectsWithValues)
     {
         if (SegmentIndex < TotalSegments)
         {
-            float PropertyValue = Dish.GetTotalValueForProperty(PropertyName);
-            Values[SegmentIndex] = PropertyValue;
-            DisplayNames[SegmentIndex] = PropertyName.ToString();
+            float AspectValue = Dish.GetTotalTextureAspect(AspectName);
+            Values[SegmentIndex] = AspectValue;
+            DisplayNames[SegmentIndex] = AspectName.ToString();
             
             UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Set segment %d to %s (Value: %.2f)"), 
-                SegmentIndex, *PropertyName.ToString(), PropertyValue);
+                SegmentIndex, *AspectName.ToString(), AspectValue);
             
             SegmentIndex++;
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Too many texture properties, skipping %s"), 
-                *PropertyName.ToString());
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Too many texture aspects, skipping %s"), 
+                *AspectName.ToString());
         }
     }
     

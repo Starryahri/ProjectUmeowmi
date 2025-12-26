@@ -77,13 +77,7 @@ FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, co
                         if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddIngredient")))
                         {
                             // Apply preparation modifiers
-                            for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
-                            {
-                                FName PropertyName = Modifier.GetPropertyName();
-                                float CurrentValue = NewInstance.IngredientData.GetPropertyValue(PropertyName);
-                                float NewValue = Modifier.ApplyModification(CurrentValue);
-                                NewInstance.IngredientData.SetPropertyValue(PropertyName, NewValue);
-                            }
+                            Preparation->ApplyModifiers(NewInstance.IngredientData.FlavorAspects, NewInstance.IngredientData.TextureAspects);
                         }
                     }
                 }
@@ -436,19 +430,14 @@ bool UPUDishBlueprintLibrary::DecrementIngredientQuantityByID(FPUDishBase& Dish,
     return true;
 }
 
-float UPUDishBlueprintLibrary::GetTotalValueForProperty(const FPUDishBase& Dish, const FName& PropertyName)
+float UPUDishBlueprintLibrary::GetTotalFlavorAspect(const FPUDishBase& Dish, const FName& AspectName)
 {
-    return Dish.GetTotalValueForProperty(PropertyName);
+    return Dish.GetTotalFlavorAspect(AspectName);
 }
 
-TArray<FIngredientProperty> UPUDishBlueprintLibrary::GetPropertiesWithTag(const FPUDishBase& Dish, const FGameplayTag& Tag)
+float UPUDishBlueprintLibrary::GetTotalTextureAspect(const FPUDishBase& Dish, const FName& AspectName)
 {
-    return Dish.GetPropertiesWithTag(Tag);
-}
-
-float UPUDishBlueprintLibrary::GetTotalValueForTag(const FPUDishBase& Dish, const FGameplayTag& Tag)
-{
-    return Dish.GetTotalValueForTag(Tag);
+    return Dish.GetTotalTextureAspect(AspectName);
 }
 
 bool UPUDishBlueprintLibrary::HasIngredient(const FPUDishBase& Dish, const FGameplayTag& IngredientTag)
@@ -566,13 +555,7 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
                                             if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetDishFromDataTable")))
                                             {
                                                 // Apply preparation modifiers
-                                                for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
-                                                {
-                                                    FName PropertyName = Modifier.GetPropertyName();
-                                                    float CurrentValue = Instance.IngredientData.GetPropertyValue(PropertyName);
-                                                    float NewValue = Modifier.ApplyModification(CurrentValue);
-                                                    Instance.IngredientData.SetPropertyValue(PropertyName, NewValue);
-                                                }
+                                                Preparation->ApplyModifiers(Instance.IngredientData.FlavorAspects, Instance.IngredientData.TextureAspects);
                                             }
                                         }
                                     }

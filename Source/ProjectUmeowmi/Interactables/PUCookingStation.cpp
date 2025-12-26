@@ -247,7 +247,7 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
             FPUIngredientBase Ingredient;
             if (Dish.GetIngredientForInstance(i, Ingredient))
             {
-                float IngredientFlavor = Ingredient.GetPropertyValue(Order.TargetFlavorProperty);
+                float IngredientFlavor = Ingredient.GetFlavorAspect(Order.TargetFlavorProperty);
                 UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %d (%s) has flavor value: %.2f"), 
                     i, *Instance.IngredientData.IngredientTag.ToString(), IngredientFlavor);
                 
@@ -268,20 +268,15 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
                     UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - No preparations applied"));
                 }
                 
-                // Debug the ingredient's properties
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s has %d natural properties"), 
-                    *Instance.IngredientData.IngredientTag.ToString(), Ingredient.NaturalProperties.Num());
-                
-                for (int32 j = 0; j < Ingredient.NaturalProperties.Num(); j++)
-                {
-                    const FIngredientProperty& Property = Ingredient.NaturalProperties[j];
-                    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Property %d: %s = %.2f"), 
-                        j, *Property.GetPropertyName().ToString(), Property.Value);
-                }
+                // Debug the ingredient's aspects
+                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s flavor aspects: Umami=%.2f, Sweet=%.2f, Salt=%.2f, Sour=%.2f, Bitter=%.2f, Spicy=%.2f"), 
+                    *Instance.IngredientData.IngredientTag.ToString(), 
+                    Ingredient.FlavorAspects.Umami, Ingredient.FlavorAspects.Sweet, Ingredient.FlavorAspects.Salt,
+                    Ingredient.FlavorAspects.Sour, Ingredient.FlavorAspects.Bitter, Ingredient.FlavorAspects.Spicy);
             }
         }
         
-        float FlavorValue = Dish.GetTotalValueForProperty(Order.TargetFlavorProperty);
+        float FlavorValue = Dish.GetTotalFlavorAspect(Order.TargetFlavorProperty);
         bMeetsFlavorRequirement = FlavorValue >= Order.MinFlavorValue;
         
         UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish flavor value: %.2f, minimum required: %.2f"), 
@@ -308,7 +303,7 @@ float APUCookingStation::CalculateSatisfactionScore(const FPUDishBase& Dish, con
     
     if (!Order.TargetFlavorProperty.IsNone())
     {
-        float FlavorValue = Dish.GetTotalValueForProperty(Order.TargetFlavorProperty);
+        float FlavorValue = Dish.GetTotalFlavorAspect(Order.TargetFlavorProperty);
         FlavorScore = FMath::Min(1.0f, FlavorValue / Order.MinFlavorValue);
     }
     

@@ -12,92 +12,56 @@ class UDataTable;
 class UStaticMesh;
 struct FPUPreparationBase;
 
-// Property types enum
-UENUM(BlueprintType)
-enum class EIngredientPropertyType : uint8
-{
-    Sweetness,
-    Saltiness,
-    Sourness,
-    Bitterness,
-    Umami,
-    Spiciness,
-    Thickness,
-    Smoothness,
-    Cohesion,
-    Temperature,
-    Watery,
-    Firm,
-    Crunchy,
-    Creamy,
-    Chewy,
-    Crumbly,
-    Custom UMETA(DisplayName = "Custom Property")
-};
-
-// Property definition with value and tags
+// Flavor aspects - the six basic flavors
+// Range: 0.0 to 5.0, increments of 0.5
 USTRUCT(BlueprintType)
-struct FIngredientProperty
+struct FFlavorAspects
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    EIngredientPropertyType PropertyType = EIngredientPropertyType::Custom;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Umami = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property", meta = (EditCondition = "PropertyType == EIngredientPropertyType::Custom"))
-    FName CustomPropertyName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Salt = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    float Value = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Sweet = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    FText DisplayName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Sour = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    FText Description;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Bitter = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property", meta = (Categories = "Profile"))
-    FGameplayTagContainer PropertyTags;
-
-    // Helper function to get the property name
-    FName GetPropertyName() const
-    {
-        if (PropertyType == EIngredientPropertyType::Custom)
-        {
-            return CustomPropertyName;
-        }
-        
-        // Get the enum string and extract just the value name (remove "EIngredientPropertyType::" prefix)
-        FString EnumString = UEnum::GetValueAsString(PropertyType);
-        FString ValueName;
-        if (EnumString.Split(TEXT("::"), nullptr, &ValueName))
-        {
-            return FName(*ValueName);
-        }
-        return FName(*EnumString);
-    }
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Spicy = 0.0f;
 };
 
-// Preparation modifier
+// Texture aspects - the six texture properties
+// Range: 0.0 to 5.0, increments of 0.5
 USTRUCT(BlueprintType)
-struct FPreparationModifier
+struct FTextureAspects
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FName ModifierName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Rich = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FText DisplayName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Juicy = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FText Description;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Tender = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    TMap<FName, float> PropertyModifiers;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Chewy = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FGameplayTagContainer ModifierTags;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Crispy = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Crumbly = 0.0f;
 };
 
 // Main ingredient struct
@@ -132,9 +96,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UStaticMesh> IngredientMesh;
 
-    // Natural Properties
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Properties")
-    TArray<FIngredientProperty> NaturalProperties;
+    // Flavor Aspects
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Aspects")
+    FFlavorAspects FlavorAspects;
+
+    // Texture Aspects
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Aspects")
+    FTextureAspects TextureAspects;
 
     // Quantity Management
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Quantity")
@@ -166,12 +134,18 @@ public:
     TMap<int32, FGameplayTagContainer> QuantitySpecialEffects;
 
     // Helper Functions
-    float GetPropertyValue(const FName& PropertyName) const;
-    void SetPropertyValue(const FName& PropertyName, float Value);
-    bool HasProperty(const FName& PropertyName) const;
-    TArray<FIngredientProperty> GetPropertiesByTag(const FGameplayTag& Tag) const;
-    bool HasPropertiesWithTag(const FGameplayTag& Tag) const;
-    float GetTotalValueForTag(const FGameplayTag& Tag) const;
+    // Get flavor aspect value by name
+    float GetFlavorAspect(const FName& AspectName) const;
+    // Get texture aspect value by name
+    float GetTextureAspect(const FName& AspectName) const;
+    // Set flavor aspect value by name
+    void SetFlavorAspect(const FName& AspectName, float Value);
+    // Set texture aspect value by name
+    void SetTextureAspect(const FName& AspectName, float Value);
+    // Get total flavor value (sum of all flavor aspects)
+    float GetTotalFlavorValue() const;
+    // Get total texture value (sum of all texture aspects)
+    float GetTotalTextureValue() const;
     TArray<FGameplayTag> GetEffectsAtQuantity(int32 Quantity) const;
 
     // Preparation Functions

@@ -103,15 +103,6 @@ protected:
     
     /** Maximum number of segments allowed in the radar chart */
     static const int32 MaxSegmentCount = 12;
-    
-    /** Full sequence of all possible properties in order */
-    TArray<EIngredientPropertyType> FullPropertySequence;
-    
-    /** Currently active segments (properties with values > 0) */
-    TArray<EIngredientPropertyType> ActiveSegments;
-    
-    /** Map of property type to its position in the full sequence */
-    TMap<EIngredientPropertyType, int32> PropertyPositionMap;
 
     /** Initializes default segments with the current segment count */
     void InitializeSegments();

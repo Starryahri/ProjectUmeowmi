@@ -5,7 +5,7 @@ FPUOrderBase::FPUOrderBase()
     : OrderID(NAME_None)
     , OrderDescription(FText::GetEmpty())
     , MinIngredientCount(3)
-    , TargetFlavorProperty(FName(TEXT("Saltiness")))
+    , TargetFlavorProperty(FName(TEXT("Salt")))
     , MinFlavorValue(5.0f)
     , OrderDialogueText(FText::GetEmpty())
 {
@@ -23,7 +23,7 @@ bool FPUOrderBase::ValidateDish(const FPUDishBase& Dish) const
         CurrentIngredientCount, MinIngredientCount, MinIngredientCount, bIngredientCountValid ? TEXT("YES") : TEXT("NO"));
     
     // Check flavor requirement
-    float CurrentFlavorValue = Dish.GetTotalValueForProperty(TargetFlavorProperty);
+    float CurrentFlavorValue = Dish.GetTotalFlavorAspect(TargetFlavorProperty);
     bool bFlavorValid = CurrentFlavorValue >= MinFlavorValue;
     
     UE_LOG(LogTemp, Log, TEXT("FPUOrderBase::ValidateDish - Flavor %s: %.2f/%.2f (Required: %.2f) - Valid: %s"), 
@@ -51,7 +51,7 @@ float FPUOrderBase::GetSatisfactionScore(const FPUDishBase& Dish) const
         IngredientScore, CurrentIngredientCount, MinIngredientCount);
     
     // Flavor satisfaction (50% of score)
-    float CurrentFlavor = Dish.GetTotalValueForProperty(TargetFlavorProperty);
+    float CurrentFlavor = Dish.GetTotalFlavorAspect(TargetFlavorProperty);
     float FlavorScore = FMath::Clamp(CurrentFlavor / MinFlavorValue, 0.0f, 1.0f);
     Score += FlavorScore * 0.5f;
     
@@ -85,7 +85,7 @@ void FPUOrderBase::LogValidationResults(const FPUDishBase& Dish) const
     // Log dish details - calculate total ingredient count
     int32 TotalIngredientCount = Dish.GetTotalIngredientQuantity();
     UE_LOG(LogTemp, Display, TEXT("Dish Ingredients: %d (Total Quantity: %d)"), Dish.IngredientInstances.Num(), TotalIngredientCount);
-    UE_LOG(LogTemp, Display, TEXT("Dish Flavor %s: %.2f"), *TargetFlavorProperty.ToString(), Dish.GetTotalValueForProperty(TargetFlavorProperty));
+    UE_LOG(LogTemp, Display, TEXT("Dish Flavor %s: %.2f"), *TargetFlavorProperty.ToString(), Dish.GetTotalFlavorAspect(TargetFlavorProperty));
     
     // Log validation results
     bool bValid = ValidateDish(Dish);
@@ -137,7 +137,7 @@ void FPUOrderBase::LogCompletionDetails() const
     // Log final flavor values
     if (!TargetFlavorProperty.IsNone())
     {
-        float FinalFlavorValue = CompletedDish.GetTotalValueForProperty(TargetFlavorProperty);
+        float FinalFlavorValue = CompletedDish.GetTotalFlavorAspect(TargetFlavorProperty);
         UE_LOG(LogTemp, Display, TEXT("Final %s Value: %.2f"), *TargetFlavorProperty.ToString(), FinalFlavorValue);
     }
     

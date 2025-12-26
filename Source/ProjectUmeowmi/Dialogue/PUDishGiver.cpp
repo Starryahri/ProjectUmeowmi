@@ -481,7 +481,7 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
     CompletedDishIngredientCount = CompletedDish.IngredientInstances.Num();
     
     // Flavor analysis
-    float FinalFlavorValue = CompletedDish.GetTotalValueForProperty(CompletedOrder.TargetFlavorProperty);
+    float FinalFlavorValue = CompletedDish.GetTotalFlavorAspect(CompletedOrder.TargetFlavorProperty);
     CompletedDishFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), FinalFlavorValue));
     CompletedDishTargetFlavor = FText::FromString(CompletedOrder.TargetFlavorProperty.ToString());
     CompletedDishMinFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), CompletedOrder.MinFlavorValue));

@@ -17,89 +17,100 @@ FPUIngredientBase::FPUIngredientBase()
 {
 }
 
-float FPUIngredientBase::GetPropertyValue(const FName& PropertyName) const
+float FPUIngredientBase::GetFlavorAspect(const FName& AspectName) const
 {
-    UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Looking for property '%s' in ingredient '%s'"), 
-        *PropertyName.ToString(), *IngredientName.ToString());
+    FString AspectStr = AspectName.ToString().ToLower();
     
-    for (const FIngredientProperty& Property : NaturalProperties)
-    {
-        FName CurrentPropertyName = Property.GetPropertyName();
-        UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Checking property '%s' (value: %.2f)"), 
-            *CurrentPropertyName.ToString(), Property.Value);
-        
-        if (CurrentPropertyName == PropertyName)
-        {
-            UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Found match! Returning %.2f"), Property.Value);
-            return Property.Value;
-        }
-    }
+    if (AspectStr == TEXT("umami"))
+        return FlavorAspects.Umami;
+    else if (AspectStr == TEXT("sweet"))
+        return FlavorAspects.Sweet;
+    else if (AspectStr == TEXT("salt"))
+        return FlavorAspects.Salt;
+    else if (AspectStr == TEXT("sour"))
+        return FlavorAspects.Sour;
+    else if (AspectStr == TEXT("bitter"))
+        return FlavorAspects.Bitter;
+    else if (AspectStr == TEXT("spicy"))
+        return FlavorAspects.Spicy;
     
-    UE_LOG(LogTemp, Log, TEXT("FPUIngredientBase::GetPropertyValue: Property '%s' not found, returning 0.0"), 
-        *PropertyName.ToString());
     return 0.0f;
 }
 
-void FPUIngredientBase::SetPropertyValue(const FName& PropertyName, float Value)
+float FPUIngredientBase::GetTextureAspect(const FName& AspectName) const
 {
-    for (FIngredientProperty& Property : NaturalProperties)
-    {
-        if (Property.GetPropertyName() == PropertyName)
-        {
-            Property.Value = Value;
-            return;
-        }
-    }
+    FString AspectStr = AspectName.ToString().ToLower();
+    
+    if (AspectStr == TEXT("rich"))
+        return TextureAspects.Rich;
+    else if (AspectStr == TEXT("juicy"))
+        return TextureAspects.Juicy;
+    else if (AspectStr == TEXT("tender"))
+        return TextureAspects.Tender;
+    else if (AspectStr == TEXT("chewy"))
+        return TextureAspects.Chewy;
+    else if (AspectStr == TEXT("crispy"))
+        return TextureAspects.Crispy;
+    else if (AspectStr == TEXT("crumbly"))
+        return TextureAspects.Crumbly;
+    
+    return 0.0f;
 }
 
-bool FPUIngredientBase::HasProperty(const FName& PropertyName) const
+void FPUIngredientBase::SetFlavorAspect(const FName& AspectName, float Value)
 {
-    for (const FIngredientProperty& Property : NaturalProperties)
-    {
-        if (Property.GetPropertyName() == PropertyName)
-        {
-            return true;
-        }
-    }
-    return false;
+    // Clamp value to 0.0-5.0 range and round to nearest 0.5 increment
+    Value = FMath::Clamp(Value, 0.0f, 5.0f);
+    Value = FMath::RoundToFloat(Value * 2.0f) / 2.0f; // Round to nearest 0.5
+    
+    FString AspectStr = AspectName.ToString().ToLower();
+    
+    if (AspectStr == TEXT("umami"))
+        FlavorAspects.Umami = Value;
+    else if (AspectStr == TEXT("sweet"))
+        FlavorAspects.Sweet = Value;
+    else if (AspectStr == TEXT("salt"))
+        FlavorAspects.Salt = Value;
+    else if (AspectStr == TEXT("sour"))
+        FlavorAspects.Sour = Value;
+    else if (AspectStr == TEXT("bitter"))
+        FlavorAspects.Bitter = Value;
+    else if (AspectStr == TEXT("spicy"))
+        FlavorAspects.Spicy = Value;
 }
 
-TArray<FIngredientProperty> FPUIngredientBase::GetPropertiesByTag(const FGameplayTag& Tag) const
+void FPUIngredientBase::SetTextureAspect(const FName& AspectName, float Value)
 {
-    TArray<FIngredientProperty> MatchingProperties;
-    for (const FIngredientProperty& Property : NaturalProperties)
-    {
-        if (Property.PropertyTags.HasTag(Tag))
-        {
-            MatchingProperties.Add(Property);
-        }
-    }
-    return MatchingProperties;
+    // Clamp value to 0.0-5.0 range and round to nearest 0.5 increment
+    Value = FMath::Clamp(Value, 0.0f, 5.0f);
+    Value = FMath::RoundToFloat(Value * 2.0f) / 2.0f; // Round to nearest 0.5
+    
+    FString AspectStr = AspectName.ToString().ToLower();
+    
+    if (AspectStr == TEXT("rich"))
+        TextureAspects.Rich = Value;
+    else if (AspectStr == TEXT("juicy"))
+        TextureAspects.Juicy = Value;
+    else if (AspectStr == TEXT("tender"))
+        TextureAspects.Tender = Value;
+    else if (AspectStr == TEXT("chewy"))
+        TextureAspects.Chewy = Value;
+    else if (AspectStr == TEXT("crispy"))
+        TextureAspects.Crispy = Value;
+    else if (AspectStr == TEXT("crumbly"))
+        TextureAspects.Crumbly = Value;
 }
 
-bool FPUIngredientBase::HasPropertiesWithTag(const FGameplayTag& Tag) const
+float FPUIngredientBase::GetTotalFlavorValue() const
 {
-    for (const FIngredientProperty& Property : NaturalProperties)
-    {
-        if (Property.PropertyTags.HasTag(Tag))
-        {
-            return true;
-        }
-    }
-    return false;
+    return FlavorAspects.Umami + FlavorAspects.Salt + FlavorAspects.Sweet + 
+           FlavorAspects.Sour + FlavorAspects.Bitter + FlavorAspects.Spicy;
 }
 
-float FPUIngredientBase::GetTotalValueForTag(const FGameplayTag& Tag) const
+float FPUIngredientBase::GetTotalTextureValue() const
 {
-    float TotalValue = 0.0f;
-    for (const FIngredientProperty& Property : NaturalProperties)
-    {
-        if (Property.PropertyTags.HasTag(Tag))
-        {
-            TotalValue += Property.Value;
-        }
-    }
-    return TotalValue;
+    return TextureAspects.Rich + TextureAspects.Juicy + TextureAspects.Tender + 
+           TextureAspects.Chewy + TextureAspects.Crispy + TextureAspects.Crumbly;
 }
 
 TArray<FGameplayTag> FPUIngredientBase::GetEffectsAtQuantity(int32 Quantity) const
@@ -129,7 +140,7 @@ bool FPUIngredientBase::ApplyPreparation(const FPUPreparationBase& Preparation)
 
     // Apply the preparation
     ActivePreparations.AddTag(Preparation.PreparationTag);
-    Preparation.ApplyModifiers(NaturalProperties);
+    Preparation.ApplyModifiers(FlavorAspects, TextureAspects);
     return true;
 }
 
@@ -143,7 +154,7 @@ bool FPUIngredientBase::RemovePreparation(const FPUPreparationBase& Preparation)
 
     // Remove the preparation
     ActivePreparations.RemoveTag(Preparation.PreparationTag);
-    Preparation.RemoveModifiers(NaturalProperties);
+    Preparation.RemoveModifiers(FlavorAspects, TextureAspects);
     return true;
 }
 

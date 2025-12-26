@@ -26,19 +26,14 @@ bool APUDish::RemoveIngredient(const FGameplayTag& IngredientTag)
     return false;
 }
 
-float APUDish::GetTotalValueForProperty(const FName& PropertyName) const
+float APUDish::GetTotalFlavorAspect(const FName& AspectName) const
 {
-    return UPUDishBlueprintLibrary::GetTotalValueForProperty(DishData, PropertyName);
+    return UPUDishBlueprintLibrary::GetTotalFlavorAspect(DishData, AspectName);
 }
 
-TArray<FIngredientProperty> APUDish::GetPropertiesWithTag(const FGameplayTag& Tag) const
+float APUDish::GetTotalTextureAspect(const FName& AspectName) const
 {
-    return UPUDishBlueprintLibrary::GetPropertiesWithTag(DishData, Tag);
-}
-
-float APUDish::GetTotalValueForTag(const FGameplayTag& Tag) const
-{
-    return UPUDishBlueprintLibrary::GetTotalValueForTag(DishData, Tag);
+    return UPUDishBlueprintLibrary::GetTotalTextureAspect(DishData, AspectName);
 }
 
 bool APUDish::HasIngredient(const FGameplayTag& IngredientTag) const
