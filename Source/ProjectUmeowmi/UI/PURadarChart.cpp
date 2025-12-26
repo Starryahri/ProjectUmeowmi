@@ -1,6 +1,7 @@
 #include "PURadarChart.h"
 #include "RadarChartStyle.h"
 #include "RadarChartTypes.h"
+#include "SRadarChart.h"
 #include "Engine/DataTable.h"
 #include "../DishCustomization/PUIngredientBase.h"
 #include "../DishCustomization/PUDishBase.h"
@@ -119,6 +120,114 @@ void UPURadarChart::SetValues(const TArray<float>& InValues)
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValues: Set values: %s"), *ValuesString);
 }
 
+void UPURadarChart::SetValuesAnimated(const TArray<float>& InValues, float Duration, uint8 Fps, TEnumAsByte<EEasingFunc::Type> Ease)
+{
+    // Validate input array size matches segment count
+    if (InValues.Num() != ChartStyle.Segments.Num())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesAnimated: Input array size (%d) does not match segment count (%d)"), 
+            InValues.Num(), ChartStyle.Segments.Num());
+        return;
+    }
+
+    // Validate that we have valid values (not NaN or infinite)
+    for (int32 i = 0; i < InValues.Num(); ++i)
+    {
+        if (!FMath::IsFinite(InValues[i]))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesAnimated: Invalid value at index %d: %f"), i, InValues[i]);
+            return;
+        }
+    }
+
+    // Ensure we have at least one value layer
+    if (ValueLayers.Num() == 0)
+    {
+        ValueLayers.AddZeroed();
+    }
+
+    // IMPORTANT: The widget and URadarChart share the same ValueLayers array
+    // The animation system uses ValueLayers[0].RawValues as the starting point (OldValues)
+    // We need to ensure RawValues are properly sized, but NOT overwrite them with zeros
+    // If they're empty, the animation will start from 0 (which is correct for first time)
+    // If they exist, they should already contain the current displayed values
+    
+    // Ensure RawValues array is properly sized to match segment count
+    // But preserve existing values - don't initialize to zero if they already exist
+    if (ValueLayers[0].RawValues.Num() != ChartStyle.Segments.Num())
+    {
+        // Resize to match segment count, preserving existing values where possible
+        int32 OldSize = ValueLayers[0].RawValues.Num();
+        ValueLayers[0].RawValues.SetNum(ChartStyle.Segments.Num());
+        
+        // Only initialize NEW slots to 0 (if segment count increased)
+        // Don't touch existing values - they should already be current
+        for (int32 i = OldSize; i < ValueLayers[0].RawValues.Num(); ++i)
+        {
+            ValueLayers[0].RawValues[i] = 0.0f;
+        }
+    }
+
+    // CRITICAL: The widget and URadarChart share the same ValueLayers array pointer (see RadarChart.cpp line 57)
+    // So ValueLayers[0].RawValues should already contain the current displayed values
+    // However, we need to ensure they're properly initialized before animating
+    
+    TSharedPtr<SRadarChart> RadarWidget = GetRadarWidget();
+    if (RadarWidget.IsValid())
+    {
+        // Log current RawValues for debugging
+        FString CurrentValuesStr = TEXT("[");
+        for (int32 i = 0; i < ValueLayers[0].RawValues.Num(); ++i)
+        {
+            if (i > 0) CurrentValuesStr += TEXT(", ");
+            CurrentValuesStr += FString::Printf(TEXT("%.2f"), ValueLayers[0].RawValues[i]);
+        }
+        CurrentValuesStr += TEXT("]");
+        
+        // The widget's SetValuesAnimated will:
+        // 1. Check if there's an ongoing animation and cancel it, preserving current RawValues
+        // 2. Use the CURRENT ValueLayers[0].RawValues as OldValues (line 597 in SRadarChart.cpp)
+        // 3. Animate from those current values to InValues
+        
+        // Since we share the same array, RawValues should already be current
+        // But if they're empty/zero and this isn't the first call, something went wrong
+        RadarWidget->SetValuesAnimated(0, InValues, Duration, Fps, Ease);
+        
+        FString NewValuesStr = TEXT("[");
+        for (int32 i = 0; i < InValues.Num(); ++i)
+        {
+            if (i > 0) NewValuesStr += TEXT(", ");
+            NewValuesStr += FString::Printf(TEXT("%.2f"), InValues[i]);
+        }
+        NewValuesStr += TEXT("]");
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesAnimated: Animating from %s to %s (duration %.2f, fps %d)"), 
+            *CurrentValuesStr, *NewValuesStr, Duration, Fps);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesAnimated: Radar widget is not valid, falling back to non-animated SetValues"));
+        SetValues(InValues);
+    }
+}
+
+void UPURadarChart::SetNormalizationScaleAnimated(float InValue, float Duration, uint8 Fps, TEnumAsByte<EEasingFunc::Type> Ease)
+{
+    // Get the Slate widget and call the animated method
+    TSharedPtr<SRadarChart> RadarWidget = GetRadarWidget();
+    if (RadarWidget.IsValid())
+    {
+        RadarWidget->SetNormalizationScaleAnimated(InValue, Duration, Fps, Ease);
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetNormalizationScaleAnimated: Setting scale to %.2f with duration %.2f, fps %d"), 
+            InValue, Duration, Fps);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetNormalizationScaleAnimated: Radar widget is not valid, falling back to non-animated SetNormalizationScale"));
+        SetNormalizationScale(InValue);
+    }
+}
+
 bool UPURadarChart::SetSegmentNames(const TArray<FString>& InNames)
 {
     // Validate that we have enough segments
@@ -234,14 +343,75 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Found %d unique ingredients"), IngredientQuantities.Num());
     
+    // Calculate scale based on duplicate slots (same ingredient in multiple slots)
+    // Each slot can contain an ingredient, and scale increases when the same ingredient appears in multiple slots
+    // Base scale is 5, then add 5 for each duplicate slot (ingredient appearing more than once)
+    // Example: 4 different ingredients (Anchovy, Duck, Noodles, Bread) = 0 duplicates = 5 scale
+    // Example: 2 Anchovy slots + 1 Noodles + 1 Bread = 1 duplicate = 5 + 5 = 10 scale
+    const float BASE_SCALE = 5.0f;
+    const float SCALE_PER_DUPLICATE_SLOT = 5.0f;
+    const float MAX_SCALE = 60.0f;
+    
+    // Count how many times each ingredient appears in slots (not quantity, but slot count)
+    // Count duplicate slots: for each ingredient that appears in multiple slots, count the extra slots
+    int32 DuplicateSlots = 0;
+    for (const auto& Pair : IngredientQuantities)
+    {
+        // Count how many slots this ingredient appears in
+        int32 SlotCount = 0;
+        for (const FIngredientInstance& Instance : Dish.IngredientInstances)
+        {
+            FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+            if (InstanceTag == Pair.Key && InstanceTag.IsValid())
+            {
+                SlotCount++;
+            }
+        }
+        
+        // If ingredient appears in more than 1 slot, count the extra slots as duplicates
+        if (SlotCount > 1)
+        {
+            DuplicateSlots += (SlotCount - 1);
+        }
+    }
+    
+    // Calculate scale: base 5 + 5 per duplicate slot
+    // Cap at max scale of 60
+    float NormalizationScale = FMath::Min(BASE_SCALE + (static_cast<float>(DuplicateSlots) * SCALE_PER_DUPLICATE_SLOT), MAX_SCALE);
+    
+    // Set the normalization scale for the radar chart with smooth animation
+    SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::EaseInOut);
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Duplicate slots: %d, Scale: %.1f"), 
+        DuplicateSlots, NormalizationScale);
+    
     // Calculate total segments needed (minimum 3, or more if we have more ingredients)
     int32 TotalSegments = FMath::Max(3, IngredientQuantities.Num());
     
-    // Set the number of segments
+    // CRITICAL: Preserve current RawValues before changing segment count
+    // SetSegmentCount calls UpdateValueLayers() which resets RawValues to zero
+    // We need to preserve them so animation can start from current values, not zero
+    TArray<float> PreservedRawValues;
+    bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
+    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    {
+        // Segment count is the same, preserve current RawValues
+        PreservedRawValues = ValueLayers[0].RawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Preserving %d current RawValues"), PreservedRawValues.Num());
+    }
+    
+    // Set the number of segments (this will reset RawValues if count changed)
     if (!SetSegmentCount(TotalSegments))
     {
         UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishIngredients: Failed to set segment count to %d"), TotalSegments);
         return false;
+    }
+    
+    // Restore preserved RawValues if segment count didn't change
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    {
+        ValueLayers[0].RawValues = PreservedRawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Restored preserved RawValues"));
     }
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Set up %d segments"), TotalSegments);
@@ -313,8 +483,8 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
         return false;
     }
     
-    // Set the values
-    SetValues(Values);
+    // Set the values with smooth animation
+    SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::EaseInOut);
     
     // Set the icons
     for (int32 i = 0; i < IconTextures.Num() && i < TotalSegments; ++i)

@@ -50,6 +50,16 @@ public:
     void SetValues(const TArray<float>& InValues);
 
     /**
+     * Sets the values of the radar chart from an array with smooth animation.
+     * @param InValues - The array of values to set
+     * @param Duration - Duration of the animation in seconds (default: 1.0)
+     * @param Fps - Frames per second for the animation (default: 18)
+     * @param Ease - Easing function type (default: Linear)
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    void SetValuesAnimated(const TArray<float>& InValues, float Duration = 1.0f, uint8 Fps = 18, TEnumAsByte<EEasingFunc::Type> Ease = EEasingFunc::Linear);
+
+    /**
      * Sets the names of the segments from an array of strings.
      * @param InNames - The array of names to set
      * @return True if the names were successfully set
@@ -96,6 +106,16 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "Radar Chart")
     bool SetValuesFromDishTextureProfile(const FPUDishBase& Dish);
+
+    /**
+     * Sets the normalization scale with smooth animation.
+     * @param InValue - The new normalization scale value
+     * @param Duration - Duration of the animation in seconds (default: 1.0)
+     * @param Fps - Frames per second for the animation (default: 18)
+     * @param Ease - Easing function type (default: Linear)
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    void SetNormalizationScaleAnimated(float InValue, float Duration = 1.0f, uint8 Fps = 18, TEnumAsByte<EEasingFunc::Type> Ease = EEasingFunc::Linear);
 
 protected:
     /** Minimum number of segments allowed in the radar chart */
