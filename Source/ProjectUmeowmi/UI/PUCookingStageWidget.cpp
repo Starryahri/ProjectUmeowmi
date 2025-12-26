@@ -2945,98 +2945,64 @@ void UPUCookingStageWidget::OnPantrySlotClicked(UPUIngredientSlot* IngredientSlo
         return;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - PantrySlotMap has %d entries"), PantrySlotMap.Num());
+    // Get the ingredient data directly from the slot instead of looking it up by tag
+    // This fixes the issue with sub-tags like "Ingredient.Noodle.Bihon" not being selectable
+    const FIngredientInstance& PantryInstance = IngredientSlot->GetIngredientInstance();
     
-    // Find the ingredient data from the pantry slot map
-    bool bFoundSlot = false;
-    for (auto& SlotPair : PantrySlotMap)
+    if (!PantryInstance.IngredientData.IngredientTag.IsValid())
     {
-        if (SlotPair.Value == IngredientSlot)
-        {
-            bFoundSlot = true;
-            UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Found slot in map with tag: %s"), 
-                *SlotPair.Key.ToString());
-            
-            // Found the slot, get the ingredient data from the component
-            if (DishCustomizationComponent)
-            {
-                TArray<FPUIngredientBase> AvailableIngredients = DishCustomizationComponent->GetIngredientData();
-                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Available ingredients: %d"), AvailableIngredients.Num());
-                
-                const FPUIngredientBase* FoundIngredient = AvailableIngredients.FindByPredicate([&SlotPair](const FPUIngredientBase& Ingredient) {
-                    return Ingredient.IngredientTag == SlotPair.Key;
-                });
-                
-                if (FoundIngredient)
-                {
-                    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Found ingredient: %s, PendingEmptySlot valid: %s"), 
-                        *FoundIngredient->DisplayName.ToString(), PendingEmptySlot.IsValid() ? TEXT("YES") : TEXT("NO"));
-                    
-                    // If we have a pending empty slot, populate it
-                    if (PendingEmptySlot.IsValid())
-                    {
-                        UPUIngredientSlot* EmptySlot = PendingEmptySlot.Get();
-                        
-                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populating empty slot: %s"), 
-                            *EmptySlot->GetName());
-                        
-                        // Create a new ingredient instance with GUID-based ID and quantity 1
-                        FIngredientInstance NewInstance;
-                        NewInstance.IngredientData = *FoundIngredient;
-                        NewInstance.InstanceID = GenerateGUIDBasedInstanceID();
-                        NewInstance.Quantity = 1;
-                        NewInstance.IngredientTag = FoundIngredient->IngredientTag; // Set the convenient tag field
-                        
-                        // IMPORTANT: Add to dish data FIRST before setting the ingredient instance
-                        // This prevents OnQuantityControlChanged from adding a duplicate when SetIngredientInstance broadcasts
-                        CurrentDishData.IngredientInstances.Add(NewInstance);
-                        
-                        // Bind to slot's ingredient changed event (check if already bound to avoid duplicates)
-                        EmptySlot->OnSlotIngredientChanged.AddUniqueDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
-                        
-                        // Set the ingredient instance on the empty slot (this will broadcast OnSlotIngredientChanged)
-                        // Since we already added it to dish data, OnQuantityControlChanged will find it and update it instead of adding a duplicate
-                        EmptySlot->SetIngredientInstance(NewInstance);
-                        
-                        // Broadcast dish data change
-                        OnDishDataChanged(CurrentDishData);
-                        
-                        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populated empty slot with: %s (ID: %d, Qty: 1)"), 
-                            *FoundIngredient->DisplayName.ToString(), NewInstance.InstanceID);
-                        
-                        // Clear pending empty slot
-                        PendingEmptySlot.Reset();
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - No pending empty slot! Pantry slot clicked but no empty slot to populate."));
-                    }
-                    
-                    // Close the pantry
-                    ClosePantry();
-                    
-                    return;
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - Could not find ingredient with tag: %s"), 
-                        *SlotPair.Key.ToString());
-                }
-            }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - DishCustomizationComponent is null!"));
-            }
-            break; // Found the slot, exit loop
-        }
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - Pantry slot has invalid ingredient tag!"));
+        return;
     }
     
-    if (!bFoundSlot)
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Found ingredient: %s (Tag: %s), PendingEmptySlot valid: %s"), 
+        *PantryInstance.IngredientData.DisplayName.ToString(), 
+        *PantryInstance.IngredientData.IngredientTag.ToString(),
+        PendingEmptySlot.IsValid() ? TEXT("YES") : TEXT("NO"));
+    
+    // If we have a pending empty slot, populate it
+    if (PendingEmptySlot.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - Could not find clicked slot in PantrySlotMap!"));
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   Clicked slot: %s"), *IngredientSlot->GetName());
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   PantrySlotMap entries: %d"), PantrySlotMap.Num());
+        UPUIngredientSlot* EmptySlot = PendingEmptySlot.Get();
+        
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populating empty slot: %s"), 
+            *EmptySlot->GetName());
+        
+        // Create a new ingredient instance with GUID-based ID and quantity 1
+        // Use the ingredient data directly from the pantry slot
+        FIngredientInstance NewInstance;
+        NewInstance.IngredientData = PantryInstance.IngredientData;
+        NewInstance.InstanceID = GenerateGUIDBasedInstanceID();
+        NewInstance.Quantity = 1;
+        NewInstance.IngredientTag = PantryInstance.IngredientData.IngredientTag; // Set the convenient tag field
+        
+        // IMPORTANT: Add to dish data FIRST before setting the ingredient instance
+        // This prevents OnQuantityControlChanged from adding a duplicate when SetIngredientInstance broadcasts
+        CurrentDishData.IngredientInstances.Add(NewInstance);
+        
+        // Bind to slot's ingredient changed event (check if already bound to avoid duplicates)
+        EmptySlot->OnSlotIngredientChanged.AddUniqueDynamic(this, &UPUCookingStageWidget::OnQuantityControlChanged);
+        
+        // Set the ingredient instance on the empty slot (this will broadcast OnSlotIngredientChanged)
+        // Since we already added it to dish data, OnQuantityControlChanged will find it and update it instead of adding a duplicate
+        EmptySlot->SetIngredientInstance(NewInstance);
+        
+        // Broadcast dish data change
+        OnDishDataChanged(CurrentDishData);
+        
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populated empty slot with: %s (ID: %d, Qty: 1)"), 
+            *PantryInstance.IngredientData.DisplayName.ToString(), NewInstance.InstanceID);
+        
+        // Clear pending empty slot
+        PendingEmptySlot.Reset();
     }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::OnPantrySlotClicked - No pending empty slot! Pantry slot clicked but no empty slot to populate."));
+    }
+    
+    // Close the pantry
+    ClosePantry();
 }
 
 void UPUCookingStageWidget::OnEmptySlotClicked(UPUIngredientSlot* IngredientSlot)

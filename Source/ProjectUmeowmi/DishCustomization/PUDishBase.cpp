@@ -1,6 +1,7 @@
 #include "PUDishBase.h"
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
+#include "PUDishBlueprintLibrary.h"
 #include "Engine/DataTable.h"
 
 // Initialize the static counter
@@ -28,53 +29,47 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
         return false;
     }
     
-    // Get the ingredient name from the tag (everything after the last period) and convert to lowercase
-    FString FullTag = IngredientTag.ToString();
-    int32 LastPeriodIndex;
-    if (FullTag.FindLastChar('.', LastPeriodIndex))
-    {
-        FString IngredientName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-        FName RowName = FName(*IngredientName);
+    // Get the ingredient row name from the tag (removes "Ingredient." prefix, converts to lowercase, removes periods)
+    FName RowName = UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(IngredientTag);
         
-        if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
+    if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
+    {
+        OutIngredient = *FoundIngredient;
+        
+        // Load preparation data if available
+        if (OutIngredient.PreparationDataTable.IsValid())
         {
-            OutIngredient = *FoundIngredient;
-            
-            // Load preparation data if available
-            if (OutIngredient.PreparationDataTable.IsValid())
+            UDataTable* LoadedPreparationDataTable = OutIngredient.PreparationDataTable.LoadSynchronous();
+            if (LoadedPreparationDataTable)
             {
-                UDataTable* LoadedPreparationDataTable = OutIngredient.PreparationDataTable.LoadSynchronous();
-                if (LoadedPreparationDataTable)
+                // Apply any active preparations to the ingredient
+                for (const FGameplayTag& PrepTag : OutIngredient.ActivePreparations)
                 {
-                    // Apply any active preparations to the ingredient
-                    for (const FGameplayTag& PrepTag : OutIngredient.ActivePreparations)
+                    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+                    FString PrepFullTag = PrepTag.ToString();
+                    int32 PrepLastPeriodIndex;
+                    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
                     {
-                        // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                        FString PrepFullTag = PrepTag.ToString();
-                        int32 PrepLastPeriodIndex;
-                        if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                        FName PrepRowName = FName(*PrepName);
+                        
+                        if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
                         {
-                            FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                            FName PrepRowName = FName(*PrepName);
-                            
-                            if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
+                            // Apply preparation modifiers
+                            for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
                             {
-                                // Apply preparation modifiers
-                                for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
-                                {
-                                    FName PropertyName = Modifier.GetPropertyName();
-                                    float CurrentValue = OutIngredient.GetPropertyValue(PropertyName);
-                                    float NewValue = Modifier.ApplyModification(CurrentValue);
-                                    OutIngredient.SetPropertyValue(PropertyName, NewValue);
-                                }
+                                FName PropertyName = Modifier.GetPropertyName();
+                                float CurrentValue = OutIngredient.GetPropertyValue(PropertyName);
+                                float NewValue = Modifier.ApplyModification(CurrentValue);
+                                OutIngredient.SetPropertyValue(PropertyName, NewValue);
                             }
                         }
                     }
                 }
             }
-            
-            return true;
         }
+        
+        return true;
     }
     
     return false;

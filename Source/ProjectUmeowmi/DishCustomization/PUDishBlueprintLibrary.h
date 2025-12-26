@@ -148,4 +148,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Dish|Plating")
     static bool GetIngredientPlating(const FPUDishBase& Dish, int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale);
+
+    // Helper function to convert ingredient tag to data table row name
+    // Removes "Ingredient." prefix, converts to lowercase, and removes all periods
+    // Example: "Ingredient.Noodle.Bihon" -> "noodlebihon"
+    static FName GetIngredientRowNameFromTag(const FGameplayTag& IngredientTag);
 }; 

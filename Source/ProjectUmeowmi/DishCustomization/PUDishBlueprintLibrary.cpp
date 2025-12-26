@@ -4,6 +4,27 @@
 #include "PUPreparationBase.h"
 #include "../UI/PUCookingStageWidget.h"
 
+FName UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(const FGameplayTag& IngredientTag)
+{
+    // Remove "Ingredient." prefix, convert to lowercase, and remove all periods
+    // Example: "Ingredient.Noodle.Bihon" -> "noodlebihon"
+    FString FullTag = IngredientTag.ToString();
+    
+    // Remove "Ingredient." prefix if present
+    if (FullTag.StartsWith(TEXT("Ingredient.")))
+    {
+        FullTag = FullTag.RightChop(11); // Remove "Ingredient." (11 characters)
+    }
+    
+    // Convert to lowercase
+    FullTag = FullTag.ToLower();
+    
+    // Remove all periods
+    FullTag.ReplaceInline(TEXT("."), TEXT(""));
+    
+    return FName(*FullTag);
+}
+
 FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations)
 {
     // Validate the dish has an ingredient data table
@@ -20,68 +41,62 @@ FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, co
         return FIngredientInstance();
     }
     
-    // Get the ingredient name from the tag (everything after the last period) and convert to lowercase
-    FString FullTag = IngredientTag.ToString();
-    int32 LastPeriodIndex;
-    if (FullTag.FindLastChar('.', LastPeriodIndex))
-    {
-        FString IngredientName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-        FName RowName = FName(*IngredientName);
+    // Get the ingredient row name from the tag (removes "Ingredient." prefix, converts to lowercase, removes periods)
+    FName RowName = GetIngredientRowNameFromTag(IngredientTag);
         
-        if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("AddIngredient")))
+    if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("AddIngredient")))
+    {
+        // Create a new ingredient instance
+        FIngredientInstance NewInstance;
+        // Use GUID-based instance ID generation (same as ingredient buttons)
+        NewInstance.InstanceID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
+        NewInstance.Quantity = 1;
+        NewInstance.IngredientData = *FoundIngredient;
+        NewInstance.IngredientTag = IngredientTag;
+        NewInstance.Preparations = Preparations;
+        
+        // Apply preparations to the ingredient data
+        if (NewInstance.IngredientData.PreparationDataTable.IsValid())
         {
-            // Create a new ingredient instance
-            FIngredientInstance NewInstance;
-            // Use GUID-based instance ID generation (same as ingredient buttons)
-            NewInstance.InstanceID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
-            NewInstance.Quantity = 1;
-            NewInstance.IngredientData = *FoundIngredient;
-            NewInstance.IngredientTag = IngredientTag;
-            NewInstance.Preparations = Preparations;
-            
-            // Apply preparations to the ingredient data
-            if (NewInstance.IngredientData.PreparationDataTable.IsValid())
+            UDataTable* LoadedPreparationDataTable = NewInstance.IngredientData.PreparationDataTable.LoadSynchronous();
+            if (LoadedPreparationDataTable)
             {
-                UDataTable* LoadedPreparationDataTable = NewInstance.IngredientData.PreparationDataTable.LoadSynchronous();
-                if (LoadedPreparationDataTable)
+                TArray<FGameplayTag> PreparationTags;
+                Preparations.GetGameplayTagArray(PreparationTags);
+                
+                for (const FGameplayTag& PrepTag : PreparationTags)
                 {
-                    TArray<FGameplayTag> PreparationTags;
-                    Preparations.GetGameplayTagArray(PreparationTags);
-                    
-                    for (const FGameplayTag& PrepTag : PreparationTags)
+                    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+                    FString PrepFullTag = PrepTag.ToString();
+                    int32 PrepLastPeriodIndex;
+                    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
                     {
-                        // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                        FString PrepFullTag = PrepTag.ToString();
-                        int32 PrepLastPeriodIndex;
-                        if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                        FName PrepRowName = FName(*PrepName);
+                        
+                        if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddIngredient")))
                         {
-                            FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                            FName PrepRowName = FName(*PrepName);
-                            
-                            if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddIngredient")))
+                            // Apply preparation modifiers
+                            for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
                             {
-                                // Apply preparation modifiers
-                                for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
-                                {
-                                    FName PropertyName = Modifier.GetPropertyName();
-                                    float CurrentValue = NewInstance.IngredientData.GetPropertyValue(PropertyName);
-                                    float NewValue = Modifier.ApplyModification(CurrentValue);
-                                    NewInstance.IngredientData.SetPropertyValue(PropertyName, NewValue);
-                                }
+                                FName PropertyName = Modifier.GetPropertyName();
+                                float CurrentValue = NewInstance.IngredientData.GetPropertyValue(PropertyName);
+                                float NewValue = Modifier.ApplyModification(CurrentValue);
+                                NewInstance.IngredientData.SetPropertyValue(PropertyName, NewValue);
                             }
                         }
                     }
                 }
             }
-            
-            // Add the instance to the dish
-            Dish.IngredientInstances.Add(NewInstance);
-            
-            UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::AddIngredient - Added ingredient %s with %d preparations"), 
-                *IngredientTag.ToString(), Preparations.Num());
-            
-            return NewInstance;
         }
+        
+        // Add the instance to the dish
+        Dish.IngredientInstances.Add(NewInstance);
+        
+        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::AddIngredient - Added ingredient %s with %d preparations"), 
+            *IngredientTag.ToString(), Preparations.Num());
+        
+        return NewInstance;
     }
     
     UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::AddIngredient - Ingredient %s not found in data table"), *IngredientTag.ToString());
@@ -458,10 +473,11 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
     // Get the dish name from the tag (everything after the last period) and convert to lowercase
     FString FullTag = DishTag.ToString();
     int32 LastPeriodIndex;
+    FName RowName = NAME_None;
     if (FullTag.FindLastChar('.', LastPeriodIndex))
     {
         FString DishName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-        FName RowName = FName(*DishName);
+        RowName = FName(*DishName);
         
         UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"), 
             *DishTag.ToString(), *RowName.ToString());
@@ -504,77 +520,71 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
                     UDataTable* LoadedIngredientDataTable = IngredientDataTable;
                     if (LoadedIngredientDataTable)
                     {
-                        // Get the ingredient name from the tag (everything after the last period) and convert to lowercase
-                        FString IngredientFullTag = Instance.IngredientTag.ToString();
-                        int32 IngredientLastPeriodIndex;
-                        if (IngredientFullTag.FindLastChar('.', IngredientLastPeriodIndex))
-                        {
-                            FString IngredientTagName = IngredientFullTag.RightChop(IngredientLastPeriodIndex + 1).ToLower();
-                            FName IngredientRowName = FName(*IngredientTagName);
+                        // Get the ingredient row name from the tag (removes "Ingredient." prefix, converts to lowercase, removes periods)
+                        FName IngredientRowName = GetIngredientRowNameFromTag(Instance.IngredientTag);
                             
-                            if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(IngredientRowName, TEXT("GetDishFromDataTable")))
+                        if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(IngredientRowName, TEXT("GetDishFromDataTable")))
+                        {
+                            // Copy the base ingredient data
+                            Instance.IngredientData = *FoundIngredient;
+                            
+                            // IMPORTANT: If the ingredient data table row has ActivePreparations set (like Prep.Char in bbqduck),
+                            // copy them to Instance.Preparations so they're preserved
+                            if (Instance.Preparations.Num() == 0 && Instance.IngredientData.ActivePreparations.Num() > 0)
                             {
-                                // Copy the base ingredient data
-                                Instance.IngredientData = *FoundIngredient;
-                                
-                                // IMPORTANT: If the ingredient data table row has ActivePreparations set (like Prep.Char in bbqduck),
-                                // copy them to Instance.Preparations so they're preserved
-                                if (Instance.Preparations.Num() == 0 && Instance.IngredientData.ActivePreparations.Num() > 0)
+                                Instance.Preparations = Instance.IngredientData.ActivePreparations;
+                                UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Copied %d ActivePreparations from data table to Instance.Preparations"), 
+                                    Instance.IngredientData.ActivePreparations.Num());
+                            }
+                            
+                            // Sync both ways: if Instance.Preparations has values, use those; otherwise use ActivePreparations from data table
+                            if (Instance.Preparations.Num() > 0)
+                            {
+                                Instance.IngredientData.ActivePreparations = Instance.Preparations;
+                            }
+                            // If Instance.Preparations is empty but ActivePreparations has values, they're already synced above
+                            
+                            // Apply each preparation's modifiers
+                            if (Instance.IngredientData.PreparationDataTable.IsValid())
+                            {
+                                UDataTable* LoadedPreparationDataTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous();
+                                if (LoadedPreparationDataTable)
                                 {
-                                    Instance.Preparations = Instance.IngredientData.ActivePreparations;
-                                    UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Copied %d ActivePreparations from data table to Instance.Preparations"), 
-                                        Instance.IngredientData.ActivePreparations.Num());
-                                }
-                                
-                                // Sync both ways: if Instance.Preparations has values, use those; otherwise use ActivePreparations from data table
-                                if (Instance.Preparations.Num() > 0)
-                                {
-                                    Instance.IngredientData.ActivePreparations = Instance.Preparations;
-                                }
-                                // If Instance.Preparations is empty but ActivePreparations has values, they're already synced above
-                                
-                                // Apply each preparation's modifiers
-                                if (Instance.IngredientData.PreparationDataTable.IsValid())
-                                {
-                                    UDataTable* LoadedPreparationDataTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous();
-                                    if (LoadedPreparationDataTable)
-                                    {
-                                        TArray<FGameplayTag> PreparationTags;
-                                        Instance.Preparations.GetGameplayTagArray(PreparationTags);
+                                    TArray<FGameplayTag> PreparationTags;
+                                    Instance.Preparations.GetGameplayTagArray(PreparationTags);
 
-                                        for (const FGameplayTag& PrepTag : PreparationTags)
+                                    for (const FGameplayTag& PrepTag : PreparationTags)
+                                    {
+                                        // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+                                        FString PrepTagName = PrepTag.ToString();
+                                        int32 PrepLastPeriodIndex;
+                                        if (PrepTagName.FindLastChar('.', PrepLastPeriodIndex))
                                         {
-                                            // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                                            FString PrepTagName = PrepTag.ToString();
-                                            int32 PrepLastPeriodIndex;
-                                            if (PrepTagName.FindLastChar('.', PrepLastPeriodIndex))
+                                            FString PrepName = PrepTagName.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                                            FName PrepRowName = FName(*PrepName);
+                                            
+                                            if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetDishFromDataTable")))
                                             {
-                                                FString PrepName = PrepTagName.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                                                FName PrepRowName = FName(*PrepName);
-                                                
-                                                if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetDishFromDataTable")))
+                                                // Apply preparation modifiers
+                                                for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
                                                 {
-                                                    // Apply preparation modifiers
-                                                    for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
-                                                    {
-                                                        FName PropertyName = Modifier.GetPropertyName();
-                                                        float CurrentValue = Instance.IngredientData.GetPropertyValue(PropertyName);
-                                                        float NewValue = Modifier.ApplyModification(CurrentValue);
-                                                        Instance.IngredientData.SetPropertyValue(PropertyName, NewValue);
-                                                    }
+                                                    FName PropertyName = Modifier.GetPropertyName();
+                                                    float CurrentValue = Instance.IngredientData.GetPropertyValue(PropertyName);
+                                                    float NewValue = Modifier.ApplyModification(CurrentValue);
+                                                    Instance.IngredientData.SetPropertyValue(PropertyName, NewValue);
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                
-                                UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Successfully populated ingredient data for: %s"), 
-                                    *Instance.IngredientData.DisplayName.ToString());
                             }
-                            else
-                            {
-                                UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Failed to find ingredient in data table: %s"), *IngredientRowName.ToString());
-                            }
+                            
+                            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Successfully populated ingredient data for: %s"), 
+                                *Instance.IngredientData.DisplayName.ToString());
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Failed to find ingredient in data table: %s"), *IngredientRowName.ToString());
                         }
                     }
                     else
@@ -594,7 +604,8 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s"), *RowName.ToString());
+            UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s (RowName: %s)"), 
+                *DishTag.ToString(), *RowName.ToString());
         }
     }
     else
