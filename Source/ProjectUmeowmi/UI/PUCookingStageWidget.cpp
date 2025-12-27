@@ -4,6 +4,7 @@
 #include "PUIngredientButton.h"
 #include "PUIngredientSlot.h"
 #include "PUDishCustomizationWidget.h"
+#include "PURadarChart.h"
 #include "Components/Button.h"
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
@@ -186,9 +187,8 @@ void UPUCookingStageWidget::OnQuantityControlChanged(const FIngredientInstance& 
     
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: About to broadcast OnDishDataChanged"));
     
-    // Broadcast dish data change to update flavor/texture/dish quantity profiles
-    OnDishDataChanged(CurrentDishData);
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlChanged - Broadcasted dish data change"));
+    // Update radar chart and broadcast dish data change
+    UpdateRadarChartAndBroadcast();
 }
 
 void UPUCookingStageWidget::OnQuantityControlRemoved(int32 InstanceID, UPUIngredientQuantityControl* QuantityControlWidget)
@@ -219,11 +219,60 @@ void UPUCookingStageWidget::OnQuantityControlRemoved(int32 InstanceID, UPUIngred
             i, Instance.InstanceID, *Instance.IngredientData.IngredientName.ToString(), Instance.Quantity);
     }
     
-    // Broadcast dish data change to update flavor/texture/dish quantity profiles
-    OnDishDataChanged(CurrentDishData);
-    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnQuantityControlRemoved - Broadcasted dish data change"));
+    // Update radar chart and broadcast dish data change
+    UpdateRadarChartAndBroadcast();
     
     // Note: Widget removal is handled by the quantity control widget itself
+}
+
+void UPUCookingStageWidget::UpdateRadarChart(UPURadarChart* InRadarChartWidget)
+{
+    if (!InRadarChartWidget)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🍳 PUCookingStageWidget::UpdateRadarChart - Radar chart widget is null"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateRadarChart - Updating radar chart with %d ingredients"), 
+        CurrentDishData.IngredientInstances.Num());
+    
+    // Update the radar chart with current dish data
+    InRadarChartWidget->SetValuesFromDishIngredients(CurrentDishData);
+}
+
+void UPUCookingStageWidget::RemoveIngredientInstanceFromCookingStage(int32 InstanceID)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RemoveIngredientInstanceFromCookingStage - Removing instance ID: %d"), InstanceID);
+    
+    // Remove the ingredient instance
+    int32 Removed = CurrentDishData.IngredientInstances.RemoveAll([InstanceID](const FIngredientInstance& Instance) {
+        return Instance.InstanceID == InstanceID;
+    });
+    
+    if (Removed > 0)
+    {
+        // Update radar chart and broadcast dish data change
+        UpdateRadarChartAndBroadcast();
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::RemoveIngredientInstanceFromCookingStage - Removed %d instance(s)"), Removed);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::RemoveIngredientInstanceFromCookingStage - Instance ID %d not found"), InstanceID);
+    }
+}
+
+void UPUCookingStageWidget::UpdateRadarChartAndBroadcast()
+{
+    // Update radar chart if reference is set
+    if (RadarChartWidget)
+    {
+        UpdateRadarChart(RadarChartWidget);
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateRadarChartAndBroadcast - Updated radar chart"));
+    }
+    
+    // Broadcast dish data change to update flavor/texture/dish quantity profiles
+    OnDishDataChanged(CurrentDishData);
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateRadarChartAndBroadcast - Broadcasted dish data change"));
 }
 
 int32 UPUCookingStageWidget::GenerateUniqueIngredientInstanceID() const
@@ -763,8 +812,8 @@ void UPUCookingStageWidget::OnIngredientDroppedOnImplement(int32 ImplementIndex,
             }
         }
         
-        // Broadcast dish data change to update radar graphs
-        OnDishDataChanged(CurrentDishData);
+        // Update radar chart and broadcast dish data change
+        UpdateRadarChartAndBroadcast();
         UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnIngredientDroppedOnImplement - Updated dish data and broadcasted changes"));
     }
     else
@@ -2432,9 +2481,9 @@ void UPUCookingStageWidget::CreateQuantityControlFromDroppedIngredient(const FPU
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: OnQuantityControlCreated Blueprint event called"));
     UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: After Blueprint event, CurrentDishData has %d ingredients"), CurrentDishData.IngredientInstances.Num());
     
-    // Broadcast dish data change to update radar graphs
-    OnDishDataChanged(CurrentDishData);
-    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Broadcasted OnDishDataChanged for radar graph update"));
+    // Update radar chart and broadcast dish data change
+    UpdateRadarChartAndBroadcast();
+    UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Updated radar chart and broadcasted OnDishDataChanged"));
     
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateQuantityControlFromDroppedIngredient - Blueprint event called for quantity control creation"));
 }
@@ -3022,11 +3071,11 @@ void UPUCookingStageWidget::OnPantrySlotClicked(UPUIngredientSlot* IngredientSlo
         // Since we already added it to dish data, OnQuantityControlChanged will find it and update it instead of adding a duplicate
         EmptySlot->SetIngredientInstance(NewInstance);
         
-        // Broadcast dish data change
-        OnDishDataChanged(CurrentDishData);
-        
-        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populated empty slot with: %s (ID: %d, Qty: 1)"), 
-            *PantryInstance.IngredientData.DisplayName.ToString(), NewInstance.InstanceID);
+    // Update radar chart and broadcast dish data change
+    UpdateRadarChartAndBroadcast();
+    
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::OnPantrySlotClicked - Populated empty slot with: %s (ID: %d, Qty: 1)"), 
+        *PantryInstance.IngredientData.DisplayName.ToString(), NewInstance.InstanceID);
         
         // Clear pending empty slot
         PendingEmptySlot.Reset();

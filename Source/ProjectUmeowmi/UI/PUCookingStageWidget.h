@@ -15,6 +15,7 @@ class UPUIngredientQuantityControl;
 class UPUIngredientButton;
 class AStaticMeshActor;
 class UScrollBox;
+class UPURadarChart;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCookingCompleted, const FPUDishBase&, FinalDishData);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCookingImplementSelected, int32, ImplementIndex);
@@ -85,6 +86,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Preparations")
     FGameplayTagContainer GetPreparationTagsForImplement(int32 ImplementIndex) const;
 
+    // Update radar chart with current dish data
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Radar Chart")
+    void UpdateRadarChart(class UPURadarChart* InRadarChartWidget);
+
+    // Remove ingredient instance from cooking stage (for use by ingredient slots)
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Ingredients")
+    void RemoveIngredientInstanceFromCookingStage(int32 InstanceID);
+
     // Blueprint events
     UFUNCTION(BlueprintImplementableEvent, Category = "Cooking Stage Widget")
     void OnCookingStageInitialized(const FPUDishBase& DishData);
@@ -125,6 +134,10 @@ public:
     // Reference to the dish customization widget (for ingredient slot access)
     UPROPERTY(BlueprintReadWrite, Category = "Cooking Stage Widget")
     class UPUDishCustomizationWidget* DishCustomizationWidget;
+
+    // Optional reference to radar chart widget (will be automatically updated when dish data changes)
+    UPROPERTY(BlueprintReadWrite, Category = "Cooking Stage Widget|Radar Chart")
+    class UPURadarChart* RadarChartWidget;
 
     // Set the customization component reference
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
@@ -432,6 +445,9 @@ private:
     int32 FindImplementUnderScreenPos(const FVector2D& ScreenPosViewport, struct FHitResult& OutHit) const;
     FVector2D ConvertAbsoluteToViewport(const FVector2D& AbsoluteScreenPos) const;
     int32 GenerateUniqueIngredientInstanceID() const;
+    
+    // Helper function to update radar chart and broadcast dish data changed event
+    void UpdateRadarChartAndBroadcast();
 
     // Carousel state
     UPROPERTY()

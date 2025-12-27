@@ -2445,7 +2445,22 @@ void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
 
     if (ActionString == TEXT("Action.Remove"))
     {
-        // Remove the ingredient instance - try to get the widget first (preferred method)
+        // CRITICAL: Check if we're in a cooking stage widget first!
+        // If so, update the cooking stage widget's data, not the dish customization widget
+        UPUCookingStageWidget* CookingWidget = GetCookingStageWidget();
+        if (CookingWidget)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found cooking stage widget, removing instance ID: %d"), IngredientInstance.InstanceID);
+            
+            // Use the cooking stage widget's public function to remove the ingredient
+            // This will update the dish data and trigger OnDishDataChanged which updates the radar chart
+            CookingWidget->RemoveIngredientInstanceFromCookingStage(IngredientInstance.InstanceID);
+            ClearSlot();
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via cooking stage widget"));
+            return;
+        }
+        
+        // Fallback: try dish customization widget
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
         if (DishWidget)
         {
@@ -2637,5 +2652,32 @@ void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* I
     CachedDishWidget = InDishWidget;
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDishCustomizationWidget - Cached dish widget reference: %s"), 
         InDishWidget ? *InDishWidget->GetName() : TEXT("NULL"));
+}
+
+UPUCookingStageWidget* UPUIngredientSlot::GetCookingStageWidget() const
+{
+    // Try to find the cooking stage widget by traversing up the widget hierarchy
+    UWidget* Parent = GetParent();
+    while (Parent)
+    {
+        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(Parent))
+        {
+            return CookingWidget;
+        }
+        Parent = Parent->GetParent();
+    }
+    
+    // Try to get it from the outer widget
+    UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
+    while (RootWidget)
+    {
+        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(RootWidget))
+        {
+            return CookingWidget;
+        }
+        RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
+    }
+    
+    return nullptr;
 }
 
