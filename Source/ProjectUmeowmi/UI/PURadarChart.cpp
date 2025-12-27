@@ -380,7 +380,7 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     float NormalizationScale = FMath::Min(BASE_SCALE + (static_cast<float>(DuplicateSlots) * SCALE_PER_DUPLICATE_SLOT), MAX_SCALE);
     
     // Set the normalization scale for the radar chart with smooth animation
-    SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::EaseInOut);
+    SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::ExpoOut);
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Duplicate slots: %d, Scale: %.1f"), 
         DuplicateSlots, NormalizationScale);
@@ -484,7 +484,7 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     }
     
     // Set the values with smooth animation
-    SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::EaseInOut);
+    SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
     
     // Set the icons
     for (int32 i = 0; i < IconTextures.Num() && i < TotalSegments; ++i)
@@ -571,11 +571,30 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     // Calculate total segments needed (minimum 3, or more if we have more aspects with values)
     int32 TotalSegments = FMath::Max(MIN_SEGMENTS, AspectsWithValues.Num());
     
-    // Set the number of segments
+    // CRITICAL: Preserve current RawValues before changing segment count
+    // SetSegmentCount calls UpdateValueLayers() which resets RawValues to zero
+    // We need to preserve them so animation can start from current values, not zero
+    TArray<float> PreservedRawValues;
+    bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
+    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    {
+        // Segment count is the same, preserve current RawValues
+        PreservedRawValues = ValueLayers[0].RawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Preserving %d current RawValues"), PreservedRawValues.Num());
+    }
+    
+    // Set the number of segments (this will reset RawValues if count changed)
     if (!SetSegmentCount(TotalSegments))
     {
         UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Failed to set segment count to %d"), TotalSegments);
         return false;
+    }
+    
+    // Restore preserved RawValues if segment count didn't change
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    {
+        ValueLayers[0].RawValues = PreservedRawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Restored preserved RawValues"));
     }
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Set up %d segments"), TotalSegments);
@@ -622,6 +641,35 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
         Values.Add(0.0f);
     }
     
+    // Calculate normalization scale based on maximum value
+    // Scale increments by 25: 0-25 = scale 25, 25-50 = scale 50, etc., up to max 300
+    const float SCALE_INCREMENT = 25.0f;
+    const float MAX_SCALE = 300.0f;
+    
+    float MaxValue = 0.0f;
+    for (float Value : Values)
+    {
+        if (Value > MaxValue)
+        {
+            MaxValue = Value;
+        }
+    }
+    
+    // Calculate scale: round up to next 25 increment, capped at 300
+    float NormalizationScale = FMath::Min(FMath::CeilToFloat(MaxValue / SCALE_INCREMENT) * SCALE_INCREMENT, MAX_SCALE);
+    
+    // Ensure minimum scale of 25 if we have any values
+    if (MaxValue > 0.0f && NormalizationScale < SCALE_INCREMENT)
+    {
+        NormalizationScale = SCALE_INCREMENT;
+    }
+    
+    // Set the normalization scale for the radar chart with smooth animation
+    SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::ExpoOut);
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Max value: %.2f, Scale: %.1f"), 
+        MaxValue, NormalizationScale);
+    
     // Set the segment names
     if (!SetSegmentNames(DisplayNames))
     {
@@ -629,8 +677,8 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
         return false;
     }
     
-    // Set the values
-    SetValues(Values);
+    // Set the values with smooth animation
+    SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Completed setup with %d segments"), TotalSegments);
     return true;
@@ -667,11 +715,30 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     // Calculate total segments needed (minimum 3, or more if we have more aspects with values)
     int32 TotalSegments = FMath::Max(MIN_SEGMENTS, AspectsWithValues.Num());
     
-    // Set the number of segments
+    // CRITICAL: Preserve current RawValues before changing segment count
+    // SetSegmentCount calls UpdateValueLayers() which resets RawValues to zero
+    // We need to preserve them so animation can start from current values, not zero
+    TArray<float> PreservedRawValues;
+    bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
+    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    {
+        // Segment count is the same, preserve current RawValues
+        PreservedRawValues = ValueLayers[0].RawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Preserving %d current RawValues"), PreservedRawValues.Num());
+    }
+    
+    // Set the number of segments (this will reset RawValues if count changed)
     if (!SetSegmentCount(TotalSegments))
     {
         UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Failed to set segment count to %d"), TotalSegments);
         return false;
+    }
+    
+    // Restore preserved RawValues if segment count didn't change
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    {
+        ValueLayers[0].RawValues = PreservedRawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Restored preserved RawValues"));
     }
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Set up %d segments"), TotalSegments);
@@ -718,6 +785,35 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
         Values.Add(0.0f);
     }
     
+    // Calculate normalization scale based on maximum value
+    // Scale increments by 25: 0-25 = scale 25, 25-50 = scale 50, etc., up to max 300
+    const float SCALE_INCREMENT = 25.0f;
+    const float MAX_SCALE = 300.0f;
+    
+    float MaxValue = 0.0f;
+    for (float Value : Values)
+    {
+        if (Value > MaxValue)
+        {
+            MaxValue = Value;
+        }
+    }
+    
+    // Calculate scale: round up to next 25 increment, capped at 300
+    float NormalizationScale = FMath::Min(FMath::CeilToFloat(MaxValue / SCALE_INCREMENT) * SCALE_INCREMENT, MAX_SCALE);
+    
+    // Ensure minimum scale of 25 if we have any values
+    if (MaxValue > 0.0f && NormalizationScale < SCALE_INCREMENT)
+    {
+        NormalizationScale = SCALE_INCREMENT;
+    }
+    
+    // Set the normalization scale for the radar chart with smooth animation
+    SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::ExpoOut);
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Max value: %.2f, Scale: %.1f"), 
+        MaxValue, NormalizationScale);
+    
     // Set the segment names
     if (!SetSegmentNames(DisplayNames))
     {
@@ -725,8 +821,8 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
         return false;
     }
     
-    // Set the values
-    SetValues(Values);
+    // Set the values with smooth animation
+    SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Completed setup with %d segments"), TotalSegments);
     return true;
