@@ -607,8 +607,8 @@ FGameplayTag UPUDishBlueprintLibrary::GetRandomDishTag()
 {
     // Define available dish tags
     TArray<FGameplayTag> AvailableDishTags = {
-        FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee")),
-        //FGameplayTag::RequestGameplayTag(TEXT("Dish.ChiFan")),
+        //FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee")),
+        FGameplayTag::RequestGameplayTag(TEXT("Dish.GourmetToast")),
         //FGameplayTag::RequestGameplayTag(TEXT("Dish.HaloHalo"))
     };
     
