@@ -289,18 +289,20 @@ bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 Instance
 
     FIngredientInstance& Instance = Dish.IngredientInstances[InstanceIndex];
     
-    // Check if this preparation is already applied
-    if (Instance.IngredientData.ActivePreparations.HasTag(PreparationTag))
+    // Check if this preparation is already applied (check both Preparations and ActivePreparations)
+    if (Instance.IngredientData.ActivePreparations.HasTag(PreparationTag) || Instance.Preparations.HasTag(PreparationTag))
     {
         UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Preparation %s already applied to instance %d"), 
             *PreparationTag.ToString(), InstanceIndex);
         return false;
     }
 
-    // Apply the preparation
+    // Apply the preparation to both fields to keep them in sync
     Instance.IngredientData.ActivePreparations.AddTag(PreparationTag);
-    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Applied %s to instance %d"), 
-        *PreparationTag.ToString(), InstanceIndex);
+    Instance.Preparations.AddTag(PreparationTag);
+    
+    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Applied %s to instance %d (now has %d preparations)"), 
+        *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
     
     return true;
 }
@@ -316,18 +318,20 @@ bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 Instanc
 
     FIngredientInstance& Instance = Dish.IngredientInstances[InstanceIndex];
     
-    // Check if this preparation is actually applied
-    if (!Instance.IngredientData.ActivePreparations.HasTag(PreparationTag))
+    // Check if this preparation is actually applied (check both Preparations and ActivePreparations)
+    if (!Instance.IngredientData.ActivePreparations.HasTag(PreparationTag) && !Instance.Preparations.HasTag(PreparationTag))
     {
         UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Preparation %s not applied to instance %d"), 
             *PreparationTag.ToString(), InstanceIndex);
         return false;
     }
 
-    // Remove the preparation
+    // Remove the preparation from both fields to keep them in sync
     Instance.IngredientData.ActivePreparations.RemoveTag(PreparationTag);
-    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Removed %s from instance %d"), 
-        *PreparationTag.ToString(), InstanceIndex);
+    Instance.Preparations.RemoveTag(PreparationTag);
+    
+    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Removed %s from instance %d (now has %d preparations)"), 
+        *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
     
     return true;
 }

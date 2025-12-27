@@ -40,6 +40,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
     const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
 
+    // Update the current dish data (for ingredient slots to update preparations, etc.)
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
+    void UpdateCurrentDishData(const FPUDishBase& NewDishData);
+
     // GUID-based unique ID generation
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
     static int32 GenerateGUIDBasedInstanceID();

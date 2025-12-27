@@ -201,13 +201,23 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
                         FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
                         FName PrepRowName = FName(*PrepName);
                         
+                        UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Looking up preparation: Tag=%s, RowName=%s"), 
+                            *PrepFullTag, *PrepRowName.ToString());
+                        
                         if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetCurrentDisplayName")))
                         {
+                            UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Found preparation: DisplayName=%s, NamePrefix=%s, NameSuffix=%s"), 
+                                *Preparation->DisplayName.ToString(), 
+                                *Preparation->NamePrefix.ToString(), 
+                                *Preparation->NameSuffix.ToString());
+                            
                             // If any preparation overrides the base name, use the special name
                             if (Preparation->OverridesBaseName)
                             {
                                 SpecialOverrideName = Preparation->SpecialName.ToString();
                                 bHasSpecialOverride = true;
+                                UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Preparation overrides base name with: %s"), 
+                                    *SpecialOverrideName);
                                 break; // Special override takes precedence, stop processing
                             }
                             
@@ -219,6 +229,8 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
                                     CombinedPrefix += " ";
                                 }
                                 CombinedPrefix += Preparation->NamePrefix.ToString();
+                                UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Added prefix '%s', CombinedPrefix now: '%s'"), 
+                                    *Preparation->NamePrefix.ToString(), *CombinedPrefix);
                             }
                             
                             if (!Preparation->NameSuffix.IsEmpty())
@@ -228,7 +240,14 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
                                     CombinedSuffix = " " + CombinedSuffix;
                                 }
                                 CombinedSuffix = Preparation->NameSuffix.ToString() + CombinedSuffix;
+                                UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Added suffix '%s', CombinedSuffix now: '%s'"), 
+                                    *Preparation->NameSuffix.ToString(), *CombinedSuffix);
                             }
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUIngredientBase::GetCurrentDisplayName - Could not find preparation row '%s' in data table!"), 
+                                *PrepRowName.ToString());
                         }
                     }
                 }

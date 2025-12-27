@@ -275,6 +275,16 @@ void UPUCookingStageWidget::UpdateRadarChartAndBroadcast()
     UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateRadarChartAndBroadcast - Broadcasted dish data change"));
 }
 
+void UPUCookingStageWidget::UpdateCurrentDishData(const FPUDishBase& NewDishData)
+{
+    CurrentDishData = NewDishData;
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::UpdateCurrentDishData - Updated dish data (now has %d ingredient instances)"), 
+        CurrentDishData.IngredientInstances.Num());
+    
+    // Update radar chart and broadcast the change
+    UpdateRadarChartAndBroadcast();
+}
+
 int32 UPUCookingStageWidget::GenerateUniqueIngredientInstanceID() const
 {
     int32 MaxId = 0;

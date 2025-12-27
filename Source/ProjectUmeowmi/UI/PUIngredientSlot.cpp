@@ -127,19 +127,30 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     // Store the instance data
     IngredientInstance = InIngredientInstance;
     
-    // IMPORTANT: Sync ActivePreparations FROM IngredientData TO Preparations
-    // If the ingredient data table row has ActivePreparations set (like Prep.Char in bbqduck),
-    // copy them to the instance's Preparations field so they're displayed
-    if (IngredientInstance.Preparations.Num() == 0 && IngredientInstance.IngredientData.ActivePreparations.Num() > 0)
+    // IMPORTANT: Sync preparations between Preparations and ActivePreparations
+    // ActivePreparations is the source of truth (updated by ApplyPreparation)
+    // If ActivePreparations has more preparations, use that (it's more up-to-date)
+    if (IngredientInstance.IngredientData.ActivePreparations.Num() > IngredientInstance.Preparations.Num())
     {
+        // ActivePreparations has more (or newer) preparations - sync to Preparations
         IngredientInstance.Preparations = IngredientInstance.IngredientData.ActivePreparations;
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Synced %d ActivePreparations from IngredientData to Preparations"), 
             IngredientInstance.IngredientData.ActivePreparations.Num());
     }
-    
-    // Also sync the other way for GetCurrentDisplayName() to work
-    // This ensures GetCurrentDisplayName() can look up preparations from the data table
-    IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
+    else if (IngredientInstance.Preparations.Num() > 0 && IngredientInstance.IngredientData.ActivePreparations.Num() == 0)
+    {
+        // Preparations has data but ActivePreparations is empty - sync the other way
+        IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Synced %d Preparations to ActivePreparations"), 
+            IngredientInstance.Preparations.Num());
+    }
+    else if (IngredientInstance.Preparations.Num() > 0 && IngredientInstance.IngredientData.ActivePreparations.Num() > 0)
+    {
+        // Both have data - merge them (ActivePreparations takes precedence)
+        IngredientInstance.Preparations = IngredientInstance.IngredientData.ActivePreparations;
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Merged preparations: ActivePreparations has %d, using that"), 
+            IngredientInstance.IngredientData.ActivePreparations.Num());
+    }
     // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Final: Preparations=%d, ActivePreparations=%d"), 
     //     IngredientInstance.Preparations.Num(), IngredientInstance.IngredientData.ActivePreparations.Num());
     
@@ -1003,7 +1014,10 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     // If drag is enabled and we have an ingredient, don't handle left clicks here
     // Let the drag system handle it (NativeOnPreviewMouseButtonDown will handle drag)
     // BUT: Don't do this for pantry slots - we want clicks to work for selection
-    if (Location != EPUIngredientSlotLocation::Pantry && bDragEnabled && bHasIngredient && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    // AND: Don't do this if Shift is pressed (Shift+Click shows menu instead)
+    bool bShiftPressed = InMouseEvent.IsShiftDown();
+    if (Location != EPUIngredientSlotLocation::Pantry && bDragEnabled && bHasIngredient && 
+        InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed)
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Drag enabled, letting drag system handle left click"));
         return FReply::Unhandled(); // Let drag system handle it
@@ -1020,13 +1034,26 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         }
     }
 
-    // Slot has ingredient - handle left/right click (only if drag is disabled for left click)
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bDragEnabled)
+    // Slot has ingredient - handle left/right click
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
-        // Left click - show prep radial menu (only when drag is disabled)
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click (drag disabled), showing prep radial menu"));
-        ShowRadialMenu(true);
-        return FReply::Handled();
+        // Show prep menu if:
+        // 1. Drag is disabled, OR
+        // 2. Shift is held down (allows menu access even when drag is enabled)
+        if (!bDragEnabled || bShiftPressed)
+        {
+            if (bShiftPressed)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Shift+Left click, showing prep radial menu (drag enabled but using modifier)"));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click (drag disabled), showing prep radial menu"));
+            }
+            ShowRadialMenu(true);
+            return FReply::Handled();
+        }
+        // Otherwise, let drag system handle it (if drag is enabled)
     }
     else if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
@@ -1080,6 +1107,18 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
 
     // Get the slot's screen position
     FVector2D SlotScreenPosition = GetSlotScreenPosition();
+    
+    // Set preparation data table on radial menu widget if we have one (for prep menu)
+    // This allows the radial menu to have its own data table reference that can be set in Blueprint
+    // If the radial menu doesn't have one set, use the slot's preparation data table
+    if (bIsPrepMenu && RadialMenuWidget)
+    {
+        // Only set if radial menu doesn't already have one (allows Blueprint override)
+        if (!RadialMenuWidget->GetPreparationDataTable() && PreparationDataTable)
+        {
+            RadialMenuWidget->SetPreparationDataTable(PreparationDataTable);
+        }
+    }
     
     // Build menu items based on bIsPrepMenu
     TArray<FRadialMenuItem> MenuItems;
@@ -1612,7 +1651,10 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         bCanDrag = bDragEnabled && bHasIngredient;
     }
     
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bCanDrag && !bIsPantrySlot)
+    // Only start drag if Shift is NOT pressed (Shift+Click shows menu instead)
+    bool bShiftPressed = InMouseEvent.IsShiftDown();
+    
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bCanDrag && !bIsPantrySlot && !bShiftPressed)
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s (Location: %d)"), 
             *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
@@ -1630,6 +1672,12 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - DetectDrag called, Reply.IsEventHandled: %s"), 
             Reply.IsEventHandled() ? TEXT("TRUE") : TEXT("FALSE"));
         return Reply;
+    }
+    else if (bShiftPressed && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        // Shift is pressed - don't start drag, let the click handler show the menu
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Shift pressed, skipping drag detection (menu will be shown)"));
+        return FReply::Unhandled();
     }
     else
     {
@@ -2255,25 +2303,31 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
         return MenuItems;
     }
 
-    // Check if we have a preparation data table
-    if (!IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+    // Get preparation data table from radial menu widget (not from ingredient)
+    UDataTable* PrepDataTable = nullptr;
+    if (RadialMenuWidget)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - No preparation data table available"));
-        return MenuItems;
+        PrepDataTable = RadialMenuWidget->GetPreparationDataTable();
     }
 
-    UDataTable* LoadedPreparationDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
-    if (!LoadedPreparationDataTable)
+    if (!PrepDataTable)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - Failed to load preparation data table"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - No preparation data table set on radial menu widget"));
         return MenuItems;
     }
 
     // Get all preparations from the data table
     TArray<FPUPreparationBase*> PreparationRows;
-    LoadedPreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("BuildPreparationMenuItems"), PreparationRows);
+    PrepDataTable->GetAllRows<FPUPreparationBase>(TEXT("BuildPreparationMenuItems"), PreparationRows);
 
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Found %d total preparations"), PreparationRows.Num());
+    
+    // Sort preparations by their tag name to ensure consistent ordering
+    PreparationRows.Sort([](const FPUPreparationBase& A, const FPUPreparationBase& B) {
+        return A.PreparationTag.ToString() < B.PreparationTag.ToString();
+    });
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Sorted preparations by tag name"));
 
     // Build menu items for each preparation
     for (FPUPreparationBase* PreparationData : PreparationRows)
@@ -2284,8 +2338,17 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
         }
 
         // Check if this preparation is compatible with the ingredient
-        // We need to check compatibility with current preparations
-        bool bIsCompatible = PreparationData->CanApplyToIngredient(IngredientInstance.Preparations);
+        // We need to pass the ingredient's base tags, not the preparations
+        // Combine ingredient base tag with current preparations for compatibility check
+        FGameplayTagContainer IngredientTags;
+        if (IngredientInstance.IngredientData.IngredientTag.IsValid())
+        {
+            IngredientTags.AddTag(IngredientInstance.IngredientData.IngredientTag);
+        }
+        // Also include current preparations in the check (some preparations might be incompatible with other preparations)
+        IngredientTags.AppendTags(IngredientInstance.Preparations);
+        
+        bool bIsCompatible = PreparationData->CanApplyToIngredient(IngredientTags);
         
         // Check if this preparation is already applied
         bool bIsApplied = IngredientInstance.Preparations.HasTag(PreparationData->PreparationTag);
@@ -2357,39 +2420,114 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Applying preparation %s to instance %d"),
         *PreparationTag.ToString(), IngredientInstance.InstanceID);
 
-    // Find the dish customization component to get the dish data
-    UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
-    if (!DishComponent)
+    // CRITICAL: Check if we're in a cooking stage widget first!
+    // If so, update the cooking stage widget's data, not the dish customization widget
+    UPUCookingStageWidget* CookingWidget = GetCookingStageWidget();
+    if (CookingWidget)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Could not find dish customization component"));
-        return false;
-    }
-
-    // Get the current dish data
-    FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
-
-    // Apply the preparation using the blueprint library
-    bool bSuccess = UPUDishBlueprintLibrary::ApplyPreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
-    
-    if (bSuccess)
-    {
-        // Update the dish data in the component
-        DishComponent->UpdateCurrentDishData(CurrentDish);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found cooking stage widget, applying preparation via cooking stage"));
         
-        // Update the ingredient instance to reflect the change
-        FIngredientInstance UpdatedInstance;
-        if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+        // Get the current dish data from the cooking stage widget (this is the source of truth)
+        FPUDishBase CurrentDish = CookingWidget->GetCurrentDishData();
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Cooking stage dish has %d ingredient instances, looking for ID: %d"), 
+            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
+
+        // Apply the preparation using the blueprint library
+        bool bSuccess = UPUDishBlueprintLibrary::ApplyPreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+        
+        if (bSuccess)
         {
-            SetIngredientInstance(UpdatedInstance);
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
+            // Update the cooking stage widget's dish data (this will also update radar chart and broadcast)
+            CookingWidget->UpdateCurrentDishData(CurrentDish);
+            
+            // Update the ingredient instance to reflect the change
+            FIngredientInstance UpdatedInstance;
+            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+            {
+                SetIngredientInstance(UpdatedInstance);
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via cooking stage"));
+            }
         }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
+        }
+        
+        return bSuccess;
     }
 
-    return bSuccess;
+    // Fallback: Try to get the dish widget
+    UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    if (DishWidget)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish widget, applying preparation via widget"));
+        
+        // Get the current dish data from the widget (more up-to-date than component)
+        FPUDishBase CurrentDish = DishWidget->GetCurrentDishData();
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
+            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
+
+        // Apply the preparation using the blueprint library
+        bool bSuccess = UPUDishBlueprintLibrary::ApplyPreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+        
+        if (bSuccess)
+        {
+            // Update the dish data through the widget
+            DishWidget->UpdateDishData(CurrentDish);
+            
+            // Update the ingredient instance to reflect the change
+            FIngredientInstance UpdatedInstance;
+            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+            {
+                SetIngredientInstance(UpdatedInstance);
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via widget"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
+        }
+        
+        return bSuccess;
+    }
+    
+    // Fallback: try to get the component directly
+    UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
+    if (DishComponent)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish component, applying preparation via component"));
+        
+        // Get the current dish data
+        FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
+
+        // Apply the preparation using the blueprint library
+        bool bSuccess = UPUDishBlueprintLibrary::ApplyPreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+        
+        if (bSuccess)
+        {
+            // Update the dish data in the component
+            DishComponent->UpdateCurrentDishData(CurrentDish);
+            
+            // Update the ingredient instance to reflect the change
+            FIngredientInstance UpdatedInstance;
+            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+            {
+                SetIngredientInstance(UpdatedInstance);
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via component"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
+        }
+
+        return bSuccess;
+    }
+    
+    UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::ApplyPreparationToIngredient - Could not find dish customization widget or component! Cannot apply preparation."));
+    return false;
 }
 
 bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& PreparationTag)
@@ -2403,39 +2541,114 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Removing preparation %s from instance %d"),
         *PreparationTag.ToString(), IngredientInstance.InstanceID);
 
-    // Find the dish customization component to get the dish data
-    UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
-    if (!DishComponent)
+    // CRITICAL: Check if we're in a cooking stage widget first!
+    // If so, update the cooking stage widget's data, not the dish customization widget
+    UPUCookingStageWidget* CookingWidget = GetCookingStageWidget();
+    if (CookingWidget)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Could not find dish customization component"));
-        return false;
-    }
-
-    // Get the current dish data
-    FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
-
-    // Remove the preparation using the blueprint library
-    bool bSuccess = UPUDishBlueprintLibrary::RemovePreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
-    
-    if (bSuccess)
-    {
-        // Update the dish data in the component
-        DishComponent->UpdateCurrentDishData(CurrentDish);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found cooking stage widget, removing preparation via cooking stage"));
         
-        // Update the ingredient instance to reflect the change
-        FIngredientInstance UpdatedInstance;
-        if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+        // Get the current dish data from the cooking stage widget (this is the source of truth)
+        FPUDishBase CurrentDish = CookingWidget->GetCurrentDishData();
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Cooking stage dish has %d ingredient instances, looking for ID: %d"), 
+            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
+
+        // Remove the preparation using the blueprint library
+        bool bSuccess = UPUDishBlueprintLibrary::RemovePreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+        
+        if (bSuccess)
         {
-            SetIngredientInstance(UpdatedInstance);
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully"));
+            // Update the cooking stage widget's dish data (this will also update radar chart and broadcast)
+            CookingWidget->UpdateCurrentDishData(CurrentDish);
+            
+            // Update the ingredient instance to reflect the change
+            FIngredientInstance UpdatedInstance;
+            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+            {
+                SetIngredientInstance(UpdatedInstance);
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via cooking stage"));
+            }
         }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
+        }
+        
+        return bSuccess;
     }
 
-    return bSuccess;
+    // Fallback: Try to get the dish widget
+    UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    if (DishWidget)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish widget, removing preparation via widget"));
+        
+        // Get the current dish data from the widget (more up-to-date than component)
+        FPUDishBase CurrentDish = DishWidget->GetCurrentDishData();
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
+            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
+
+        // Remove the preparation using the blueprint library
+        bool bSuccess = UPUDishBlueprintLibrary::RemovePreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+        
+        if (bSuccess)
+        {
+            // Update the dish data through the widget
+            DishWidget->UpdateDishData(CurrentDish);
+            
+            // Update the ingredient instance to reflect the change
+            FIngredientInstance UpdatedInstance;
+            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+            {
+                SetIngredientInstance(UpdatedInstance);
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via widget"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
+        }
+        
+        return bSuccess;
+    }
+    
+    // Fallback: try to get the component directly
+    UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
+    if (DishComponent)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish component, removing preparation via component"));
+        
+        // Get the current dish data
+        FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
+
+        // Remove the preparation using the blueprint library
+        bool bSuccess = UPUDishBlueprintLibrary::RemovePreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
+        
+        if (bSuccess)
+        {
+            // Update the dish data in the component
+            DishComponent->UpdateCurrentDishData(CurrentDish);
+            
+            // Update the ingredient instance to reflect the change
+            FIngredientInstance UpdatedInstance;
+            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
+            {
+                SetIngredientInstance(UpdatedInstance);
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via component"));
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
+        }
+
+        return bSuccess;
+    }
+    
+    UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::RemovePreparationFromIngredient - Could not find dish customization widget or component! Cannot remove preparation."));
+    return false;
 }
 
 void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)

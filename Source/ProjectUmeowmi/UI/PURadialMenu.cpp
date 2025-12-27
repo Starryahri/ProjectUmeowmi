@@ -6,6 +6,7 @@
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Engine/Texture2D.h"
+#include "Engine/DataTable.h"
 #include "Blueprint/WidgetTree.h"
 #include "PURadialMenuItemButton.h"
 
@@ -13,6 +14,7 @@ UPURadialMenu::UPURadialMenu(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
     , bIsVisible(false)
     , ItemRadius(100.0f)
+    , PreparationDataTable(nullptr)
 {
 }
 
@@ -348,7 +350,8 @@ void UPURadialMenu::SelectMenuItemByIndex(int32 ItemIndex)
 {
     if (!MenuItems.IsValidIndex(ItemIndex))
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::SelectMenuItemByIndex - Invalid item index: %d"), ItemIndex);
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::SelectMenuItemByIndex - Invalid item index: %d (MenuItems has %d items)"), 
+            ItemIndex, MenuItems.Num());
         return;
     }
 
@@ -360,8 +363,17 @@ void UPURadialMenu::SelectMenuItemByIndex(int32 ItemIndex)
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SelectMenuItemByIndex - Item %d selected: %s"), 
-        ItemIndex, *SelectedItem.Label.ToString());
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SelectMenuItemByIndex - Item %d selected: %s (Tag: %s)"), 
+        ItemIndex, *SelectedItem.Label.ToString(), *SelectedItem.ActionTag.ToString());
+
+    // Log all menu items for debugging
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SelectMenuItemByIndex - All menu items:"));
+    for (int32 i = 0; i < MenuItems.Num(); ++i)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯   [%d] %s (Tag: %s, Enabled: %s)"), 
+            i, *MenuItems[i].Label.ToString(), *MenuItems[i].ActionTag.ToString(), 
+            MenuItems[i].bIsEnabled ? TEXT("YES") : TEXT("NO"));
+    }
 
     // Broadcast the selection event
     OnMenuItemSelected.Broadcast(SelectedItem);
@@ -484,5 +496,12 @@ void UPURadialMenu::PreviewRadialLayout()
     }
 
     UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - Arranged %d widgets in radial layout"), ChildCount);
+}
+
+void UPURadialMenu::SetPreparationDataTable(UDataTable* InDataTable)
+{
+    PreparationDataTable = InDataTable;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SetPreparationDataTable - Preparation data table set: %s"), 
+        InDataTable ? *InDataTable->GetName() : TEXT("NULL"));
 }
 

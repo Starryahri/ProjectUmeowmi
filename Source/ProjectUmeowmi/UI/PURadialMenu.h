@@ -146,6 +146,18 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Radial Menu|Events")
     FOnRadialMenuClosed OnMenuClosed;
 
+    // Preparation data table reference (can be set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Data")
+    UDataTable* PreparationDataTable;
+
+    // Set the preparation data table
+    UFUNCTION(BlueprintCallable, Category = "Radial Menu|Data")
+    void SetPreparationDataTable(UDataTable* InDataTable);
+
+    // Get the preparation data table
+    UFUNCTION(BlueprintCallable, Category = "Radial Menu|Data")
+    UDataTable* GetPreparationDataTable() const { return PreparationDataTable; }
+
 protected:
     // Current menu items
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Radial Menu")
