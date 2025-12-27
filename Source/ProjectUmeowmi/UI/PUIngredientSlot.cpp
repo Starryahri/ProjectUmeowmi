@@ -100,9 +100,9 @@ void UPUIngredientSlot::NativeDestruct()
 
 void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngredientInstance)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Setting ingredient instance (Slot: %s)"), *GetName());
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Input Instance ID: %d, Qty: %d, Preparations: %d"),
-        InIngredientInstance.InstanceID, InIngredientInstance.Quantity, InIngredientInstance.Preparations.Num());
+    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Setting ingredient instance (Slot: %s)"), *GetName());
+    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Input Instance ID: %d, Qty: %d, Preparations: %d"),
+    //     InIngredientInstance.InstanceID, InIngredientInstance.Quantity, InIngredientInstance.Preparations.Num());
 
     // Store the instance data
     IngredientInstance = InIngredientInstance;
@@ -120,8 +120,8 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     // Also sync the other way for GetCurrentDisplayName() to work
     // This ensures GetCurrentDisplayName() can look up preparations from the data table
     IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Final: Preparations=%d, ActivePreparations=%d"), 
-        IngredientInstance.Preparations.Num(), IngredientInstance.IngredientData.ActivePreparations.Num());
+    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Final: Preparations=%d, ActivePreparations=%d"), 
+    //     IngredientInstance.Preparations.Num(), IngredientInstance.IngredientData.ActivePreparations.Num());
     
     // Set plating-specific properties
     MaxQuantity = InIngredientInstance.Quantity;
@@ -132,19 +132,19 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     if (InIngredientInstance.Quantity <= 0 || InIngredientInstance.InstanceID == 0)
     {
         bHasIngredient = false;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Quantity is 0 or InstanceID is 0, treating as empty (but storing ingredient data for display)"));
+        // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Quantity is 0 or InstanceID is 0, treating as empty (but storing ingredient data for display)"));
     }
     else
     {
         bHasIngredient = true;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Stored Ingredient: %s (ID: %d, Qty: %d, Preparations: %d, HasIngredient: %s)"),
-        *IngredientInstance.IngredientData.DisplayName.ToString(),
-        IngredientInstance.InstanceID,
-        IngredientInstance.Quantity,
-        IngredientInstance.Preparations.Num(),
-        bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
+    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Stored Ingredient: %s (ID: %d, Qty: %d, Preparations: %d, HasIngredient: %s)"),
+    //     *IngredientInstance.IngredientData.DisplayName.ToString(),
+    //     IngredientInstance.InstanceID,
+    //     IngredientInstance.Quantity,
+    //     IngredientInstance.Preparations.Num(),
+    //     bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
 
     // Update all display elements
     UpdateDisplay();
@@ -181,7 +181,7 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
     if (Location != InLocation)
     {
         Location = InLocation;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetLocation - Location changed to: %d"), (int32)Location);
+        // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetLocation - Location changed to: %d"), (int32)Location);
 
         // Immediately hide QuantityText if in prep or cooking stage (shown in plating)
     // Hide QuantityText in prep and cooking stages (shown in plating)
@@ -210,8 +210,8 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
 
 void UPUIngredientSlot::UpdateDisplay()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
-        *GetName(), IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
+    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
+    //     *GetName(), IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
     // For pantry and prep slots, we want to show the texture even if "empty" (quantity 0)
     // For other locations, clear display if empty
@@ -299,8 +299,8 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         {
             // Normal white color: 1.0, 1.0, 1.0, 1.0
             IngredientIcon->SetColorAndOpacity(FLinearColor::White);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture for location: %d (Texture: %s)"),
-            (int32)Location, *TextureToUse->GetName());
+        // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture for location: %d (Texture: %s)"),
+        //     (int32)Location, *TextureToUse->GetName());
         }
     }
     else
@@ -438,11 +438,11 @@ void UPUIngredientSlot::UpdatePrepIcons()
 
 void UPUIngredientSlot::UpdateQuantityControl()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - START (HasIngredient: %s, Widget: %s, Class: %s, Container: %s)"),
-        bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
-        QuantityControlWidget ? TEXT("EXISTS") : TEXT("NULL"),
-        QuantityControlClass ? TEXT("SET") : TEXT("NULL"),
-        QuantityControlContainer ? TEXT("SET") : TEXT("NULL"));
+    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - START (HasIngredient: %s, Widget: %s, Class: %s, Container: %s)"),
+    //     bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
+    //     QuantityControlWidget ? TEXT("EXISTS") : TEXT("NULL"),
+    //     QuantityControlClass ? TEXT("SET") : TEXT("NULL"),
+    //     QuantityControlContainer ? TEXT("SET") : TEXT("NULL"));
 
     if (!bHasIngredient)
     {
@@ -587,7 +587,7 @@ void UPUIngredientSlot::UpdateQuantityControl()
 
 void UPUIngredientSlot::ClearDisplay()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Clearing display"));
+    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Clearing display"));
 
     // Hide icon
     if (IngredientIcon)
@@ -643,7 +643,7 @@ void UPUIngredientSlot::ClearDisplay()
                 {
                     QuantityControlContainer->RemoveChild(FoundWidget);
                     FoundWidget->RemoveFromParent();
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Removed quantity control widget found in container"));
+                    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Removed quantity control widget found in container"));
                     break;
                 }
             }
@@ -1847,7 +1847,7 @@ void UPUIngredientSlot::UpdateQuantityDisplay()
         if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
         {
             QuantityText->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d)"), (int32)Location);
+            // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d)"), (int32)Location);
         }
         else if (bHasIngredient && IngredientInstance.InstanceID != 0)
         {
@@ -1875,7 +1875,7 @@ void UPUIngredientSlot::UpdatePreparationDisplay()
         if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating)
         {
             PreparationText->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Hiding PreparationText (Location: %d)"), (int32)Location);
+            // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Hiding PreparationText (Location: %d)"), (int32)Location);
         }
         else
         {

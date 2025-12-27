@@ -954,6 +954,30 @@ void UPUDishCustomizationComponent::StartPlanningMode()
     CurrentPlanningData.SelectedIngredients.Empty();
     CurrentPlanningData.bPlanningCompleted = false;
     
+    // Populate SelectedIngredients from existing dish ingredients
+    // Extract unique ingredients from IngredientInstances (planning mode uses ingredients without quantities)
+    TMap<FGameplayTag, FPUIngredientBase> UniqueIngredients;
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        // Use convenient field if available, fallback to data field
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        
+        // Only add if we haven't seen this ingredient tag before
+        if (InstanceTag.IsValid() && !UniqueIngredients.Contains(InstanceTag))
+        {
+            // Use the ingredient data from the instance (which already has preparations applied)
+            UniqueIngredients.Add(InstanceTag, Instance.IngredientData);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartPlanningMode - Added existing ingredient to SelectedIngredients: %s"), 
+                *InstanceTag.ToString());
+        }
+    }
+    
+    // Add all unique ingredients to SelectedIngredients
+    UniqueIngredients.GenerateValueArray(CurrentPlanningData.SelectedIngredients);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::StartPlanningMode - Populated %d existing ingredients into SelectedIngredients"), 
+        CurrentPlanningData.SelectedIngredients.Num());
+    
     // Notify the widget to start planning mode
     if (CustomizationWidget)
     {

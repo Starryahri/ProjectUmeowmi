@@ -136,6 +136,7 @@ public:
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Planning")
     void OnPlanningCompleted(const FPUPlanningData& InPlanningData);
+    
 
     // Get created ingredient slots (for reset functionality)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
@@ -252,6 +253,9 @@ private:
 
     void SubscribeToEvents();
     void UnsubscribeFromEvents();
+    
+    // Helper function to update radar chart from planning data
+    void UpdateRadarChartFromPlanningData();
 
     // Helper functions
     void CreateIngredientInstance(const FPUIngredientBase& IngredientData);

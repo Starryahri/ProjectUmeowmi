@@ -331,6 +331,16 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
                 // Bind empty slot click event to handle ingredient selection
                 IngredientSlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
                 
+                // Check if this ingredient is already selected (from existing dish ingredients)
+                // This ensures ingredients that are already in the dish show as selected visually
+                bool bIsSelected = IsIngredientSelected(IngredientData);
+                IngredientSlot->SetSelected(bIsSelected);
+                if (bIsSelected)
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Marked ingredient as selected: %s"), 
+                        *IngredientData.DisplayName.ToString());
+                }
+                
                 // Call Blueprint event for slot creation (pass empty instance with ingredient data for reference)
                 OnIngredientSlotCreated(IngredientSlot, PantryInstance);
                 
@@ -344,8 +354,8 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
                         // Add slot to the shelving widget
                         if (AddSlotToCurrentShelvingWidget(IngredientSlot))
                         {
-                            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Added slot to shelving widget for: %s"), 
-                                *IngredientData.DisplayName.ToString());
+                            // UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Added slot to shelving widget for: %s"), 
+                            //     *IngredientData.DisplayName.ToString());
                         }
                         else
                         {
@@ -362,8 +372,8 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
                     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Slot created but not added to container (container not set yet)"));
                 }
                 
-                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Created slot for: %s"), 
-                    *IngredientData.DisplayName.ToString());
+                // UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Created slot for: %s"), 
+                //     *IngredientData.DisplayName.ToString());
             }
         }
     }
@@ -648,32 +658,8 @@ void UPUDishCustomizationWidget::OnIngredientButtonClicked(const FPUIngredientBa
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - In planning mode, handling toggle selection"));
         
-        // In planning mode, toggle ingredient selection by adding/removing from dish data
-        if (IsIngredientSelected(IngredientData))
-        {
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Ingredient is selected, removing it"));
-            
-            // Remove ingredient instance
-            RemoveIngredientInstanceByTag(IngredientData.IngredientTag);
-        }
-        else
-        {
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Ingredient is not selected, checking if can add"));
-            
-            // Check if we can add more ingredients
-            if (CanAddMoreIngredients())
-            {
-                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Can add more ingredients, adding ingredient"));
-                
-                // Add ingredient instance with default quantity
-                CreateIngredientInstance(IngredientData);
-            }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("🎯 PUDishCustomizationWidget::OnIngredientButtonClicked - Cannot add more ingredients, max reached (%d)"), MaxIngredients);
-                // TODO: Show UI feedback that max ingredients reached
-            }
-        }
+        // In planning mode, use ToggleIngredientSelection which properly handles both SelectedIngredients and IngredientInstances
+        ToggleIngredientSelection(IngredientData);
     }
     else
     {
@@ -852,13 +838,16 @@ void UPUDishCustomizationWidget::RemoveIngredientInstanceByTag(const FGameplayTa
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RemoveIngredientInstanceByTag - Removing ingredient instance by tag: %s"), *IngredientTag.ToString());
 
-    for (int32 i = 0; i < CurrentDishData.IngredientInstances.Num(); i++)
+    for (int32 i = CurrentDishData.IngredientInstances.Num() - 1; i >= 0; i--)
     {
-        if (CurrentDishData.IngredientInstances[i].IngredientTag == IngredientTag)
+        const FIngredientInstance& Instance = CurrentDishData.IngredientInstances[i];
+        // Check both convenient field and data field (same logic as IsIngredientSelected)
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        
+        if (InstanceTag == IngredientTag)
         {
             CurrentDishData.IngredientInstances.RemoveAt(i);
             UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::RemoveIngredientInstanceByTag - Instance removed successfully"));
-            break;
         }
     }
     UpdateDishData(CurrentDishData);
@@ -922,12 +911,12 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
                     }
                     
                     // Call the same handler as button click (this handles ingredient selection logic)
+                    // In planning mode, this calls ToggleIngredientSelection which already updates the slot's visual state
+                    // So we don't need to update it again here
                     OnIngredientButtonClicked(*FoundIngredient);
                     
-                    // After the button click handler, sync the slot's selection state with actual dish data
-                    // This ensures the visual state matches the actual selection state
-                    // ONLY set visual state based on what actually happened, not what we wanted to happen
-                    if (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
+                    // Only sync visual state if NOT in planning mode (planning mode is handled by ToggleIngredientSelection)
+                    if (!bInPlanningMode && IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
                     {
                         bool bActuallySelected = IsIngredientSelected(*FoundIngredient);
                         IngredientSlot->SetSelected(bActuallySelected);
@@ -1012,30 +1001,131 @@ void UPUDishCustomizationWidget::ToggleIngredientSelection(const FPUIngredientBa
     // Check if ingredient is already selected
     bool bWasSelected = IsIngredientSelected(IngredientData);
     
-    if (bWasSelected)
+    if (bInPlanningMode)
     {
-        // Remove from selected ingredients
-        RemoveIngredientInstanceByTag(IngredientData.IngredientTag);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Removed ingredient from planning"));
+        // In planning mode, work with SelectedIngredients
+        if (bWasSelected)
+        {
+            // Remove from selected ingredients
+            PlanningData.SelectedIngredients.RemoveAll([&](const FPUIngredientBase& SelectedIngredient) {
+                return SelectedIngredient.IngredientTag == IngredientData.IngredientTag;
+            });
+            
+            // Also remove from IngredientInstances when unselecting in planning mode
+            // This ensures the ingredient is fully unselected and won't appear in cooking stage
+            RemoveIngredientInstanceByTag(IngredientData.IngredientTag);
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Removed ingredient from planning"));
+        }
+        else
+        {
+            // Add to selected ingredients
+            PlanningData.SelectedIngredients.Add(IngredientData);
+            
+            // In planning mode, we don't create IngredientInstances yet (quantities will be set in cooking stage)
+            // But we mark it as selected in SelectedIngredients
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Added ingredient to planning"));
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Planning now has %d selected ingredients"), 
+            PlanningData.SelectedIngredients.Num());
+        
+        // Update the slot's visual state to reflect the new selection state
+        if (UPUIngredientSlot** FoundSlot = IngredientSlotMap.Find(IngredientData.IngredientTag))
+        {
+            if (*FoundSlot)
+            {
+                bool bIsNowSelected = IsIngredientSelected(IngredientData);
+                (*FoundSlot)->SetSelected(bIsNowSelected);
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Updated slot visual state to: %s"), 
+                    bIsNowSelected ? TEXT("SELECTED") : TEXT("UNSELECTED"));
+            }
+        }
+        
+        // Update radar chart in planning mode by creating a temporary dish from SelectedIngredients
+        UpdateRadarChartFromPlanningData();
     }
     else
     {
-        // Add to selected ingredients
-        CreateIngredientInstance(IngredientData);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Added ingredient to planning"));
+        // In cooking/prep mode, work with IngredientInstances
+        if (bWasSelected)
+        {
+            // Remove from selected ingredients
+            RemoveIngredientInstanceByTag(IngredientData.IngredientTag);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Removed ingredient from dish"));
+        }
+        else
+        {
+            // Add to selected ingredients
+            CreateIngredientInstance(IngredientData);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Added ingredient to dish"));
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Dish now has %d ingredient instances"), 
+            CurrentDishData.IngredientInstances.Num());
     }
     
     // Call Blueprint event
     OnIngredientSelectionChanged(IngredientData, !bWasSelected);
+}
+
+void UPUDishCustomizationWidget::UpdateRadarChartFromPlanningData()
+{
+    if (!bInPlanningMode)
+    {
+        return;
+    }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::ToggleIngredientSelection - Planning now has %d selected ingredients"), 
-        CurrentDishData.IngredientInstances.Num());
+    // Create a temporary dish from SelectedIngredients for the radar chart
+    FPUDishBase TempDish = CurrentDishData;
+    TempDish.IngredientInstances.Empty();
+    
+    // Convert SelectedIngredients to IngredientInstances (with quantity 1 for each)
+    for (const FPUIngredientBase& SelectedIngredient : PlanningData.SelectedIngredients)
+    {
+        // Create a temporary instance with quantity 1
+        FIngredientInstance TempInstance;
+        TempInstance.InstanceID = FPUDishBase::GenerateUniqueInstanceID();
+        TempInstance.Quantity = 1;
+        TempInstance.IngredientData = SelectedIngredient;
+        TempInstance.IngredientTag = SelectedIngredient.IngredientTag;
+        TempInstance.Preparations = SelectedIngredient.ActivePreparations;
+        
+        TempDish.IngredientInstances.Add(TempInstance);
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::UpdateRadarChartFromPlanningData - Created temp dish with %d ingredients for radar chart"), 
+        TempDish.IngredientInstances.Num());
+    
+    // Update the radar chart by calling the existing Blueprint event that already handles it
+    OnDishDataChanged(TempDish);
 }
 
 bool UPUDishCustomizationWidget::IsIngredientSelected(const FPUIngredientBase& IngredientData) const
 {
+    // In planning mode, check both SelectedIngredients and IngredientInstances
+    // (we keep IngredientInstances visible so players can see what's already in the dish)
+    if (bInPlanningMode)
+    {
+        // First check SelectedIngredients
+        bool bInSelectedIngredients = PlanningData.SelectedIngredients.ContainsByPredicate([&](const FPUIngredientBase& SelectedIngredient) {
+            return SelectedIngredient.IngredientTag == IngredientData.IngredientTag;
+        });
+        
+        // Also check IngredientInstances (in case something is there but not in SelectedIngredients yet)
+        bool bInIngredientInstances = CurrentDishData.IngredientInstances.ContainsByPredicate([&](const FIngredientInstance& Instance) {
+            FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+            return InstanceTag == IngredientData.IngredientTag;
+        });
+        
+        return bInSelectedIngredients || bInIngredientInstances;
+    }
+    
+    // In cooking/prep mode, check IngredientInstances
     return CurrentDishData.IngredientInstances.ContainsByPredicate([&](const FIngredientInstance& Instance) {
-        return Instance.IngredientTag == IngredientData.IngredientTag;
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        return InstanceTag == IngredientData.IngredientTag;
     });
 }
 
@@ -1045,8 +1135,72 @@ void UPUDishCustomizationWidget::StartPlanningMode()
     
     bInPlanningMode = true;
     
-    // Clear existing ingredient instances for planning
-    CurrentDishData.IngredientInstances.Empty();
+    // Initialize planning data with current dish
+    PlanningData.TargetDish = CurrentDishData;
+    PlanningData.SelectedIngredients.Empty();
+    PlanningData.bPlanningCompleted = false;
+    
+    // Populate SelectedIngredients from existing dish ingredients
+    // Extract unique ingredients from IngredientInstances (planning mode uses ingredients without quantities)
+    // IMPORTANT: We do NOT clear IngredientInstances - they should remain visible to the player
+    // The ingredients that are already in the dish should be shown as selected
+    TMap<FGameplayTag, FPUIngredientBase> UniqueIngredients;
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        // Use convenient field if available, fallback to data field
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        
+        // Only add if we haven't seen this ingredient tag before
+        if (InstanceTag.IsValid() && !UniqueIngredients.Contains(InstanceTag))
+        {
+            // Use the ingredient data from the instance (which already has preparations applied)
+            UniqueIngredients.Add(InstanceTag, Instance.IngredientData);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::StartPlanningMode - Added existing ingredient to SelectedIngredients: %s"), 
+                *InstanceTag.ToString());
+        }
+    }
+    
+    // Add all unique ingredients to SelectedIngredients
+    UniqueIngredients.GenerateValueArray(PlanningData.SelectedIngredients);
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::StartPlanningMode - Populated %d existing ingredients into SelectedIngredients"), 
+        PlanningData.SelectedIngredients.Num());
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::StartPlanningMode - Keeping %d ingredient instances visible (not clearing)"), 
+        CurrentDishData.IngredientInstances.Num());
+    
+    // DO NOT clear IngredientInstances - they should remain visible and selected
+    // The player should see what ingredients are already in the dish
+    
+    // Update all existing ingredient slots to show their correct selection state
+    // This ensures ingredients that are already in the dish show as selected visually
+    for (auto& SlotPair : IngredientSlotMap)
+    {
+        if (SlotPair.Value)
+        {
+            // Find the ingredient data for this slot
+            if (CustomizationComponent)
+            {
+                TArray<FPUIngredientBase> AvailableIngredients = CustomizationComponent->GetIngredientData();
+                const FPUIngredientBase* FoundIngredient = AvailableIngredients.FindByPredicate([&SlotPair](const FPUIngredientBase& Ingredient) {
+                    return Ingredient.IngredientTag == SlotPair.Key;
+                });
+                
+                if (FoundIngredient)
+                {
+                    bool bIsSelected = IsIngredientSelected(*FoundIngredient);
+                    SlotPair.Value->SetSelected(bIsSelected);
+                    if (bIsSelected)
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::StartPlanningMode - Updated slot selection state for: %s (SELECTED)"), 
+                            *FoundIngredient->DisplayName.ToString());
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update radar chart with initial planning data
+    UpdateRadarChartFromPlanningData();
     
     // Call Blueprint event
     OnPlanningModeStarted();
@@ -1065,13 +1219,63 @@ void UPUDishCustomizationWidget::FinishPlanningAndStartCooking()
         return;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Planning completed with %d selected ingredients"), 
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Planning has %d selected ingredients in SelectedIngredients"), 
+        PlanningData.SelectedIngredients.Num());
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Current dish has %d ingredient instances"), 
         CurrentDishData.IngredientInstances.Num());
+    
+    // Convert SelectedIngredients to IngredientInstances for cooking stage
+    // First, clear existing instances (we'll rebuild from SelectedIngredients)
+    // But preserve any that are already there with quantities (like pre-loaded ingredients)
+    FPUDishBase CookingDishData = CurrentDishData;
+    
+    // Create a map of existing instances by tag to preserve quantities
+    TMap<FGameplayTag, FIngredientInstance> ExistingInstances;
+    for (const FIngredientInstance& Instance : CookingDishData.IngredientInstances)
+    {
+        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        if (InstanceTag.IsValid() && Instance.Quantity > 0)
+        {
+            ExistingInstances.Add(InstanceTag, Instance);
+        }
+    }
+    
+    // Clear and rebuild IngredientInstances from SelectedIngredients
+    CookingDishData.IngredientInstances.Empty();
+    
+    for (const FPUIngredientBase& SelectedIngredient : PlanningData.SelectedIngredients)
+    {
+        // Check if we already have an instance for this ingredient (preserve quantity)
+        if (FIngredientInstance* ExistingInstance = ExistingInstances.Find(SelectedIngredient.IngredientTag))
+        {
+            // Use existing instance (preserves quantity and preparations)
+            CookingDishData.IngredientInstances.Add(*ExistingInstance);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Preserved existing instance for: %s (Qty: %d)"), 
+                *SelectedIngredient.DisplayName.ToString(), ExistingInstance->Quantity);
+        }
+        else
+        {
+            // Create new instance with default quantity of 1
+            FIngredientInstance NewInstance = UPUDishBlueprintLibrary::AddIngredient(CookingDishData, SelectedIngredient.IngredientTag);
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Created new instance for: %s (Qty: %d)"), 
+                *SelectedIngredient.DisplayName.ToString(), NewInstance.Quantity);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Cooking dish now has %d ingredient instances"), 
+        CookingDishData.IngredientInstances.Num());
+    
+    // Update current dish data
+    CurrentDishData = CookingDishData;
+    UpdateDishData(CookingDishData);
+    
+    // Mark planning as completed
+    PlanningData.bPlanningCompleted = true;
     
     // Transition to cooking stage through the component
     if (CustomizationComponent)
     {
-        CustomizationComponent->TransitionToCookingStage(CurrentDishData);
+        CustomizationComponent->TransitionToCookingStage(CookingDishData);
     }
     else
     {
@@ -1336,8 +1540,8 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentShelvingWidget(UPUIngredientSlo
     {
         HorizontalBox->AddChild(IngredientSlot);
         CurrentShelvingWidgetSlotCount++;
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::AddSlotToCurrentShelvingWidget - Added slot to HorizontalBox (Slot count: %d/3)"), 
-            CurrentShelvingWidgetSlotCount);
+        // UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::AddSlotToCurrentShelvingWidget - Added slot to HorizontalBox (Slot count: %d/3)"), 
+        //     CurrentShelvingWidgetSlotCount);
         return true;
     }
     
