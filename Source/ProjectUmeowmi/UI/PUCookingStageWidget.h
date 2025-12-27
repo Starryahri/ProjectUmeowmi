@@ -122,9 +122,17 @@ public:
     UPROPERTY(BlueprintReadWrite, Category = "Cooking Stage Widget")
     class UPUDishCustomizationComponent* DishCustomizationComponent;
 
+    // Reference to the dish customization widget (for ingredient slot access)
+    UPROPERTY(BlueprintReadWrite, Category = "Cooking Stage Widget")
+    class UPUDishCustomizationWidget* DishCustomizationWidget;
+
     // Set the customization component reference
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
     void SetDishCustomizationComponent(UPUDishCustomizationComponent* Component);
+
+    // Set the dish customization widget reference
+    UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget")
+    void SetDishCustomizationWidget(class UPUDishCustomizationWidget* Widget);
 
     // Drag and Drop Functions
     UFUNCTION(BlueprintCallable, Category = "Cooking Stage Widget|Drag Drop")

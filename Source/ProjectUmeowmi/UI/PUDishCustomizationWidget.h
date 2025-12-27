@@ -115,6 +115,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void RemoveIngredientInstanceByTag(const FGameplayTag& IngredientTag);
 
+    // Remove ingredient instance by ID
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void RemoveIngredientInstance(int32 InstanceID);
+
     // Check if we can add more ingredients
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     bool CanAddMoreIngredients() const;
@@ -260,7 +264,6 @@ private:
     // Helper functions
     void CreateIngredientInstance(const FPUIngredientBase& IngredientData);
     void UpdateIngredientInstance(const FIngredientInstance& IngredientInstance);
-    void RemoveIngredientInstance(int32 InstanceID);
     void RefreshQuantityControls();
     
     // Handle pantry slot clicks

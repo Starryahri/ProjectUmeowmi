@@ -189,6 +189,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
     void SetRadialMenuContainer(class UPanelWidget* InContainer);
 
+    // Set the dish customization widget reference (called when slot is created)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
+    void SetDishCustomizationWidget(class UPUDishCustomizationWidget* InDishWidget);
+
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Slot|Events")
     FOnIngredientDroppedOnSlot OnIngredientDroppedOnSlot;
@@ -283,6 +287,10 @@ protected:
 
     // Guard to avoid binding radial menu events multiple times
     bool bRadialMenuEventsBound = false;
+
+    // Cached reference to the dish customization widget (set when slot is created)
+    UPROPERTY()
+    TWeakObjectPtr<class UPUDishCustomizationWidget> CachedDishWidget;
 
     // Whether drag functionality is enabled
     // Set to true by default for testing - can be disabled in Blueprint if needed
@@ -396,6 +404,7 @@ private:
     bool RemovePreparationFromIngredient(const FGameplayTag& PreparationTag);
     void ExecuteAction(const FGameplayTag& ActionTag);
     class UPUDishCustomizationComponent* GetDishCustomizationComponent() const;
+    class UPUDishCustomizationWidget* GetDishCustomizationWidget() const;
 
 };
 

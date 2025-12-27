@@ -300,6 +300,9 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
             UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
             if (IngredientSlot)
             {
+                // Set the dish widget reference for easy access
+                IngredientSlot->SetDishCustomizationWidget(this);
+                
                 // Set the location to Prep (for prep stage ingredient selection)
                 IngredientSlot->SetLocation(EPUIngredientSlotLocation::Prep);
                 
@@ -476,6 +479,9 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
         UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
         if (IngredientSlot)
         {
+            // Set the dish widget reference for easy access
+            IngredientSlot->SetDishCustomizationWidget(this);
+            
             // Set the location to ActiveIngredientArea (same as cooking stage)
             IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
             
@@ -1363,6 +1369,9 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsFromDishData()
         UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
         if (IngredientSlot)
         {
+            // Set the dish widget reference for easy access
+            IngredientSlot->SetDishCustomizationWidget(this);
+            
             // Set the location to ActiveIngredientArea
             IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
             

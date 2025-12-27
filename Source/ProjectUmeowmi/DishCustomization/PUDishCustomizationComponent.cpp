@@ -1001,6 +1001,13 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
     // Switch to cooking stage camera
     SwitchToCookingCamera();
     
+    // Save reference to dish widget BEFORE removing it (needed for ingredient slots)
+    UPUDishCustomizationWidget* SavedDishWidget = nullptr;
+    if (CustomizationWidget)
+    {
+        SavedDishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget);
+    }
+    
     // Remove the current customization widget
     if (CustomizationWidget)
     {
@@ -1027,6 +1034,19 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
             
             // Set the dish customization component reference
             CookingWidget->SetDishCustomizationComponent(this);
+            
+            // Set the dish customization widget reference (for ingredient slot access)
+            // Use the saved reference since CustomizationWidget was set to nullptr
+            if (SavedDishWidget)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Setting dish widget on cooking stage: %s"), 
+                    *SavedDishWidget->GetName());
+                CookingWidget->SetDishCustomizationWidget(SavedDishWidget);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToCookingStage - SavedDishWidget is NULL! Cannot set on cooking stage."));
+            }
             
             // Initialize the cooking stage with dish data and station location
             CookingWidget->InitializeCookingStage(DishData, CookingStationLocation);

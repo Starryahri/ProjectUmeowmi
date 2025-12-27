@@ -36,6 +36,26 @@ void UPUIngredientSlot::NativeConstruct()
 
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeConstruct - Slot widget constructed: %s"), *GetName());
 
+    // Try to find and cache the dish widget if not already set
+    if (!CachedDishWidget.IsValid())
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::NativeConstruct - Cached dish widget not set, attempting to find it"));
+        UPUDishCustomizationWidget* FoundWidget = GetDishCustomizationWidget();
+        if (FoundWidget)
+        {
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Found and cached dish widget: %s"), *FoundWidget->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeConstruct - Could not find dish widget during construction"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Cached dish widget already set: %s"), 
+            *CachedDishWidget.Get()->GetName());
+    }
+
     // Hide hover text by default
     if (HoverText)
     {
@@ -2425,17 +2445,38 @@ void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
 
     if (ActionString == TEXT("Action.Remove"))
     {
-        // Remove the ingredient instance
-        UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
-        if (DishComponent)
+        // Remove the ingredient instance - try to get the widget first (preferred method)
+        UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        if (DishWidget)
         {
-            FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
-            bool bSuccess = UPUDishBlueprintLibrary::RemoveIngredientInstanceByID(CurrentDish, IngredientInstance.InstanceID);
-            if (bSuccess)
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found dish widget, removing instance ID: %d"), IngredientInstance.InstanceID);
+            DishWidget->RemoveIngredientInstance(IngredientInstance.InstanceID);
+            ClearSlot();
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via widget"));
+        }
+        else
+        {
+            // Fallback: try to get the component directly
+            UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
+            if (DishComponent)
             {
-                DishComponent->UpdateCurrentDishData(CurrentDish);
-                ClearSlot();
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully"));
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found dish component, removing instance ID: %d"), IngredientInstance.InstanceID);
+                FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
+                bool bSuccess = UPUDishBlueprintLibrary::RemoveIngredientInstanceByID(CurrentDish, IngredientInstance.InstanceID);
+                if (bSuccess)
+                {
+                    DishComponent->UpdateCurrentDishData(CurrentDish);
+                    ClearSlot();
+                    UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via component"));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ExecuteAction - Failed to remove ingredient instance ID: %d"), IngredientInstance.InstanceID);
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::ExecuteAction - Could not find dish customization widget or component! Cannot remove ingredient."));
             }
         }
     }
@@ -2497,5 +2538,104 @@ UPUDishCustomizationComponent* UPUIngredientSlot::GetDishCustomizationComponent(
     }
     
     return nullptr;
+}
+
+UPUDishCustomizationWidget* UPUIngredientSlot::GetDishCustomizationWidget() const
+{
+    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - START (Slot: %s)"), *GetName());
+    
+    // First, check if we have a cached reference
+    if (CachedDishWidget.IsValid())
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Found cached widget: %s"), 
+            *CachedDishWidget.Get()->GetName());
+        return CachedDishWidget.Get();
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetDishCustomizationWidget - Cached widget is NULL or invalid"));
+    }
+
+    // Try to get it from the outer widget (slots are created with dish widget as outer)
+    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetOuter() traversal"));
+    UObject* Outer = GetOuter();
+    int32 OuterDepth = 0;
+    while (Outer && OuterDepth < 10) // Limit depth to prevent infinite loops
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍   Outer[%d]: %s (Class: %s)"), OuterDepth, *Outer->GetName(), *Outer->GetClass()->GetName());
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(Outer))
+        {
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetOuter(): %s"), *DishWidget->GetName());
+            // Cache it for future use
+            const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = DishWidget;
+            return DishWidget;
+        }
+        Outer = Outer->GetOuter();
+        OuterDepth++;
+    }
+
+    // Try to find the dish customization widget by traversing up the widget hierarchy
+    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetParent() traversal"));
+    UWidget* Parent = GetParent();
+    int32 ParentDepth = 0;
+    while (Parent && ParentDepth < 10) // Limit depth to prevent infinite loops
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍   Parent[%d]: %s (Class: %s)"), ParentDepth, *Parent->GetName(), *Parent->GetClass()->GetName());
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(Parent))
+        {
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetParent(): %s"), *DishWidget->GetName());
+            // Cache it for future use
+            const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = DishWidget;
+            return DishWidget;
+        }
+        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(Parent))
+        {
+            UE_LOG(LogTemp, Display, TEXT("🔍   Found CookingStageWidget, trying to get dish widget from it"));
+            // Cooking stage widget might have a reference to the dish widget
+            // Try to get it from the parent widget hierarchy
+            UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
+            while (RootWidget)
+            {
+                if (UPUDishCustomizationWidget* FoundDishWidget = Cast<UPUDishCustomizationWidget>(RootWidget))
+                {
+                    UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via CookingStageWidget: %s"), *FoundDishWidget->GetName());
+                    // Cache it for future use
+                    const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = FoundDishWidget;
+                    return FoundDishWidget;
+                }
+                RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
+            }
+        }
+        Parent = Parent->GetParent();
+        ParentDepth++;
+    }
+    
+    // Try GetTypedOuter as a last resort
+    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetTypedOuter() traversal"));
+    UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
+    int32 TypedOuterDepth = 0;
+    while (RootWidget && TypedOuterDepth < 10)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍   TypedOuter[%d]: %s (Class: %s)"), TypedOuterDepth, *RootWidget->GetName(), *RootWidget->GetClass()->GetName());
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(RootWidget))
+        {
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetTypedOuter(): %s"), *DishWidget->GetName());
+            // Cache it for future use
+            const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = DishWidget;
+            return DishWidget;
+        }
+        RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
+        TypedOuterDepth++;
+    }
+    
+    UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::GetDishCustomizationWidget - Could not find dish widget! Slot: %s"), *GetName());
+    return nullptr;
+}
+
+void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* InDishWidget)
+{
+    CachedDishWidget = InDishWidget;
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDishCustomizationWidget - Cached dish widget reference: %s"), 
+        InDishWidget ? *InDishWidget->GetName() : TEXT("NULL"));
 }
 

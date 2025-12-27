@@ -3,6 +3,7 @@
 #include "PUPreparationCheckbox.h"
 #include "PUIngredientButton.h"
 #include "PUIngredientSlot.h"
+#include "PUDishCustomizationWidget.h"
 #include "Components/Button.h"
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
@@ -487,6 +488,23 @@ void UPUCookingStageWidget::SetDishCustomizationComponent(UPUDishCustomizationCo
     else
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetDishCustomizationComponent - Component reference is NULL"));
+    }
+}
+
+void UPUCookingStageWidget::SetDishCustomizationWidget(UPUDishCustomizationWidget* Widget)
+{
+    UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetDishCustomizationWidget - Setting dish customization widget"));
+    
+    DishCustomizationWidget = Widget;
+    
+    if (DishCustomizationWidget)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::SetDishCustomizationWidget - Widget reference set successfully: %s"), 
+            *DishCustomizationWidget->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::SetDishCustomizationWidget - Widget reference is NULL"));
     }
 }
 
@@ -2203,6 +2221,18 @@ void UPUCookingStageWidget::CreateIngredientSlotsFromDishData()
         UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
         if (IngredientSlot)
         {
+            // Set the dish widget reference for easy access
+            if (DishCustomizationWidget)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🍳 PUCookingStageWidget::CreateIngredientSlotsFromDishData - Setting dish widget on slot: %s"), 
+                    *DishCustomizationWidget->GetName());
+                IngredientSlot->SetDishCustomizationWidget(DishCustomizationWidget);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUCookingStageWidget::CreateIngredientSlotsFromDishData - DishCustomizationWidget is NULL! Cannot set on slot."));
+            }
+            
             // Set the location to ActiveIngredientArea
             IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
             
@@ -2687,6 +2717,11 @@ void UPUCookingStageWidget::PopulatePantrySlots()
         UPUIngredientSlot* PantrySlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
         if (PantrySlot)
         {
+            // Set the dish widget reference for easy access
+            if (DishCustomizationWidget)
+            {
+                PantrySlot->SetDishCustomizationWidget(DishCustomizationWidget);
+            }
             // Set the location to Pantry
             PantrySlot->SetLocation(EPUIngredientSlotLocation::Pantry);
             
