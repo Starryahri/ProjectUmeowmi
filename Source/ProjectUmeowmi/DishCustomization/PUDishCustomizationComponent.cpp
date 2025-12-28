@@ -1015,11 +1015,11 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
         CustomizationWidget = nullptr;
     }
     
-    // Create and show the cooking stage widget
+    // Create and show the cooking stage widget (now uses PUDishCustomizationWidget or subclass)
     if (CurrentCharacter && CurrentCharacter->GetWorld())
     {
-        // Create cooking stage widget
-        if (UPUCookingStageWidget* CookingWidget = CreateWidget<UPUCookingStageWidget>(CurrentCharacter->GetWorld(), CookingStageWidgetClass))
+        // Create cooking stage widget (should be a subclass of PUDishCustomizationWidget)
+        if (UPUDishCustomizationWidget* CookingWidget = CreateWidget<UPUDishCustomizationWidget>(CurrentCharacter->GetWorld(), CookingStageWidgetClass))
         {
             // Store reference to cooking stage widget
             CookingStageWidget = CookingWidget;
@@ -1033,23 +1033,15 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
                 *CookingStationLocation.ToString());
             
             // Set the dish customization component reference
-            CookingWidget->SetDishCustomizationComponent(this);
+            CookingWidget->SetCustomizationComponent(this);
             
-            // Set the dish customization widget reference (for ingredient slot access)
-            // Use the saved reference since CustomizationWidget was set to nullptr
-            if (SavedDishWidget)
-            {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Setting dish widget on cooking stage: %s"), 
-                    *SavedDishWidget->GetName());
-                CookingWidget->SetDishCustomizationWidget(SavedDishWidget);
-            }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToCookingStage - SavedDishWidget is NULL! Cannot set on cooking stage."));
-            }
+            // Broadcast initial dish data to the new widget
+            BroadcastInitialDishData(DishData);
             
-            // Initialize the cooking stage with dish data and station location
-            CookingWidget->InitializeCookingStage(DishData, CookingStationLocation);
+            // Note: The new cooking stage widget should handle initialization in its Blueprint
+            // or override OnInitialDishDataReceived to set up ingredient slots, etc.
+            // The old InitializeCookingStage method is no longer used - initialization happens
+            // through the standard dish data flow
             
             UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationComponent::TransitionToCookingStage - Cooking stage widget created and added to viewport"));
         }

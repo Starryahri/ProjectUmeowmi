@@ -5,7 +5,7 @@
 #include "PUDishBase.h"
 #include "PUPreparationBase.h"
 #include "../ProjectUmeowmiCharacter.h"
-#include "../UI/PUCookingStageWidget.h"
+#include "../UI/PUDishCustomizationWidget.h"
 #include "PUDishCustomizationComponent.generated.h"
 
 // Forward declarations
@@ -138,9 +138,9 @@ public:
     UPROPERTY()
     TSubclassOf<UUserWidget> OriginalWidgetClass;
 
-    // Widget class to spawn for cooking stage
+    // Widget class to spawn for cooking stage (should inherit from PUDishCustomizationWidget)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")
-    TSubclassOf<class UPUCookingStageWidget> CookingStageWidgetClass;
+    TSubclassOf<class UPUDishCustomizationWidget> CookingStageWidgetClass;
 
     // Widget class to spawn for plating stage
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")
@@ -263,7 +263,7 @@ protected:
     UUserWidget* CustomizationWidget;
 
     UPROPERTY()
-    UPUCookingStageWidget* CookingStageWidget;
+    UPUDishCustomizationWidget* CookingStageWidget;
 
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;

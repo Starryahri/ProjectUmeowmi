@@ -7,9 +7,12 @@
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
 #include "PUIngredientSlot.h"
+#include "GameplayTagContainer.h"
+#include "Components/ScrollBox.h"
 #include "PUDishCustomizationWidget.generated.h"
 
 class UPUDishCustomizationComponent;
+class UScrollBox;
 
 UCLASS(BlueprintType, Blueprintable)
 class PROJECTUMEOWMI_API UPUDishCustomizationWidget : public UUserWidget
@@ -21,6 +24,7 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     // Event handlers for dish data
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
@@ -67,8 +71,10 @@ public:
     void OnIngredientButtonClicked(const FPUIngredientBase& IngredientData);
 
     // Ingredient Slot Management Functions
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
-    void CreateIngredientSlotsFromDishData();
+    // Create ingredient slots in a specified container (max 12 slots)
+    // This is a convenience function for blueprints to easily create slots in a container
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients", meta = (CallInEditor = "true"))
+    void CreateIngredientSlotsInContainer(UPanelWidget* Container, int32 MaxSlots = 12);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void OnQuantityControlChanged(const FIngredientInstance& IngredientInstance);
@@ -145,6 +151,52 @@ public:
     // Get created ingredient slots (for reset functionality)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     const TArray<class UPUIngredientSlot*>& GetCreatedIngredientSlots() const { return CreatedIngredientSlots; }
+
+    // Quantity Control Management Functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void SetQuantityControlContainer(UPanelWidget* Container);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void EnableQuantityControlDrag(bool bEnabled);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    bool UpdateExistingQuantityControl(int32 InstanceID, const FGameplayTagContainer& NewPreparations);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void FindQuantityControlsInHierarchy(TArray<UPUIngredientQuantityControl*>& OutQuantityControls);
+
+    // Pantry Functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void PopulatePantrySlots();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void OpenPantry();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void ClosePantry();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void ClosePantryFromDrag();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    bool IsPantryOpen() const { return bPantryOpen; }
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void OnPantryButtonClicked();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void SetPantryContainer(UPanelWidget* Container);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void SetPantryContainerByName(const FName& ContainerName);
+
+    // Handle empty slot click (opens pantry)
+    UFUNCTION()
+    void OnEmptySlotClicked(class UPUIngredientSlot* IngredientSlot);
+
+    // Implement Preparation Tags (simplified - no carousel dependency)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Preparations")
+    FGameplayTagContainer GetPreparationTagsForImplement(int32 ImplementIndex) const;
 
 protected:
     // Current dish data
@@ -224,6 +276,54 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Ingredients")
     int32 CurrentShelvingWidgetSlotCount = 0;
 
+    // Optional direct reference to the ScrollBox that should host quantity controls
+    UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category = "Dish Customization Widget|Ingredients")
+    UScrollBox* QuantityScrollBox = nullptr;
+
+    // Widget reference for quantity control container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Ingredients")
+    TWeakObjectPtr<class UPanelWidget> QuantityControlContainer;
+
+    // Pantry Management Properties
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    TArray<class UPUIngredientSlot*> CreatedPantrySlots;
+
+    // Flag to prevent double creation
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    bool bPantrySlotsCreated = false;
+
+    // Flag to track if pantry is open
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    bool bPantryOpen = false;
+
+    // Widget reference for pantry container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Pantry")
+    TWeakObjectPtr<class UPanelWidget> PantryContainer;
+
+    // Store references to pantry slots by ingredient tag (for quick lookup)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    TMap<FGameplayTag, class UPUIngredientSlot*> PantrySlotMap;
+
+    // Reference to the empty slot that triggered pantry open (for populating after selection)
+    UPROPERTY()
+    TWeakObjectPtr<class UPUIngredientSlot> PendingEmptySlot;
+
+    // Shelving widget management (for pantry slots)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    TArray<UUserWidget*> CreatedPantryShelvingWidgets;
+
+    // Current shelving widget being filled (nullptr if we need to create a new one)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    TWeakObjectPtr<UUserWidget> CurrentPantryShelvingWidget;
+
+    // Number of slots in the current pantry shelving widget (0-3)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    int32 CurrentPantryShelvingWidgetSlotCount = 0;
+
+    // Implement Preparation Tags (simplified - no carousel, just data structure)
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization Widget|Preparations", meta=(EditFixedSize=true, Categories="Prep", DisplayName="Implement Preparation Tags", ToolTip="Per-implement allowed preparation tags; uses Prep.* tags"))
+    TArray<FGameplayTagContainer> ImplementPreparationTags;
+
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget")
     void OnDishDataReceived(const FPUDishBase& DishData);
@@ -248,6 +348,16 @@ protected:
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
     void EnablePlatingButtons();
+
+    // Blueprint events for pantry
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Pantry")
+    void OnPantryOpened();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Pantry")
+    void OnPantryClosed();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Pantry")
+    void OnPantryClosedFromDrag();
 
 
 private:
@@ -275,4 +385,13 @@ private:
     
     // Helper function to add a slot to the current shelving widget
     bool AddSlotToCurrentShelvingWidget(class UPUIngredientSlot* IngredientSlot);
+
+    // Recursive helper function to find quantity controls
+    void FindQuantityControlsRecursive(UWidget* ParentWidget, TArray<UPUIngredientQuantityControl*>& OutQuantityControls);
+
+    // Helper function to get or create a current pantry shelving widget
+    UUserWidget* GetOrCreateCurrentPantryShelvingWidget(UPanelWidget* ContainerToUse);
+    
+    // Helper function to add a slot to the current pantry shelving widget
+    bool AddSlotToCurrentPantryShelvingWidget(class UPUIngredientSlot* IngredientSlot);
 }; 
