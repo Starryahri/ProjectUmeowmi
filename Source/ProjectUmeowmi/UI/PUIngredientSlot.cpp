@@ -66,15 +66,15 @@ void UPUIngredientSlot::NativeConstruct()
     UpdatePlateBackgroundOpacity();
 
     // Hide QuantityText in prep and cooking stages (shown in plating)
-    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prepped)
     {
         if (QuantityText)
         {
             QuantityText->SetVisibility(ESlateVisibility::Collapsed);
         }
     }
-    // Hide PreparationText in prep, cooking, and plating stages
-    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating)
+    // Hide PreparationText in prep, cooking, plating, and prepped stages
+    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating || Location == EPUIngredientSlotLocation::Prepped)
     {
         if (PreparationText)
         {
@@ -197,6 +197,17 @@ void UPUIngredientSlot::ClearSlot()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Clearing slot: %s"), *GetName());
 
+    // If we're in active ingredient area and have an ingredient with preparations, remove the prepped slot
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && bHasIngredient && IngredientInstance.Preparations.Num() > 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Removing prepped slot for ingredient with preparations"));
+        UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        if (DishWidget)
+        {
+            DishWidget->RemovePreppedSlot(IngredientInstance);
+        }
+    }
+
     bHasIngredient = false;
     IngredientInstance = FIngredientInstance(); // Reset to default
 
@@ -216,14 +227,14 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
 
         // Immediately hide QuantityText if in prep or cooking stage (shown in plating)
     // Hide QuantityText in prep and cooking stages (shown in plating)
-    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prepped)
         {
             if (QuantityText)
             {
                 QuantityText->SetVisibility(ESlateVisibility::Collapsed);
             }
         }
-        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating)
+        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating || Location == EPUIngredientSlotLocation::Prepped)
         {
             if (PreparationText)
             {
@@ -244,12 +255,12 @@ void UPUIngredientSlot::UpdateDisplay()
     // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
     //     *GetName(), IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
-    // For pantry and prep slots, we want to show the texture even if "empty" (quantity 0)
+    // For pantry, prep, and prepped slots, we want to show the texture even if "empty" (quantity 0)
     // For other locations, clear display if empty
     bool bShouldClear = IsEmpty();
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
     {
-        // Pantry/Prep slots: only clear if we don't have ingredient data at all
+        // Pantry/Prep/Prepped slots: only clear if we don't have ingredient data at all
         bShouldClear = !IngredientInstance.IngredientData.IngredientTag.IsValid();
     }
 
@@ -316,12 +327,12 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         return;
     }
 
-    // For pantry and prep slots, show texture even if empty (to display ingredient texture)
+    // For pantry, prep, and prepped slots, show texture even if empty (to display ingredient texture)
     // For active ingredient area slots, only show if we have an ingredient
     bool bShouldShowTexture = false;
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
     {
-        // Pantry/Prep slots: show texture if we have ingredient data (even if quantity is 0)
+        // Pantry/Prep/Prepped slots: show texture if we have ingredient data (even if quantity is 0)
         bShouldShowTexture = IngredientInstance.IngredientData.IngredientTag.IsValid();
     }
     else // ActiveIngredientArea
@@ -342,8 +353,8 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         IngredientIcon->SetBrushFromTexture(TextureToUse);
         IngredientIcon->SetVisibility(ESlateVisibility::Visible);
         
-        // Grey out the icon if quantity is 0, but NOT for Pantry or Prep locations
-        if (IngredientInstance.Quantity <= 0 && Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep)
+        // Grey out the icon if quantity is 0, but NOT for Pantry, Prep, or Prepped locations
+        if (IngredientInstance.Quantity <= 0 && Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && Location != EPUIngredientSlotLocation::Prepped)
         {
             // Grey color: 0.5, 0.5, 0.5, 1.0
             IngredientIcon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
@@ -592,7 +603,8 @@ void UPUIngredientSlot::UpdateQuantityControl()
         if (bIsPlatingMode || 
             Location == EPUIngredientSlotLocation::Plating || 
             Location == EPUIngredientSlotLocation::Prep || 
-            Location == EPUIngredientSlotLocation::Pantry)
+            Location == EPUIngredientSlotLocation::Pantry ||
+            Location == EPUIngredientSlotLocation::Prepped)
         {
             QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
             if (QuantityControlContainer)
@@ -716,9 +728,9 @@ void UPUIngredientSlot::ClearDisplay()
 
 UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
 {
-    // For pantry and prep slots, show texture even if bHasIngredient is false (for display purposes)
+    // For pantry, prep, and prepped slots, show texture even if bHasIngredient is false (for display purposes)
     // For other locations, require bHasIngredient to be true
-    if (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && !bHasIngredient)
+    if (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && Location != EPUIngredientSlotLocation::Prepped && !bHasIngredient)
     {
         return nullptr;
     }
@@ -761,7 +773,27 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
         }
         return Texture;
     }
-    else // ActiveIngredientArea
+    else if (Location == EPUIngredientSlotLocation::Prepped)
+    {
+        // Prepped slots use PreppedTexture, with PreviewTexture as fallback
+        UTexture2D* Texture = IngredientInstance.IngredientData.PreppedTexture;
+        if (!Texture)
+        {
+            Texture = IngredientInstance.IngredientData.PreviewTexture;
+            if (Texture)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Prepped slot using PreviewTexture as fallback for ingredient: %s"),
+                    *IngredientInstance.IngredientData.DisplayName.ToString());
+            }
+        }
+        if (!Texture)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prepped slot has no PreppedTexture or PreviewTexture for ingredient: %s"),
+                *IngredientInstance.IngredientData.DisplayName.ToString());
+        }
+        return Texture;
+    }
+    else // ActiveIngredientArea or Plating
     {
         return IngredientInstance.IngredientData.PreviewTexture;
     }
@@ -1401,12 +1433,12 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
 
 FText UPUIngredientSlot::GetIngredientDisplayText() const
 {
-    // For prep/pantry slots, show text even if "empty" (quantity 0) as long as we have ingredient data
+    // For prep/pantry/prepped slots, show text even if "empty" (quantity 0) as long as we have ingredient data
     // For other locations, require bHasIngredient to be true
     bool bShouldShowText = false;
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
     {
-        // Prep/Pantry slots: show text if we have ingredient data (even if quantity is 0)
+        // Prep/Pantry/Prepped slots: show text if we have ingredient data (even if quantity is 0)
         bShouldShowText = IngredientInstance.IngredientData.IngredientTag.IsValid();
     }
     else
@@ -1474,10 +1506,10 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
         return;
     }
 
-    // For prep/pantry slots, show text if we have ingredient data (even if "empty")
+    // For prep/pantry/prepped slots, show text if we have ingredient data (even if "empty")
     // For other locations, require bHasIngredient
     bool bCanShowText = false;
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
     {
         bCanShowText = IngredientInstance.IngredientData.IngredientTag.IsValid();
     }
@@ -1963,7 +1995,7 @@ void UPUIngredientSlot::UpdateQuantityDisplay()
         
         // Hide QuantityText in prep and cooking stages (show in plating mode)
         // But show it in plating mode even if location is ActiveIngredientArea
-        if (!bIsPlatingMode && (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea))
+        if (!bIsPlatingMode && (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prepped))
         {
             QuantityText->SetVisibility(ESlateVisibility::Collapsed);
             // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d, PlatingMode: false)"), (int32)Location);
@@ -1991,8 +2023,8 @@ void UPUIngredientSlot::UpdatePreparationDisplay()
 {
     if (PreparationText)
     {
-        // Hide PreparationText in prep, cooking, and plating stages
-        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating)
+        // Hide PreparationText in prep, cooking, plating, and prepped stages
+        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating || Location == EPUIngredientSlotLocation::Prepped)
         {
             PreparationText->SetVisibility(ESlateVisibility::Collapsed);
             // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Hiding PreparationText (Location: %d)"), (int32)Location);
@@ -2527,6 +2559,21 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
             {
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via widget"));
+                
+                // If we're in active ingredient area, create/update the prepped slot
+                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In active ingredient area, creating/updating prepped slot"));
+                    if (UpdatedInstance.Preparations.Num() > 0)
+                    {
+                        DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
+                    }
+                    else
+                    {
+                        // If no preparations left, remove the prepped slot
+                        DishWidget->RemovePreppedSlot(UpdatedInstance);
+                    }
+                }
             }
         }
         else
@@ -2634,6 +2681,13 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
             CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
 
+        // If we're in active ingredient area, remove the old prepped slot first (before removing the prep)
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - In active ingredient area, removing old prepped slot"));
+            DishWidget->RemovePreppedSlot(IngredientInstance);
+        }
+        
         // Remove the preparation using the blueprint library
         bool bSuccess = UPUDishBlueprintLibrary::RemovePreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
         
@@ -2648,6 +2702,13 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
             {
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via widget"));
+                
+                // If we're in active ingredient area and still have preparations, create/update the prepped slot with new state
+                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - In active ingredient area, creating/updating prepped slot with remaining preps"));
+                    DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
+                }
             }
         }
         else

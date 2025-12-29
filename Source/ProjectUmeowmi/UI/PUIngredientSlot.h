@@ -21,7 +21,8 @@ enum class EPUIngredientSlotLocation : uint8
     Pantry,
     ActiveIngredientArea,
     Prep,
-    Plating
+    Plating,
+    Prepped
 };
 
 // Events

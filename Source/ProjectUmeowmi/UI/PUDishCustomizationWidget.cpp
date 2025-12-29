@@ -2438,3 +2438,126 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentPantryShelvingWidget(UPUIngredi
     UE_LOG(LogTemp, Error, TEXT("   Please ensure WBP_Shelving contains a HorizontalBox (or other panel widget) with one of these names."));
     return false;
 }
+
+void UPUDishCustomizationWidget::SetPreppedIngredientContainer(UPanelWidget* Container)
+{
+    PreppedIngredientContainer = Container;
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::SetPreppedIngredientContainer - Prepped ingredient container set"));
+}
+
+void UPUDishCustomizationWidget::CreateOrUpdatePreppedSlot(const FIngredientInstance& IngredientInstance)
+{
+    // Only create prepped slots if we're in prep stage and have a container
+    if (!PreppedIngredientContainer.IsValid())
+    {
+        UE_LOG(LogTemp, Display, TEXT("ℹ️ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - No prepped container set, skipping"));
+        return;
+    }
+
+    // Only create prepped slots if the ingredient has preparations
+    if (IngredientInstance.Preparations.Num() == 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("ℹ️ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - Ingredient has no preparations, skipping"));
+        return;
+    }
+
+    // Use ingredient tag as the key (one prepped slot per ingredient, regardless of preparation combo)
+    FString Key = IngredientInstance.IngredientData.IngredientTag.ToString();
+
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - Key: %s"), *Key);
+
+    // Check if a prepped slot already exists for this ingredient
+    UPUIngredientSlot* ExistingSlot = PreppedSlotMap.FindRef(Key);
+    
+    if (ExistingSlot && ExistingSlot->IsValidLowLevel())
+    {
+        // Update existing slot with new preparation data
+        UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - Updating existing prepped slot"));
+        ExistingSlot->SetIngredientInstance(IngredientInstance);
+        ExistingSlot->UpdateDisplay();
+    }
+    else
+    {
+        // Create new prepped slot
+        UE_LOG(LogTemp, Display, TEXT("✨ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - Creating new prepped slot"));
+
+        // Get the slot class
+        TSubclassOf<UPUIngredientSlot> SlotClass;
+        if (IngredientSlotClass)
+        {
+            SlotClass = IngredientSlotClass;
+        }
+        else
+        {
+            SlotClass = UPUIngredientSlot::StaticClass();
+        }
+
+        // Create the slot widget
+        UPUIngredientSlot* PreppedSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
+        if (PreppedSlot)
+        {
+            // Set the dish widget reference
+            PreppedSlot->SetDishCustomizationWidget(this);
+
+            // Set the location to Prepped
+            PreppedSlot->SetLocation(EPUIngredientSlotLocation::Prepped);
+
+            // Set the ingredient instance
+            PreppedSlot->SetIngredientInstance(IngredientInstance);
+
+            // Set the preparation data table if available
+            if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
+            {
+                PreppedSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+            }
+
+            // Update the display
+            PreppedSlot->UpdateDisplay();
+
+            // Add to container
+            PreppedIngredientContainer->AddChild(PreppedSlot);
+
+            // Store in arrays and map
+            CreatedPreppedSlots.Add(PreppedSlot);
+            PreppedSlotMap.Add(Key, PreppedSlot);
+
+            TArray<FGameplayTag> PrepTags;
+            IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
+            UE_LOG(LogTemp, Display, TEXT("✅ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - Created prepped slot for %s with %d preparations"),
+                *IngredientInstance.IngredientData.DisplayName.ToString(), PrepTags.Num());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - Failed to create prepped slot widget"));
+        }
+    }
+}
+
+void UPUDishCustomizationWidget::RemovePreppedSlot(const FIngredientInstance& IngredientInstance)
+{
+    // Use ingredient tag as the key (one prepped slot per ingredient)
+    FString Key = IngredientInstance.IngredientData.IngredientTag.ToString();
+
+    // Find and remove the slot
+    UPUIngredientSlot* SlotToRemove = PreppedSlotMap.FindRef(Key);
+    if (SlotToRemove && SlotToRemove->IsValidLowLevel())
+    {
+        UE_LOG(LogTemp, Display, TEXT("🗑️ PUDishCustomizationWidget::RemovePreppedSlot - Removing prepped slot for key: %s"), *Key);
+        
+        // Remove from container
+        if (SlotToRemove->GetParent())
+        {
+            SlotToRemove->RemoveFromParent();
+        }
+        
+        // Remove from arrays and map
+        CreatedPreppedSlots.Remove(SlotToRemove);
+        PreppedSlotMap.Remove(Key);
+        
+        UE_LOG(LogTemp, Display, TEXT("✅ PUDishCustomizationWidget::RemovePreppedSlot - Removed prepped slot"));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Display, TEXT("ℹ️ PUDishCustomizationWidget::RemovePreppedSlot - No prepped slot found for key: %s"), *Key);
+    }
+}

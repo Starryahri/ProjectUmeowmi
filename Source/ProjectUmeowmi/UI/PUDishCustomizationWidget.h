@@ -126,6 +126,16 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
     void SetIngredientSlotContainer(UPanelWidget* Container, EPUIngredientSlotLocation SlotLocation = EPUIngredientSlotLocation::Prep);
 
+    // Prepped ingredient management functions (for prep stage)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Prepped")
+    void CreateOrUpdatePreppedSlot(const FIngredientInstance& IngredientInstance);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Prepped")
+    void RemovePreppedSlot(const FIngredientInstance& IngredientInstance);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Prepped")
+    void SetPreppedIngredientContainer(UPanelWidget* Container);
+
     // Planning stage functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Planning")
     void ToggleIngredientSelection(const FPUIngredientBase& IngredientData);
@@ -336,6 +346,19 @@ protected:
     // Flag to track if pantry is open
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     bool bPantryOpen = false;
+
+    // Prepped Ingredient Management Properties (for prep stage)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Prepped")
+    TArray<class UPUIngredientSlot*> CreatedPreppedSlots;
+
+    // Widget reference for prepped ingredient container (set in Blueprint)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Prepped")
+    TWeakObjectPtr<class UPanelWidget> PreppedIngredientContainer;
+
+    // Map to track prepped slots by ingredient tag (for quick lookup)
+    // One prepped slot per ingredient, updated when preparations change
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Prepped")
+    TMap<FString, class UPUIngredientSlot*> PreppedSlotMap;
 
     // Widget reference for pantry container (set in Blueprint)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Pantry")
