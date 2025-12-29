@@ -185,6 +185,125 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
     }
 }
 
+void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetStage)
+{
+    if (!TargetStage)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToStage - Target stage is null"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Navigating from %s to %s"), 
+        *GetName(), *TargetStage->GetName());
+
+    // Get current dish data
+    const FPUDishBase& CurrentData = GetCurrentDishData();
+
+    // Hide/remove current widget from viewport
+    if (IsInViewport())
+    {
+        RemoveFromViewport();
+        UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Removed current widget from viewport"));
+    }
+
+    // Ensure target widget has the component reference
+    if (CustomizationComponent && TargetStage->GetCustomizationComponent() != CustomizationComponent)
+    {
+        TargetStage->SetCustomizationComponent(CustomizationComponent);
+        UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Set component reference on target widget"));
+        
+        // Notify component about the active widget change
+        CustomizationComponent->SetActiveCustomizationWidget(TargetStage);
+        UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Updated component's active widget reference"));
+    }
+
+    // Add target widget to viewport if not already there
+    if (!TargetStage->IsInViewport())
+    {
+        TargetStage->AddToViewport();
+        UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Added target widget to viewport"));
+    }
+
+    // Update target widget's dish data
+    TargetStage->CurrentDishData = CurrentData;
+
+    // Call OnDishDataReceived on target widget to initialize it
+    TargetStage->OnDishDataReceived(CurrentData);
+    UE_LOG(LogTemp, Display, TEXT("✅ PUDishCustomizationWidget::GoToStage - Navigation complete"));
+}
+
+void UPUDishCustomizationWidget::GoToNextStage()
+{
+    if (NextStage)
+    {
+        UWorld* World = GetWorld();
+        if (World)
+        {
+            UPUDishCustomizationWidget* NextStageWidget = CreateWidget<UPUDishCustomizationWidget>(World, NextStage);
+            if (NextStageWidget)
+            {
+                GoToStage(NextStageWidget);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToNextStage - Failed to create widget from class"));
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToNextStage - Next stage class is not set"));
+    }
+}
+
+void UPUDishCustomizationWidget::GoToPreviousStage()
+{
+    if (PreviousStage)
+    {
+        UWorld* World = GetWorld();
+        if (World)
+        {
+            UPUDishCustomizationWidget* PreviousStageWidget = CreateWidget<UPUDishCustomizationWidget>(World, PreviousStage);
+            if (PreviousStageWidget)
+            {
+                GoToStage(PreviousStageWidget);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToPreviousStage - Failed to create widget from class"));
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToPreviousStage - Previous stage class is not set"));
+    }
+}
+
+void UPUDishCustomizationWidget::SetPreviousStage(UPUDishCustomizationWidget* Stage)
+{
+    if (Stage)
+    {
+        PreviousStage = Stage->GetClass();
+    }
+    else
+    {
+        PreviousStage = nullptr;
+    }
+}
+
+void UPUDishCustomizationWidget::SetNextStage(UPUDishCustomizationWidget* Stage)
+{
+    if (Stage)
+    {
+        NextStage = Stage->GetClass();
+    }
+    else
+    {
+        NextStage = nullptr;
+    }
+}
+
 int32 UPUDishCustomizationWidget::GenerateGUIDBasedInstanceID()
 {
     // Generate a GUID and convert it to a unique integer

@@ -60,6 +60,30 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void UpdateDishData(const FPUDishBase& NewDishData);
 
+    // Stage navigation functions
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    void GoToStage(class UPUDishCustomizationWidget* TargetStage);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    void GoToNextStage();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    void GoToPreviousStage();
+
+    // Stage reference setters (for Blueprint)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    void SetPreviousStage(class UPUDishCustomizationWidget* Stage);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    void SetNextStage(class UPUDishCustomizationWidget* Stage);
+
+    // Stage reference getters
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    TSubclassOf<class UPUDishCustomizationWidget> GetPreviousStage() const { return PreviousStage; }
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    TSubclassOf<class UPUDishCustomizationWidget> GetNextStage() const { return NextStage; }
+
     // Ingredient management functions
     UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     void CreateIngredientButtons();
@@ -210,6 +234,13 @@ protected:
     // Planning mode flag
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Planning Data")
     bool bInPlanningMode = false;
+
+    // Stage navigation - previous and next stage widgets
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Stages")
+    TSubclassOf<class UPUDishCustomizationWidget> PreviousStage;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Stages")
+    TSubclassOf<class UPUDishCustomizationWidget> NextStage;
 
     // Maximum number of ingredients that can be selected
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Settings", meta = (ClampMin = "1", ClampMax = "20"))

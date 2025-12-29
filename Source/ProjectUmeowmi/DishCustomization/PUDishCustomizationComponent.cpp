@@ -910,6 +910,22 @@ void UPUDishCustomizationComponent::SetWidgetComponentReference(UPUDishCustomiza
     }
 }
 
+void UPUDishCustomizationComponent::SetActiveCustomizationWidget(UPUDishCustomizationWidget* ActiveWidget)
+{
+    if (ActiveWidget)
+    {
+        // Update the CustomizationWidget reference to track the currently active widget
+        // This ensures EndCustomization() can properly clean up the active widget
+        CustomizationWidget = ActiveWidget;
+        UE_LOG(LogTemp, Display, TEXT("🔄 UPUDishCustomizationComponent::SetActiveCustomizationWidget - Updated active widget to: %s"), 
+            *ActiveWidget->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::SetActiveCustomizationWidget - Active widget is null"));
+    }
+}
+
 void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& InitialDishData)
 {
     UE_LOG(LogTemp, Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Setting initial dish data: %s with %d ingredients"), 

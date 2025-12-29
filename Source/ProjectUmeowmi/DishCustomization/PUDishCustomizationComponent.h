@@ -60,6 +60,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
     void SetDishCustomizationComponentOnWidget(UUserWidget* Widget);
 
+    // Function to set the currently active customization widget (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
+    void SetActiveCustomizationWidget(UPUDishCustomizationWidget* ActiveWidget);
+
     // Function to set the initial dish data from an order
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Orders")
     void SetInitialDishData(const FPUDishBase& InitialDishData);
