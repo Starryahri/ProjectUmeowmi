@@ -14,6 +14,15 @@
 class UPUDishCustomizationComponent;
 class UScrollBox;
 
+// Stage type enum for dish customization stages
+UENUM(BlueprintType)
+enum class EDishCustomizationStageType : uint8
+{
+    Planning     UMETA(DisplayName = "Planning"),
+    Cooking      UMETA(DisplayName = "Cooking"),
+    Plating      UMETA(DisplayName = "Plating")
+};
+
 UCLASS(BlueprintType, Blueprintable)
 class PROJECTUMEOWMI_API UPUDishCustomizationWidget : public UUserWidget
 {
@@ -84,6 +93,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
     TSubclassOf<class UPUDishCustomizationWidget> GetNextStage() const { return NextStage; }
 
+    // Stage type getter
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
+    EDishCustomizationStageType GetStageType() const { return StageType; }
+
     // Ingredient management functions
     UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     void CreateIngredientButtons();
@@ -98,7 +111,7 @@ public:
     // Create ingredient slots in a specified container (max 12 slots)
     // This is a convenience function for blueprints to easily create slots in a container
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients", meta = (CallInEditor = "true"))
-    void CreateIngredientSlotsInContainer(UPanelWidget* Container, int32 MaxSlots = 12);
+    void CreateIngredientSlotsInContainer(UPanelWidget* Container, int32 MaxSlots = 12, EPUIngredientSlotLocation SlotLocation = EPUIngredientSlotLocation::ActiveIngredientArea);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void OnQuantityControlChanged(const FIngredientInstance& IngredientInstance);
@@ -107,8 +120,8 @@ public:
     void OnQuantityControlRemoved(int32 InstanceID, class UPUIngredientQuantityControl* QuantityControlWidget);
 
     // Plating stage functions
-    UFUNCTION(Category = "Dish Customization Widget|Plating")
-    void CreatePlatingIngredientButtons();
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
+    void CreatePlatingIngredientSlots();
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
     void SetIngredientSlotContainer(UPanelWidget* Container, EPUIngredientSlotLocation SlotLocation = EPUIngredientSlotLocation::Prep);
@@ -136,10 +149,6 @@ public:
     // Find ingredient button by tag (simpler alternative)
     UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     class UPUIngredientButton* GetIngredientButtonByTag(const FGameplayTag& IngredientTag) const;
-
-    // Get plating ingredient button map
-    UFUNCTION(Category = "Dish Customization Widget|Ingredients")
-    const TMap<int32, class UPUIngredientButton*>& GetPlatingIngredientButtonMap() const { return PlatingIngredientButtonMap; }
 
     // Remove ingredient instance by tag
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
@@ -235,6 +244,10 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Planning Data")
     bool bInPlanningMode = false;
 
+    // Stage type - determines what transition logic to apply
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Stages")
+    EDishCustomizationStageType StageType = EDishCustomizationStageType::Cooking;
+
     // Stage navigation - previous and next stage widgets
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Stages")
     TSubclassOf<class UPUDishCustomizationWidget> PreviousStage;
@@ -254,9 +267,6 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slots")
     TMap<FGameplayTag, class UPUIngredientSlot*> IngredientSlotMap;
 
-    // Store references to plating ingredient buttons by InstanceID (for multiple instances of same ingredient)
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
-    TMap<int32, class UPUIngredientButton*> PlatingIngredientButtonMap;
 
     // Widget class references
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
@@ -378,7 +388,7 @@ protected:
     void OnPlatingStageInitialized(const FPUDishBase& DishData);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
-    void EnablePlatingButtons();
+    void EnablePlatingSlots();
 
     // Blueprint events for pantry
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Pantry")

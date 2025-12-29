@@ -100,6 +100,24 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void EndPlatingStage();
 
+    // Camera switching functions (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
+    void SwitchToCookingCamera();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
+    void SwitchToPlatingCamera();
+
+    // Plating placement management (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void ResetPlatingPlacements();
+
+    // Dish mesh management (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
+    void SwapDishContainerMesh(UStaticMesh* NewDishMesh);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
+    void RestoreOriginalDishContainerMesh();
+
     // Planning mode functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
     void StartPlanningMode();
@@ -348,11 +366,9 @@ private:
 
     // Cooking stage camera handling
     void StartCookingStageCameraTransition();
-    void SwitchToCookingCamera();
     void SwitchToCharacterCamera();
 
     // Plating stage camera handling
-    void SwitchToPlatingCamera();
     void SetPlatingCameraPositionOffset(const FVector& NewOffset);
     void StartPlatingCameraTransition();
     void UpdatePlatingCameraTransition(float DeltaTime);
@@ -363,7 +379,6 @@ private:
     int32 GetPlacedQuantity(int32 InstanceID) const;
     void PlaceIngredient(int32 InstanceID);
     void RemoveIngredient(int32 InstanceID);
-    void ResetPlatingPlacements();
 
     // Blueprint-callable plating limits
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
@@ -375,8 +390,8 @@ private:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     int32 GetPlacedQuantityByTag(const FGameplayTag& IngredientTag) const;
 
-    // Update ingredient button quantity display
-    void UpdateIngredientButtonQuantity(int32 InstanceID);
+    // Update ingredient slot quantity display (for plating mode - uses slots, not buttons)
+    void UpdateIngredientSlotQuantity(int32 InstanceID);
 
     // Reset all plating (restore original quantities and clear placed ingredients)
     UFUNCTION(BlueprintCallable, Category = "Plating")
@@ -385,14 +400,6 @@ private:
     // Clear all 3D ingredient meshes
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ClearAll3DIngredientMeshes();
-
-    // Swap dish container mesh
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
-    void SwapDishContainerMesh(UStaticMesh* NewDishMesh);
-
-    // Restore original dish container mesh
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
-    void RestoreOriginalDishContainerMesh();
 
     // Store original dish container mesh
     void StoreOriginalDishContainerMesh();

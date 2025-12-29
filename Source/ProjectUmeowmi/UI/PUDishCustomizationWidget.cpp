@@ -193,11 +193,33 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Navigating from %s to %s"), 
-        *GetName(), *TargetStage->GetName());
+    UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Navigating from %s (Stage: %d) to %s (Stage: %d)"), 
+        *GetName(), (int32)StageType, *TargetStage->GetName(), (int32)TargetStage->StageType);
 
     // Get current dish data
     const FPUDishBase& CurrentData = GetCurrentDishData();
+
+    // Handle cleanup when leaving current stage
+    if (CustomizationComponent)
+    {
+        switch (StageType)
+        {
+            case EDishCustomizationStageType::Plating:
+                // Clean up plating stage
+                UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Cleaning up plating stage"));
+                CustomizationComponent->SetPlatingMode(false);
+                CustomizationComponent->RestoreOriginalDishContainerMesh();
+                break;
+            
+            case EDishCustomizationStageType::Cooking:
+                // No specific cleanup needed for cooking stage
+                break;
+            
+            case EDishCustomizationStageType::Planning:
+                // No specific cleanup needed for planning stage
+                break;
+        }
+    }
 
     // Hide/remove current widget from viewport
     if (IsInViewport())
@@ -215,6 +237,86 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
         // Notify component about the active widget change
         CustomizationComponent->SetActiveCustomizationWidget(TargetStage);
         UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Updated component's active widget reference"));
+    }
+
+    // Handle setup when entering target stage
+    if (CustomizationComponent)
+    {
+        switch (TargetStage->StageType)
+        {
+            case EDishCustomizationStageType::Plating:
+            {
+                // Setup plating stage
+                UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Setting up plating stage"));
+                CustomizationComponent->SetPlatingMode(true);
+                CustomizationComponent->ResetPlatingPlacements();
+                CustomizationComponent->SwitchToPlatingCamera();
+                
+                // Swap to plating dish mesh
+                UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Checking PlatingDishMesh..."));
+                UE_LOG(LogTemp, Display, TEXT("🔄 PlatingDishMesh.IsValid(): %s"), CustomizationComponent->PlatingDishMesh.IsValid() ? TEXT("TRUE") : TEXT("FALSE"));
+                UE_LOG(LogTemp, Display, TEXT("🔄 PlatingDishMesh.ToString(): %s"), *CustomizationComponent->PlatingDishMesh.ToString());
+                
+                UStaticMesh* MeshToSwap = nullptr;
+                
+                if (CustomizationComponent->PlatingDishMesh.IsValid())
+                {
+                    MeshToSwap = CustomizationComponent->PlatingDishMesh.LoadSynchronous();
+                    if (MeshToSwap)
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Successfully loaded plating mesh: %s"), *MeshToSwap->GetName());
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::GoToStage - Failed to load plating dish mesh synchronously"));
+                    }
+                }
+                
+                // If IsValid() was false or LoadSynchronous failed, try direct load
+                if (!MeshToSwap)
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Trying to load mesh directly by path..."));
+                    FString MeshPath = CustomizationComponent->PlatingDishMesh.ToString();
+                    UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Mesh path: %s"), *MeshPath);
+                    MeshToSwap = LoadObject<UStaticMesh>(nullptr, *MeshPath);
+                    if (MeshToSwap)
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Successfully loaded mesh directly: %s"), *MeshToSwap->GetName());
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::GoToStage - Failed to load mesh directly by path: %s"), *MeshPath);
+                    }
+                }
+                
+                // Swap the mesh if we successfully loaded it
+                if (MeshToSwap)
+                {
+                    UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Calling SwapDishContainerMesh with mesh: %s"), *MeshToSwap->GetName());
+                    CustomizationComponent->SwapDishContainerMesh(MeshToSwap);
+                    UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - SwapDishContainerMesh call completed"));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::GoToStage - Could not load plating dish mesh, swap aborted"));
+                }
+                break;
+            }
+            
+            case EDishCustomizationStageType::Cooking:
+                // Setup cooking stage
+                UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Setting up cooking stage"));
+                CustomizationComponent->SetPlatingMode(false);
+                CustomizationComponent->SwitchToCookingCamera();
+                CustomizationComponent->RestoreOriginalDishContainerMesh();
+                break;
+            
+            case EDishCustomizationStageType::Planning:
+                // Setup planning stage (if needed)
+                UE_LOG(LogTemp, Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Setting up planning stage"));
+                // Planning stage might not need specific component setup
+                break;
+        }
     }
 
     // Add target widget to viewport if not already there
@@ -242,12 +344,21 @@ void UPUDishCustomizationWidget::GoToNextStage()
             UPUDishCustomizationWidget* NextStageWidget = CreateWidget<UPUDishCustomizationWidget>(World, NextStage);
             if (NextStageWidget)
             {
+                // Ensure the new widget has the component reference
+                if (CustomizationComponent)
+                {
+                    NextStageWidget->SetCustomizationComponent(CustomizationComponent);
+                }
                 GoToStage(NextStageWidget);
             }
             else
             {
                 UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToNextStage - Failed to create widget from class"));
             }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToNextStage - No world available"));
         }
     }
     else
@@ -266,12 +377,21 @@ void UPUDishCustomizationWidget::GoToPreviousStage()
             UPUDishCustomizationWidget* PreviousStageWidget = CreateWidget<UPUDishCustomizationWidget>(World, PreviousStage);
             if (PreviousStageWidget)
             {
+                // Ensure the new widget has the component reference
+                if (CustomizationComponent)
+                {
+                    PreviousStageWidget->SetCustomizationComponent(CustomizationComponent);
+                }
                 GoToStage(PreviousStageWidget);
             }
             else
             {
                 UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToPreviousStage - Failed to create widget from class"));
             }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToPreviousStage - No world available"));
         }
     }
     else
@@ -520,13 +640,13 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Created %d ingredient slots"), CreatedIngredientSlots.Num());
 }
 
-void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
+void UPUDishCustomizationWidget::CreatePlatingIngredientSlots()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Creating plating ingredient slots (replacing buttons)"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Creating plating ingredient slots"));
 
     if (!CustomizationComponent)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No customization component available"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - No customization component available"));
         return;
     }
 
@@ -535,11 +655,11 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
     
     if (DishData.IngredientInstances.Num() == 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No ingredient instances in dish data"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - No ingredient instances in dish data"));
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Found %d ingredient instances"), 
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Found %d ingredient instances"), 
         DishData.IngredientInstances.Num());
 
     // Debug: Log all ingredient instances
@@ -561,14 +681,14 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
     // Check if we have a valid world context
     if (!GetWorld())
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No world context available"));
+        UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreatePlatingIngredientSlots - No world context available"));
         return;
     }
 
     // Clear any existing slots
     CreatedIngredientSlots.Empty();
     bIngredientSlotsCreated = false;
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Cleared existing slots"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Cleared existing slots"));
 
     // Get the container to use (use slot container first, fallback to button container if they're the same)
     UPanelWidget* ContainerToUse = nullptr;
@@ -579,12 +699,12 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
     else if (IngredientButtonContainer.IsValid())
     {
         ContainerToUse = IngredientButtonContainer.Get();
-        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Using IngredientButtonContainer as fallback"));
+        UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Using IngredientButtonContainer as fallback"));
     }
     
     if (!ContainerToUse)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - No ingredient container set (neither slot nor button container)! Slots cannot be added."));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - No ingredient container set! Slots cannot be added."));
         UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientSlotContainer() is called."));
     }
 
@@ -616,7 +736,7 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
             
             // Set the ingredient instance
             IngredientSlot->SetIngredientInstance(Instance);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Created slot with ingredient: %s (ID: %d, Qty: %d)"), 
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Created slot with ingredient: %s (ID: %d, Qty: %d)"), 
                 *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Instance.Quantity);
             
             // Set the preparation data table if we have access to it
@@ -630,38 +750,38 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
             
             // Enable drag functionality for plating stage
             IngredientSlot->SetDragEnabled(true);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Enabled drag for slot: %s"), 
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Enabled drag for slot: %s"), 
                 *Instance.IngredientData.DisplayName.ToString());
             
             // Add to our array
             CreatedIngredientSlots.Add(IngredientSlot);
             
-            // Call Blueprint event for slot creation (equivalent to OnIngredientButtonCreated)
+            // Call Blueprint event for slot creation
             OnIngredientSlotCreated(IngredientSlot, Instance);
             
             // Add to the UI container if available
             if (ContainerToUse)
             {
                 ContainerToUse->AddChild(IngredientSlot);
-                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Added slot to container for: %s"), 
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Added slot to container for: %s"), 
                     *Instance.IngredientData.DisplayName.ToString());
             }
             else
             {
-                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Slot created but not added to container (container not set yet)"));
+                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Slot created but not added to container (container not set yet)"));
             }
             
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Created slot for: %s"), 
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Created slot for: %s"), 
                 *Instance.IngredientData.DisplayName.ToString());
         }
         else
         {
-            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Failed to create slot for: %s"), 
+            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Failed to create slot for: %s"), 
                 *Instance.IngredientData.DisplayName.ToString());
         }
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Created %d plating ingredient slots"), 
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Created %d plating ingredient slots"), 
         CreatedIngredientSlots.Num());
     
     // Mark that slots have been created
@@ -669,12 +789,12 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientButtons()
     
     // Call the plating stage initialized event
     OnPlatingStageInitialized(DishData);
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientButtons - Called OnPlatingStageInitialized event"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Called OnPlatingStageInitialized event"));
 }
 
-void UPUDishCustomizationWidget::EnablePlatingButtons()
+void UPUDishCustomizationWidget::EnablePlatingSlots()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabling all plating slots (replacing buttons)"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingSlots - Enabling all plating slots"));
 
     // Update all slots to ensure they're displaying correctly and enable drag
     for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
@@ -687,12 +807,12 @@ void UPUDishCustomizationWidget::EnablePlatingButtons()
             // Update the slot display (this will refresh icons, quantity control, etc.)
             IngredientSlot->UpdateDisplay();
             
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Enabled drag and updated slot display for: %s"), 
+            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingSlots - Enabled drag and updated slot display for: %s"), 
                 IngredientSlot->IsEmpty() ? TEXT("Empty Slot") : *IngredientSlot->GetIngredientInstance().IngredientData.DisplayName.ToString());
         }
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingButtons - Updated %d plating slots"), CreatedIngredientSlots.Num());
+    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::EnablePlatingSlots - Updated %d plating slots"), CreatedIngredientSlots.Num());
 }
 
 
@@ -1486,9 +1606,9 @@ void UPUDishCustomizationWidget::FinishPlanningAndStartCooking()
     }
 }
 
-void UPUDishCustomizationWidget::CreateIngredientSlotsInContainer(UPanelWidget* Container, int32 MaxSlots)
+void UPUDishCustomizationWidget::CreateIngredientSlotsInContainer(UPanelWidget* Container, int32 MaxSlots, EPUIngredientSlotLocation SlotLocation)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Creating up to %d ingredient slots in container"), MaxSlots);
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Creating up to %d ingredient slots in container with location: %d"), MaxSlots, (int32)SlotLocation);
     
     if (!Container)
     {
@@ -1539,8 +1659,8 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsInContainer(UPanelWidget* 
             // Set the dish widget reference
             IngredientSlot->SetDishCustomizationWidget(this);
             
-            // Set the location to ActiveIngredientArea
-            IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
+            // Set the location as specified by the parameter
+            IngredientSlot->SetLocation(SlotLocation);
             
             // Enable drag functionality for cooking/prep stage
             IngredientSlot->SetDragEnabled(true);

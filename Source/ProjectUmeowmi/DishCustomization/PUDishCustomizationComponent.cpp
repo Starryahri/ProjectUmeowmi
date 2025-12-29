@@ -1228,8 +1228,8 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID(int32 Instan
             // Track the placement
             PlaceIngredient(InstanceID);
             
-            // Update the ingredient button's quantity display
-            UpdateIngredientButtonQuantity(InstanceID);
+            // Update the ingredient slot's quantity display (NOT buttons - we use slots in plating mode)
+            UpdateIngredientSlotQuantity(InstanceID);
             
             UE_LOG(LogTemp, Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Set plating for instance %d"), InstanceID);
             
@@ -1320,8 +1320,8 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
                 // Create plating ingredient buttons
                 if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
                 {
-                    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Creating plating ingredient buttons"));
-                    DishWidget->CreatePlatingIngredientButtons();
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Creating plating ingredient slots"));
+                    DishWidget->CreatePlatingIngredientSlots();
                 }
             }
             else
@@ -1841,50 +1841,33 @@ int32 UPUDishCustomizationComponent::GetPlacedQuantityByTag(const FGameplayTag& 
     return 0;
 }
 
-void UPUDishCustomizationComponent::UpdateIngredientButtonQuantity(int32 InstanceID)
+void UPUDishCustomizationComponent::UpdateIngredientSlotQuantity(int32 InstanceID)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Updating button quantity for InstanceID: %d"), InstanceID);
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientSlotQuantity - Updating slot quantity for InstanceID: %d"), InstanceID);
     
-    // Find the ingredient instance to get the ingredient tag
-    FGameplayTag IngredientTag;
-    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
-    {
-        if (Instance.InstanceID == InstanceID)
-        {
-            IngredientTag = Instance.IngredientData.IngredientTag;
-            break;
-        }
-    }
-    
-    if (!IngredientTag.IsValid())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - InstanceID %d not found"), InstanceID);
-        return;
-    }
-    
-    // Find the ingredient button in the plating button map
+    // Find the ingredient slot and update its quantity
     if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
     {
-        // Get the plating button map from the widget
-        TMap<int32, class UPUIngredientButton*> PlatingButtons = DishWidget->GetPlatingIngredientButtonMap();
+        // Get the created ingredient slots from the widget
+        const TArray<class UPUIngredientSlot*>& IngredientSlots = DishWidget->GetCreatedIngredientSlots();
         
-        if (UPUIngredientButton* IngredientButton = PlatingButtons.FindRef(InstanceID))
+        // Find the slot with matching InstanceID
+        for (UPUIngredientSlot* IngredientSlot : IngredientSlots)
         {
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Found button for InstanceID: %d"), InstanceID);
-            
-            // Decrease the button's quantity
-            IngredientButton->DecreaseQuantity();
-            
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - Decreased quantity for button"));
+            if (IngredientSlot && IngredientSlot->GetIngredientInstance().InstanceID == InstanceID)
+            {
+                // Decrease the slot's remaining quantity
+                IngredientSlot->DecreaseQuantity();
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::UpdateIngredientSlotQuantity - Decreased quantity for slot (InstanceID: %d)"), InstanceID);
+                return;
+            }
         }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - No button found for InstanceID: %d"), InstanceID);
-        }
+        
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientSlotQuantity - No slot found for InstanceID: %d"), InstanceID);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientButtonQuantity - No customization widget found"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::UpdateIngredientSlotQuantity - No customization widget found"));
     }
 }
 
@@ -1906,13 +1889,15 @@ void UPUDishCustomizationComponent::ResetPlating()
             IngredientSlots.Num());
         
         // Reset each slot's quantity from the dish data
+        // In plating mode, slots are created with ActiveIngredientArea location (not Plating)
+        // So we reset all slots that have ingredients, regardless of location
         for (UPUIngredientSlot* IngredientSlot : IngredientSlots)
         {
-            if (IngredientSlot && IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Plating)
+            if (IngredientSlot && IngredientSlot->GetIngredientInstance().InstanceID != 0)
             {
                 IngredientSlot->ResetQuantityFromDishData();
-                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Reset slot for InstanceID: %d"), 
-                    IngredientSlot->GetIngredientInstance().InstanceID);
+                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Reset slot for InstanceID: %d (Location: %d)"), 
+                    IngredientSlot->GetIngredientInstance().InstanceID, (int32)IngredientSlot->GetLocation());
             }
         }
     }
@@ -2148,9 +2133,17 @@ void UPUDishCustomizationComponent::StoreOriginalDishContainerMesh()
 {
     UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Storing original dish container mesh"));
     
+    // Check if we have a valid world
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - No world available, cannot store mesh"));
+        return;
+    }
+    
     // Find the cooking station actor by searching all actors
     AActor* DishStation = nullptr;
-    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
+    for (TActorIterator<AActor> ActorItr(World); ActorItr; ++ActorItr)
     {
         if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
         {

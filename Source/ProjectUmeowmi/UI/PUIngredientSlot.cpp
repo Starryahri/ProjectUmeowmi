@@ -267,18 +267,42 @@ void UPUIngredientSlot::UpdateDisplay()
         UpdateQuantityDisplay();
         UpdatePreparationDisplay();
         
-        // FORCE quantity control to be visible in cooking stage after UpdateDisplay
+        // FORCE quantity control to be visible in cooking stage after UpdateDisplay (but NOT in plating mode)
         if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
         {
-            if (QuantityControlWidget)
+            bool bIsPlatingMode = false;
+            if (UPUDishCustomizationComponent* Component = GetDishCustomizationComponent())
             {
-                QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlWidget to Visible in cooking stage"));
+                bIsPlatingMode = Component->IsPlatingMode();
             }
-            if (QuantityControlContainer)
+            
+            // Only show quantity controls if we're NOT in plating mode
+            if (!bIsPlatingMode)
             {
-                QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlContainer to Visible in cooking stage"));
+                if (QuantityControlWidget)
+                {
+                    QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlWidget to Visible in cooking stage"));
+                }
+                if (QuantityControlContainer)
+                {
+                    QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlContainer to Visible in cooking stage"));
+                }
+            }
+            else
+            {
+                // Hide in plating mode
+                if (QuantityControlWidget)
+                {
+                    QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Hiding QuantityControlWidget (in plating mode)"));
+                }
+                if (QuantityControlContainer)
+                {
+                    QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Hiding QuantityControlContainer (in plating mode)"));
+                }
             }
         }
     }
@@ -557,9 +581,16 @@ void UPUIngredientSlot::UpdateQuantityControl()
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget EXISTS, Location: %d (ActiveIngredientArea=%d)"),
             (int32)Location, (int32)EPUIngredientSlotLocation::ActiveIngredientArea);
         
-        // Hide quantity control in plating, prep, and pantry stages
-        // Show it in cooking stage (ActiveIngredientArea)
-        if (Location == EPUIngredientSlotLocation::Plating || 
+        // Hide quantity control in plating mode, prep, and pantry stages
+        // Show it in cooking stage (ActiveIngredientArea) but NOT in plating mode
+        bool bIsPlatingMode = false;
+        if (UPUDishCustomizationComponent* Component = GetDishCustomizationComponent())
+        {
+            bIsPlatingMode = Component->IsPlatingMode();
+        }
+        
+        if (bIsPlatingMode || 
+            Location == EPUIngredientSlotLocation::Plating || 
             Location == EPUIngredientSlotLocation::Prep || 
             Location == EPUIngredientSlotLocation::Pantry)
         {
@@ -568,7 +599,8 @@ void UPUIngredientSlot::UpdateQuantityControl()
             {
                 QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
             }
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Hiding quantity control and container (Location: %d)"), (int32)Location);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Hiding quantity control and container (PlatingMode: %s, Location: %d)"), 
+                bIsPlatingMode ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
             return;
         }
         
@@ -1818,12 +1850,16 @@ UPUIngredientSlot* UPUIngredientSlot::CreateDragVisualWidget() const
 
 void UPUIngredientSlot::DecreaseQuantity()
 {
-    if (RemainingQuantity > 0)
+    if (RemainingQuantity > 0 && IngredientInstance.Quantity > 0)
     {
         RemainingQuantity--;
+        // Keep IngredientInstance.Quantity in sync with RemainingQuantity
+        // This is the source of truth for the display
+        IngredientInstance.Quantity = RemainingQuantity;
         UpdateQuantityDisplay();
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::DecreaseQuantity - Quantity decreased to %d"), RemainingQuantity);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::DecreaseQuantity - Quantity decreased to %d (RemainingQuantity: %d, IngredientInstance.Quantity: %d)"), 
+            RemainingQuantity, RemainingQuantity, IngredientInstance.Quantity);
         
         // Call Blueprint event
         OnQuantityChanged(RemainingQuantity);
@@ -1874,11 +1910,18 @@ void UPUIngredientSlot::ResetQuantityFromDishData()
             RemainingQuantity = IngredientInstance.Quantity;
             MaxQuantity = IngredientInstance.Quantity;
             
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantityFromDishData - Reset quantity to %d from dish data"), IngredientInstance.Quantity);
+            // Update bHasIngredient flag based on new quantity
+            bHasIngredient = (IngredientInstance.Quantity > 0 && IngredientInstance.InstanceID != 0);
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantityFromDishData - Reset quantity to %d from dish data (bHasIngredient: %s)"), 
+                IngredientInstance.Quantity, bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
             
             // Update all visual displays
             UpdateQuantityDisplay();
             UpdateIngredientIcon();
+            
+            // Also update the full display to ensure everything is refreshed
+            UpdateDisplay();
         }
         else
         {
@@ -1911,11 +1954,19 @@ void UPUIngredientSlot::UpdateQuantityDisplay()
 {
     if (QuantityText)
     {
-        // Hide QuantityText in prep and cooking stages (show in plating)
-        if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        // Check if we're in plating mode
+        bool bIsPlatingMode = false;
+        if (UPUDishCustomizationComponent* Component = GetDishCustomizationComponent())
+        {
+            bIsPlatingMode = Component->IsPlatingMode();
+        }
+        
+        // Hide QuantityText in prep and cooking stages (show in plating mode)
+        // But show it in plating mode even if location is ActiveIngredientArea
+        if (!bIsPlatingMode && (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea))
         {
             QuantityText->SetVisibility(ESlateVisibility::Collapsed);
-            // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d)"), (int32)Location);
+            // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d, PlatingMode: false)"), (int32)Location);
         }
         else if (bHasIngredient && IngredientInstance.InstanceID != 0)
         {
@@ -1924,7 +1975,8 @@ void UPUIngredientSlot::UpdateQuantityDisplay()
             FString QuantityString = FString::Printf(TEXT("x%d"), Quantity);
             QuantityText->SetText(FText::FromString(QuantityString));
             QuantityText->SetVisibility(ESlateVisibility::Visible);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Updated quantity: %s (from IngredientInstance.Quantity)"), *QuantityString);
+            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Updated quantity: %s (from IngredientInstance.Quantity, PlatingMode: %s)"), 
+                *QuantityString, bIsPlatingMode ? TEXT("TRUE") : TEXT("FALSE"));
         }
         else
         {
@@ -2135,20 +2187,12 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
         return;
     }
     
-    // After spawning, decrease the quantity by 1 and update the display
-    // (PlaceIngredient tracks placements in the component, but we need to update our local display)
-    if (IngredientInstance.Quantity > 0)
-    {
-        // Decrease quantity by 1 since we just spawned one
-        IngredientInstance.Quantity--;
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Decreased quantity to %d (spawned 1)"), IngredientInstance.Quantity);
-        
-        // Update the display to reflect the new quantity
-        UpdateQuantityDisplay();
-        UpdateIngredientIcon();
-    }
+    // NOTE: Do NOT decrease quantity here - UpdateIngredientSlotQuantity() will be called
+    // by SpawnIngredientIn3DByInstanceID, which will call DecreaseQuantity() to keep
+    // both RemainingQuantity and IngredientInstance.Quantity in sync.
+    // This prevents double-decrementing the quantity.
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - END"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - END (quantity update handled by UpdateIngredientSlotQuantity)"));
 }
 
 void UPUIngredientSlot::SetTextVisibility(bool bShowQuantity, bool bShowDescription)
