@@ -510,132 +510,74 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
         return;
     }
     
-    if (CustomizationComponent)
-    {
-        TArray<FPUIngredientBase> AvailableIngredients = CustomizationComponent->GetIngredientData();
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Found %d available ingredients"), AvailableIngredients.Num());
-        
-        // Get the container to use (use slot container first, fallback to button container if they're the same)
-        UPanelWidget* ContainerToUse = nullptr;
-        if (IngredientSlotContainer.IsValid())
-        {
-            ContainerToUse = IngredientSlotContainer.Get();
-        }
-        else if (IngredientButtonContainer.IsValid())
-        {
-            ContainerToUse = IngredientButtonContainer.Get();
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Using IngredientButtonContainer as fallback"));
-        }
-        
-        if (!ContainerToUse)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - No ingredient container set (neither slot nor button container)! Slots cannot be added."));
-            UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientSlotContainer() is called."));
-        }
-        
-        for (const FPUIngredientBase& IngredientData : AvailableIngredients)
-        {
-            // Create ingredient slot using the Blueprint class
-            TSubclassOf<UPUIngredientSlot> SlotClass;
-            if (IngredientSlotClass)
-            {
-                SlotClass = IngredientSlotClass;
-            }
-            else
-            {
-                SlotClass = UPUIngredientSlot::StaticClass();
-            }
-            
-            UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
-            if (IngredientSlot)
-            {
-                // Set the dish widget reference for easy access
-                IngredientSlot->SetDishCustomizationWidget(this);
-                
-                // Set the location to Prep (for prep stage ingredient selection)
-                IngredientSlot->SetLocation(EPUIngredientSlotLocation::Prep);
-                
-                // Create a minimal ingredient instance with just the ingredient data (quantity 0)
-                // This allows the slot to display the pantry texture while remaining "empty"
-                FIngredientInstance PantryInstance;
-                PantryInstance.IngredientData = IngredientData;
-                PantryInstance.Quantity = 0; // Empty slot, but has ingredient data for display
-                PantryInstance.InstanceID = 0; // Not a real instance, just for display
-                
-                // Set the ingredient instance (slot will handle displaying pantry texture)
-                IngredientSlot->SetIngredientInstance(PantryInstance);
-                
-                // Update the display
-                IngredientSlot->UpdateDisplay();
-                
-                // Set the preparation data table if we have access to it
-                if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
-                {
-                    IngredientSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
-                }
-                
-                // Store slot reference in map for O(1) lookup (similar to buttons)
-                IngredientSlotMap.Add(IngredientData.IngredientTag, IngredientSlot);
-                
-                // Also add to array
-                CreatedIngredientSlots.Add(IngredientSlot);
-                
-                // Bind empty slot click event to handle ingredient selection
-                IngredientSlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
-                
-                // Check if this ingredient is already selected (from existing dish ingredients)
-                // This ensures ingredients that are already in the dish show as selected visually
-                bool bIsSelected = IsIngredientSelected(IngredientData);
-                IngredientSlot->SetSelected(bIsSelected);
-                if (bIsSelected)
-                {
-                    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Marked ingredient as selected: %s"), 
-                        *IngredientData.DisplayName.ToString());
-                }
-                
-                // Call Blueprint event for slot creation (pass empty instance with ingredient data for reference)
-                OnIngredientSlotCreated(IngredientSlot, PantryInstance);
-                
-                // Add to shelving widget (which will be added to container)
-                if (ContainerToUse)
-                {
-                    // Get or create a current shelving widget
-                    UUserWidget* ShelvingWidget = GetOrCreateCurrentShelvingWidget(ContainerToUse);
-                    if (ShelvingWidget)
-                    {
-                        // Add slot to the shelving widget
-                        if (AddSlotToCurrentShelvingWidget(IngredientSlot))
-                        {
-                            // UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Added slot to shelving widget for: %s"), 
-                            //     *IngredientData.DisplayName.ToString());
-                        }
-                        else
-                        {
-                            UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - Failed to add slot to shelving widget"));
-                        }
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - Failed to get or create shelving widget"));
-                    }
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Slot created but not added to container (container not set yet)"));
-                }
-                
-                // UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Created slot for: %s"), 
-                //     *IngredientData.DisplayName.ToString());
-            }
-        }
-    }
-    else
+    if (!CustomizationComponent)
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - No customization component available"));
+        return;
     }
     
-    // Mark that slots have been created
-    bIngredientSlotsCreated = true;
+    TArray<FPUIngredientBase> AvailableIngredients = CustomizationComponent->GetIngredientData();
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Found %d available ingredients"), AvailableIngredients.Num());
+    
+    // Get the container to use (use slot container first, fallback to button container if they're the same)
+    UPanelWidget* ContainerToUse = nullptr;
+    if (IngredientSlotContainer.IsValid())
+    {
+        ContainerToUse = IngredientSlotContainer.Get();
+    }
+    else if (IngredientButtonContainer.IsValid())
+    {
+        ContainerToUse = IngredientButtonContainer.Get();
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Using IngredientButtonContainer as fallback"));
+    }
+    
+    if (!ContainerToUse)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlots - No ingredient container set (neither slot nor button container)! Slots cannot be added."));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientSlotContainer() is called."));
+    }
+    
+    // Convert available ingredients to ingredient instances (with quantity 0 for display)
+    TArray<FIngredientInstance> PantryInstances;
+    for (const FPUIngredientBase& IngredientData : AvailableIngredients)
+    {
+        FIngredientInstance PantryInstance;
+        PantryInstance.IngredientData = IngredientData;
+        PantryInstance.IngredientTag = IngredientData.IngredientTag;
+        PantryInstance.Quantity = 0; // Empty slot, but has ingredient data for display
+        PantryInstance.InstanceID = 0; // Not a real instance, just for display
+        PantryInstances.Add(PantryInstance);
+    }
+    
+    // Use unified CreateSlots function with shelving widgets enabled
+    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Prep, AvailableIngredients.Num(), true, false, false, PantryInstances);
+    
+    // Post-process: Set up special logic for prep stage slots (selection state, pantry click handler)
+    for (int32 i = 0; i < CreatedIngredientSlots.Num() && i < AvailableIngredients.Num(); ++i)
+    {
+        UPUIngredientSlot* IngredientSlot = CreatedIngredientSlots[i];
+        const FPUIngredientBase& IngredientData = AvailableIngredients[i];
+        
+        if (IngredientSlot)
+        {
+            // Store slot reference in map for O(1) lookup (similar to buttons)
+            IngredientSlotMap.Add(IngredientData.IngredientTag, IngredientSlot);
+            
+            // Unbind the default empty slot click and bind to pantry slot click instead
+            IngredientSlot->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnEmptySlotClicked);
+            IngredientSlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
+            
+            // Check if this ingredient is already selected (from existing dish ingredients)
+            // This ensures ingredients that are already in the dish show as selected visually
+            bool bIsSelected = IsIngredientSelected(IngredientData);
+            IngredientSlot->SetSelected(bIsSelected);
+            if (bIsSelected)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Marked ingredient as selected: %s"), 
+                    *IngredientData.DisplayName.ToString());
+            }
+        }
+    }
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Created %d ingredient slots"), CreatedIngredientSlots.Num());
 }
@@ -685,11 +627,6 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientSlots()
         return;
     }
 
-    // Clear any existing slots
-    CreatedIngredientSlots.Empty();
-    bIngredientSlotsCreated = false;
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Cleared existing slots"));
-
     // Get the container to use (use slot container first, fallback to button container if they're the same)
     UPanelWidget* ContainerToUse = nullptr;
     if (IngredientSlotContainer.IsValid())
@@ -708,84 +645,10 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientSlots()
         UE_LOG(LogTemp, Warning, TEXT("⚠️   Slots will be added when SetIngredientSlotContainer() is called."));
     }
 
-    // Create slots for each ingredient instance
-    for (const FIngredientInstance& Instance : DishData.IngredientInstances)
-    {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ Creating plating slot for: %s (ID: %d, Qty: %d)"), 
-            *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Instance.Quantity);
-
-        // Create ingredient slot using the Blueprint class
-        TSubclassOf<UPUIngredientSlot> SlotClass;
-        if (IngredientSlotClass)
-        {
-            SlotClass = IngredientSlotClass;
-        }
-        else
-        {
-            SlotClass = UPUIngredientSlot::StaticClass();
-        }
-
-        UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
-        if (IngredientSlot)
-        {
-            // Set the dish widget reference for easy access
-            IngredientSlot->SetDishCustomizationWidget(this);
-            
-            // Set the location to ActiveIngredientArea (same as cooking stage)
-            IngredientSlot->SetLocation(EPUIngredientSlotLocation::ActiveIngredientArea);
-            
-            // Set the ingredient instance
-            IngredientSlot->SetIngredientInstance(Instance);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Created slot with ingredient: %s (ID: %d, Qty: %d)"), 
-                *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Instance.Quantity);
-            
-            // Set the preparation data table if we have access to it
-            if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
-            {
-                IngredientSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
-            }
-            
-            // Bind to slot's ingredient changed event so we can update dish data
-            IngredientSlot->OnSlotIngredientChanged.AddDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
-            
-            // Enable drag functionality for plating stage
-            IngredientSlot->SetDragEnabled(true);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Enabled drag for slot: %s"), 
-                *Instance.IngredientData.DisplayName.ToString());
-            
-            // Add to our array
-            CreatedIngredientSlots.Add(IngredientSlot);
-            
-            // Call Blueprint event for slot creation
-            OnIngredientSlotCreated(IngredientSlot, Instance);
-            
-            // Add to the UI container if available
-            if (ContainerToUse)
-            {
-                ContainerToUse->AddChild(IngredientSlot);
-                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Added slot to container for: %s"), 
-                    *Instance.IngredientData.DisplayName.ToString());
-            }
-            else
-            {
-                UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Slot created but not added to container (container not set yet)"));
-            }
-            
-            UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Created slot for: %s"), 
-                *Instance.IngredientData.DisplayName.ToString());
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Failed to create slot for: %s"), 
-                *Instance.IngredientData.DisplayName.ToString());
-        }
-    }
-
-    UE_LOG(LogTemp, Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Created %d plating ingredient slots"), 
-        CreatedIngredientSlots.Num());
-    
-    // Mark that slots have been created
-    bIngredientSlotsCreated = true;
+    // Use unified CreateSlots function
+    // For plating, we want to create slots for each ingredient instance (no empty slots)
+    // Use Plating location (not ActiveIngredientArea)
+    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Plating, 12, false, false, true, DishData.IngredientInstances);
     
     // Call the plating stage initialized event
     OnPlatingStageInitialized(DishData);
@@ -1608,121 +1471,10 @@ void UPUDishCustomizationWidget::FinishPlanningAndStartCooking()
 
 void UPUDishCustomizationWidget::CreateIngredientSlotsInContainer(UPanelWidget* Container, int32 MaxSlots, EPUIngredientSlotLocation SlotLocation)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Creating up to %d ingredient slots in container with location: %d"), MaxSlots, (int32)SlotLocation);
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - DEPRECATED: Use CreateSlots() instead"));
     
-    if (!Container)
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Container is NULL!"));
-        return;
-    }
-    
-    if (!GetWorld())
-    {
-        UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreateIngredientSlotsInContainer - No world context available"));
-        return;
-    }
-    
-    // Clamp MaxSlots to a reasonable range (1-12)
-    MaxSlots = FMath::Clamp(MaxSlots, 1, 12);
-    
-    // Calculate how many slots to create
-    // Create slots for existing ingredients, or create empty slots up to MaxSlots
-    int32 NumSlotsToCreate = FMath::Max(CurrentDishData.IngredientInstances.Num(), MaxSlots);
-    NumSlotsToCreate = FMath::Min(MaxSlots, NumSlotsToCreate); // Cap at MaxSlots
-    
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Creating %d slots (dish has %d ingredients, max is %d)"), 
-        NumSlotsToCreate, CurrentDishData.IngredientInstances.Num(), MaxSlots);
-    
-    // Clear any existing slots if this is the first time creating them
-    if (!bIngredientSlotsCreated)
-    {
-        CreatedIngredientSlots.Empty();
-    }
-    
-    // Create slots
-    for (int32 i = 0; i < NumSlotsToCreate; ++i)
-    {
-        // Create ingredient slot using the Blueprint class
-        TSubclassOf<UPUIngredientSlot> SlotClass;
-        if (IngredientSlotClass)
-        {
-            SlotClass = IngredientSlotClass;
-        }
-        else
-        {
-            SlotClass = UPUIngredientSlot::StaticClass();
-        }
-        
-        UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
-        if (IngredientSlot)
-        {
-            // Set the dish widget reference
-            IngredientSlot->SetDishCustomizationWidget(this);
-            
-            // Set the location as specified by the parameter
-            IngredientSlot->SetLocation(SlotLocation);
-            
-            // Enable drag functionality for cooking/prep stage
-            IngredientSlot->SetDragEnabled(true);
-            
-            // Set the preparation data table if available
-            if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
-            {
-                IngredientSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
-            }
-            
-            // If we have an ingredient instance for this slot, set it
-            if (i < CurrentDishData.IngredientInstances.Num())
-            {
-                const FIngredientInstance& IngredientInstance = CurrentDishData.IngredientInstances[i];
-                
-                // Validate ingredient instance
-                if (IngredientInstance.IngredientData.IngredientTag.IsValid())
-                {
-                    // Set the ingredient instance
-                    IngredientSlot->SetIngredientInstance(IngredientInstance);
-                    IngredientSlot->UpdateDisplay();
-                    
-                    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Created slot %d with ingredient: %s (ID: %d, Qty: %d)"), 
-                        i, *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Invalid ingredient instance at index %d, creating empty slot"), i);
-                    IngredientSlot->UpdateDisplay();
-                }
-            }
-            else
-            {
-                // Create empty slot
-                IngredientSlot->UpdateDisplay();
-                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Created empty slot %d"), i);
-            }
-            
-            // Bind to slot's ingredient changed event
-            IngredientSlot->OnSlotIngredientChanged.AddDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
-            
-            // Bind empty slot click event to open pantry
-            IngredientSlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnEmptySlotClicked);
-            
-            // Add to our array
-            CreatedIngredientSlots.Add(IngredientSlot);
-            
-            // Add directly to the container (no shelving widgets)
-            Container->AddChild(IngredientSlot);
-            
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Added slot %d to container"), i);
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Failed to create ingredient slot at index %d"), i);
-        }
-    }
-    
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - Successfully created %d ingredient slots"), CreatedIngredientSlots.Num());
-    
-    // Mark that slots have been created
-    bIngredientSlotsCreated = true;
+    // Use unified CreateSlotsFromDishData function (uses CurrentDishData.IngredientInstances)
+    CreateSlotsFromDishData(Container, SlotLocation, MaxSlots, false, true, true);
 }
 
 UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentShelvingWidget(UPanelWidget* ContainerToUse)
@@ -1823,6 +1575,243 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentShelvingWidget(UPUIngredientSlo
     UE_LOG(LogTemp, Error, TEXT("   Searched for widget named: '%s', 'HorizontalBox', 'SlotContainer'"), *ShelvingHorizontalBoxName.ToString());
     UE_LOG(LogTemp, Error, TEXT("   Please ensure WBP_Shelving contains a HorizontalBox (or other panel widget) with one of these names."));
     return false;
+}
+
+void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource)
+{
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Creating slots (Location: %d, MaxSlots: %d, UseShelving: %s, CreateEmpty: %s, EnableDrag: %s)"), 
+        (int32)Location, MaxSlots, bUseShelvingWidgets ? TEXT("YES") : TEXT("NO"), bCreateEmptySlots ? TEXT("YES") : TEXT("NO"), bEnableDrag ? TEXT("YES") : TEXT("NO"));
+    
+    if (!Container && !bUseShelvingWidgets)
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreateSlots - Container is NULL and bUseShelvingWidgets is false!"));
+        return;
+    }
+    
+    if (!GetWorld())
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreateSlots - No world context available"));
+        return;
+    }
+    
+    // Clamp MaxSlots to a reasonable range (1-12)
+    MaxSlots = FMath::Clamp(MaxSlots, 1, 12);
+    
+    // Determine ingredient source
+    const TArray<FIngredientInstance>* IngredientInstancesToUse = nullptr;
+    if (IngredientSource.Num() > 0)
+    {
+        IngredientInstancesToUse = &IngredientSource;
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Using provided ingredient source (%d instances)"), IngredientSource.Num());
+    }
+    else
+    {
+        IngredientInstancesToUse = &CurrentDishData.IngredientInstances;
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Using CurrentDishData.IngredientInstances (%d instances)"), CurrentDishData.IngredientInstances.Num());
+    }
+    
+    // Calculate how many slots to create
+    int32 NumSlotsToCreate = 0;
+    if (bCreateEmptySlots)
+    {
+        // Create slots for existing ingredients, or create empty slots up to MaxSlots
+        NumSlotsToCreate = FMath::Max(IngredientInstancesToUse->Num(), MaxSlots);
+        NumSlotsToCreate = FMath::Min(MaxSlots, NumSlotsToCreate); // Cap at MaxSlots
+    }
+    else
+    {
+        // Only create slots for existing ingredients (up to MaxSlots)
+        NumSlotsToCreate = FMath::Min(IngredientInstancesToUse->Num(), MaxSlots);
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Creating %d slots (source has %d ingredients, max is %d)"), 
+        NumSlotsToCreate, IngredientInstancesToUse->Num(), MaxSlots);
+    
+    // Clear existing slots if this is the first time creating them
+    if (!bIngredientSlotsCreated)
+    {
+        CreatedIngredientSlots.Empty();
+        if (bUseShelvingWidgets)
+        {
+            CreatedShelvingWidgets.Empty();
+            CurrentShelvingWidget.Reset();
+            CurrentShelvingWidgetSlotCount = 0;
+        }
+    }
+    
+    // Get slot class
+    TSubclassOf<UPUIngredientSlot> SlotClass;
+    if (IngredientSlotClass)
+    {
+        SlotClass = IngredientSlotClass;
+    }
+    else
+    {
+        SlotClass = UPUIngredientSlot::StaticClass();
+    }
+    
+    // Create slots
+    for (int32 i = 0; i < NumSlotsToCreate; ++i)
+    {
+        UPUIngredientSlot* IngredientSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
+        if (!IngredientSlot)
+        {
+            UE_LOG(LogTemp, Error, TEXT("❌ PUDishCustomizationWidget::CreateSlots - Failed to create ingredient slot at index %d"), i);
+            continue;
+        }
+        
+        // Common setup for all slots
+        IngredientSlot->SetDishCustomizationWidget(this);
+        IngredientSlot->SetLocation(Location);
+        IngredientSlot->SetDragEnabled(bEnableDrag);
+        
+        // Set the preparation data table if available
+        if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
+        {
+            IngredientSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+        }
+        
+        // Bind common events
+        IngredientSlot->OnSlotIngredientChanged.AddDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
+        IngredientSlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnEmptySlotClicked);
+        
+        // Set ingredient instance if we have one
+        if (i < IngredientInstancesToUse->Num())
+        {
+            const FIngredientInstance& IngredientInstance = (*IngredientInstancesToUse)[i];
+            
+            // Validate ingredient instance
+            if (IngredientInstance.IngredientData.IngredientTag.IsValid())
+            {
+                IngredientSlot->SetIngredientInstance(IngredientInstance);
+                IngredientSlot->UpdateDisplay();
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Created slot %d with ingredient: %s (ID: %d, Qty: %d)"), 
+                    i, *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateSlots - Invalid ingredient instance at index %d, creating empty slot"), i);
+                IngredientSlot->UpdateDisplay();
+            }
+        }
+        else
+        {
+            // Create empty slot
+            IngredientSlot->UpdateDisplay();
+            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Created empty slot %d"), i);
+        }
+        
+        // Add to our array
+        CreatedIngredientSlots.Add(IngredientSlot);
+        
+        // Call Blueprint event for slot creation
+        if (i < IngredientInstancesToUse->Num())
+        {
+            OnIngredientSlotCreated(IngredientSlot, (*IngredientInstancesToUse)[i]);
+        }
+        else
+        {
+            FIngredientInstance EmptyInstance;
+            OnIngredientSlotCreated(IngredientSlot, EmptyInstance);
+        }
+        
+        // Add to container or shelving widget
+        if (bUseShelvingWidgets)
+        {
+            if (Container)
+            {
+                // Get or create a current shelving widget
+                UUserWidget* ShelvingWidget = GetOrCreateCurrentShelvingWidget(Container);
+                if (ShelvingWidget)
+                {
+                    // Add slot to the shelving widget
+                    if (AddSlotToCurrentShelvingWidget(IngredientSlot))
+                    {
+                        // Successfully added to shelving widget
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateSlots - Failed to add slot to shelving widget"));
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateSlots - Failed to get or create shelving widget"));
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateSlots - bUseShelvingWidgets is true but Container is NULL!"));
+            }
+        }
+        else
+        {
+            // Add directly to the container
+            if (Container)
+            {
+                Container->AddChild(IngredientSlot);
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Added slot %d directly to container"), i);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateSlots - Container is NULL, slot not added to UI"));
+            }
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Successfully created %d ingredient slots"), CreatedIngredientSlots.Num());
+    
+    // Mark that slots have been created
+    bIngredientSlotsCreated = true;
+}
+
+void UPUDishCustomizationWidget::CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag)
+{
+    // Call the main CreateSlots function with an empty ingredient source array
+    // This will cause it to use CurrentDishData.IngredientInstances
+    TArray<FIngredientInstance> EmptyArray;
+    CreateSlots(Container, Location, MaxSlots, bUseShelvingWidgets, bCreateEmptySlots, bEnableDrag, EmptyArray);
+}
+
+TArray<FIngredientInstance> UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable(UDataTable* IngredientDataTable)
+{
+    TArray<FIngredientInstance> IngredientInstances;
+    
+    if (!IngredientDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable - IngredientDataTable is NULL"));
+        return IngredientInstances;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable - Getting ingredient instances from table: %s"), 
+        *IngredientDataTable->GetName());
+    
+    // Get all row names from the data table
+    TArray<FName> RowNames = IngredientDataTable->GetRowNames();
+    
+    // Convert each ingredient base to an ingredient instance
+    for (const FName& RowName : RowNames)
+    {
+        if (FPUIngredientBase* Ingredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredientInstancesFromDataTable")))
+        {
+            // Create an ingredient instance with quantity 0 and instance ID 0
+            // This is suitable for pantry/prep slots that display ingredients but aren't "active" instances
+            FIngredientInstance Instance;
+            Instance.IngredientData = *Ingredient;
+            Instance.IngredientTag = Ingredient->IngredientTag;
+            Instance.Quantity = 0; // Empty slot, but has ingredient data for display
+            Instance.InstanceID = 0; // Not a real instance, just for display
+            Instance.Preparations = FGameplayTagContainer(); // No preparations initially
+            
+            IngredientInstances.Add(Instance);
+        }
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable - Converted %d ingredients to instances"), 
+        IngredientInstances.Num());
+    
+    return IngredientInstances;
 }
 
 // ============================================================================

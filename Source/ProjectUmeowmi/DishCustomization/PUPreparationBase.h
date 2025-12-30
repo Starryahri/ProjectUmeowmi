@@ -9,21 +9,7 @@
 // Forward declarations
 class UTexture2D;
 
-// Modification type enum
-UENUM(BlueprintType)
-enum class EModificationType : uint8
-{
-    Additive,
-    Multiplicative
-};
-
-// Aspect type enum - determines if modifier affects flavor or texture
-UENUM(BlueprintType)
-enum class EAspectType : uint8
-{
-    Flavor,
-    Texture
-};
+// Note: EModificationType and EAspectType are now defined in PUIngredientBase.h
 
 // Aspect modifier definition
 USTRUCT(BlueprintType)

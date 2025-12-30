@@ -12,7 +12,6 @@ class UButton;
 class UTextBlock;
 class UImage;
 class UPUIngredientQuantityControl;
-class UPUCookingStageWidget;
 
 // Location enum for ingredient slots
 UENUM(BlueprintType)
@@ -407,7 +406,6 @@ private:
     void ExecuteAction(const FGameplayTag& ActionTag);
     class UPUDishCustomizationComponent* GetDishCustomizationComponent() const;
     class UPUDishCustomizationWidget* GetDishCustomizationWidget() const;
-    class UPUCookingStageWidget* GetCookingStageWidget() const;
 
 };
 

@@ -107,10 +107,34 @@ public:
     UFUNCTION(Category = "Dish Customization Widget|Ingredients")
     void OnIngredientButtonClicked(const FPUIngredientBase& IngredientData);
 
+    // Unified Ingredient Slot Creation Function
+    // This is the main function for creating slots - all other creation functions use this internally
+    // Parameters:
+    //   - Container: The container widget to add slots to (can be null if bUseShelvingWidgets is true, container will be used for shelving widgets)
+    //   - Location: The location type for the slots (Pantry, ActiveIngredientArea, Prep, Plating, Prepped)
+    //   - MaxSlots: Maximum number of slots to create (default 12, clamped to 1-12)
+    //   - bUseShelvingWidgets: If true, slots will be organized into shelving widgets (3 slots per shelf). If false, slots added directly to container
+    //   - bCreateEmptySlots: If true, creates empty slots up to MaxSlots. If false, only creates slots for existing ingredients
+    //   - bEnableDrag: Whether to enable drag functionality on the slots
+    //   - IngredientSource: Array of ingredient instances to use. If empty, uses CurrentDishData.IngredientInstances
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource);
+    
+    // Convenience function that uses CurrentDishData.IngredientInstances (no IngredientSource parameter needed)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots = 12, bool bUseShelvingWidgets = false, bool bCreateEmptySlots = true, bool bEnableDrag = true);
+    
+    // Helper function to convert ingredient data table to ingredient instances array
+    // Takes a data table containing FPUIngredientBase rows and converts them to FIngredientInstance array
+    // All instances will have quantity 0 and instance ID 0 (suitable for pantry/prep slots)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    static TArray<FIngredientInstance> GetIngredientInstancesFromDataTable(UDataTable* IngredientDataTable);
+
     // Ingredient Slot Management Functions
     // Create ingredient slots in a specified container (max 12 slots)
     // This is a convenience function for blueprints to easily create slots in a container
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients", meta = (CallInEditor = "true"))
+    // DEPRECATED: Use CreateSlots() instead
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients", meta = (CallInEditor = "true", DeprecatedFunction, DeprecationMessage = "Use CreateSlots() instead"))
     void CreateIngredientSlotsInContainer(UPanelWidget* Container, int32 MaxSlots = 12, EPUIngredientSlotLocation SlotLocation = EPUIngredientSlotLocation::ActiveIngredientArea);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")

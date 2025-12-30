@@ -3,7 +3,7 @@
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "PUIngredientDragDropOperation.h"
-#include "PUCookingStageWidget.h"
+#include "PUDishCustomizationWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/SlateWrapperTypes.h"
 #include "GameplayTagContainer.h"
@@ -180,8 +180,8 @@ void UPUIngredientButton::SetDragEnabled(bool bEnabled)
 
 int32 UPUIngredientButton::GenerateUniqueInstanceID() const
 {
-    // Call the static GUID-based function from PUCookingStageWidget
-    int32 UniqueID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
+    // Call the static GUID-based function from PUDishCustomizationWidget
+    int32 UniqueID = UPUDishCustomizationWidget::GenerateGUIDBasedInstanceID();
     
     UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientButton::GenerateUniqueInstanceID - Generated unique ID %d for ingredient: %s"), 
         UniqueID, *IngredientData.DisplayName.ToString());

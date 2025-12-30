@@ -277,4 +277,330 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
     
     // Return the base display name if no preparations or no data table
     return DisplayName;
+}
+
+ETimeState FPUIngredientBase::GetTimeStateFromValue(float TimeValue)
+{
+    // Clamp to 0.0-1.0 range
+    TimeValue = FMath::Clamp(TimeValue, 0.0f, 1.0f);
+    
+    // Map to discrete states with thresholds
+    // None: 0.0-0.25, Low: 0.25-0.5, Mid: 0.5-0.75, Long: 0.75-1.0
+    if (TimeValue < 0.25f)
+        return ETimeState::None;
+    else if (TimeValue < 0.5f)
+        return ETimeState::Low;
+    else if (TimeValue < 0.75f)
+        return ETimeState::Mid;
+    else
+        return ETimeState::Long;
+}
+
+ETemperatureState FPUIngredientBase::GetTemperatureStateFromValue(float TemperatureValue)
+{
+    // Clamp to 0.0-1.0 range
+    TemperatureValue = FMath::Clamp(TemperatureValue, 0.0f, 1.0f);
+    
+    // Map to discrete states with thresholds
+    // Raw: 0.0-0.25, Low: 0.25-0.5, Med: 0.5-0.75, Hot: 0.75-1.0
+    if (TemperatureValue < 0.25f)
+        return ETemperatureState::Raw;
+    else if (TemperatureValue < 0.5f)
+        return ETemperatureState::Low;
+    else if (TemperatureValue < 0.75f)
+        return ETemperatureState::Med;
+    else
+        return ETemperatureState::Hot;
+}
+
+float FPUIngredientBase::InterpolateModifierValue(float SliderValue, float LowerValue, float UpperValue, float LowerThreshold, float UpperThreshold)
+{
+    // Clamp slider value to threshold range
+    SliderValue = FMath::Clamp(SliderValue, LowerThreshold, UpperThreshold);
+    
+    // Calculate interpolation factor (0.0 at LowerThreshold, 1.0 at UpperThreshold)
+    float Alpha = (SliderValue - LowerThreshold) / (UpperThreshold - LowerThreshold);
+    
+    // Interpolate between lower and upper values
+    return FMath::Lerp(LowerValue, UpperValue, Alpha);
+}
+
+void FPUIngredientBase::CalculateTimeTempModifiedAspects(
+    float TimeValue, 
+    float TemperatureValue, 
+    FFlavorAspects& OutFlavor, 
+    FTextureAspects& OutTexture
+) const
+{
+    // Start with the current aspects (which already include preparations)
+    // Work on copies so we don't modify the base ingredient
+    OutFlavor = FlavorAspects;
+    OutTexture = TextureAspects;
+    
+    // Clamp input values
+    TimeValue = FMath::Clamp(TimeValue, 0.0f, 1.0f);
+    TemperatureValue = FMath::Clamp(TemperatureValue, 0.0f, 1.0f);
+    
+    // Get discrete states for exact matches
+    ETimeState TimeState = GetTimeStateFromValue(TimeValue);
+    ETemperatureState TempState = GetTemperatureStateFromValue(TemperatureValue);
+    
+    // Also get adjacent states for interpolation
+    ETimeState LowerTimeState = TimeState;
+    ETimeState UpperTimeState = TimeState;
+    ETemperatureState LowerTempState = TempState;
+    ETemperatureState UpperTempState = TempState;
+    
+    // Determine interpolation thresholds and adjacent states
+    float TimeLowerThreshold = 0.0f;
+    float TimeUpperThreshold = 0.25f;
+    float TempLowerThreshold = 0.0f;
+    float TempUpperThreshold = 0.25f;
+    
+    // Calculate time thresholds and adjacent states
+    switch (TimeState)
+    {
+        case ETimeState::None:
+            TimeLowerThreshold = 0.0f;
+            TimeUpperThreshold = 0.25f;
+            LowerTimeState = ETimeState::None;
+            UpperTimeState = ETimeState::Low;
+            break;
+        case ETimeState::Low:
+            TimeLowerThreshold = 0.25f;
+            TimeUpperThreshold = 0.5f;
+            LowerTimeState = ETimeState::None;
+            UpperTimeState = ETimeState::Mid;
+            break;
+        case ETimeState::Mid:
+            TimeLowerThreshold = 0.5f;
+            TimeUpperThreshold = 0.75f;
+            LowerTimeState = ETimeState::Low;
+            UpperTimeState = ETimeState::Long;
+            break;
+        case ETimeState::Long:
+            TimeLowerThreshold = 0.75f;
+            TimeUpperThreshold = 1.0f;
+            LowerTimeState = ETimeState::Mid;
+            UpperTimeState = ETimeState::Long;
+            break;
+    }
+    
+    // Calculate temperature thresholds and adjacent states
+    switch (TempState)
+    {
+        case ETemperatureState::Raw:
+            TempLowerThreshold = 0.0f;
+            TempUpperThreshold = 0.25f;
+            LowerTempState = ETemperatureState::Raw;
+            UpperTempState = ETemperatureState::Low;
+            break;
+        case ETemperatureState::Low:
+            TempLowerThreshold = 0.25f;
+            TempUpperThreshold = 0.5f;
+            LowerTempState = ETemperatureState::Raw;
+            UpperTempState = ETemperatureState::Med;
+            break;
+        case ETemperatureState::Med:
+            TempLowerThreshold = 0.5f;
+            TempUpperThreshold = 0.75f;
+            LowerTempState = ETemperatureState::Low;
+            UpperTempState = ETemperatureState::Hot;
+            break;
+        case ETemperatureState::Hot:
+            TempLowerThreshold = 0.75f;
+            TempUpperThreshold = 1.0f;
+            LowerTempState = ETemperatureState::Med;
+            UpperTempState = ETemperatureState::Hot;
+            break;
+    }
+    
+    // Process all modifiers
+    // We'll collect modifiers for each aspect and apply them with interpolation
+    TMap<FName, float> FlavorModifiers;
+    TMap<FName, float> TextureModifiers;
+    
+    for (const FTimeTemperatureModifier& Modifier : TimeTemperatureModifiers)
+    {
+        // Check if this modifier matches our time/temperature states
+        bool bMatchesTime = (Modifier.TimeState == TimeState) || 
+                           (Modifier.TimeState == LowerTimeState) || 
+                           (Modifier.TimeState == UpperTimeState);
+        bool bMatchesTemp = (Modifier.TemperatureState == TempState) || 
+                           (Modifier.TemperatureState == LowerTempState) || 
+                           (Modifier.TemperatureState == UpperTempState);
+        
+        if (!bMatchesTime || !bMatchesTemp)
+            continue;
+        
+        // Calculate interpolation weight based on how close the states are
+        float TimeWeight = 1.0f;
+        float TempWeight = 1.0f;
+        
+        // If modifier is at exact state, use full weight
+        // If modifier is at adjacent state, interpolate
+        if (Modifier.TimeState == TimeState)
+            TimeWeight = 1.0f;
+        else if (Modifier.TimeState == LowerTimeState)
+            TimeWeight = 1.0f - ((TimeValue - TimeLowerThreshold) / (TimeUpperThreshold - TimeLowerThreshold));
+        else if (Modifier.TimeState == UpperTimeState)
+            TimeWeight = (TimeValue - TimeLowerThreshold) / (TimeUpperThreshold - TimeLowerThreshold);
+        else
+            TimeWeight = 0.0f;
+        
+        if (Modifier.TemperatureState == TempState)
+            TempWeight = 1.0f;
+        else if (Modifier.TemperatureState == LowerTempState)
+            TempWeight = 1.0f - ((TemperatureValue - TempLowerThreshold) / (TempUpperThreshold - TempLowerThreshold));
+        else if (Modifier.TemperatureState == UpperTempState)
+            TempWeight = (TemperatureValue - TempLowerThreshold) / (TempUpperThreshold - TempLowerThreshold);
+        else
+            TempWeight = 0.0f;
+        
+        // Combined weight (multiply time and temp weights)
+        float CombinedWeight = TimeWeight * TempWeight;
+        
+        if (CombinedWeight <= 0.0f)
+            continue;
+        
+        // Calculate weighted modifier value
+        float WeightedValue = Modifier.ModifierValue * CombinedWeight;
+        
+        // Store modifier for this aspect
+        FName AspectName = Modifier.AspectName;
+        if (Modifier.AspectType == EAspectType::Flavor)
+        {
+            if (!FlavorModifiers.Contains(AspectName))
+                FlavorModifiers.Add(AspectName, 0.0f);
+            FlavorModifiers[AspectName] += WeightedValue;
+        }
+        else // Texture
+        {
+            if (!TextureModifiers.Contains(AspectName))
+                TextureModifiers.Add(AspectName, 0.0f);
+            TextureModifiers[AspectName] += WeightedValue;
+        }
+    }
+    
+    // Apply flavor modifiers to output (working on copies)
+    for (const auto& Pair : FlavorModifiers)
+    {
+        FName AspectName = Pair.Key;
+        float ModifierValue = Pair.Value;
+        
+        // Get current value from output
+        float CurrentValue = 0.0f;
+        FString AspectStr = AspectName.ToString().ToLower();
+        
+        if (AspectStr == TEXT("umami"))
+            CurrentValue = OutFlavor.Umami;
+        else if (AspectStr == TEXT("sweet"))
+            CurrentValue = OutFlavor.Sweet;
+        else if (AspectStr == TEXT("salt"))
+            CurrentValue = OutFlavor.Salt;
+        else if (AspectStr == TEXT("sour"))
+            CurrentValue = OutFlavor.Sour;
+        else if (AspectStr == TEXT("bitter"))
+            CurrentValue = OutFlavor.Bitter;
+        else if (AspectStr == TEXT("spicy"))
+            CurrentValue = OutFlavor.Spicy;
+        
+        // Apply modifier based on type
+        // Find the modifier to get its type
+        EModificationType ModType = EModificationType::Additive;
+        for (const FTimeTemperatureModifier& Modifier : TimeTemperatureModifiers)
+        {
+            if (Modifier.AspectName == AspectName && 
+                Modifier.AspectType == EAspectType::Flavor &&
+                (Modifier.TimeState == TimeState || Modifier.TimeState == LowerTimeState || Modifier.TimeState == UpperTimeState) &&
+                (Modifier.TemperatureState == TempState || Modifier.TemperatureState == LowerTempState || Modifier.TemperatureState == UpperTempState))
+            {
+                ModType = Modifier.ModificationType;
+                break;
+            }
+        }
+        
+        float NewValue = 0.0f;
+        if (ModType == EModificationType::Additive)
+            NewValue = CurrentValue + ModifierValue;
+        else // Multiplicative
+            NewValue = CurrentValue * (1.0f + ModifierValue); // ModifierValue as multiplier (e.g., 0.1 = +10%)
+        
+        NewValue = FMath::Clamp(NewValue, 0.0f, 5.0f);
+        
+        // Update output
+        if (AspectStr == TEXT("umami"))
+            OutFlavor.Umami = NewValue;
+        else if (AspectStr == TEXT("sweet"))
+            OutFlavor.Sweet = NewValue;
+        else if (AspectStr == TEXT("salt"))
+            OutFlavor.Salt = NewValue;
+        else if (AspectStr == TEXT("sour"))
+            OutFlavor.Sour = NewValue;
+        else if (AspectStr == TEXT("bitter"))
+            OutFlavor.Bitter = NewValue;
+        else if (AspectStr == TEXT("spicy"))
+            OutFlavor.Spicy = NewValue;
+    }
+    
+    // Apply texture modifiers to output (working on copies)
+    for (const auto& Pair : TextureModifiers)
+    {
+        FName AspectName = Pair.Key;
+        float ModifierValue = Pair.Value;
+        
+        // Get current value from output
+        float CurrentValue = 0.0f;
+        FString AspectStr = AspectName.ToString().ToLower();
+        
+        if (AspectStr == TEXT("rich"))
+            CurrentValue = OutTexture.Rich;
+        else if (AspectStr == TEXT("juicy"))
+            CurrentValue = OutTexture.Juicy;
+        else if (AspectStr == TEXT("tender"))
+            CurrentValue = OutTexture.Tender;
+        else if (AspectStr == TEXT("chewy"))
+            CurrentValue = OutTexture.Chewy;
+        else if (AspectStr == TEXT("crispy"))
+            CurrentValue = OutTexture.Crispy;
+        else if (AspectStr == TEXT("crumbly"))
+            CurrentValue = OutTexture.Crumbly;
+        
+        // Apply modifier based on type
+        // Find the modifier to get its type
+        EModificationType ModType = EModificationType::Additive;
+        for (const FTimeTemperatureModifier& Modifier : TimeTemperatureModifiers)
+        {
+            if (Modifier.AspectName == AspectName && 
+                Modifier.AspectType == EAspectType::Texture &&
+                (Modifier.TimeState == TimeState || Modifier.TimeState == LowerTimeState || Modifier.TimeState == UpperTimeState) &&
+                (Modifier.TemperatureState == TempState || Modifier.TemperatureState == LowerTempState || Modifier.TemperatureState == UpperTempState))
+            {
+                ModType = Modifier.ModificationType;
+                break;
+            }
+        }
+        
+        float NewValue = 0.0f;
+        if (ModType == EModificationType::Additive)
+            NewValue = CurrentValue + ModifierValue;
+        else // Multiplicative
+            NewValue = CurrentValue * (1.0f + ModifierValue); // ModifierValue as multiplier (e.g., 0.1 = +10%)
+        
+        NewValue = FMath::Clamp(NewValue, 0.0f, 5.0f);
+        
+        // Update output
+        if (AspectStr == TEXT("rich"))
+            OutTexture.Rich = NewValue;
+        else if (AspectStr == TEXT("juicy"))
+            OutTexture.Juicy = NewValue;
+        else if (AspectStr == TEXT("tender"))
+            OutTexture.Tender = NewValue;
+        else if (AspectStr == TEXT("chewy"))
+            OutTexture.Chewy = NewValue;
+        else if (AspectStr == TEXT("crispy"))
+            OutTexture.Crispy = NewValue;
+        else if (AspectStr == TEXT("crumbly"))
+            OutTexture.Crumbly = NewValue;
+    }
 } 

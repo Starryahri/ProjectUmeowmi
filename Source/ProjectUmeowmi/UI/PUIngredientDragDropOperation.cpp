@@ -1,5 +1,5 @@
 #include "PUIngredientDragDropOperation.h"
-#include "PUCookingStageWidget.h"
+#include "PUDishCustomizationWidget.h"
 
 UPUIngredientDragDropOperation::UPUIngredientDragDropOperation()
 {
@@ -22,7 +22,7 @@ void UPUIngredientDragDropOperation::SetupIngredientDrag(const FIngredientInstan
     if (bFromPantry)
     {
         // Use GUID-based unique ID generation
-        IngredientInstance.InstanceID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
+        IngredientInstance.InstanceID = UPUDishCustomizationWidget::GenerateGUIDBasedInstanceID();
         // Set quantity to 1 when dragging from pantry
         IngredientInstance.Quantity = 1;
         UE_LOG(LogTemp, Display, TEXT("🔍 Generated GUID-based InstanceID: %d (from pantry, quantity set to 1, tag: %s)"), 

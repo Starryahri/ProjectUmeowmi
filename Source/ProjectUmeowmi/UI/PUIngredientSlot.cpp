@@ -11,7 +11,6 @@
 #include "../DishCustomization/PUPreparationBase.h"
 #include "Engine/DataTable.h"
 #include "PUDishCustomizationWidget.h"
-#include "PUCookingStageWidget.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SlateWrapperTypes.h"
@@ -898,7 +897,7 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
             // Find the source slot (the slot we dragged from) in the cooking stage
             // If target slot was empty: clear the source slot (move)
             // If target slot had an ingredient: swap by setting source slot with target's ingredient (swap)
-            // Try to find the parent widget (could be PUDishCustomizationWidget or PUCookingStageWidget)
+            // Try to find the parent widget (PUDishCustomizationWidget)
             UUserWidget* ParentWidget = GetTypedOuter<UUserWidget>();
             TArray<UPUIngredientSlot*> AllSlots;
             
@@ -907,12 +906,6 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
             {
                 AllSlots = DishWidget->GetCreatedIngredientSlots();
                 UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget, got %d slots"), AllSlots.Num());
-            }
-            // Try PUCookingStageWidget
-            else if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(ParentWidget))
-            {
-                AllSlots = CookingWidget->GetCreatedIngredientSlots();
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found UPUCookingStageWidget, got %d slots"), AllSlots.Num());
             }
             else
             {
@@ -924,12 +917,6 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                     {
                         AllSlots = FoundDishWidget->GetCreatedIngredientSlots();
                         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget via hierarchy, got %d slots"), AllSlots.Num());
-                        break;
-                    }
-                    if (UPUCookingStageWidget* FoundCookingWidget = Cast<UPUCookingStageWidget>(Parent))
-                    {
-                        AllSlots = FoundCookingWidget->GetCreatedIngredientSlots();
-                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found UPUCookingStageWidget via hierarchy, got %d slots"), AllSlots.Num());
                         break;
                     }
                     if (Parent->GetParent())
@@ -2496,50 +2483,13 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Applying preparation %s to instance %d"),
         *PreparationTag.ToString(), IngredientInstance.InstanceID);
 
-    // CRITICAL: Check if we're in a cooking stage widget first!
-    // If so, update the cooking stage widget's data, not the dish customization widget
-    UPUCookingStageWidget* CookingWidget = GetCookingStageWidget();
-    if (CookingWidget)
-    {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found cooking stage widget, applying preparation via cooking stage"));
-        
-        // Get the current dish data from the cooking stage widget (this is the source of truth)
-        FPUDishBase CurrentDish = CookingWidget->GetCurrentDishData();
-        
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Cooking stage dish has %d ingredient instances, looking for ID: %d"), 
-            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
-
-        // Apply the preparation using the blueprint library
-        bool bSuccess = UPUDishBlueprintLibrary::ApplyPreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
-        
-        if (bSuccess)
-        {
-            // Update the cooking stage widget's dish data (this will also update radar chart and broadcast)
-            CookingWidget->UpdateCurrentDishData(CurrentDish);
-            
-            // Update the ingredient instance to reflect the change
-            FIngredientInstance UpdatedInstance;
-            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
-            {
-                SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via cooking stage"));
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
-        }
-        
-        return bSuccess;
-    }
-
-    // Fallback: Try to get the dish widget
+    // Get the dish customization widget and update dish data
     UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
     if (DishWidget)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish widget, applying preparation via widget"));
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish customization widget, applying preparation"));
         
-        // Get the current dish data from the widget (more up-to-date than component)
+        // Get the current dish data from the dish customization widget
         FPUDishBase CurrentDish = DishWidget->GetCurrentDishData();
         
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
@@ -2550,7 +2500,7 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
         
         if (bSuccess)
         {
-            // Update the dish data through the widget
+            // Update the dish customization widget's dish data
             DishWidget->UpdateDishData(CurrentDish);
             
             // Update the ingredient instance to reflect the change
@@ -2558,21 +2508,13 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
             if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
             {
                 SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via widget"));
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
                 
-                // If we're in active ingredient area, create/update the prepped slot
-                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+                // If we're in active ingredient area and have preparations, create/update the prepped slot
+                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
                 {
                     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In active ingredient area, creating/updating prepped slot"));
-                    if (UpdatedInstance.Preparations.Num() > 0)
-                    {
-                        DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
-                    }
-                    else
-                    {
-                        // If no preparations left, remove the prepped slot
-                        DishWidget->RemovePreppedSlot(UpdatedInstance);
-                    }
+                    DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
                 }
             }
         }
@@ -2607,6 +2549,17 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
             {
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via component"));
+                
+                // If we're in active ingredient area and have preparations, create/update the prepped slot
+                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
+                {
+                    UPUDishCustomizationWidget* PreppedDishWidget = GetDishCustomizationWidget();
+                    if (PreppedDishWidget)
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In active ingredient area, creating/updating prepped slot (via component path)"));
+                        PreppedDishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
+                    }
+                }
             }
         }
         else
@@ -2632,50 +2585,13 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Removing preparation %s from instance %d"),
         *PreparationTag.ToString(), IngredientInstance.InstanceID);
 
-    // CRITICAL: Check if we're in a cooking stage widget first!
-    // If so, update the cooking stage widget's data, not the dish customization widget
-    UPUCookingStageWidget* CookingWidget = GetCookingStageWidget();
-    if (CookingWidget)
-    {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found cooking stage widget, removing preparation via cooking stage"));
-        
-        // Get the current dish data from the cooking stage widget (this is the source of truth)
-        FPUDishBase CurrentDish = CookingWidget->GetCurrentDishData();
-        
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Cooking stage dish has %d ingredient instances, looking for ID: %d"), 
-            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
-
-        // Remove the preparation using the blueprint library
-        bool bSuccess = UPUDishBlueprintLibrary::RemovePreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
-        
-        if (bSuccess)
-        {
-            // Update the cooking stage widget's dish data (this will also update radar chart and broadcast)
-            CookingWidget->UpdateCurrentDishData(CurrentDish);
-            
-            // Update the ingredient instance to reflect the change
-            FIngredientInstance UpdatedInstance;
-            if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
-            {
-                SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via cooking stage"));
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
-        }
-        
-        return bSuccess;
-    }
-
-    // Fallback: Try to get the dish widget
+    // Get the dish customization widget and update dish data
     UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
     if (DishWidget)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish widget, removing preparation via widget"));
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish customization widget, removing preparation"));
         
-        // Get the current dish data from the widget (more up-to-date than component)
+        // Get the current dish data from the dish customization widget
         FPUDishBase CurrentDish = DishWidget->GetCurrentDishData();
         
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
@@ -2693,7 +2609,7 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
         
         if (bSuccess)
         {
-            // Update the dish data through the widget
+            // Update the dish customization widget's dish data
             DishWidget->UpdateDishData(CurrentDish);
             
             // Update the ingredient instance to reflect the change
@@ -2701,7 +2617,7 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
             if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
             {
                 SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via widget"));
+                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully"));
                 
                 // If we're in active ingredient area and still have preparations, create/update the prepped slot with new state
                 if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
@@ -2763,22 +2679,7 @@ void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
 
     if (ActionString == TEXT("Action.Remove"))
     {
-        // CRITICAL: Check if we're in a cooking stage widget first!
-        // If so, update the cooking stage widget's data, not the dish customization widget
-        UPUCookingStageWidget* CookingWidget = GetCookingStageWidget();
-        if (CookingWidget)
-        {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found cooking stage widget, removing instance ID: %d"), IngredientInstance.InstanceID);
-            
-            // Use the cooking stage widget's public function to remove the ingredient
-            // This will update the dish data and trigger OnDishDataChanged which updates the radar chart
-            CookingWidget->RemoveIngredientInstanceFromCookingStage(IngredientInstance.InstanceID);
-            ClearSlot();
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via cooking stage widget"));
-            return;
-        }
-        
-        // Fallback: try dish customization widget
+        // Get the dish customization widget and remove the ingredient
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
         if (DishWidget)
         {
@@ -2842,10 +2743,8 @@ UPUDishCustomizationComponent* UPUIngredientSlot::GetDishCustomizationComponent(
         {
             return DishWidget->GetCustomizationComponent();
         }
-        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(Parent))
+        // Continue searching parent hierarchy
         {
-            // Cooking stage widget might have a reference to the component
-            // Try to get it from the parent widget hierarchy
             UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
             while (RootWidget)
             {
@@ -2921,11 +2820,8 @@ UPUDishCustomizationWidget* UPUIngredientSlot::GetDishCustomizationWidget() cons
             const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = DishWidget;
             return DishWidget;
         }
-        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(Parent))
+        // Continue searching parent hierarchy
         {
-            UE_LOG(LogTemp, Display, TEXT("🔍   Found CookingStageWidget, trying to get dish widget from it"));
-            // Cooking stage widget might have a reference to the dish widget
-            // Try to get it from the parent widget hierarchy
             UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
             while (RootWidget)
             {
@@ -2972,30 +2868,4 @@ void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* I
         InDishWidget ? *InDishWidget->GetName() : TEXT("NULL"));
 }
 
-UPUCookingStageWidget* UPUIngredientSlot::GetCookingStageWidget() const
-{
-    // Try to find the cooking stage widget by traversing up the widget hierarchy
-    UWidget* Parent = GetParent();
-    while (Parent)
-    {
-        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(Parent))
-        {
-            return CookingWidget;
-        }
-        Parent = Parent->GetParent();
-    }
-    
-    // Try to get it from the outer widget
-    UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
-    while (RootWidget)
-    {
-        if (UPUCookingStageWidget* CookingWidget = Cast<UPUCookingStageWidget>(RootWidget))
-        {
-            return CookingWidget;
-        }
-        RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
-    }
-    
-    return nullptr;
-}
 

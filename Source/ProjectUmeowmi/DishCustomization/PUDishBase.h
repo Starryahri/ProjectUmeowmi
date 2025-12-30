@@ -15,6 +15,8 @@ struct FIngredientInstance
     FIngredientInstance()
         : InstanceID(0)
         , Quantity(1)
+        , TimeValue(0.0f)
+        , TemperatureValue(0.0f)
     {}
 
     // Unique identifier for this instance (never changes)
@@ -36,6 +38,15 @@ struct FIngredientInstance
     // Preparations for easy template creation (redundant with IngredientData.ActivePreparations but convenient)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Preparation"))
     FGameplayTagContainer Preparations;
+
+    // Time and Temperature values for cooking (0.0 to 1.0)
+    // Time: 0.0 = None, 0.33 = Low, 0.66 = Mid, 1.0 = Long
+    // Temperature: 0.0 = Raw, 0.33 = Low, 0.66 = Med, 1.0 = Hot
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Cooking", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+    float TimeValue = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Cooking", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+    float TemperatureValue = 0.0f;
 
     // Optional: Placement data for this instance
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")
