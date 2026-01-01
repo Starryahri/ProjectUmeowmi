@@ -298,6 +298,61 @@ bool UPURadarChart::SetValuesFromIngredient(const FPUIngredientBase& Ingredient)
     return true;
 }
 
+bool UPURadarChart::SetValuesFromIngredientWithTimeTemp(const FPUIngredientBase& Ingredient, float TimeValue, float TemperatureValue)
+{
+    // Set the number of segments based on the total number of aspects (12 total: 6 flavors + 6 textures)
+    const int32 TotalAspects = 12;
+    if (!SetSegmentCount(TotalAspects))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromIngredientWithTimeTemp: Failed to set segment count"));
+        return false;
+    }
+
+    // Get the MODIFIED values (with time/temp applied) and display names from the ingredient's aspects
+    FFlavorAspects ModifiedFlavor = Ingredient.GetModifiedFlavorAspects(TimeValue, TemperatureValue);
+    FTextureAspects ModifiedTexture = Ingredient.GetModifiedTextureAspects(TimeValue, TemperatureValue);
+    
+    TArray<float> Values;
+    TArray<FString> DisplayNames;
+    
+    // Add flavor aspects (in order: Umami, Salt, Sweet, Sour, Bitter, Spicy)
+    Values.Add(ModifiedFlavor.Umami);
+    DisplayNames.Add(TEXT("Umami"));
+    Values.Add(ModifiedFlavor.Salt);
+    DisplayNames.Add(TEXT("Salt"));
+    Values.Add(ModifiedFlavor.Sweet);
+    DisplayNames.Add(TEXT("Sweet"));
+    Values.Add(ModifiedFlavor.Sour);
+    DisplayNames.Add(TEXT("Sour"));
+    Values.Add(ModifiedFlavor.Bitter);
+    DisplayNames.Add(TEXT("Bitter"));
+    Values.Add(ModifiedFlavor.Spicy);
+    DisplayNames.Add(TEXT("Spicy"));
+    
+    // Add texture aspects
+    Values.Add(ModifiedTexture.Rich);
+    DisplayNames.Add(TEXT("Rich"));
+    Values.Add(ModifiedTexture.Juicy);
+    DisplayNames.Add(TEXT("Juicy"));
+    Values.Add(ModifiedTexture.Tender);
+    DisplayNames.Add(TEXT("Tender"));
+    Values.Add(ModifiedTexture.Chewy);
+    DisplayNames.Add(TEXT("Chewy"));
+    Values.Add(ModifiedTexture.Crispy);
+    DisplayNames.Add(TEXT("Crispy"));
+    Values.Add(ModifiedTexture.Crumbly);
+    DisplayNames.Add(TEXT("Crumbly"));
+    
+    // Set the segment names using the display names
+    SetSegmentNames(DisplayNames);
+
+    // Set the values
+    SetValues(Values);
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromIngredientWithTimeTemp: Updated with Time=%.2f, Temp=%.2f"), TimeValue, TemperatureValue);
+    return true;
+}
+
 bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
 {
     // Track unique ingredients and their quantities

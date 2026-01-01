@@ -12,20 +12,59 @@ class UDataTable;
 class UStaticMesh;
 struct FPUPreparationBase;
 
-// Modification type enum - shared between ingredients and preparations
+// Forward declare enums from PUPreparationBase (to avoid circular dependency)
+enum class EAspectType : uint8;
+enum class EModificationType : uint8;
+
+// Time state enum for discrete mapping
 UENUM(BlueprintType)
-enum class EModificationType : uint8
+enum class ETimeState : uint8
 {
-    Additive,
-    Multiplicative
+    None = 0,   // 0.0
+    Low = 1,    // 0.33
+    Mid = 2,    // 0.66
+    Long = 3    // 1.0
 };
 
-// Aspect type enum - determines if modifier affects flavor or texture
+// Temperature state enum for discrete mapping
 UENUM(BlueprintType)
-enum class EAspectType : uint8
+enum class ETemperatureState : uint8
 {
-    Flavor,
-    Texture
+    Raw = 0,    // 0.0
+    Low = 1,    // 0.33
+    Med = 2,    // 0.66
+    Hot = 3     // 1.0
+};
+
+// Time/Temperature modifier entry - defines how a specific aspect changes at a specific time/temp state
+USTRUCT(BlueprintType)
+struct FTimeTempModifier
+{
+    GENERATED_BODY()
+
+    // Time state this modifier applies to (None, Low, Mid, Long)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    ETimeState TimeState = ETimeState::None;
+
+    // Temperature state this modifier applies to (Raw, Low, Med, Hot)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    ETemperatureState TemperatureState = ETemperatureState::Raw;
+
+    // Aspect to modify (e.g., "Umami", "Crispy", "Tender")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    FName AspectName;
+
+    // Whether this affects flavor or texture (0 = Flavor, 1 = Texture)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    uint8 AspectType = 0; // 0 = Flavor, 1 = Texture (matches EAspectType)
+
+    // How to apply the modification (0 = Additive, 1 = Multiplicative)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    uint8 ModificationType = 0; // 0 = Additive, 1 = Multiplicative (matches EModificationType)
+
+    // Modification value
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    float ModificationValue = 0.0f;
 };
 
 // Flavor aspects - the six basic flavors
@@ -78,63 +117,6 @@ struct FTextureAspects
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
     float Crumbly = 0.0f;
-};
-
-// Time states for cooking time slider
-// Maps to slider values: None (0.0), Low (0.33), Mid (0.66), Long (1.0)
-UENUM(BlueprintType)
-enum class ETimeState : uint8
-{
-    None = 0,  // 0.0
-    Low = 1,   // 0.33
-    Mid = 2,   // 0.66
-    Long = 3   // 1.0
-};
-
-// Temperature states for temperature slider
-// Maps to slider values: Raw (0.0), Low (0.33), Med (0.66), Hot (1.0)
-UENUM(BlueprintType)
-enum class ETemperatureState : uint8
-{
-    Raw = 0,  // 0.0
-    Low = 1,  // 0.33
-    Med = 2,  // 0.66
-    Hot = 3   // 1.0
-};
-
-// Time/Temperature modifier entry - defines how a specific aspect changes at a specific time/temperature combination
-USTRUCT(BlueprintType)
-struct FTimeTemperatureModifier
-{
-    GENERATED_BODY()
-
-    // Time state this modifier applies to (None, Low, Mid, Long)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temperature")
-    ETimeState TimeState = ETimeState::None;
-
-    // Temperature state this modifier applies to (Raw, Low, Med, Hot)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temperature")
-    ETemperatureState TemperatureState = ETemperatureState::Raw;
-
-    // Whether this modifier affects flavor or texture
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temperature")
-    EAspectType AspectType = EAspectType::Flavor;
-
-    // Name of the aspect to modify (e.g., "Umami", "Sweet", "Rich", "Tender")
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temperature")
-    FName AspectName;
-
-    // How to apply the modification (Additive or Multiplicative)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temperature")
-    EModificationType ModificationType = EModificationType::Additive;
-
-    // The modifier value to apply
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temperature")
-    float ModifierValue = 0.0f;
-
-    // Optional description for this modifier
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temperature")
-    FText Description;
 };
 
 // Main ingredient struct
@@ -209,11 +191,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Effects")
     TMap<int32, FGameplayTagContainer> QuantitySpecialEffects;
 
-    // Time/Temperature Modifiers
-    // Each entry defines how a specific aspect changes at a specific time/temperature combination
-    // Example: Chicken at Mid time + Hot temp increases Umami by +1.0
+    // Time/Temperature Modifiers (per-ingredient overrides)
+    // If empty, will use default rules. If populated, these override defaults for this ingredient.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Time/Temperature")
-    TArray<FTimeTemperatureModifier> TimeTemperatureModifiers;
+    TArray<FTimeTempModifier> TimeTemperatureModifiers;
+
+    // Whether to use custom time/temp modifiers (if false, uses default rules)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Time/Temperature")
+    bool bUseCustomTimeTempModifiers = false;
 
     // Helper Functions
     // Get flavor aspect value by name
@@ -238,20 +223,17 @@ public:
 
     // Time/Temperature Functions
     // Calculate modified aspects based on time and temperature values (0.0 to 1.0)
-    // Returns modified flavor and texture aspects without modifying the base ingredient
-    void CalculateTimeTempModifiedAspects(
-        float TimeValue, 
-        float TemperatureValue, 
-        FFlavorAspects& OutFlavor, 
-        FTextureAspects& OutTexture
-    ) const;
+    void CalculateTimeTempModifiedAspects(float TimeValue, float TemperatureValue, FFlavorAspects& OutFlavor, FTextureAspects& OutTexture) const;
+    
+    // Get modified flavor aspects (includes time/temp calculations)
+    FFlavorAspects GetModifiedFlavorAspects(float TimeValue, float TemperatureValue) const;
+    
+    // Get modified texture aspects (includes time/temp calculations)
+    FTextureAspects GetModifiedTextureAspects(float TimeValue, float TemperatureValue) const;
 
-    // Helper: Map slider value (0.0-1.0) to time state
-    static ETimeState GetTimeStateFromValue(float TimeValue);
-
-    // Helper: Map slider value (0.0-1.0) to temperature state
-    static ETemperatureState GetTemperatureStateFromValue(float TemperatureValue);
-
-    // Helper: Interpolate between two modifier values based on slider position
-    static float InterpolateModifierValue(float SliderValue, float LowerValue, float UpperValue, float LowerThreshold, float UpperThreshold);
+    // Helper: Map slider value (0.0-1.0) to discrete time state
+    static ETimeState MapTimeValueToState(float TimeValue);
+    
+    // Helper: Map slider value (0.0-1.0) to discrete temperature state
+    static ETemperatureState MapTemperatureValueToState(float TemperatureValue);
 }; 

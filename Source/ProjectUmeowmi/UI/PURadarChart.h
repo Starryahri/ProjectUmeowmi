@@ -76,6 +76,16 @@ public:
     bool SetValuesFromIngredient(const FPUIngredientBase& Ingredient);
 
     /**
+     * Sets the values of the radar chart from an ingredient with time/temperature modifiers applied.
+     * @param Ingredient The base ingredient data
+     * @param TimeValue Time value (0.0 to 1.0)
+     * @param TemperatureValue Temperature value (0.0 to 1.0)
+     * @return True if successful, false otherwise
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetValuesFromIngredientWithTimeTemp(const FPUIngredientBase& Ingredient, float TimeValue, float TemperatureValue);
+
+    /**
      * Sets the icon for a specific segment.
      * @param SegmentIndex - The index of the segment to set the icon for
      * @param IconTexture - The texture to use as the icon

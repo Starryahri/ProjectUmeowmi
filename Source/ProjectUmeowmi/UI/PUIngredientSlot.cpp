@@ -3,12 +3,14 @@
 #include "Components/Button.h"
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
+#include "Components/Slider.h"
 #include "Blueprint/WidgetTree.h"
 #include "Engine/Texture2D.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUIngredientDragDropOperation.h"
 #include "Input/Events.h"
 #include "../DishCustomization/PUPreparationBase.h"
+#include "../DishCustomization/PUIngredientBase.h"
 #include "Engine/DataTable.h"
 #include "PUDishCustomizationWidget.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
@@ -92,8 +94,11 @@ void UPUIngredientSlot::NativeConstruct()
     else
     {
         // Update display on construction (only if no initial instance was set)
-    UpdateDisplay();
+        UpdateDisplay();
     }
+
+    // Initialize time/temperature sliders
+    InitializeTimeTempSliders();
 }
 
 void UPUIngredientSlot::NativeDestruct()
@@ -176,8 +181,18 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     //     IngredientInstance.Preparations.Num(),
     //     bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
 
+    // Recalculate aspects from base + time/temp + quantity (if we have an ingredient)
+    if (bHasIngredient)
+    {
+        RecalculateAspectsFromBase();
+    }
+
     // Update all display elements
     UpdateDisplay();
+
+    // Update time/temp sliders to sync with new instance
+    UpdateTimeTempSliders();
+    UpdateSliderVisibility();
 
     // Call Blueprint event (only if we actually have an ingredient)
     if (bHasIngredient)
@@ -223,6 +238,9 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
     {
         Location = InLocation;
         // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetLocation - Location changed to: %d"), (int32)Location);
+
+        // Update slider visibility when location changes
+        UpdateSliderVisibility();
 
         // Immediately hide QuantityText if in prep or cooking stage (shown in plating)
     // Hide QuantityText in prep and cooking stages (shown in plating)
@@ -272,6 +290,7 @@ void UPUIngredientSlot::UpdateDisplay()
         UpdateIngredientIcon();
         UpdatePrepIcons();
         UpdateQuantityControl();
+        UpdateSliderVisibility();
         
         // Update quantity and preparation text displays (they will hide themselves if in prep/cooking stage)
         UpdateQuantityDisplay();
@@ -1279,6 +1298,9 @@ void UPUIngredientSlot::OnQuantityControlChanged(const FIngredientInstance& InIn
     if (bHasIngredient && IngredientInstance.InstanceID == InIngredientInstance.InstanceID)
     {
         IngredientInstance = InIngredientInstance;
+
+        // Recalculate aspects from base + time/temp + quantity
+        RecalculateAspectsFromBase();
 
         // DON'T call UpdateDisplay() here - it would call UpdateQuantityControl() again, causing recursion!
         // Only update the parts that need updating (icon, prep icons, etc.)
@@ -2867,5 +2889,337 @@ void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* I
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDishCustomizationWidget - Cached dish widget reference: %s"), 
         InDishWidget ? *InDishWidget->GetName() : TEXT("NULL"));
 }
+
+// ============================================================================
+// Time/Temperature Slider Functions
+// ============================================================================
+
+void UPUIngredientSlot::InitializeTimeTempSliders()
+{
+    // Set up time slider
+    if (TimeSlider)
+    {
+        TimeSlider->SetMinValue(0.0f);
+        TimeSlider->SetMaxValue(1.0f);
+        TimeSlider->SetValue(IngredientInstance.TimeValue);
+        
+        // Bind event
+        if (!TimeSlider->OnValueChanged.IsBound())
+        {
+            TimeSlider->OnValueChanged.AddDynamic(this, &UPUIngredientSlot::OnTimeSliderValueChanged);
+        }
+        
+        TimeSlider->SetStepSize(0.0f); // Continuous (no steps)
+    }
+    
+    // Set up temperature slider
+    if (TemperatureSlider)
+    {
+        TemperatureSlider->SetMinValue(0.0f);
+        TemperatureSlider->SetMaxValue(1.0f);
+        TemperatureSlider->SetValue(IngredientInstance.TemperatureValue);
+        
+        // Bind event
+        if (!TemperatureSlider->OnValueChanged.IsBound())
+        {
+            TemperatureSlider->OnValueChanged.AddDynamic(this, &UPUIngredientSlot::OnTemperatureSliderValueChanged);
+        }
+        
+        TemperatureSlider->SetStepSize(0.0f); // Continuous (no steps)
+    }
+    
+    // Update visibility and labels
+    UpdateSliderVisibility();
+    UpdateTimeLabelText();
+    UpdateTemperatureLabelText();
+}
+
+void UPUIngredientSlot::RecalculateAspectsFromBase()
+{
+    if (!bHasIngredient)
+    {
+        return;
+    }
+    
+    // Get the base ingredient from dish data (includes base aspects + preparations, but NOT time/temp/quantity)
+    if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+    {
+        FPUDishBase CurrentDish = DishWidget->GetCurrentDishData();
+        FPUIngredientBase BaseIngredient;
+        
+        // Use IngredientData.IngredientTag if IngredientTag is not valid
+        FGameplayTag IngredientTagToUse = IngredientInstance.IngredientTag.IsValid() 
+            ? IngredientInstance.IngredientTag 
+            : IngredientInstance.IngredientData.IngredientTag;
+        
+        if (!IngredientTagToUse.IsValid())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - No valid ingredient tag found!"));
+            return;
+        }
+        
+        // Ensure dish has ingredient data table (fallback to component's data table if needed)
+        if (!CurrentDish.IngredientDataTable.IsValid())
+        {
+            if (UPUDishCustomizationComponent* Component = DishWidget->GetCustomizationComponent())
+            {
+                if (Component->IngredientDataTable)
+                {
+                    CurrentDish.IngredientDataTable = TSoftObjectPtr<UDataTable>(Component->IngredientDataTable);
+                    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::RecalculateAspectsFromBase - Using component's ingredient data table"));
+                }
+            }
+        }
+        
+        // Sync preparations to ActivePreparations before getting base ingredient
+        // (GetIngredient uses ActivePreparations to apply preparation modifiers)
+        BaseIngredient.ActivePreparations = IngredientInstance.Preparations;
+        
+        // Get base ingredient from dish data table (includes preparations)
+        // GetIngredient will apply preparations based on BaseIngredient.ActivePreparations
+        if (CurrentDish.GetIngredient(IngredientTagToUse, BaseIngredient))
+        {
+            // Start with base aspects (base + preparations)
+            FFlavorAspects PerUnitFlavor = BaseIngredient.FlavorAspects;
+            FTextureAspects PerUnitTexture = BaseIngredient.TextureAspects;
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Base aspects: Umami=%.2f, Sweet=%.2f, Time=%.2f, Temp=%.2f, Qty=%d"),
+                PerUnitFlavor.Umami, PerUnitFlavor.Sweet, IngredientInstance.TimeValue, IngredientInstance.TemperatureValue, IngredientInstance.Quantity);
+            
+            // Apply time/temp modifiers to get per-unit modified aspects
+            BaseIngredient.CalculateTimeTempModifiedAspects(
+                IngredientInstance.TimeValue,
+                IngredientInstance.TemperatureValue,
+                PerUnitFlavor,
+                PerUnitTexture
+            );
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - After time/temp: Umami=%.2f, Sweet=%.2f"),
+                PerUnitFlavor.Umami, PerUnitFlavor.Sweet);
+            
+            // Store per-unit aspects (quantity multiplication happens in GetTotalFlavorAspect when summing)
+            // This keeps IngredientData consistent - it always represents a single unit
+            IngredientInstance.IngredientData.FlavorAspects.Umami = PerUnitFlavor.Umami;
+            IngredientInstance.IngredientData.FlavorAspects.Salt = PerUnitFlavor.Salt;
+            IngredientInstance.IngredientData.FlavorAspects.Sweet = PerUnitFlavor.Sweet;
+            IngredientInstance.IngredientData.FlavorAspects.Sour = PerUnitFlavor.Sour;
+            IngredientInstance.IngredientData.FlavorAspects.Bitter = PerUnitFlavor.Bitter;
+            IngredientInstance.IngredientData.FlavorAspects.Spicy = PerUnitFlavor.Spicy;
+            
+            IngredientInstance.IngredientData.TextureAspects.Rich = PerUnitTexture.Rich;
+            IngredientInstance.IngredientData.TextureAspects.Juicy = PerUnitTexture.Juicy;
+            IngredientInstance.IngredientData.TextureAspects.Tender = PerUnitTexture.Tender;
+            IngredientInstance.IngredientData.TextureAspects.Chewy = PerUnitTexture.Chewy;
+            IngredientInstance.IngredientData.TextureAspects.Crispy = PerUnitTexture.Crispy;
+            IngredientInstance.IngredientData.TextureAspects.Crumbly = PerUnitTexture.Crumbly;
+            
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Final per-unit aspects: Umami=%.2f, Sweet=%.2f (Qty=%d, Total Umami=%.2f)"),
+                IngredientInstance.IngredientData.FlavorAspects.Umami, IngredientInstance.IngredientData.FlavorAspects.Sweet, 
+                IngredientInstance.Quantity, IngredientInstance.IngredientData.FlavorAspects.Umami * IngredientInstance.Quantity);
+            
+            // Update dish data (triggers OnDishDataChanged and updates radar chart automatically)
+            for (int32 i = 0; i < CurrentDish.IngredientInstances.Num(); i++)
+            {
+                if (CurrentDish.IngredientInstances[i].InstanceID == IngredientInstance.InstanceID)
+                {
+                    CurrentDish.IngredientInstances[i] = IngredientInstance;
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Updated ingredient instance %d in dish data"), IngredientInstance.InstanceID);
+                    break;
+                }
+            }
+            
+            DishWidget->UpdateDishData(CurrentDish);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Called UpdateDishData"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - Failed to get ingredient from dish data table! Tag: %s"),
+                *IngredientTagToUse.ToString());
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - Could not find dish widget!"));
+    }
+}
+
+void UPUIngredientSlot::SetTimeValue(float NewTimeValue)
+{
+    NewTimeValue = FMath::Clamp(NewTimeValue, 0.0f, 1.0f);
+    IngredientInstance.TimeValue = NewTimeValue;
+    
+    // Update slider if it exists and value is different (to avoid recursion)
+    if (TimeSlider && FMath::Abs(TimeSlider->GetValue() - NewTimeValue) > KINDA_SMALL_NUMBER)
+    {
+        TimeSlider->SetValue(NewTimeValue);
+    }
+    
+    UpdateTimeLabelText();
+    
+    // Recalculate aspects from base + time/temp + quantity
+    RecalculateAspectsFromBase();
+    
+    OnSlotIngredientChanged.Broadcast(IngredientInstance);
+    OnTimeTemperatureChanged(NewTimeValue, IngredientInstance.TemperatureValue);
+}
+
+void UPUIngredientSlot::SetTemperatureValue(float NewTemperatureValue)
+{
+    NewTemperatureValue = FMath::Clamp(NewTemperatureValue, 0.0f, 1.0f);
+    IngredientInstance.TemperatureValue = NewTemperatureValue;
+    
+    // Update slider if it exists and value is different (to avoid recursion)
+    if (TemperatureSlider && FMath::Abs(TemperatureSlider->GetValue() - NewTemperatureValue) > KINDA_SMALL_NUMBER)
+    {
+        TemperatureSlider->SetValue(NewTemperatureValue);
+    }
+    
+    UpdateTemperatureLabelText();
+    
+    // Recalculate aspects from base + time/temp + quantity
+    RecalculateAspectsFromBase();
+    
+    OnSlotIngredientChanged.Broadcast(IngredientInstance);
+    OnTimeTemperatureChanged(IngredientInstance.TimeValue, NewTemperatureValue);
+}
+
+void UPUIngredientSlot::OnTimeSliderValueChanged(float NewValue)
+{
+    SetTimeValue(NewValue);
+}
+
+void UPUIngredientSlot::OnTemperatureSliderValueChanged(float NewValue)
+{
+    SetTemperatureValue(NewValue);
+}
+
+void UPUIngredientSlot::UpdateTimeTempSliders()
+{
+    // Sync slider values with ingredient instance
+    if (TimeSlider)
+    {
+        TimeSlider->SetValue(IngredientInstance.TimeValue);
+    }
+    
+    if (TemperatureSlider)
+    {
+        TemperatureSlider->SetValue(IngredientInstance.TemperatureValue);
+    }
+    
+    UpdateTimeLabelText();
+    UpdateTemperatureLabelText();
+}
+
+void UPUIngredientSlot::UpdateSliderVisibility()
+{
+    bool bShouldShow = ShouldShowSliders();
+    
+    if (TimeSlider)
+    {
+        TimeSlider->SetVisibility(bShouldShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+        TimeSlider->SetIsEnabled(bSlidersEnabled && bShouldShow);
+    }
+    
+    if (TemperatureSlider)
+    {
+        TemperatureSlider->SetVisibility(bShouldShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+        TemperatureSlider->SetIsEnabled(bSlidersEnabled && bShouldShow);
+    }
+    
+    if (TimeLabelText)
+    {
+        TimeLabelText->SetVisibility(bShouldShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
+    
+    if (TemperatureLabelText)
+    {
+        TemperatureLabelText->SetVisibility(bShouldShow ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
+}
+
+void UPUIngredientSlot::SetSlidersEnabled(bool bEnabled)
+{
+    bSlidersEnabled = bEnabled;
+    
+    if (TimeSlider)
+    {
+        TimeSlider->SetIsEnabled(bEnabled && ShouldShowSliders());
+    }
+    
+    if (TemperatureSlider)
+    {
+        TemperatureSlider->SetIsEnabled(bEnabled && ShouldShowSliders());
+    }
+}
+
+void UPUIngredientSlot::UpdateTimeLabelText()
+{
+    if (!TimeLabelText) return;
+    
+    ETimeState State = FPUIngredientBase::MapTimeValueToState(IngredientInstance.TimeValue);
+    FString Label;
+    
+    switch (State)
+    {
+        case ETimeState::None:
+            Label = TEXT("None");
+            break;
+        case ETimeState::Low:
+            Label = TEXT("Low");
+            break;
+        case ETimeState::Mid:
+            Label = TEXT("Mid");
+            break;
+        case ETimeState::Long:
+            Label = TEXT("Long");
+            break;
+        default:
+            Label = TEXT("None");
+            break;
+    }
+    
+    TimeLabelText->SetText(FText::FromString(Label));
+}
+
+void UPUIngredientSlot::UpdateTemperatureLabelText()
+{
+    if (!TemperatureLabelText) return;
+    
+    ETemperatureState State = FPUIngredientBase::MapTemperatureValueToState(IngredientInstance.TemperatureValue);
+    FString Label;
+    
+    switch (State)
+    {
+        case ETemperatureState::Raw:
+            Label = TEXT("Raw");
+            break;
+        case ETemperatureState::Low:
+            Label = TEXT("Low");
+            break;
+        case ETemperatureState::Med:
+            Label = TEXT("Med");
+            break;
+        case ETemperatureState::Hot:
+            Label = TEXT("Hot");
+            break;
+        default:
+            Label = TEXT("Raw");
+            break;
+    }
+    
+    TemperatureLabelText->SetText(FText::FromString(Label));
+}
+
+bool UPUIngredientSlot::ShouldShowSliders() const
+{
+    // Show sliders only in ActiveIngredientArea (cooking stage) when we have an ingredient
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        return bHasIngredient && bShowTimeTempSliders;
+    }
+    
+    return false;
+}
+
 
 

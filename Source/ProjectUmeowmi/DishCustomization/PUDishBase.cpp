@@ -20,17 +20,21 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
 {
     if (!IngredientDataTable.IsValid())
     {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::GetIngredient - IngredientDataTable is not valid!"));
         return false;
     }
     
     UDataTable* LoadedIngredientDataTable = IngredientDataTable.LoadSynchronous();
     if (!LoadedIngredientDataTable)
     {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Failed to load IngredientDataTable!"));
         return false;
     }
     
     // Get the ingredient row name from the tag (removes "Ingredient." prefix, converts to lowercase, removes periods)
     FName RowName = UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(IngredientTag);
+    UE_LOG(LogTemp, Display, TEXT("🔍 FPUDishBase::GetIngredient - Looking for tag: %s, RowName: %s"), 
+        *IngredientTag.ToString(), *RowName.ToString());
         
     if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
     {
@@ -66,6 +70,7 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
         return true;
     }
     
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Could not find ingredient row '%s' in data table!"), *RowName.ToString());
     return false;
 }
 
@@ -110,22 +115,17 @@ float FPUDishBase::GetTotalFlavorAspect(const FName& AspectName) const
 {
     float TotalValue = 0.0f;
     
-    // Sum up values from all ingredients (including their preparation modifications)
+    // Sum up values from all ingredients
+    // Use the aspects directly from IngredientData which already includes:
+    // - Base aspects
+    // - Preparation modifications
+    // - Time/temperature modifications
+    // - Quantity multiplication
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        // Get the ingredient with preparations applied
-        FPUIngredientBase PreparedIngredient;
-        if (GetIngredient(Instance.IngredientData.IngredientTag, PreparedIngredient))
-        {
-            float AspectValue = PreparedIngredient.GetFlavorAspect(AspectName);
-            TotalValue += AspectValue * Instance.Quantity;
-        }
-        else
-        {
-            // Fallback to the unprepared data if we can't get the prepared ingredient
-            float FallbackValue = Instance.IngredientData.GetFlavorAspect(AspectName);
-            TotalValue += FallbackValue * Instance.Quantity;
-        }
+        // Use the aspects directly from IngredientData (already calculated with all modifiers and quantity)
+        float AspectValue = Instance.IngredientData.GetFlavorAspect(AspectName);
+        TotalValue += AspectValue * Instance.Quantity;
     }
     
     return TotalValue;
@@ -135,22 +135,17 @@ float FPUDishBase::GetTotalTextureAspect(const FName& AspectName) const
 {
     float TotalValue = 0.0f;
     
-    // Sum up values from all ingredients (including their preparation modifications)
+    // Sum up values from all ingredients
+    // Use the aspects directly from IngredientData which already includes:
+    // - Base aspects
+    // - Preparation modifications
+    // - Time/temperature modifications
+    // - Quantity multiplication
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        // Get the ingredient with preparations applied
-        FPUIngredientBase PreparedIngredient;
-        if (GetIngredient(Instance.IngredientData.IngredientTag, PreparedIngredient))
-        {
-            float AspectValue = PreparedIngredient.GetTextureAspect(AspectName);
-            TotalValue += AspectValue * Instance.Quantity;
-        }
-        else
-        {
-            // Fallback to the unprepared data if we can't get the prepared ingredient
-            float FallbackValue = Instance.IngredientData.GetTextureAspect(AspectName);
-            TotalValue += FallbackValue * Instance.Quantity;
-        }
+        // Use the aspects directly from IngredientData (already calculated with all modifiers and quantity)
+        float AspectValue = Instance.IngredientData.GetTextureAspect(AspectName);
+        TotalValue += AspectValue * Instance.Quantity;
     }
     
     return TotalValue;

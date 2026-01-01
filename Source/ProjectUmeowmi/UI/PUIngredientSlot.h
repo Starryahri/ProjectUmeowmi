@@ -12,6 +12,7 @@ class UButton;
 class UTextBlock;
 class UImage;
 class UPUIngredientQuantityControl;
+class USlider;
 
 // Location enum for ingredient slots
 UENUM(BlueprintType)
@@ -151,6 +152,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
     void LogTextComponentStatus();
 
+
     // Get UI components (Blueprint accessible)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UImage* GetIngredientIcon() const { return IngredientIcon; }
@@ -193,6 +195,31 @@ public:
     // Set the dish customization widget reference (called when slot is created)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     void SetDishCustomizationWidget(class UPUDishCustomizationWidget* InDishWidget);
+
+    // Time/Temperature slider functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
+    void SetTimeValue(float NewTimeValue);
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
+    void SetTemperatureValue(float NewTemperatureValue);
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
+    float GetTimeValue() const { return IngredientInstance.TimeValue; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
+    float GetTemperatureValue() const { return IngredientInstance.TemperatureValue; }
+
+    // Update slider display and labels
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
+    void UpdateTimeTempSliders();
+
+    // Show/hide sliders based on location and ingredient state
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
+    void UpdateSliderVisibility();
+
+    // Enable/disable sliders
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
+    void SetSlidersEnabled(bool bEnabled);
 
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Slot|Events")
@@ -298,6 +325,13 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Drag")
     bool bDragEnabled = true;
 
+    // Time/Temperature slider properties
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Time/Temp")
+    bool bShowTimeTempSliders = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Time/Temp")
+    bool bSlidersEnabled = true;
+
     // Plating-specific properties
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Plating")
     int32 RemainingQuantity = 0;
@@ -311,6 +345,20 @@ protected:
 
     UPROPERTY(meta = (BindWidget))
     UTextBlock* PreparationText;
+
+    // Time/Temperature slider components
+    UPROPERTY(meta = (BindWidget))
+    USlider* TimeSlider;
+
+    UPROPERTY(meta = (BindWidget))
+    USlider* TemperatureSlider;
+
+    // Time/Temperature label text (optional - shows current state)
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* TimeLabelText;
+
+    UPROPERTY(meta = (BindWidget))
+    UTextBlock* TemperatureLabelText;
 
     // Native drag and drop events
     virtual bool NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
@@ -355,6 +403,10 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Slot|Plating")
     void OnPreparationStateChanged();
 
+    // Time/Temperature Blueprint events
+    UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Slot|Time/Temp")
+    void OnTimeTemperatureChanged(float TimeValue, float TemperatureValue);
+
 private:
     // Helper functions
     void UpdateIngredientIcon();
@@ -381,12 +433,28 @@ private:
     FString GetPreparationDisplayText() const;
     FString GetPreparationIconText() const;
 
+    // Time/Temperature helper functions
+    void InitializeTimeTempSliders();
+    void UpdateTimeLabelText();
+    void UpdateTemperatureLabelText();
+    bool ShouldShowSliders() const;
+    
+    // Recalculate aspects from base + time/temp + quantity
+    void RecalculateAspectsFromBase();
+
     // Quantity control event handlers
     UFUNCTION()
     void OnQuantityControlChanged(const FIngredientInstance& InIngredientInstance);
 
     UFUNCTION()
     void OnQuantityControlRemoved(int32 InstanceID, UPUIngredientQuantityControl* InQuantityControlWidget);
+
+    // Time/Temperature slider event handlers
+    UFUNCTION()
+    void OnTimeSliderValueChanged(float NewValue);
+
+    UFUNCTION()
+    void OnTemperatureSliderValueChanged(float NewValue);
 
     // Radial menu event handlers
     UFUNCTION()
