@@ -5,8 +5,17 @@
 #include "Engine/DataTable.h"
 #include "../DishCustomization/PUIngredientBase.h"
 #include "../DishCustomization/PUDishBase.h"
+#include "TimerManager.h"
+#include "Engine/World.h"
 
 UPURadarChart::UPURadarChart()
+    : CurrentFluctuationStep(0)
+    , TotalFluctuationSteps(0)
+    , FluctuationIntensity(0.3f)
+    , FluctuationDuration(0.2f)
+    , SettleDuration(0.5f)
+    , AnimationFps(18)
+    , AnimationEase(EEasingFunc::ExpoOut)
 {
     // Initialize with default segment count
     InitializeSegments();
@@ -597,8 +606,8 @@ void UPURadarChart::SetSegmentIcon(int32 SegmentIndex, UTexture2D* IconTexture)
 
 bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
 {
-    // Minimum 3 segments, but can show more if there are more properties
-    const int32 MIN_SEGMENTS = 3;
+    // Always show all 6 flavor aspects
+    const int32 TOTAL_FLAVOR_ASPECTS = 6;
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Starting flavor profile setup"));
     
@@ -612,19 +621,8 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
         TEXT("Spicy")
     };
     
-    // Check which aspects actually have values
-    TArray<FName> AspectsWithValues;
-    for (const FName& AspectName : FlavorAspectNames)
-    {
-        float AspectValue = Dish.GetTotalFlavorAspect(AspectName);
-        if (AspectValue > 0.0f)
-        {
-            AspectsWithValues.Add(AspectName);
-        }
-    }
-    
-    // Calculate total segments needed (minimum 3, or more if we have more aspects with values)
-    int32 TotalSegments = FMath::Max(MIN_SEGMENTS, AspectsWithValues.Num());
+    // Always show all 6 segments
+    int32 TotalSegments = TOTAL_FLAVOR_ASPECTS;
     
     // CRITICAL: Preserve current RawValues before changing segment count
     // SetSegmentCount calls UpdateValueLayers() which resets RawValues to zero
@@ -658,42 +656,15 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     TArray<float> Values;
     TArray<FString> DisplayNames;
     
-    // Initialize with placeholder values for all segments
-    for (int32 i = 0; i < TotalSegments; ++i)
+    // Always set all 6 flavor aspects, even if they have zero values
+    for (const FName& AspectName : FlavorAspectNames)
     {
-        Values.Add(0.0f); // No value for placeholders
-        DisplayNames.Add(TEXT("???")); // Placeholder text
-    }
-    
-    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Found %d aspects with values"), AspectsWithValues.Num());
-    
-    // Fill in the first slots with actual flavor aspects that have values, leave remaining as placeholders
-    int32 SegmentIndex = 0;
-    for (const FName& AspectName : AspectsWithValues)
-    {
-        if (SegmentIndex < TotalSegments)
-        {
-            float AspectValue = Dish.GetTotalFlavorAspect(AspectName);
-            Values[SegmentIndex] = AspectValue;
-            DisplayNames[SegmentIndex] = AspectName.ToString();
-            
-            UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Set segment %d to %s (Value: %.2f)"), 
-                SegmentIndex, *AspectName.ToString(), AspectValue);
-            
-            SegmentIndex++;
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Too many flavor aspects, skipping %s"), 
-                *AspectName.ToString());
-        }
-    }
-    
-    // Ensure we have exactly the right number of segments with proper names
-    while (DisplayNames.Num() < TotalSegments)
-    {
-        DisplayNames.Add(TEXT("???"));
-        Values.Add(0.0f);
+        float AspectValue = Dish.GetTotalFlavorAspect(AspectName);
+        Values.Add(AspectValue);
+        DisplayNames.Add(AspectName.ToString());
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Set segment %s (Value: %.2f)"), 
+            *AspectName.ToString(), AspectValue);
     }
     
     // Calculate normalization scale based on maximum value
@@ -741,8 +712,8 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
 
 bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
 {
-    // Minimum 3 segments, but can show more if there are more properties
-    const int32 MIN_SEGMENTS = 3;
+    // Always show all 6 texture aspects
+    const int32 TOTAL_TEXTURE_ASPECTS = 6;
     
     UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Starting texture profile setup"));
     
@@ -756,19 +727,8 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
         TEXT("Crumbly")
     };
     
-    // Check which aspects actually have values
-    TArray<FName> AspectsWithValues;
-    for (const FName& AspectName : TextureAspectNames)
-    {
-        float AspectValue = Dish.GetTotalTextureAspect(AspectName);
-        if (AspectValue > 0.0f)
-        {
-            AspectsWithValues.Add(AspectName);
-        }
-    }
-    
-    // Calculate total segments needed (minimum 3, or more if we have more aspects with values)
-    int32 TotalSegments = FMath::Max(MIN_SEGMENTS, AspectsWithValues.Num());
+    // Always show all 6 segments
+    int32 TotalSegments = TOTAL_TEXTURE_ASPECTS;
     
     // CRITICAL: Preserve current RawValues before changing segment count
     // SetSegmentCount calls UpdateValueLayers() which resets RawValues to zero
@@ -802,42 +762,15 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     TArray<float> Values;
     TArray<FString> DisplayNames;
     
-    // Initialize with placeholder values for all segments
-    for (int32 i = 0; i < TotalSegments; ++i)
+    // Always set all 6 texture aspects, even if they have zero values
+    for (const FName& AspectName : TextureAspectNames)
     {
-        Values.Add(0.0f); // No value for placeholders
-        DisplayNames.Add(TEXT("???")); // Placeholder text
-    }
-    
-    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Found %d aspects with values"), AspectsWithValues.Num());
-    
-    // Fill in the first slots with actual texture aspects that have values, leave remaining as placeholders
-    int32 SegmentIndex = 0;
-    for (const FName& AspectName : AspectsWithValues)
-    {
-        if (SegmentIndex < TotalSegments)
-        {
-            float AspectValue = Dish.GetTotalTextureAspect(AspectName);
-            Values[SegmentIndex] = AspectValue;
-            DisplayNames[SegmentIndex] = AspectName.ToString();
-            
-            UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Set segment %d to %s (Value: %.2f)"), 
-                SegmentIndex, *AspectName.ToString(), AspectValue);
-            
-            SegmentIndex++;
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Too many texture aspects, skipping %s"), 
-                *AspectName.ToString());
-        }
-    }
-    
-    // Ensure we have exactly the right number of segments with proper names
-    while (DisplayNames.Num() < TotalSegments)
-    {
-        DisplayNames.Add(TEXT("???"));
-        Values.Add(0.0f);
+        float AspectValue = Dish.GetTotalTextureAspect(AspectName);
+        Values.Add(AspectValue);
+        DisplayNames.Add(AspectName.ToString());
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Set segment %s (Value: %.2f)"), 
+            *AspectName.ToString(), AspectValue);
     }
     
     // Calculate normalization scale based on maximum value
@@ -883,6 +816,200 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     return true;
 }
 
+bool UPURadarChart::SetValuesFromDishFlavorProfileWithFluctuations(
+    const FPUDishBase& Dish,
+    float InFluctuationIntensity,
+    int32 NumFluctuations,
+    float InFluctuationDuration,
+    float InSettleDuration)
+{
+    // Always show all 6 flavor aspects
+    const int32 TOTAL_FLAVOR_ASPECTS = 6;
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Starting flavor profile setup with fluctuations"));
+    
+    // Define all flavor aspects in order (Umami, Salt, Sweet, Sour, Bitter, Spicy)
+    TArray<FName> FlavorAspectNames = {
+        TEXT("Umami"),
+        TEXT("Salt"),
+        TEXT("Sweet"),
+        TEXT("Sour"),
+        TEXT("Bitter"),
+        TEXT("Spicy")
+    };
+    
+    // Always show all 6 segments
+    int32 TotalSegments = TOTAL_FLAVOR_ASPECTS;
+    
+    // CRITICAL: Preserve current RawValues before changing segment count
+    TArray<float> PreservedRawValues;
+    bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
+    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    {
+        PreservedRawValues = ValueLayers[0].RawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Preserving %d current RawValues"), PreservedRawValues.Num());
+    }
+    
+    // Set the number of segments
+    if (!SetSegmentCount(TotalSegments))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Failed to set segment count to %d"), TotalSegments);
+        return false;
+    }
+    
+    // Restore preserved RawValues if segment count didn't change
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    {
+        ValueLayers[0].RawValues = PreservedRawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Restored preserved RawValues"));
+    }
+    
+    // Prepare arrays for values and names
+    TArray<float> Values;
+    TArray<FString> DisplayNames;
+    
+    // Always set all 6 flavor aspects, even if they have zero values
+    for (const FName& AspectName : FlavorAspectNames)
+    {
+        float AspectValue = Dish.GetTotalFlavorAspect(AspectName);
+        Values.Add(AspectValue);
+        DisplayNames.Add(AspectName.ToString());
+    }
+    
+    // Calculate normalization scale based on maximum value
+    const float SCALE_INCREMENT = 25.0f;
+    const float MAX_SCALE = 300.0f;
+    
+    float MaxValue = 0.0f;
+    for (float Value : Values)
+    {
+        if (Value > MaxValue)
+        {
+            MaxValue = Value;
+        }
+    }
+    
+    float NormalizationScale = FMath::Min(FMath::CeilToFloat(MaxValue / SCALE_INCREMENT) * SCALE_INCREMENT, MAX_SCALE);
+    
+    if (MaxValue > 0.0f && NormalizationScale < SCALE_INCREMENT)
+    {
+        NormalizationScale = SCALE_INCREMENT;
+    }
+    
+    // Set the normalization scale for the radar chart with smooth animation
+    SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::ExpoOut);
+    
+    // Set the segment names
+    if (!SetSegmentNames(DisplayNames))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Failed to set segment names"));
+        return false;
+    }
+    
+    // Set the values with fluctuations animation
+    SetValuesWithFluctuations(Values, InFluctuationIntensity, NumFluctuations, InFluctuationDuration, InSettleDuration, 18, EEasingFunc::ExpoOut);
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Completed setup with %d segments"), TotalSegments);
+    return true;
+}
+
+bool UPURadarChart::SetValuesFromDishTextureProfileWithFluctuations(
+    const FPUDishBase& Dish,
+    float InFluctuationIntensity,
+    int32 NumFluctuations,
+    float InFluctuationDuration,
+    float InSettleDuration)
+{
+    // Always show all 6 texture aspects
+    const int32 TOTAL_TEXTURE_ASPECTS = 6;
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Starting texture profile setup with fluctuations"));
+    
+    // Define all texture aspects in order
+    TArray<FName> TextureAspectNames = {
+        TEXT("Rich"),
+        TEXT("Juicy"),
+        TEXT("Tender"),
+        TEXT("Chewy"),
+        TEXT("Crispy"),
+        TEXT("Crumbly")
+    };
+    
+    // Always show all 6 segments
+    int32 TotalSegments = TOTAL_TEXTURE_ASPECTS;
+    
+    // CRITICAL: Preserve current RawValues before changing segment count
+    TArray<float> PreservedRawValues;
+    bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
+    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    {
+        PreservedRawValues = ValueLayers[0].RawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Preserving %d current RawValues"), PreservedRawValues.Num());
+    }
+    
+    // Set the number of segments
+    if (!SetSegmentCount(TotalSegments))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Failed to set segment count to %d"), TotalSegments);
+        return false;
+    }
+    
+    // Restore preserved RawValues if segment count didn't change
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    {
+        ValueLayers[0].RawValues = PreservedRawValues;
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Restored preserved RawValues"));
+    }
+    
+    // Prepare arrays for values and names
+    TArray<float> Values;
+    TArray<FString> DisplayNames;
+    
+    // Always set all 6 texture aspects, even if they have zero values
+    for (const FName& AspectName : TextureAspectNames)
+    {
+        float AspectValue = Dish.GetTotalTextureAspect(AspectName);
+        Values.Add(AspectValue);
+        DisplayNames.Add(AspectName.ToString());
+    }
+    
+    // Calculate normalization scale based on maximum value
+    const float SCALE_INCREMENT = 25.0f;
+    const float MAX_SCALE = 300.0f;
+    
+    float MaxValue = 0.0f;
+    for (float Value : Values)
+    {
+        if (Value > MaxValue)
+        {
+            MaxValue = Value;
+        }
+    }
+    
+    float NormalizationScale = FMath::Min(FMath::CeilToFloat(MaxValue / SCALE_INCREMENT) * SCALE_INCREMENT, MAX_SCALE);
+    
+    if (MaxValue > 0.0f && NormalizationScale < SCALE_INCREMENT)
+    {
+        NormalizationScale = SCALE_INCREMENT;
+    }
+    
+    // Set the normalization scale for the radar chart with smooth animation
+    SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::ExpoOut);
+    
+    // Set the segment names
+    if (!SetSegmentNames(DisplayNames))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Failed to set segment names"));
+        return false;
+    }
+    
+    // Set the values with fluctuations animation
+    SetValuesWithFluctuations(Values, InFluctuationIntensity, NumFluctuations, InFluctuationDuration, InSettleDuration, 18, EEasingFunc::ExpoOut);
+    
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Completed setup with %d segments"), TotalSegments);
+    return true;
+}
+
 void UPURadarChart::InitializeSegments()
 {
     // Clear existing segments
@@ -913,4 +1040,185 @@ void UPURadarChart::UpdateValueLayers()
             Layer.RawValues.Add(0.0f);
         }
     }
+}
+
+void UPURadarChart::SetValuesWithFluctuations(
+    const TArray<float>& InValues,
+    float InFluctuationIntensity,
+    int32 NumFluctuations,
+    float InFluctuationDuration,
+    float InSettleDuration,
+    uint8 Fps,
+    TEnumAsByte<EEasingFunc::Type> Ease)
+{
+    // Validate input array size matches segment count
+    if (InValues.Num() != ChartStyle.Segments.Num())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesWithFluctuations: Input array size (%d) does not match segment count (%d)"), 
+            InValues.Num(), ChartStyle.Segments.Num());
+        return;
+    }
+
+    // Validate that we have valid values (not NaN or infinite)
+    for (int32 i = 0; i < InValues.Num(); ++i)
+    {
+        if (!FMath::IsFinite(InValues[i]))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::SetValuesWithFluctuations: Invalid value at index %d: %f"), i, InValues[i]);
+            return;
+        }
+    }
+
+    // Cancel any existing fluctuation animation
+    CancelFluctuationAnimation();
+
+    // Store parameters
+    FinalTargetValues = InValues;
+    FluctuationIntensity = FMath::Clamp(InFluctuationIntensity, 0.0f, 1.0f);
+    TotalFluctuationSteps = FMath::Max(1, NumFluctuations);
+    FluctuationDuration = FMath::Max(0.05f, InFluctuationDuration);
+    SettleDuration = FMath::Max(0.05f, InSettleDuration);
+    AnimationFps = Fps;
+    AnimationEase = Ease;
+
+    // Reset step counter
+    CurrentFluctuationStep = 0;
+
+    UE_LOG(LogTemp, Log, TEXT("PURadarChart::SetValuesWithFluctuations: Starting fluctuation sequence with %d steps, intensity %.2f"), 
+        TotalFluctuationSteps, FluctuationIntensity);
+
+    // Start the first fluctuation step
+    ProcessFluctuationStep();
+}
+
+void UPURadarChart::CancelFluctuationAnimation()
+{
+    // Clear the timer if it's active
+    if (UWorld* World = GetWorld())
+    {
+        if (FluctuationTimerHandle.IsValid())
+        {
+            World->GetTimerManager().ClearTimer(FluctuationTimerHandle);
+            UE_LOG(LogTemp, Log, TEXT("PURadarChart::CancelFluctuationAnimation: Cancelled ongoing fluctuation animation"));
+        }
+    }
+
+    // Reset state
+    CurrentFluctuationStep = 0;
+    TotalFluctuationSteps = 0;
+    FinalTargetValues.Empty();
+}
+
+void UPURadarChart::ProcessFluctuationStep()
+{
+    if (FinalTargetValues.Num() != ChartStyle.Segments.Num())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PURadarChart::ProcessFluctuationStep: Final values array size mismatch"));
+        CancelFluctuationAnimation();
+        return;
+    }
+
+    // Get current values from the chart
+    TArray<float> CurrentValues;
+    if (ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == ChartStyle.Segments.Num())
+    {
+        CurrentValues = ValueLayers[0].RawValues;
+    }
+    else
+    {
+        // Initialize with zeros if no current values
+        CurrentValues.SetNumZeroed(ChartStyle.Segments.Num());
+    }
+
+    TArray<float> TargetValues;
+    float AnimationDuration;
+
+    if (CurrentFluctuationStep < TotalFluctuationSteps)
+    {
+        // Generate random fluctuation values
+        TargetValues = GenerateFluctuationValues(FinalTargetValues, FluctuationIntensity);
+        AnimationDuration = FluctuationDuration;
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::ProcessFluctuationStep: Step %d/%d - Fluctuating"), 
+            CurrentFluctuationStep + 1, TotalFluctuationSteps);
+    }
+    else
+    {
+        // Final step: settle on target values
+        TargetValues = FinalTargetValues;
+        AnimationDuration = SettleDuration;
+        
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::ProcessFluctuationStep: Final step - Settling on target values"));
+    }
+
+    // Animate to the target values
+    SetValuesAnimated(TargetValues, AnimationDuration, AnimationFps, AnimationEase);
+
+    // Schedule next step
+    CurrentFluctuationStep++;
+    
+    if (CurrentFluctuationStep <= TotalFluctuationSteps)
+    {
+        // Calculate delay: use the animation duration plus a small buffer
+        float Delay = AnimationDuration + 0.05f;
+        
+        if (UWorld* World = GetWorld())
+        {
+            World->GetTimerManager().SetTimer(
+                FluctuationTimerHandle,
+                this,
+                &UPURadarChart::ProcessFluctuationStep,
+                Delay,
+                false
+            );
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("PURadarChart::ProcessFluctuationStep: No valid world, cannot schedule next step"));
+            CancelFluctuationAnimation();
+        }
+    }
+    else
+    {
+        // Animation sequence complete
+        UE_LOG(LogTemp, Log, TEXT("PURadarChart::ProcessFluctuationStep: Fluctuation sequence complete"));
+        CancelFluctuationAnimation();
+    }
+}
+
+TArray<float> UPURadarChart::GenerateFluctuationValues(const TArray<float>& FinalValues, float Intensity)
+{
+    TArray<float> FluctuationValues;
+    FluctuationValues.Reserve(FinalValues.Num());
+
+    for (int32 i = 0; i < FinalValues.Num(); ++i)
+    {
+        float FinalValue = FinalValues[i];
+        
+        // Calculate fluctuation range based on intensity
+        // For zero values, allow positive fluctuation
+        // For non-zero values, fluctuate around the value
+        float FluctuationRange;
+        if (FinalValue <= 0.0f)
+        {
+            // For zero values, allow fluctuation up to intensity * 50 (reasonable max)
+            FluctuationRange = Intensity * 50.0f;
+        }
+        else
+        {
+            // For non-zero values, fluctuate by percentage of the value
+            FluctuationRange = FinalValue * Intensity;
+        }
+
+        // Generate random fluctuation: -Range to +Range
+        float RandomOffset = FMath::RandRange(-FluctuationRange, FluctuationRange);
+        float FluctuatedValue = FinalValue + RandomOffset;
+
+        // Clamp to ensure non-negative (radar chart values shouldn't be negative)
+        FluctuatedValue = FMath::Max(0.0f, FluctuatedValue);
+
+        FluctuationValues.Add(FluctuatedValue);
+    }
+
+    return FluctuationValues;
 } 
