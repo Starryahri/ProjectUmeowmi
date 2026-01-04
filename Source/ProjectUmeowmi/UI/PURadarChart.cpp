@@ -7,6 +7,8 @@
 #include "../DishCustomization/PUDishBase.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Widget.h"
 
 UPURadarChart::UPURadarChart()
     : CurrentFluctuationStep(0)
@@ -1109,6 +1111,11 @@ void UPURadarChart::CancelFluctuationAnimation()
     FinalTargetValues.Empty();
 }
 
+bool UPURadarChart::IsFluctuationAnimationInProgress() const
+{
+    return FluctuationTimerHandle.IsValid() && TotalFluctuationSteps > 0;
+}
+
 void UPURadarChart::ProcessFluctuationStep()
 {
     if (FinalTargetValues.Num() != ChartStyle.Segments.Num())
@@ -1182,6 +1189,13 @@ void UPURadarChart::ProcessFluctuationStep()
     {
         // Animation sequence complete
         UE_LOG(LogTemp, Log, TEXT("PURadarChart::ProcessFluctuationStep: Fluctuation sequence complete"));
+        
+        // Broadcast the completion delegate
+        OnFluctuationAnimationComplete.Broadcast();
+        
+        // Call the Blueprint implementable event
+        OnFluctuationAnimationCompleteEvent();
+        
         CancelFluctuationAnimation();
     }
 }
@@ -1221,4 +1235,61 @@ TArray<float> UPURadarChart::GenerateFluctuationValues(const TArray<float>& Fina
     }
 
     return FluctuationValues;
+}
+
+UPURadarChart* UPURadarChart::FindRadarChartInWidget(UWidget* ParentWidget)
+{
+    if (!ParentWidget)
+    {
+        return nullptr;
+    }
+
+    // Try to cast the parent widget directly
+    if (UPURadarChart* RadarChart = Cast<UPURadarChart>(ParentWidget))
+    {
+        return RadarChart;
+    }
+
+    // If it's a UserWidget, search in its widget tree
+    if (UUserWidget* UserWidget = Cast<UUserWidget>(ParentWidget))
+    {
+        if (UWidgetTree* WidgetTree = UserWidget->WidgetTree)
+        {
+            // Search all widgets in the tree
+            TArray<UWidget*> AllWidgets;
+            WidgetTree->GetAllWidgets(AllWidgets);
+            
+            for (UWidget* Widget : AllWidgets)
+            {
+                if (UPURadarChart* RadarChart = Cast<UPURadarChart>(Widget))
+                {
+                    return RadarChart;
+                }
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+bool UPURadarChart::AreAllRadarChartsAnimationComplete(const TArray<UPURadarChart*>& RadarCharts)
+{
+    // If array is empty, consider it "complete" (nothing to wait for)
+    if (RadarCharts.Num() == 0)
+    {
+        return true;
+    }
+
+    // Check each radar chart - all must be complete
+    for (UPURadarChart* RadarChart : RadarCharts)
+    {
+        if (RadarChart && RadarChart->IsFluctuationAnimationInProgress())
+        {
+            // At least one is still animating
+            return false;
+        }
+    }
+
+    // All are complete (or null)
+    return true;
 } 

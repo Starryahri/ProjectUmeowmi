@@ -9,6 +9,11 @@
 #include "PURadarChart.generated.h"
 
 /**
+ * Delegate called when a fluctuation animation sequence completes.
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFluctuationAnimationComplete);
+
+/**
  * Custom radar chart widget that extends URadarChart with additional functionality
  * for managing segments and values.
  */
@@ -190,6 +195,54 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "Radar Chart")
     void CancelFluctuationAnimation();
+
+    /**
+     * Checks if a fluctuation animation is currently in progress.
+     * @return True if an animation is currently playing
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool IsFluctuationAnimationInProgress() const;
+
+    /**
+     * Helper function to find a PURadarChart widget in a parent widget.
+     * Useful for finding the radar chart from a parent widget blueprint.
+     * @param ParentWidget - The parent widget to search in
+     * @return The first PURadarChart found, or nullptr if not found
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Radar Chart|Helpers", meta = (CallInEditor = "true"))
+    static class UPURadarChart* FindRadarChartInWidget(class UWidget* ParentWidget);
+
+    /**
+     * Gets a reference to this radar chart widget.
+     * Useful for getting a reference in Blueprints when you have the widget but need to cast it.
+     * @return A reference to this radar chart widget
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Radar Chart|Helpers")
+    class UPURadarChart* GetRadarChart() { return this; }
+
+    /**
+     * Checks if all radar charts in the provided array have finished their animations.
+     * Useful for waiting for multiple radar chart animations to complete.
+     * @param RadarCharts - Array of radar chart widgets to check
+     * @return True if all radar charts have finished their animations (or array is empty)
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Radar Chart|Helpers")
+    static bool AreAllRadarChartsAnimationComplete(const TArray<class UPURadarChart*>& RadarCharts);
+
+    /**
+     * Event called when a fluctuation animation sequence completes.
+     * Bind to this in Blueprints to execute code after the animation finishes.
+     */
+    UPROPERTY(BlueprintAssignable, Category = "Radar Chart|Events")
+    FOnFluctuationAnimationComplete OnFluctuationAnimationComplete;
+
+    /**
+     * Blueprint event that can be overridden in widget blueprints.
+     * Called when a fluctuation animation sequence completes.
+     * Override this in your widget blueprint to handle the completion.
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "Radar Chart|Events")
+    void OnFluctuationAnimationCompleteEvent();
 
 protected:
     /** Minimum number of segments allowed in the radar chart */
