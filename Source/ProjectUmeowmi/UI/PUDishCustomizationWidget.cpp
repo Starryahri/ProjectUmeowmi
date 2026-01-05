@@ -363,7 +363,25 @@ void UPUDishCustomizationWidget::GoToNextStage()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("🚫 PUDishCustomizationWidget::GoToNextStage - Next stage class is not set"));
+        UE_LOG(LogTemp, Display, TEXT("✅ PUDishCustomizationWidget::GoToNextStage - No next stage, ending customization"));
+        
+        // Remove current widget from viewport
+        if (IsInViewport())
+        {
+            RemoveFromViewport();
+            UE_LOG(LogTemp, Display, TEXT("✅ PUDishCustomizationWidget::GoToNextStage - Removed widget from viewport"));
+        }
+        
+        // End customization through the component
+        if (CustomizationComponent)
+        {
+            UE_LOG(LogTemp, Display, TEXT("✅ PUDishCustomizationWidget::GoToNextStage - Calling EndCustomization on component"));
+            CustomizationComponent->EndCustomization();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::GoToNextStage - No customization component available to end customization"));
+        }
     }
 }
 
@@ -2306,16 +2324,20 @@ void UPUDishCustomizationWidget::OnPantryButtonClicked()
 
 void UPUDishCustomizationWidget::OnEmptySlotClicked(UPUIngredientSlot* IngredientSlot)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnEmptySlotClicked - Empty slot clicked in active ingredient area"));
+    UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnEmptySlotClicked - Empty slot clicked (Location: %d)"), 
+        IngredientSlot ? (int32)IngredientSlot->GetLocation() : -1);
     
     if (!IngredientSlot)
     {
         return;
     }
     
-    // Only handle empty slots in the active ingredient area
-    if (IngredientSlot->GetLocation() != EPUIngredientSlotLocation::ActiveIngredientArea)
+    // Only handle empty slots in the active ingredient area or prep area
+    if (IngredientSlot->GetLocation() != EPUIngredientSlotLocation::ActiveIngredientArea && 
+        IngredientSlot->GetLocation() != EPUIngredientSlotLocation::Prep)
     {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::OnEmptySlotClicked - Ignoring empty slot click (Location: %d is not ActiveIngredientArea or Prep)"), 
+            (int32)IngredientSlot->GetLocation());
         return;
     }
     

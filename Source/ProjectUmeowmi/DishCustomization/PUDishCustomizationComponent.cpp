@@ -1604,6 +1604,14 @@ void UPUDishCustomizationComponent::EndPlatingStage()
     // Set plating mode to false
     SetPlatingMode(false);
 
+    // Remove the plating widget from viewport
+    if (CustomizationWidget)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Removing plating widget from viewport"));
+        CustomizationWidget->RemoveFromParent();
+        CustomizationWidget = nullptr;
+    }
+
     // Restore the original widget class
     if (OriginalWidgetClass)
     {
@@ -1656,10 +1664,9 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
     }
 
     // Use the WorldPosition that was already converted from screen coordinates
-    // Add an offset above the surface to ensure ingredients are clearly visible and clickable
+    // Add an offset above the surface to ensure ingredients are visible and clickable
     // Since ingredients have physics, they'll settle naturally on the surface
-    // Use a larger offset to ensure they're above the bowl and can be picked up
-    FVector SpawnPosition = WorldPosition + FVector(0, 0, 30); // Offset above the surface for visibility and clickability
+    FVector SpawnPosition = WorldPosition + FVector(0, 0, 20); // Offset above the surface for visibility and clickability
 
     // Spawn the interactive ingredient mesh actor
     FActorSpawnParameters SpawnParams;

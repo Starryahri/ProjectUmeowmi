@@ -4,6 +4,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/TextBlock.h"
 #include "Components/Slider.h"
+#include "Components/StaticMeshComponent.h"
 #include "Blueprint/WidgetTree.h"
 #include "Engine/Texture2D.h"
 #include "PUIngredientQuantityControl.h"
@@ -19,6 +20,7 @@
 #include "GameplayTagContainer.h"
 #include "PURadialMenu.h"
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
+#include "Framework/Application/SlateApplication.h"
 
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -53,8 +55,11 @@ void UPUIngredientSlot::NativeConstruct()
     }
     else
     {
-        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Cached dish widget already set: %s"), 
-            *CachedDishWidget.Get()->GetName());
+        if (UPUDishCustomizationWidget* DishWidget = CachedDishWidget.Get())
+        {
+            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Cached dish widget already set: %s"), 
+                *DishWidget->GetName());
+        }
     }
 
     // Hide hover text by default
@@ -103,21 +108,64 @@ void UPUIngredientSlot::NativeConstruct()
 
 void UPUIngredientSlot::NativeDestruct()
 {
+    // Clean up quantity control widget delegate bindings
+    if (QuantityControlWidget && IsValid(QuantityControlWidget) && bQuantityControlEventsBound)
+    {
+        QuantityControlWidget->OnQuantityControlChanged.RemoveDynamic(this, &UPUIngredientSlot::OnQuantityControlChanged);
+        QuantityControlWidget->OnQuantityControlRemoved.RemoveDynamic(this, &UPUIngredientSlot::OnQuantityControlRemoved);
+        bQuantityControlEventsBound = false;
+    }
+
     // Clean up quantity control widget
     if (QuantityControlWidget)
     {
-        if (QuantityControlContainer)
+        if (QuantityControlContainer && IsValid(QuantityControlContainer))
         {
             QuantityControlContainer->RemoveChild(QuantityControlWidget);
+        }
+        if (IsValid(QuantityControlWidget))
+        {
+            QuantityControlWidget->RemoveFromParent();
         }
         QuantityControlWidget = nullptr;
     }
 
-    // Clean up radial menu widget (stubbed)
+    // Clean up radial menu widget delegate bindings
+    if (RadialMenuWidget && IsValid(RadialMenuWidget) && bRadialMenuEventsBound)
+    {
+        RadialMenuWidget->OnMenuItemSelected.RemoveDynamic(this, &UPUIngredientSlot::OnRadialMenuItemSelected);
+        RadialMenuWidget->OnMenuClosed.RemoveDynamic(this, &UPUIngredientSlot::OnRadialMenuClosed);
+        bRadialMenuEventsBound = false;
+    }
+
+    // Clean up radial menu widget
     if (RadialMenuWidget)
     {
+        if (RadialMenuContainer && IsValid(RadialMenuContainer))
+        {
+            RadialMenuContainer->RemoveChild(RadialMenuWidget);
+        }
+        if (IsValid(RadialMenuWidget))
+        {
+            RadialMenuWidget->RemoveFromParent();
+        }
         RadialMenuWidget = nullptr;
     }
+
+    // Clean up time/temperature slider delegate bindings
+    if (TimeSlider && IsValid(TimeSlider) && TimeSlider->OnValueChanged.IsBound())
+    {
+        TimeSlider->OnValueChanged.RemoveDynamic(this, &UPUIngredientSlot::OnTimeSliderValueChanged);
+    }
+
+    if (TemperatureSlider && IsValid(TemperatureSlider) && TemperatureSlider->OnValueChanged.IsBound())
+    {
+        TemperatureSlider->OnValueChanged.RemoveDynamic(this, &UPUIngredientSlot::OnTemperatureSliderValueChanged);
+    }
+
+    // Clear external container reference to prevent invalid pointer access during GC
+    // Note: QuantityControlContainer is a BindWidget property, so it's managed by the widget tree
+    RadialMenuContainer = nullptr;
 
     Super::NativeDestruct();
 }
@@ -211,8 +259,8 @@ void UPUIngredientSlot::ClearSlot()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Clearing slot: %s"), *GetName());
 
-    // If we're in active ingredient area and have an ingredient with preparations, remove the prepped slot
-    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && bHasIngredient && IngredientInstance.Preparations.Num() > 0)
+    // If we're in prep or active ingredient area and have an ingredient with preparations, remove the prepped slot
+    if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient && IngredientInstance.Preparations.Num() > 0)
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Removing prepped slot for ingredient with preparations"));
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
@@ -289,6 +337,7 @@ void UPUIngredientSlot::UpdateDisplay()
     {
         UpdateIngredientIcon();
         UpdatePrepIcons();
+        UpdatePrepBowls();
         UpdateQuantityControl();
         UpdateSliderVisibility();
         
@@ -296,8 +345,23 @@ void UPUIngredientSlot::UpdateDisplay()
         UpdateQuantityDisplay();
         UpdatePreparationDisplay();
         
-        // FORCE quantity control to be visible in cooking stage after UpdateDisplay (but NOT in plating mode)
-        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        // Handle PlateBackground visibility based on location
+        if (PlateBackground)
+        {
+            if (Location == EPUIngredientSlotLocation::Prepped || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+            {
+                // Hide PlateBackground for Prepped and ActiveIngredientArea locations (prep bowls are shown instead)
+                PlateBackground->SetVisibility(ESlateVisibility::Collapsed);
+            }
+            else
+            {
+                // Show PlateBackground for other locations
+                PlateBackground->SetVisibility(ESlateVisibility::Visible);
+            }
+        }
+        
+        // FORCE quantity control to be visible in cooking stage (ActiveIngredientArea) and prep stage after UpdateDisplay (but NOT in plating mode)
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prep)
         {
             bool bIsPlatingMode = false;
             if (UPUDishCustomizationComponent* Component = GetDishCustomizationComponent())
@@ -311,12 +375,14 @@ void UPUIngredientSlot::UpdateDisplay()
                 if (QuantityControlWidget)
                 {
                     QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlWidget to Visible in cooking stage"));
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlWidget to Visible in %s stage"), 
+                        Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
                 }
                 if (QuantityControlContainer)
                 {
                     QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlContainer to Visible in cooking stage"));
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlContainer to Visible in %s stage"), 
+                        Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
                 }
             }
             else
@@ -430,6 +496,91 @@ UTexture2D* UPUIngredientSlot::GetPreparationTexture(const FGameplayTag& Prepara
     }
     
     return nullptr;
+}
+
+void UPUIngredientSlot::UpdatePrepBowls()
+{
+    // Update prep bowls for Prepped and ActiveIngredientArea location slots
+    if (Location != EPUIngredientSlotLocation::Prepped && Location != EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        // Hide prep bowls for other locations
+        if (PrepBowlFront) PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
+        if (PrepBowlBack) PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
+        return;
+    }
+
+    // Check if we have valid texture arrays
+    if (PrepBowlFrontTextures.Num() == 0 || PrepBowlBackTextures.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepBowls - Prep bowl texture arrays are empty (Front: %d, Back: %d)"),
+            PrepBowlFrontTextures.Num(), PrepBowlBackTextures.Num());
+        // Hide prep bowls if no textures available
+        if (PrepBowlFront) PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
+        if (PrepBowlBack) PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
+        return;
+    }
+
+    // Select textures based on random flag
+    UTexture2D* SelectedFrontTexture = nullptr;
+    UTexture2D* SelectedBackTexture = nullptr;
+
+    if (bUseRandomPrepBowls)
+    {
+        // Random selection: any front with any back
+        int32 FrontIndex = FMath::RandRange(0, PrepBowlFrontTextures.Num() - 1);
+        int32 BackIndex = FMath::RandRange(0, PrepBowlBackTextures.Num() - 1);
+        
+        SelectedFrontTexture = PrepBowlFrontTextures[FrontIndex];
+        SelectedBackTexture = PrepBowlBackTextures[BackIndex];
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Random selection (Front: %d, Back: %d)"),
+            FrontIndex, BackIndex);
+    }
+    else
+    {
+        // Paired selection: use same index from both arrays
+        // Use the minimum length to ensure we have valid pairs
+        int32 MaxIndex = FMath::Min(PrepBowlFrontTextures.Num(), PrepBowlBackTextures.Num()) - 1;
+        int32 SelectedIndex = FMath::RandRange(0, MaxIndex);
+        
+        SelectedFrontTexture = PrepBowlFrontTextures[SelectedIndex];
+        SelectedBackTexture = PrepBowlBackTextures[SelectedIndex];
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Paired selection (Index: %d)"),
+            SelectedIndex);
+    }
+
+    // Set front bowl texture and visibility
+    if (PrepBowlFront)
+    {
+        if (SelectedFrontTexture)
+        {
+            PrepBowlFront->SetBrushFromTexture(SelectedFrontTexture);
+            PrepBowlFront->SetVisibility(ESlateVisibility::Visible);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set front bowl texture: %s"),
+                *SelectedFrontTexture->GetName());
+        }
+        else
+        {
+            PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+
+    // Set back bowl texture and visibility
+    if (PrepBowlBack)
+    {
+        if (SelectedBackTexture)
+        {
+            PrepBowlBack->SetBrushFromTexture(SelectedBackTexture);
+            PrepBowlBack->SetVisibility(ESlateVisibility::Visible);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set back bowl texture: %s"),
+                *SelectedBackTexture->GetName());
+        }
+        else
+        {
+            PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
 }
 
 void UPUIngredientSlot::UpdatePrepIcons()
@@ -610,8 +761,8 @@ void UPUIngredientSlot::UpdateQuantityControl()
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget EXISTS, Location: %d (ActiveIngredientArea=%d)"),
             (int32)Location, (int32)EPUIngredientSlotLocation::ActiveIngredientArea);
         
-        // Hide quantity control in plating mode, prep, and pantry stages
-        // Show it in cooking stage (ActiveIngredientArea) but NOT in plating mode
+        // Hide quantity control in plating mode, pantry, and prepped stages
+        // Show it in cooking stage (ActiveIngredientArea) and prep stage, but NOT in plating mode
         bool bIsPlatingMode = false;
         if (UPUDishCustomizationComponent* Component = GetDishCustomizationComponent())
         {
@@ -620,7 +771,6 @@ void UPUIngredientSlot::UpdateQuantityControl()
         
         if (bIsPlatingMode || 
             Location == EPUIngredientSlotLocation::Plating || 
-            Location == EPUIngredientSlotLocation::Prep || 
             Location == EPUIngredientSlotLocation::Pantry ||
             Location == EPUIngredientSlotLocation::Prepped)
         {
@@ -634,7 +784,7 @@ void UPUIngredientSlot::UpdateQuantityControl()
             return;
         }
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - SHOWING quantity control (Location: %d = ActiveIngredientArea)"), (int32)Location);
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - SHOWING quantity control (Location: %d)"), (int32)Location);
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Setting ingredient instance on quantity control"));
         UE_LOG(LogTemp, Display, TEXT("🎯   Slot Instance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d, HasIngredient: %s"),
             IngredientInstance.InstanceID,
@@ -693,26 +843,32 @@ void UPUIngredientSlot::ClearDisplay()
     if (PrepIcon2) PrepIcon2->SetVisibility(ESlateVisibility::Collapsed);
     if (SuspiciousIcon) SuspiciousIcon->SetVisibility(ESlateVisibility::Collapsed);
 
+    // Hide prep bowls
+    if (PrepBowlFront) PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
+    if (PrepBowlBack) PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
+
     // Hide hover text
     if (HoverText)
     {
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
-    // DON'T remove quantity control in cooking stage (ActiveIngredientArea) - just hide it
+    // DON'T remove quantity control in cooking stage (ActiveIngredientArea) or prep stage - just hide it
     // Only remove it completely in other stages
-    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prep)
     {
-        // In cooking stage, just hide it, don't remove it
+        // In cooking stage or prep stage, just hide it, don't remove it
         if (QuantityControlWidget)
         {
             QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control in cooking stage (not removing)"));
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control in %s stage (not removing)"), 
+                Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
         }
         if (QuantityControlContainer)
         {
             QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control container in cooking stage (not removing)"));
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control container in %s stage (not removing)"), 
+                Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
         }
     }
     else
@@ -849,8 +1005,8 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Drop on slot: %s (Ingredient: %s, Location: %d, Empty: %s)"),
             *GetName(), *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
 
-        // In cooking stage, handle both empty slots (move) and occupied slots (swap)
-        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        // In cooking stage (ActiveIngredientArea) or prep stage (Prep), handle both empty slots (move) and occupied slots (swap)
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prep)
         {
             // SAFETY CHECK: If InstanceID is 0, this is from pantry - generate new GUID and set quantity to 1
             if (IngredientDragOp->IngredientInstance.InstanceID == 0)
@@ -965,7 +1121,8 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                         SourceInstance.InstanceID,
                         SourceSlot->IsEmpty() ? TEXT("FALSE") : TEXT("TRUE"));
                     
-                    if (SourceSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea &&
+                    if ((SourceSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea || 
+                         SourceSlot->GetLocation() == EPUIngredientSlotLocation::Prep) &&
                         SourceInstance.InstanceID == IngredientDragOp->IngredientInstance.InstanceID &&
                         !SourceSlot->IsEmpty())
                     {
@@ -1084,9 +1241,11 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     // If drag is enabled and we have an ingredient, don't handle left clicks here
     // Let the drag system handle it (NativeOnPreviewMouseButtonDown will handle drag)
     // BUT: Don't do this for pantry slots - we want clicks to work for selection
+    // AND: Don't do this for prep slots - we want clicks to work for menu access
     // AND: Don't do this if Shift is pressed (Shift+Click shows menu instead)
     bool bShiftPressed = InMouseEvent.IsShiftDown();
-    if (Location != EPUIngredientSlotLocation::Pantry && bDragEnabled && bHasIngredient && 
+    if (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && 
+        bDragEnabled && bHasIngredient && 
         InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed)
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Drag enabled, letting drag system handle left click"));
@@ -1109,12 +1268,18 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     {
         // Show prep menu if:
         // 1. Drag is disabled, OR
-        // 2. Shift is held down (allows menu access even when drag is enabled)
-        if (!bDragEnabled || bShiftPressed)
+        // 2. Shift is held down (allows menu access even when drag is enabled), OR
+        // 3. This is a Prep slot (Prep slots always show menu on click, even with drag enabled)
+        bool bShouldShowMenu = !bDragEnabled || bShiftPressed || Location == EPUIngredientSlotLocation::Prep;
+        if (bShouldShowMenu)
         {
             if (bShiftPressed)
             {
                 UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Shift+Left click, showing prep radial menu (drag enabled but using modifier)"));
+            }
+            else if (Location == EPUIngredientSlotLocation::Prep)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click on Prep slot, showing prep radial menu"));
             }
             else
             {
@@ -1127,16 +1292,23 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     }
     else if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
-        // Right click - show actions radial menu
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click, showing actions radial menu"));
-        ShowRadialMenu(false);
+        // Right click - show combined menu (preparations + actions)
+        // Disable right-click menu in ActiveIngredientArea
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click disabled in ActiveIngredientArea"));
+            return FReply::Unhandled();
+        }
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click, showing combined radial menu"));
+        ShowRadialMenu(true, true); // bIsPrepMenu=true, bIncludeActions=true
         return FReply::Handled();
     }
 
     return FReply::Unhandled();
 }
 
-void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
+void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
 {
     if (IsEmpty())
     {
@@ -1144,8 +1316,8 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Showing radial menu (Prep: %s)"),
-        bIsPrepMenu ? TEXT("TRUE") : TEXT("FALSE"));
+    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Showing radial menu (Prep: %s, IncludeActions: %s)"),
+        bIsPrepMenu ? TEXT("TRUE") : TEXT("FALSE"), bIncludeActions ? TEXT("TRUE") : TEXT("FALSE"));
 
     if (!RadialMenuWidgetClass)
     {
@@ -1178,10 +1350,10 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
     // Get the slot's screen position
     FVector2D SlotScreenPosition = GetSlotScreenPosition();
     
-    // Set preparation data table on radial menu widget if we have one (for prep menu)
+    // Set preparation data table on radial menu widget if we have one (for prep menu or combined menu)
     // This allows the radial menu to have its own data table reference that can be set in Blueprint
     // If the radial menu doesn't have one set, use the slot's preparation data table
-    if (bIsPrepMenu && RadialMenuWidget)
+    if ((bIsPrepMenu || bIncludeActions) && RadialMenuWidget)
     {
         // Only set if radial menu doesn't already have one (allows Blueprint override)
         if (!RadialMenuWidget->GetPreparationDataTable() && PreparationDataTable)
@@ -1190,14 +1362,22 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
         }
     }
     
-    // Build menu items based on bIsPrepMenu
+    // Build menu items - combine prep and actions if requested
     TArray<FRadialMenuItem> MenuItems;
     
     if (bIsPrepMenu)
     {
         MenuItems = BuildPreparationMenuItems();
     }
-    else
+    
+    if (bIncludeActions)
+    {
+        TArray<FRadialMenuItem> ActionItems = BuildActionMenuItems();
+        MenuItems.Append(ActionItems);
+    }
+    
+    // If neither prep nor actions, fall back to just prep (for backward compatibility)
+    if (!bIsPrepMenu && !bIncludeActions)
     {
         MenuItems = BuildActionMenuItems();
     }
@@ -1209,7 +1389,7 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
     }
 
     // Add to container if available, otherwise add to viewport (do this BEFORE setting menu items)
-    if (RadialMenuContainer)
+    if (RadialMenuContainer && IsValid(RadialMenuContainer) && RadialMenuWidget && IsValid(RadialMenuWidget))
     {
         // Add to container first (if not already added)
         if (!RadialMenuWidget->GetParent())
@@ -1219,53 +1399,73 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu)
         }
         
         // Get container size - use multiple methods to ensure we get valid size
-        FVector2D ContainerSize = RadialMenuContainer->GetDesiredSize();
-        if (ContainerSize.X == 0 || ContainerSize.Y == 0)
+        // Re-check validity before each access since GC might invalidate it
+        if (IsValid(RadialMenuContainer))
         {
-            FGeometry ContainerGeometry = RadialMenuContainer->GetCachedGeometry();
-            if (ContainerGeometry.GetLocalSize().X > 0 && ContainerGeometry.GetLocalSize().Y > 0)
+            FVector2D ContainerSize = RadialMenuContainer->GetDesiredSize();
+            if (ContainerSize.X == 0 || ContainerSize.Y == 0)
             {
-                ContainerSize = ContainerGeometry.GetLocalSize();
+                if (IsValid(RadialMenuContainer))
+                {
+                    FGeometry ContainerGeometry = RadialMenuContainer->GetCachedGeometry();
+                    if (ContainerGeometry.GetLocalSize().X > 0 && ContainerGeometry.GetLocalSize().Y > 0)
+                    {
+                        ContainerSize = ContainerGeometry.GetLocalSize();
+                    }
+                    else if (ContainerGeometry.GetAbsoluteSize().X > 0 && ContainerGeometry.GetAbsoluteSize().Y > 0)
+                    {
+                        ContainerSize = ContainerGeometry.GetAbsoluteSize();
+                    }
+                }
             }
-            else if (ContainerGeometry.GetAbsoluteSize().X > 0 && ContainerGeometry.GetAbsoluteSize().Y > 0)
+            
+            // If we have container size, use container center directly (more reliable than converting screen position)
+            if (ContainerSize.X > 0 && ContainerSize.Y > 0)
             {
-                ContainerSize = ContainerGeometry.GetAbsoluteSize();
+                FVector2D ContainerCenter = ContainerSize * 0.5f;
+                
+                // Set menu items and show at container center
+                if (RadialMenuWidget && IsValid(RadialMenuWidget))
+                {
+                    RadialMenuWidget->SetMenuItems(MenuItems);
+                    RadialMenuWidget->ShowMenuAtPosition(ContainerCenter);
+                }
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Using container center: (%.2f, %.2f)"), 
+                    ContainerCenter.X, ContainerCenter.Y);
             }
-        }
-        
-        // If we have container size, use container center directly (more reliable than converting screen position)
-        if (ContainerSize.X > 0 && ContainerSize.Y > 0)
-        {
-            FVector2D ContainerCenter = ContainerSize * 0.5f;
-            
-            // Set menu items and show at container center
-            RadialMenuWidget->SetMenuItems(MenuItems);
-            RadialMenuWidget->ShowMenuAtPosition(ContainerCenter);
-            
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Using container center: (%.2f, %.2f)"), 
-                ContainerCenter.X, ContainerCenter.Y);
-        }
-        else
-        {
-            // Fallback: try to convert screen position to container-relative
-            FGeometry ContainerGeometry = RadialMenuContainer->GetCachedGeometry();
-            FVector2D ContainerScreenPosition = ContainerGeometry.GetAbsolutePosition();
-            FVector2D ContainerRelativePosition = SlotScreenPosition - ContainerScreenPosition;
-            
-            // Set menu items and show
-            RadialMenuWidget->SetMenuItems(MenuItems);
-            RadialMenuWidget->ShowMenuAtPosition(ContainerRelativePosition);
-            
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Container size not available, using converted position"));
+            else if (IsValid(RadialMenuContainer))
+            {
+                // Fallback: try to convert screen position to container-relative
+                FGeometry ContainerGeometry = RadialMenuContainer->GetCachedGeometry();
+                FVector2D ContainerScreenPosition = ContainerGeometry.GetAbsolutePosition();
+                FVector2D ContainerRelativePosition = SlotScreenPosition - ContainerScreenPosition;
+                
+                // Set menu items and show
+                if (RadialMenuWidget && IsValid(RadialMenuWidget))
+                {
+                    RadialMenuWidget->SetMenuItems(MenuItems);
+                    RadialMenuWidget->ShowMenuAtPosition(ContainerRelativePosition);
+                }
+                
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Container size not available, using converted position"));
+            }
         }
     }
     else
     {
         // Fallback to viewport if no container
         // Set menu items and show
-        RadialMenuWidget->SetMenuItems(MenuItems);
-        RadialMenuWidget->ShowMenuAtPosition(SlotScreenPosition);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - No container set, added to viewport"));
+        if (RadialMenuWidget && IsValid(RadialMenuWidget))
+        {
+            RadialMenuWidget->SetMenuItems(MenuItems);
+            RadialMenuWidget->ShowMenuAtPosition(SlotScreenPosition);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - No container set, added to viewport"));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - RadialMenuWidget is invalid!"));
+        }
     }
     
     bRadialMenuVisible = true;
@@ -1679,7 +1879,8 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     
     // Check if the click is on the quantity control widget - if so, let it handle the click
     // This prevents drag detection from interfering with button clicks
-    if (QuantityControlWidget && QuantityControlWidget->GetVisibility() == ESlateVisibility::Visible && QuantityControlContainer)
+    // Only do this if we have an ingredient (empty slots should allow clicks to open pantry)
+    if (bHasIngredient && QuantityControlWidget && QuantityControlWidget->GetVisibility() == ESlateVisibility::Visible && QuantityControlContainer)
     {
         // Get the quantity control container's geometry
         FGeometry ContainerGeometry = QuantityControlContainer->GetCachedGeometry();
@@ -1703,8 +1904,10 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     
     // Only handle left mouse button and only if drag is enabled
     // For pantry slots, we want clicks to work for selection, but still allow dragging if mouse moves
+    // For prep slots, we want clicks to work for menu access, but still allow dragging if mouse moves
     bool bCanDrag = false;
     bool bIsPantrySlot = (Location == EPUIngredientSlotLocation::Pantry);
+    bool bIsPrepSlot = (Location == EPUIngredientSlotLocation::Prep);
     
     if (bIsPantrySlot)
     {
@@ -1720,7 +1923,8 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     }
     else
     {
-        // Other slots require bHasIngredient to be true for dragging
+        // Other slots (including Prep) require bHasIngredient to be true for dragging
+        // Prep slots can drag, but clicks will also work because DetectDrag only triggers on actual drag movement
         bCanDrag = bDragEnabled && bHasIngredient;
     }
     
@@ -2126,28 +2330,100 @@ FString UPUIngredientSlot::GetPreparationIconText() const
 
 void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPosition)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
+    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
         *IngredientInstance.IngredientData.DisplayName.ToString(), ScreenPosition.X, ScreenPosition.Y);
 
     // Convert screen position to world position using raycast
     APlayerController* PlayerController = GetOwningPlayer();
     if (!PlayerController)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - No player controller"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - No player controller"));
         return;
     }
 
+    // Get viewport size
+    int32 ViewportSizeX, ViewportSizeY;
+    PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
+    
     // Get camera location and rotation
     FVector CameraLocation;
     FRotator CameraRotation;
     PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
     
-    // Get viewport size
-    int32 ViewportSizeX, ViewportSizeY;
-    PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
+    // CRITICAL FIX: Get the ACTUAL cursor position in viewport space at spawn time
+    // The passed ScreenPosition might be in widget space or cached from when drag started
+    // When the window moves/resizes, cached positions become incorrect
+    // Best approach: Get the current mouse position directly from the viewport
+    FVector2D MousePosition;
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Viewport: %dx%d, Mouse: (%.0f,%.0f)"), 
-        ViewportSizeX, ViewportSizeY, ScreenPosition.X, ScreenPosition.Y);
+    // Try to get the actual mouse position from the player controller first
+    float MouseX, MouseY;
+    bool bGotMousePos = PlayerController->GetMousePosition(MouseX, MouseY);
+    
+    if (bGotMousePos && MouseX >= 0 && MouseY >= 0 && MouseX <= ViewportSizeX && MouseY <= ViewportSizeY)
+    {
+        // Use the actual mouse position (viewport space)
+        MousePosition = FVector2D(MouseX, MouseY);
+        UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Using actual mouse position from player controller: (%.0f,%.0f)"), 
+            MousePosition.X, MousePosition.Y);
+    }
+    else
+    {
+        // Fallback: Convert widget coordinates to viewport coordinates
+        // The passed ScreenPosition is likely in widget-local space
+        MousePosition = ScreenPosition;
+        
+        // If this is a widget, try to convert widget space to viewport space
+        if (UUserWidget* ThisWidget = Cast<UUserWidget>(this))
+        {
+            if (TSharedPtr<SWidget> SlateWidget = ThisWidget->GetCachedWidget())
+            {
+                // Get the widget's cached geometry (in viewport space)
+                FGeometry WidgetGeometry = SlateWidget->GetCachedGeometry();
+                
+                // Get the widget's absolute position in viewport space
+                FVector2D WidgetAbsolutePosition = WidgetGeometry.GetAbsolutePosition();
+                
+                // The passed ScreenPosition might be:
+                // 1. Widget-local coordinates (relative to widget's top-left)
+                // 2. Already in viewport space
+                // Try both: if adding widget position gives reasonable result, use it
+                FVector2D ConvertedPosition = WidgetAbsolutePosition + ScreenPosition;
+                
+                // Check if converted position is more reasonable (within viewport)
+                if (ConvertedPosition.X >= 0 && ConvertedPosition.Y >= 0 && 
+                    ConvertedPosition.X <= ViewportSizeX && ConvertedPosition.Y <= ViewportSizeY)
+                {
+                    MousePosition = ConvertedPosition;
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Converted widget space (%.0f,%.0f) + widget pos (%.0f,%.0f) = viewport (%.0f,%.0f)"), 
+                        ScreenPosition.X, ScreenPosition.Y, 
+                        WidgetAbsolutePosition.X, WidgetAbsolutePosition.Y,
+                        MousePosition.X, MousePosition.Y);
+                }
+                else
+                {
+                    // Passed position might already be in viewport space
+                    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Using passed position as-is (%.0f,%.0f) - assuming viewport space"), 
+                        MousePosition.X, MousePosition.Y);
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ [SPAWN] Could not get cached widget, using passed position as-is"));
+            }
+        }
+    }
+    
+    // Validate the position is within reasonable bounds
+    if (MousePosition.X < -1000 || MousePosition.X > ViewportSizeX + 1000 || 
+        MousePosition.Y < -1000 || MousePosition.Y > ViewportSizeY + 1000)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [SPAWN] Position (%.2f,%.2f) seems far outside viewport bounds (%dx%d)"), 
+            MousePosition.X, MousePosition.Y, ViewportSizeX, ViewportSizeY);
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Viewport: %dx%d, Final position: (%.0f,%.0f)"), 
+        ViewportSizeX, ViewportSizeY, MousePosition.X, MousePosition.Y);
     
     // Find the dish customization station in the world
     TArray<AActor*> FoundActors;
@@ -2171,31 +2447,87 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
         UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
         
         // Convert screen position to world space ray
+        // Use the actual mouse position for accurate deprojection
         FVector WorldLocation;
         FVector WorldDirection;
         
-        if (PlayerController->DeprojectScreenPositionToWorld(ScreenPosition.X, ScreenPosition.Y, WorldLocation, WorldDirection))
+        // Deproject the screen position to world space
+        // Note: DeprojectScreenPositionToWorld expects viewport coordinates (0,0 at top-left, increasing right and down)
+        bool bDeprojectSuccess = PlayerController->DeprojectScreenPositionToWorld(MousePosition.X, MousePosition.Y, WorldLocation, WorldDirection);
+        
+        if (bDeprojectSuccess)
         {
+            UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Deprojected screen (%.0f,%.0f) to world ray: Start (%.2f,%.2f,%.2f), Direction (%.2f,%.2f,%.2f)"), 
+                MousePosition.X, MousePosition.Y, WorldLocation.X, WorldLocation.Y, WorldLocation.Z, 
+                WorldDirection.X, WorldDirection.Y, WorldDirection.Z);
+            
             // Try to do a line trace to find the bowl/station surface
-            FHitResult HitResult;
+            // Use multi-trace to find all hits and prioritize the bowl mesh
+            TArray<FHitResult> HitResults;
             FCollisionQueryParams QueryParams;
-            // Don't ignore the station - we want to hit the bowl mesh which is likely a component of the station
+            QueryParams.bTraceComplex = true; // Use complex collision for more accurate hits
             
             // Trace from camera through the screen position
             FVector TraceStart = WorldLocation;
             FVector TraceEnd = WorldLocation + (WorldDirection * 10000.0f); // Long trace distance
             
-            bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
+            bool bHit = GetWorld()->LineTraceMultiByChannel(HitResults, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
             
-            if (bHit && HitResult.bBlockingHit)
+            UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Line trace from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) found %d hits"), 
+                TraceStart.X, TraceStart.Y, TraceStart.Z, TraceEnd.X, TraceEnd.Y, TraceEnd.Z, HitResults.Num());
+            
+            if (bHit && HitResults.Num() > 0)
             {
-                // Found a surface - use the hit location
-                SpawnPosition = HitResult.Location;
-                UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Line trace hit surface: %s at (%.2f,%.2f,%.2f)"), 
-                    HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("NULL"),
-                    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                // Look for the bowl mesh component first, then use the first hit
+                FHitResult BestHit;
+                bool bFoundBowl = false;
+                
+                for (const FHitResult& Hit : HitResults)
+                {
+                    if (Hit.bBlockingHit)
+                    {
+                        // Check if this hit is on a bowl mesh component
+                        if (Hit.Component.IsValid())
+                        {
+                            FString ComponentName = Hit.Component->GetName();
+                            if (ComponentName.Contains(TEXT("Bowl"), ESearchCase::IgnoreCase))
+                            {
+                                BestHit = Hit;
+                                bFoundBowl = true;
+                                UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Found bowl mesh component: %s"), *ComponentName);
+                                break;
+                            }
+                        }
+                        
+                        // If we haven't found a bowl yet, use the first valid hit
+                        if (!bFoundBowl && !BestHit.bBlockingHit)
+                        {
+                            BestHit = Hit;
+                        }
+                    }
+                }
+                
+                if (BestHit.bBlockingHit)
+                {
+                    // Found a surface - use the hit location directly
+                    SpawnPosition = BestHit.Location;
+                    UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Line trace hit surface: %s (Component: %s) at (%.2f,%.2f,%.2f)"), 
+                        BestHit.GetActor() ? *BestHit.GetActor()->GetName() : TEXT("NULL"),
+                        BestHit.Component.IsValid() ? *BestHit.Component->GetName() : TEXT("NULL"),
+                        SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                    
+                    // Log the screen-to-world conversion for debugging
+                    FVector2D ScreenPos = FVector2D(MousePosition.X, MousePosition.Y);
+                    UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Screen (%.0f,%.0f) -> World (%.2f,%.2f,%.2f) via trace"), 
+                        ScreenPos.X, ScreenPos.Y, SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                }
+                else
+                {
+                    bHit = false; // No valid hit found
+                }
             }
-            else
+            
+            if (!bHit)
             {
                 // No hit - calculate intersection with station surface plane (fallback)
                 FVector StationLocation = DishStation->GetActorLocation();
@@ -2203,7 +2535,22 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                 
                 // Calculate where the mouse ray intersects the station surface
                 // Use the top of the bowl/station as the surface height
+                // Try to find the actual bowl mesh component for more accurate height
                 float StationHeight = StationLocation.Z + (StationBounds.Z * 0.5f); // Use middle-top of bounds for bowl surface
+                
+                // Try to find a bowl mesh component for more accurate surface height
+                TArray<UStaticMeshComponent*> MeshComponents;
+                DishStation->GetComponents<UStaticMeshComponent>(MeshComponents);
+                for (UStaticMeshComponent* MeshComp : MeshComponents)
+                {
+                    if (MeshComp && MeshComp->GetName().Contains(TEXT("Bowl"), ESearchCase::IgnoreCase))
+                    {
+                        FBoxSphereBounds BowlBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
+                        StationHeight = BowlBounds.Origin.Z + (BowlBounds.BoxExtent.Z * 0.5f);
+                        UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Found bowl mesh component, using height: %.2f"), StationHeight);
+                        break;
+                    }
+                }
                 
                 // Calculate intersection point with the horizontal plane
                 if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
@@ -2587,10 +2934,10 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
                 
-                // If we're in active ingredient area and have preparations, create/update the prepped slot
-                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
+                // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
+                if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
                 {
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In active ingredient area, creating/updating prepped slot"));
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In prep/active ingredient area, creating/updating prepped slot"));
                     DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
                 }
             }
@@ -2627,13 +2974,13 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via component"));
                 
-                // If we're in active ingredient area and have preparations, create/update the prepped slot
-                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
+                // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
+                if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
                 {
                     UPUDishCustomizationWidget* PreppedDishWidget = GetDishCustomizationWidget();
                     if (PreppedDishWidget)
                     {
-                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In active ingredient area, creating/updating prepped slot (via component path)"));
+                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In prep/active ingredient area, creating/updating prepped slot (via component path)"));
                         PreppedDishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
                     }
                 }
@@ -3168,6 +3515,12 @@ void UPUIngredientSlot::UpdateTimeTempSliders()
 void UPUIngredientSlot::UpdateSliderVisibility()
 {
     bool bShouldShow = ShouldShowSliders();
+    
+    // Explicitly hide time and temp in prep stage
+    if (Location == EPUIngredientSlotLocation::Prep)
+    {
+        bShouldShow = false;
+    }
     
     if (TimeSlider)
     {

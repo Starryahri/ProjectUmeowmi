@@ -180,7 +180,7 @@ public:
 
     // Radial menu functions (stubbed for now)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
-    void ShowRadialMenu(bool bIsPrepMenu);
+    void ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions = false);
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
     void HideRadialMenu();
@@ -258,6 +258,18 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Data")
     UDataTable* PreparationDataTable;
 
+    // Prep bowl texture arrays (for Prepped location slots)
+    // These arrays should be one-to-one (same length, matching pairs)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Prep Bowls", meta = (ToolTip = "Array of front prep bowl textures"))
+    TArray<UTexture2D*> PrepBowlFrontTextures;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Prep Bowls", meta = (ToolTip = "Array of back prep bowl textures (should match length of PrepBowlFrontTextures)"))
+    TArray<UTexture2D*> PrepBowlBackTextures;
+
+    // Flag to use random prep bowl selection (any front with any back) instead of paired selection
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Prep Bowls", meta = (ToolTip = "If true, randomly selects any front with any back. If false, uses paired selection (same index)"))
+    bool bUseRandomPrepBowls = false;
+
     // UI Components (will be bound in Blueprint)
     UPROPERTY(meta = (BindWidget))
     UImage* IngredientIcon;
@@ -265,6 +277,13 @@ protected:
     // Plate background image (always at 100% opacity, outline shown on hover)
     UPROPERTY(meta = (BindWidget))
     UImage* PlateBackground;
+
+    // Prep bowl images (for Prepped location slots)
+    UPROPERTY(meta = (BindWidget))
+    UImage* PrepBowlFront;
+
+    UPROPERTY(meta = (BindWidget))
+    UImage* PrepBowlBack;
 
     // Container for quantity control widget
     UPROPERTY(meta = (BindWidget))
@@ -411,6 +430,7 @@ private:
     // Helper functions
     void UpdateIngredientIcon();
     void UpdatePrepIcons();
+    void UpdatePrepBowls();
     UTexture2D* GetPreparationTexture(const FGameplayTag& PreparationTag) const;
     void UpdateQuantityControl();
     void ClearDisplay();
