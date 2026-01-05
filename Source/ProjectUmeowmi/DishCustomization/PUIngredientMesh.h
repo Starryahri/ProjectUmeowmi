@@ -32,6 +32,7 @@ public:
     // Override actor mouse interaction
     virtual void NotifyActorBeginCursorOver() override;
     virtual void NotifyActorEndCursorOver() override;
+    virtual void NotifyActorOnClicked(FKey ButtonPressed) override;
 
     // Debug function to test mouse interaction
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Debug")

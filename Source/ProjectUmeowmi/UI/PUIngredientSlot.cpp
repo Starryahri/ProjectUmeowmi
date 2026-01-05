@@ -2170,22 +2170,77 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
     {
         UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
         
-        // Get the station's location and bounds
-        FVector StationLocation = DishStation->GetActorLocation();
-        FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
+        // Convert screen position to world space ray
+        FVector WorldLocation;
+        FVector WorldDirection;
         
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Station location: (%.2f,%.2f,%.2f), bounds: (%.2f,%.2f,%.2f)"), 
-            StationLocation.X, StationLocation.Y, StationLocation.Z, StationBounds.X, StationBounds.Y, StationBounds.Z);
-        
-        // Calculate spawn position on the station surface
-        // Use a small random offset to avoid stacking ingredients exactly on top of each other
-        float RandomOffsetX = FMath::RandRange(-50.0f, 50.0f);
-        float RandomOffsetY = FMath::RandRange(-50.0f, 50.0f);
-        
-        SpawnPosition = StationLocation + FVector(RandomOffsetX, RandomOffsetY, StationBounds.Z * 0.2f);
-        
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Spawning on dish customization station at: (%.2f,%.2f,%.2f)"), 
-            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+        if (PlayerController->DeprojectScreenPositionToWorld(ScreenPosition.X, ScreenPosition.Y, WorldLocation, WorldDirection))
+        {
+            // Try to do a line trace to find the bowl/station surface
+            FHitResult HitResult;
+            FCollisionQueryParams QueryParams;
+            // Don't ignore the station - we want to hit the bowl mesh which is likely a component of the station
+            
+            // Trace from camera through the screen position
+            FVector TraceStart = WorldLocation;
+            FVector TraceEnd = WorldLocation + (WorldDirection * 10000.0f); // Long trace distance
+            
+            bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
+            
+            if (bHit && HitResult.bBlockingHit)
+            {
+                // Found a surface - use the hit location
+                SpawnPosition = HitResult.Location;
+                UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Line trace hit surface: %s at (%.2f,%.2f,%.2f)"), 
+                    HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("NULL"),
+                    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+            }
+            else
+            {
+                // No hit - calculate intersection with station surface plane (fallback)
+                FVector StationLocation = DishStation->GetActorLocation();
+                FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
+                
+                // Calculate where the mouse ray intersects the station surface
+                // Use the top of the bowl/station as the surface height
+                float StationHeight = StationLocation.Z + (StationBounds.Z * 0.5f); // Use middle-top of bounds for bowl surface
+                
+                // Calculate intersection point with the horizontal plane
+                if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
+                {
+                    float T = (StationHeight - WorldLocation.Z) / WorldDirection.Z;
+                    if (T > 0.0f) // Only if ray is going downward or forward
+                    {
+                        SpawnPosition = WorldLocation + (WorldDirection * T);
+                        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Calculated intersection with station surface plane at: (%.2f,%.2f,%.2f)"), 
+                            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                    }
+                    else
+                    {
+                        // Ray is going away from the surface, use station center as fallback
+                        SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ Ray going away from surface, using station center: (%.2f,%.2f,%.2f)"), 
+                            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                    }
+                }
+                else
+                {
+                    // Ray is parallel to the surface, use station center
+                    SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ Ray parallel to surface, using station center: (%.2f,%.2f,%.2f)"), 
+                        SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                }
+            }
+        }
+        else
+        {
+            // Failed to deproject - use station location as fallback
+            FVector StationLocation = DishStation->GetActorLocation();
+            FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
+            SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ Failed to deproject screen position, using station center: (%.2f,%.2f,%.2f)"), 
+                SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+        }
     }
     else
     {

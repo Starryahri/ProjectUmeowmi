@@ -100,6 +100,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void EndPlatingStage();
 
+    // Ingredient dragging (called from ingredient mesh)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void StartDraggingIngredient(class APUIngredientMesh* Ingredient);
+
     // Camera switching functions (for stage navigation)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
     void SwitchToCookingCamera();

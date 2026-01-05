@@ -742,69 +742,257 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
     
     UE_LOG(LogTemp, Display, TEXT("🔍 Mouse click at screen position: (%.0f, %.0f)"), MouseX, MouseY);
 
-    // Raycast to find ingredient under mouse
-    FHitResult HitResult;
-    if (PlayerController->GetHitResultUnderCursor(ECC_Visibility, false, HitResult))
+    // Convert screen position to world space for custom trace
+    FVector WorldLocation;
+    FVector WorldDirection;
+    if (!PlayerController->DeprojectScreenPositionToWorld(MouseX, MouseY, WorldLocation, WorldDirection))
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 Hit something: %s"), HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("NULL"));
-        
-        APUIngredientMesh* HitIngredient = Cast<APUIngredientMesh>(HitResult.GetActor());
-        if (HitIngredient)
+        UE_LOG(LogTemp, Warning, TEXT("🔍 Failed to deproject screen position"));
+        return;
+    }
+
+    // Find the station/bowl actor to ignore in the trace
+    AActor* StationActor = GetOwner();
+    TArray<AActor*> ActorsToIgnore;
+    if (StationActor)
+    {
+        ActorsToIgnore.Add(StationActor);
+        // Also find all child components of the station that might be the bowl
+        TArray<AActor*> ChildActors;
+        StationActor->GetAllChildActors(ChildActors);
+        ActorsToIgnore.Append(ChildActors);
+    }
+
+    // Use a multi-line trace to find all hits, then prioritize ingredient meshes
+    TArray<FHitResult> HitResults;
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActors(ActorsToIgnore);
+    QueryParams.bTraceComplex = true; // Use complex collision for more accurate hits
+    
+    FVector TraceStart = WorldLocation;
+    FVector TraceEnd = WorldLocation + (WorldDirection * 10000.0f); // Long trace distance
+    
+    bool bHit = GetWorld()->LineTraceMultiByChannel(HitResults, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
+    
+    UE_LOG(LogTemp, Display, TEXT("🔍 Line trace found %d hits"), HitResults.Num());
+    
+    // Look for ingredient meshes first (they should be on top/closest)
+    APUIngredientMesh* HitIngredient = nullptr;
+    FHitResult IngredientHitResult;
+    
+    for (const FHitResult& Hit : HitResults)
+    {
+        if (Hit.bBlockingHit)
         {
-            // Test mouse interaction for this ingredient
-            HitIngredient->TestMouseInteraction();
+            UE_LOG(LogTemp, Display, TEXT("🔍 Hit: %s"), Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("NULL"));
             
-            bIsDragging = true;
-            CurrentlyDraggedIngredient = HitIngredient;
-            DragStartPosition = HitIngredient->GetActorLocation();
-            
-            // Calculate offset between mouse and ingredient
-            FVector MouseWorldPosition = HitResult.Location;
-            DragOffset = DragStartPosition - MouseWorldPosition;
-            
-            UE_LOG(LogTemp, Display, TEXT("🎯 Started dragging ingredient: %s with offset: (%.2f,%.2f,%.2f)"), 
-                *HitIngredient->GetName(), DragOffset.X, DragOffset.Y, DragOffset.Z);
-            
-            // Call the ingredient's grab function
-            HitIngredient->OnMouseGrab();
+            APUIngredientMesh* TestIngredient = Cast<APUIngredientMesh>(Hit.GetActor());
+            if (TestIngredient)
+            {
+                HitIngredient = TestIngredient;
+                IngredientHitResult = Hit;
+                UE_LOG(LogTemp, Display, TEXT("🔍 Found ingredient mesh: %s"), *HitIngredient->GetName());
+                break; // Found an ingredient, use it
+            }
         }
-        else
+    }
+    
+    if (HitIngredient)
+    {
+        // Test mouse interaction for this ingredient
+        HitIngredient->TestMouseInteraction();
+        
+        bIsDragging = true;
+        CurrentlyDraggedIngredient = HitIngredient;
+        DragStartPosition = HitIngredient->GetActorLocation();
+        
+        // Calculate offset between mouse and ingredient
+        FVector MouseWorldPosition = IngredientHitResult.Location;
+        DragOffset = DragStartPosition - MouseWorldPosition;
+        
+        UE_LOG(LogTemp, Display, TEXT("🎯 Started dragging ingredient: %s with offset: (%.2f,%.2f,%.2f)"), 
+            *HitIngredient->GetName(), DragOffset.X, DragOffset.Y, DragOffset.Z);
+        
+        // Call the ingredient's grab function
+        HitIngredient->OnMouseGrab();
+    }
+    else if (HitResults.Num() > 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🔍 Hit %d actors but none were ingredient meshes"), HitResults.Num());
+        for (const FHitResult& Hit : HitResults)
         {
-            UE_LOG(LogTemp, Display, TEXT("🔍 Hit actor is not an ingredient mesh"));
+            if (Hit.bBlockingHit && Hit.GetActor())
+            {
+                UE_LOG(LogTemp, Display, TEXT("🔍   - %s (%s)"), *Hit.GetActor()->GetName(), *Hit.GetActor()->GetClass()->GetName());
+            }
         }
     }
     else
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 No hit under cursor"));
+        UE_LOG(LogTemp, Display, TEXT("🔍 No hit under cursor (ignoring station)"));
     }
 }
 
 void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& Value)
 {
-    UE_LOG(LogTemp, Display, TEXT("🔍 Mouse release event received - Value: %s"), *Value.ToString());
+    UE_LOG(LogTemp, Display, TEXT("🔍 [DRAG] Mouse release event received - Value: %s"), *Value.ToString());
     
     if (bIsDragging && CurrentlyDraggedIngredient)
     {
-        // Call the ingredient's release function
-        CurrentlyDraggedIngredient->OnMouseRelease();
+        FString IngredientName = IsValid(CurrentlyDraggedIngredient) ? CurrentlyDraggedIngredient->GetName() : TEXT("INVALID");
+        FVector FinalPosition = IsValid(CurrentlyDraggedIngredient) ? CurrentlyDraggedIngredient->GetActorLocation() : FVector::ZeroVector;
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 Stopped dragging ingredient: %s"), *CurrentlyDraggedIngredient->GetName());
+        UE_LOG(LogTemp, Display, TEXT("🖱️ [DRAG] Stopping drag for %s at final position (%.2f,%.2f,%.2f)"), 
+            *IngredientName, FinalPosition.X, FinalPosition.Y, FinalPosition.Z);
+        
+        // Call the ingredient's release function
+        if (IsValid(CurrentlyDraggedIngredient))
+        {
+            CurrentlyDraggedIngredient->OnMouseRelease();
+            
+            FVector PositionAfterRelease = CurrentlyDraggedIngredient->GetActorLocation();
+            UE_LOG(LogTemp, Display, TEXT("🖱️ [DRAG] After OnMouseRelease - %s at position (%.2f,%.2f,%.2f)"), 
+                *CurrentlyDraggedIngredient->GetName(), 
+                PositionAfterRelease.X, PositionAfterRelease.Y, PositionAfterRelease.Z);
+        }
         
         bIsDragging = false;
         CurrentlyDraggedIngredient = nullptr;
     }
 }
 
+void UPUDishCustomizationComponent::StartDraggingIngredient(APUIngredientMesh* Ingredient)
+{
+    if (!Ingredient || !bPlatingMode)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - Invalid ingredient or not in plating mode"));
+        return;
+    }
+    
+    if (!IsValid(Ingredient))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - Ingredient is not valid"));
+        return;
+    }
+    
+    if (!CurrentCharacter)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - No character"));
+        return;
+    }
+    
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - No player controller"));
+        return;
+    }
+    
+    // Get current ingredient position before any changes
+    FVector IngredientStartPos = Ingredient->GetActorLocation();
+    UE_LOG(LogTemp, Display, TEXT("🖱️ [DRAG] StartDraggingIngredient - %s at position (%.2f,%.2f,%.2f)"), 
+        *Ingredient->GetName(), IngredientStartPos.X, IngredientStartPos.Y, IngredientStartPos.Z);
+    
+    // Get mouse position
+    float MouseX, MouseY;
+    PlayerController->GetMousePosition(MouseX, MouseY);
+    
+    // Convert screen position to world space
+    FVector WorldLocation;
+    FVector WorldDirection;
+    if (PlayerController->DeprojectScreenPositionToWorld(MouseX, MouseY, WorldLocation, WorldDirection))
+    {
+        // Find where the mouse ray intersects with the ingredient's Z plane (same height as ingredient)
+        // This gives us the mouse position on the same plane as the ingredient
+        float IngredientZ = IngredientStartPos.Z;
+        
+        if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
+        {
+            // Calculate where the ray intersects the ingredient's Z plane
+            float T = (IngredientZ - WorldLocation.Z) / WorldDirection.Z;
+            if (T > 0.0f)
+            {
+                FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
+                // Calculate offset from mouse hit point to ingredient center
+                DragOffset = IngredientStartPos - MouseWorldPosition;
+                
+                UE_LOG(LogTemp, Display, TEXT("🖱️ [DRAG] Mouse ray hit plane at (%.2f,%.2f,%.2f), offset: (%.2f,%.2f,%.2f)"), 
+                    MouseWorldPosition.X, MouseWorldPosition.Y, MouseWorldPosition.Z,
+                    DragOffset.X, DragOffset.Y, DragOffset.Z);
+            }
+            else
+            {
+                // Ray is going away from the plane, use zero offset
+                DragOffset = FVector::ZeroVector;
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] Mouse ray going away from ingredient plane, using zero offset"));
+            }
+        }
+        else
+        {
+            // Ray is parallel to Z plane, use zero offset
+            DragOffset = FVector::ZeroVector;
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] Mouse ray parallel to ingredient plane, using zero offset"));
+        }
+    }
+    else
+    {
+        DragOffset = FVector::ZeroVector;
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] Failed to deproject mouse position, using zero offset"));
+    }
+    
+    // Call the ingredient's grab function first to set up its state
+    Ingredient->OnMouseGrab();
+    
+    // Verify ingredient is still valid after grab
+    if (!IsValid(Ingredient))
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ [DRAG] StartDraggingIngredient - Ingredient became invalid after OnMouseGrab!"));
+        return;
+    }
+    
+    FVector IngredientAfterGrabPos = Ingredient->GetActorLocation();
+    UE_LOG(LogTemp, Display, TEXT("🖱️ [DRAG] After OnMouseGrab - %s at position (%.2f,%.2f,%.2f)"), 
+        *Ingredient->GetName(), IngredientAfterGrabPos.X, IngredientAfterGrabPos.Y, IngredientAfterGrabPos.Z);
+    
+    bIsDragging = true;
+    CurrentlyDraggedIngredient = Ingredient;
+    DragStartPosition = IngredientAfterGrabPos;
+    DragStartMousePosition = FVector(MouseX, MouseY, 0);
+    
+    UE_LOG(LogTemp, Display, TEXT("✅ [DRAG] Started dragging ingredient: %s with offset: (%.2f,%.2f,%.2f)"), 
+        *Ingredient->GetName(), DragOffset.X, DragOffset.Y, DragOffset.Z);
+}
+
 void UPUDishCustomizationComponent::UpdateMouseDrag()
 {
-    if (!bIsDragging || !CurrentlyDraggedIngredient || !CurrentCharacter)
+    if (!bIsDragging || !CurrentCharacter)
     {
+        return;
+    }
+    
+    // Check if the ingredient is still valid (not destroyed)
+    if (!IsValid(CurrentlyDraggedIngredient))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] UpdateMouseDrag - Ingredient is no longer valid, stopping drag"));
+        bIsDragging = false;
+        CurrentlyDraggedIngredient = nullptr;
         return;
     }
 
     APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
     if (!PlayerController)
     {
+        return;
+    }
+
+    // Check if mouse button is still held down
+    bool bLeftMouseDown = PlayerController->IsInputKeyDown(EKeys::LeftMouseButton);
+    if (!bLeftMouseDown)
+    {
+        // Mouse button released, stop dragging
+        UE_LOG(LogTemp, Display, TEXT("🖱️ [DRAG] UpdateMouseDrag - Mouse button released, stopping drag for %s"), 
+            *CurrentlyDraggedIngredient->GetName());
+        HandleMouseRelease(FInputActionValue());
         return;
     }
 
@@ -842,17 +1030,44 @@ void UPUDishCustomizationComponent::UpdateMouseDrag()
             float StationHeight = StationLocation.Z + (StationBounds.Z * 0.2f);
             
             // Calculate intersection point
-            float T = (StationHeight - WorldLocation.Z) / WorldDirection.Z;
-            FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
-            
-            // Apply the stored offset to maintain the grab point
-            FVector NewPosition = MouseWorldPosition + DragOffset;
-            
-            // Update ingredient position
-            CurrentlyDraggedIngredient->UpdatePosition(NewPosition);
-            
-            UE_LOG(LogTemp, Display, TEXT("🎯 Dragging ingredient to: (%.2f,%.2f,%.2f)"), 
-                NewPosition.X, NewPosition.Y, NewPosition.Z);
+            if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
+            {
+                float T = (StationHeight - WorldLocation.Z) / WorldDirection.Z;
+                if (T > 0.0f && T < 10000.0f) // Reasonable range
+                {
+                    FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
+                    
+                    // Apply the stored offset to maintain the grab point
+                    FVector NewPosition = MouseWorldPosition + DragOffset;
+                    
+                    // Validate the new position
+                    if (!NewPosition.ContainsNaN() && FVector::Dist(NewPosition, StationLocation) < 5000.0f)
+                    {
+                        // Update ingredient position
+                        FVector OldPosition = CurrentlyDraggedIngredient->GetActorLocation();
+                        CurrentlyDraggedIngredient->UpdatePosition(NewPosition);
+                        
+                        // Verify the ingredient is still visible and at the expected position
+                        FVector VerifyPosition = CurrentlyDraggedIngredient->GetActorLocation();
+                        bool bIsVisible = CurrentlyDraggedIngredient->IsHidden() == false;
+                        
+                        UE_LOG(LogTemp, Verbose, TEXT("🎯 [DRAG] %s: (%.2f,%.2f,%.2f) -> (%.2f,%.2f,%.2f), Hidden: %s"), 
+                            *CurrentlyDraggedIngredient->GetName(),
+                            OldPosition.X, OldPosition.Y, OldPosition.Z,
+                            VerifyPosition.X, VerifyPosition.Y, VerifyPosition.Z,
+                            CurrentlyDraggedIngredient->IsHidden() ? TEXT("Yes") : TEXT("No"));
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] Invalid position calculated for %s: (%.2f,%.2f,%.2f)"), 
+                            *CurrentlyDraggedIngredient->GetName(), NewPosition.X, NewPosition.Y, NewPosition.Z);
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ [DRAG] Invalid T value: %.2f for %s"), T, *CurrentlyDraggedIngredient->GetName());
+                }
+            }
         }
     }
 }
@@ -1441,7 +1656,10 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
     }
 
     // Use the WorldPosition that was already converted from screen coordinates
-    FVector SpawnPosition = WorldPosition + FVector(0, 0, 50); // 50 units above the converted position
+    // Add an offset above the surface to ensure ingredients are clearly visible and clickable
+    // Since ingredients have physics, they'll settle naturally on the surface
+    // Use a larger offset to ensure they're above the bowl and can be picked up
+    FVector SpawnPosition = WorldPosition + FVector(0, 0, 30); // Offset above the surface for visibility and clickability
 
     // Spawn the interactive ingredient mesh actor
     FActorSpawnParameters SpawnParams;
@@ -1914,25 +2132,60 @@ void UPUDishCustomizationComponent::ResetPlating()
 
 void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - Clearing %d 3D ingredient meshes"), 
+    UE_LOG(LogTemp, Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Clearing %d 3D ingredient meshes"), 
         SpawnedIngredientMeshes.Num());
     
+    // Stop any active dragging before clearing
+    if (bIsDragging && CurrentlyDraggedIngredient)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Stopping active drag"));
+        bIsDragging = false;
+        if (IsValid(CurrentlyDraggedIngredient))
+        {
+            CurrentlyDraggedIngredient->OnMouseRelease();
+        }
+        CurrentlyDraggedIngredient = nullptr;
+    }
+    
     // Destroy all tracked ingredient meshes
+    int32 ValidCount = 0;
+    int32 InvalidCount = 0;
+    
     for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
     {
-        if (IsValid(IngredientMesh))
+        if (IngredientMesh != nullptr && IsValid(IngredientMesh))
         {
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - Destroying ingredient mesh: %s"), 
-                *IngredientMesh->GetName());
+            // Only try to get the name if the object is in a safe state
+            FString MeshName = TEXT("IngredientMesh");
+            if (IngredientMesh->IsValidLowLevel() && !IngredientMesh->IsUnreachable())
+            {
+                // Safe to get name
+                MeshName = IngredientMesh->GetName();
+            }
+            
+            UE_LOG(LogTemp, Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Destroying ingredient mesh: %s"), 
+                *MeshName);
             
             IngredientMesh->Destroy();
+            ValidCount++;
+        }
+        else
+        {
+            InvalidCount++;
         }
     }
+    
+    if (InvalidCount > 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ [CLEANUP] ClearAll3DIngredientMeshes - Found %d invalid ingredient mesh pointers"), InvalidCount);
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Destroyed %d valid meshes"), ValidCount);
     
     // Clear the tracking array
     SpawnedIngredientMeshes.Empty();
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUDishCustomizationComponent::ClearAll3DIngredientMeshes - All 3D ingredient meshes cleared"));
+    UE_LOG(LogTemp, Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - All 3D ingredient meshes cleared"));
 }
 
 void UPUDishCustomizationComponent::SwapDishContainerMesh(UStaticMesh* NewDishMesh)
