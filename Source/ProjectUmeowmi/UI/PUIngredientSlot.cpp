@@ -2845,7 +2845,8 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
         MenuItem.Label = PreparationData->DisplayName.IsEmpty() ? 
             FText::FromString(PreparationData->PreparationTag.ToString()) : 
             PreparationData->DisplayName;
-        MenuItem.Icon = PreparationData->PreviewTexture;
+        // Validate texture pointer before assignment to prevent GC issues
+        MenuItem.Icon = IsValid(PreparationData->PreviewTexture) ? PreparationData->PreviewTexture : nullptr;
         MenuItem.ActionTag = PreparationData->PreparationTag;
         MenuItem.bIsEnabled = bIsCompatible || bIsApplied; // Enable if compatible or already applied (to allow removal)
         MenuItem.bIsApplied = bIsApplied;

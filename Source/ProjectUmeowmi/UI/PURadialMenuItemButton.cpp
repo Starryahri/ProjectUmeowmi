@@ -25,6 +25,22 @@ void UPURadialMenuItemButton::NativeConstruct()
     }
 }
 
+void UPURadialMenuItemButton::NativeDestruct()
+{
+    // Clear menu item data to prevent GC from accessing invalid texture pointers
+    // This is important because MenuItemData contains a FRadialMenuItem with a UTexture2D* pointer
+    MenuItemData = FRadialMenuItem();
+    MenuItemData.Icon = nullptr;
+    
+    // Unbind button events
+    if (ItemButton && ItemButton->OnClicked.IsBound())
+    {
+        ItemButton->OnClicked.RemoveDynamic(this, &UPURadialMenuItemButton::HandleButtonClicked);
+    }
+    
+    Super::NativeDestruct();
+}
+
 void UPURadialMenuItemButton::SetMenuItemData(const FRadialMenuItem& MenuItem, int32 InItemIndex)
 {
     MenuItemData = MenuItem;

@@ -28,6 +28,7 @@ public:
     UPURadialMenuItemButton(const FObjectInitializer& ObjectInitializer);
 
     virtual void NativeConstruct() override;
+    virtual void NativeDestruct() override;
 
     // Set the menu item data and index for this button
     UFUNCTION(BlueprintCallable, Category = "Radial Menu Item Button")

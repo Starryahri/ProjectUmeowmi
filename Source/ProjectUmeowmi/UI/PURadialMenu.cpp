@@ -33,6 +33,19 @@ void UPURadialMenu::NativeDestruct()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::NativeDestruct - Radial menu widget destroyed: %s"), *GetName());
 
+    // Clear delegates first to break any circular references
+    OnMenuItemSelected.Clear();
+    OnMenuClosed.Clear();
+    
+    // Clear buttons first (which also clears their MenuItemData)
+    // This must happen before we touch MenuItems to avoid GC issues
+    ClearMenuItems();
+    
+    // Clear the MenuItems array immediately - don't iterate over it
+    // The UPROPERTY on the array should handle GC, but we clear it to be safe
+    // Iterating over it during GC can cause crashes, so just empty it
+    MenuItems.Empty();
+
     Super::NativeDestruct();
 }
 
@@ -286,10 +299,30 @@ void UPURadialMenu::UpdateMenuLayout()
 
 void UPURadialMenu::ClearMenuItems()
 {
-    // Remove all button widgets
+    // Unbind delegates and clear MenuItemData from all button widgets before removing them
+    // This is critical to prevent GC from accessing invalid texture pointers
     for (UPURadialMenuItemButton* Button : MenuItemButtons)
     {
-        if (Button && MenuItemsContainer)
+        if (IsValid(Button))
+        {
+            // Unbind the button's click event from this menu
+            if (Button->OnItemClicked.IsBound())
+            {
+                Button->OnItemClicked.RemoveDynamic(this, &UPURadialMenu::SelectMenuItemByIndex);
+            }
+            
+            // Explicitly clear the MenuItemData to null out texture pointers
+            // This prevents GC from accessing invalid pointers during button destruction
+            FRadialMenuItem EmptyMenuItem;
+            EmptyMenuItem.Icon = nullptr;
+            Button->SetMenuItemData(EmptyMenuItem, -1);
+        }
+    }
+    
+    // Remove all button widgets from container
+    for (UPURadialMenuItemButton* Button : MenuItemButtons)
+    {
+        if (IsValid(Button) && MenuItemsContainer)
         {
             MenuItemsContainer->RemoveChild(Button);
             Button->RemoveFromParent();
@@ -297,6 +330,10 @@ void UPURadialMenu::ClearMenuItems()
     }
 
     MenuItemButtons.Empty();
+    
+    // NOTE: Do NOT clear MenuItems array here - it's needed for UpdateMenuLayout()
+    // MenuItems array is only cleared in NativeDestruct() to prevent GC crashes
+    
     UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ClearMenuItems - Cleared all menu item buttons"));
 }
 
