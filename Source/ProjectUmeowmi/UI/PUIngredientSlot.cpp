@@ -479,14 +479,14 @@ UTexture2D* UPUIngredientSlot::GetPreparationTexture(const FGameplayTag& Prepara
         
         if (FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetPreparationTexture")))
         {
-            if (Preparation->PreviewTexture)
+            if (Preparation->IconTexture)
             {
                 UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationTexture - Found texture for preparation: %s"), *PrepName);
-                return Preparation->PreviewTexture;
+                return Preparation->IconTexture;
             }
             else
             {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation %s has no PreviewTexture"), *PrepName);
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation %s has no IconTexture"), *PrepName);
             }
         }
         else
@@ -2846,7 +2846,7 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
             FText::FromString(PreparationData->PreparationTag.ToString()) : 
             PreparationData->DisplayName;
         // Validate texture pointer before assignment to prevent GC issues
-        MenuItem.Icon = IsValid(PreparationData->PreviewTexture) ? PreparationData->PreviewTexture : nullptr;
+        MenuItem.Icon = IsValid(PreparationData->IconTexture) ? PreparationData->IconTexture : nullptr;
         MenuItem.ActionTag = PreparationData->PreparationTag;
         MenuItem.bIsEnabled = bIsCompatible || bIsApplied; // Enable if compatible or already applied (to allow removal)
         MenuItem.bIsApplied = bIsApplied;

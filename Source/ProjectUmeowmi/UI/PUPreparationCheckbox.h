@@ -24,7 +24,7 @@ public:
 
     // Set the preparation data for this checkbox
     UFUNCTION(BlueprintCallable, Category = "Preparation Checkbox")
-    void SetPreparationData(const FGameplayTag& InPreparationTag, const FText& InDisplayName, const FText& InDescription, UTexture2D* InPreviewTexture);
+    void SetPreparationData(const FGameplayTag& InPreparationTag, const FText& InDisplayName, const FText& InDescription, UTexture2D* InIconTexture);
 
     // Get the preparation tag
     UFUNCTION(BlueprintCallable, Category = "Preparation Checkbox")
@@ -54,7 +54,7 @@ protected:
     FText Description;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Preparation Data")
-    UTexture2D* PreviewTexture;
+    UTexture2D* IconTexture;
 
     // UI Components (will be bound in Blueprint)
     UPROPERTY(meta = (BindWidget))

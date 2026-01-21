@@ -108,7 +108,10 @@ public:
 
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Visual")
-    UTexture2D* PreviewTexture;
+    UTexture2D* IconTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Visual")
+    UTexture2D* PrepTexture;
 
     // Name Modification
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Naming")

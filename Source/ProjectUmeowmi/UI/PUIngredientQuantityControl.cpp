@@ -416,15 +416,15 @@ void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparatio
         return;
     }
     
-    // Get the preview texture
-    UTexture2D* PreviewTexture = PreparationData.PreviewTexture;
+    // Get the icon texture
+    UTexture2D* IconTexture = PreparationData.IconTexture;
     
     // Set the preparation data
     PreparationCheckbox->SetPreparationData(
         PreparationData.PreparationTag,
         PreparationData.DisplayName,
         PreparationData.Description,
-        PreviewTexture
+        IconTexture
     );
     
     // Set the initial checked state

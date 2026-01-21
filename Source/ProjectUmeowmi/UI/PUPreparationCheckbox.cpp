@@ -5,7 +5,7 @@
 
 UPUPreparationCheckbox::UPUPreparationCheckbox(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
-    , PreviewTexture(nullptr)
+    , IconTexture(nullptr)
 {
 }
 
@@ -41,7 +41,7 @@ void UPUPreparationCheckbox::NativeDestruct()
     Super::NativeDestruct();
 }
 
-void UPUPreparationCheckbox::SetPreparationData(const FGameplayTag& InPreparationTag, const FText& InDisplayName, const FText& InDescription, UTexture2D* InPreviewTexture)
+void UPUPreparationCheckbox::SetPreparationData(const FGameplayTag& InPreparationTag, const FText& InDisplayName, const FText& InDescription, UTexture2D* InIconTexture)
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUPreparationCheckbox::SetPreparationData - Setting preparation data: %s"), 
         *InPreparationTag.ToString());
@@ -49,7 +49,7 @@ void UPUPreparationCheckbox::SetPreparationData(const FGameplayTag& InPreparatio
     PreparationTag = InPreparationTag;
     DisplayName = InDisplayName;
     Description = InDescription;
-    PreviewTexture = InPreviewTexture;
+    IconTexture = InIconTexture;
     
     UpdateUI();
     
@@ -97,9 +97,9 @@ void UPUPreparationCheckbox::UpdateUI()
     }
     
     // Update preparation icon
-    if (PreparationIcon && PreviewTexture)
+    if (PreparationIcon && IconTexture)
     {
-        PreparationIcon->SetBrushFromTexture(PreviewTexture);
+        PreparationIcon->SetBrushFromTexture(IconTexture);
         UE_LOG(LogTemp, Display, TEXT("🎯 PUPreparationCheckbox::UpdateUI - Updated preparation icon"));
     }
     
