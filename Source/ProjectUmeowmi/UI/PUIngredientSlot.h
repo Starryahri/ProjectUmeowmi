@@ -300,7 +300,7 @@ protected:
     // Flag to track if events are bound (prevent duplicate bindings)
     bool bQuantityControlEventsBound = false;
 
-    // Prep icon images (max 2 visible, or suspicious icon for 3+)
+    // Prep icon images (1 prep icon visible for single prep, or suspicious icon for 2+)
     UPROPERTY(meta = (BindWidget))
     UImage* PrepIcon1;
 

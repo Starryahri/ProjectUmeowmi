@@ -356,6 +356,12 @@ void UPUIngredientSlot::UpdateDisplay()
         UpdateQuantityDisplay();
         UpdatePreparationDisplay();
         
+        // For prepped slots, always show hover text
+        if (Location == EPUIngredientSlotLocation::Prepped)
+        {
+            UpdateHoverTextVisibility(true);
+        }
+        
         // Handle PlateBackground visibility based on location
         if (PlateBackground)
         {
@@ -646,7 +652,7 @@ void UPUIngredientSlot::UpdatePrepIcons()
     IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
     int32 PrepCount = PrepTags.Num();
 
-    if (PrepCount >= 3)
+    if (PrepCount >= 2)
     {
         // Show suspicious icon, hide individual prep icons
         if (PrepIcon1) PrepIcon1->SetVisibility(ESlateVisibility::Collapsed);
@@ -655,13 +661,14 @@ void UPUIngredientSlot::UpdatePrepIcons()
         {
             SuspiciousIcon->SetVisibility(ESlateVisibility::Visible);
             // TODO: Set suspicious icon texture when available
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Showing suspicious icon (3+ preps)"));
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Showing suspicious icon (2+ preps)"));
         }
     }
-    else if (PrepCount > 0)
+    else if (PrepCount == 1)
     {
-        // Show up to 2 prep icons
+        // Show single prep icon
         if (SuspiciousIcon) SuspiciousIcon->SetVisibility(ESlateVisibility::Collapsed);
+        if (PrepIcon2) PrepIcon2->SetVisibility(ESlateVisibility::Collapsed);
 
         // Show first prep icon with texture
         if (PrepIcon1)
@@ -682,31 +689,6 @@ void UPUIngredientSlot::UpdatePrepIcons()
                     UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepIcons - No texture found for first preparation: %s"), *PrepTags[0].ToString());
                 }
             }
-        }
-
-        // Show second prep icon if available
-        if (PrepCount >= 2 && PrepIcon2)
-        {
-            PrepIcon2->SetVisibility(ESlateVisibility::Visible);
-            
-            // Get texture for second preparation
-            if (PrepTags.Num() > 1)
-            {
-                UTexture2D* PrepTexture = GetPreparationTexture(PrepTags[1]);
-                if (PrepTexture)
-                {
-                    PrepIcon2->SetBrushFromTexture(PrepTexture);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Set prep icon 2 texture: %s"), *PrepTexture->GetName());
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepIcons - No texture found for second preparation: %s"), *PrepTags[1].ToString());
-                }
-            }
-        }
-        else if (PrepIcon2)
-        {
-            PrepIcon2->SetVisibility(ESlateVisibility::Collapsed);
         }
     }
     else
@@ -1659,8 +1641,11 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Mouse left slot: %s"),
         *GetName());
 
-    // Hide hover text
-    UpdateHoverTextVisibility(false);
+    // Hide hover text (but not for prepped slots - they should always show hover text)
+    if (Location != EPUIngredientSlotLocation::Prepped)
+    {
+        UpdateHoverTextVisibility(false);
+    }
 
     // Hide outline on hover leave, but keep it visible if selected
     if (PlateBackground)
@@ -1755,6 +1740,17 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
         return FText::GetEmpty();
     }
 
+    // For prep area slots, show only the base ingredient name (no preparations)
+    // For other areas (prepped, pantry, etc.), show the full name with preparations
+    if (Location == EPUIngredientSlotLocation::Prep)
+    {
+        // Just return the base ingredient name without preparations
+        FText Result = IngredientInstance.IngredientData.DisplayName;
+        UE_LOG(LogTemp, Display, TEXT("🎯   Prep area - returning base name: %s"), *Result.ToString());
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - END"));
+        return Result;
+    }
+
     // Debug: Log what preparations we have
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - START"));
     UE_LOG(LogTemp, Display, TEXT("🎯   Ingredient: %s"), *IngredientInstance.IngredientData.DisplayName.ToString());
@@ -1793,7 +1789,7 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
     // Use the ingredient's GetCurrentDisplayName() which already handles preparations correctly
     // This method looks up preparations from the data table and uses NamePrefix properly
     // It formats as "PrepName IngredientName" for single prep, combines prefixes for multiple preps,
-    // and uses "Dubious IngredientName" for 3+ preparations
+    // and uses "Suspicious IngredientName" for 2+ preparations
     FText Result = IngredientDataCopy.GetCurrentDisplayName();
     
     UE_LOG(LogTemp, Display, TEXT("🎯   GetCurrentDisplayName() returned: %s"), *Result.ToString());
@@ -1821,7 +1817,14 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
         bCanShowText = bHasIngredient;
     }
 
-    if (bShow && bCanShowText)
+    // For prepped slots, always show hover text (ignore bShow parameter)
+    bool bShouldShow = bShow;
+    if (Location == EPUIngredientSlotLocation::Prepped)
+    {
+        bShouldShow = true;
+    }
+
+    if (bShouldShow && bCanShowText)
     {
         // Update text content
         FText DisplayText = GetIngredientDisplayText();
@@ -1832,8 +1835,12 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
     }
     else
     {
-        HoverText->SetVisibility(ESlateVisibility::Collapsed);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateHoverTextVisibility - Hiding hover text"));
+        // Don't hide hover text for prepped slots
+        if (Location != EPUIngredientSlotLocation::Prepped)
+        {
+            HoverText->SetVisibility(ESlateVisibility::Collapsed);
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateHoverTextVisibility - Hiding hover text"));
+        }
     }
 }
 

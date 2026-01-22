@@ -177,10 +177,10 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
             
             if (PrepTags.Num() > 0)
             {
-                // If more than 2 preparations, apply "Dubious" prefix instead of combining prefixes/suffixes
-                if (PrepTags.Num() > 2)
+                // If 2 or more preparations, apply "Suspicious" prefix instead of combining prefixes/suffixes
+                if (PrepTags.Num() > 1)
                 {
-                    FString ModifiedName = TEXT("Dubious ");
+                    FString ModifiedName = TEXT("Suspicious ");
                     ModifiedName += DisplayName.ToString();
                     return FText::FromString(ModifiedName);
                 }

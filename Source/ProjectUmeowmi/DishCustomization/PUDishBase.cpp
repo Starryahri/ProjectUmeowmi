@@ -173,9 +173,9 @@ FText FPUDishBase::GetCurrentDisplayName() const
         return CustomName;
     }
     
-    // Count how many ingredients have more than 2 preparations (dubious ingredients)
+    // Count how many ingredients have 2 or more preparations (suspicious ingredients)
     int32 TotalIngredients = 0;
-    int32 DubiousIngredients = 0;
+    int32 SuspiciousIngredients = 0;
     
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
@@ -183,17 +183,17 @@ FText FPUDishBase::GetCurrentDisplayName() const
         FGameplayTagContainer Preparations = Instance.Preparations.Num() > 0 ? Instance.Preparations : Instance.IngredientData.ActivePreparations;
         
         TotalIngredients += Instance.Quantity;
-        if (Preparations.Num() > 2)
+        if (Preparations.Num() > 1)
         {
-            DubiousIngredients += Instance.Quantity;
+            SuspiciousIngredients += Instance.Quantity;
         }
     }
     
-    // If more than half of the ingredients are dubious, apply "Dubious" to the dish
-    if (TotalIngredients > 0 && DubiousIngredients > TotalIngredients / 2)
+    // If more than half of the ingredients are suspicious, apply "Suspicious" to the dish
+    if (TotalIngredients > 0 && SuspiciousIngredients > TotalIngredients / 2)
     {
         FString BaseDishName = DisplayName.ToString();
-        return FText::FromString(TEXT("Dubious ") + BaseDishName);
+        return FText::FromString(TEXT("Suspicious ") + BaseDishName);
     }
     
     // Track quantities of each ingredient
