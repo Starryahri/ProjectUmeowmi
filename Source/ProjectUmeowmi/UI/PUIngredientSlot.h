@@ -323,6 +323,18 @@ protected:
     UPROPERTY()
     UMaterialInstanceDynamic* SuspiciousDynamicMaterial = nullptr;
 
+    // Material instance for preparation-tinted icon in prepped area
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Preparation", meta = (ToolTip = "Material instance to use for preparation-tinted icon in prepped area"))
+    TSoftObjectPtr<UMaterialInterface> PreparationMaterialInstance;
+
+    // Dynamic material instance created from PreparationMaterialInstance
+    UPROPERTY()
+    UMaterialInstanceDynamic* PreparationDynamicMaterial = nullptr;
+
+    // Cached average color from ingredient texture
+    UPROPERTY()
+    FLinearColor CachedAverageColor = FLinearColor::White;
+
     // Hover/focus text display
     UPROPERTY(meta = (BindWidget))
     UTextBlock* HoverText;
@@ -475,6 +487,9 @@ private:
     
     // Recalculate aspects from base + time/temp + quantity
     void RecalculateAspectsFromBase();
+
+    // Get average color from ingredient texture
+    void GetAverageColorFromIngredientTexture();
 
     // Quantity control event handlers
     UFUNCTION()

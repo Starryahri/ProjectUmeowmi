@@ -8,6 +8,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Engine/Texture2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "ImageUtils.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUIngredientDragDropOperation.h"
 #include "Input/Events.h"
@@ -239,6 +240,17 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
         RecalculateAspectsFromBase();
     }
 
+    // Calculate and cache average color if ingredient has preparations
+    if (bHasIngredient && IngredientInstance.Preparations.Num() > 0)
+    {
+        GetAverageColorFromIngredientTexture();
+    }
+    else
+    {
+        // Reset cached color if no preparations
+        CachedAverageColor = FLinearColor::White;
+    }
+
     // Update all display elements
     UpdateDisplay();
 
@@ -287,6 +299,10 @@ void UPUIngredientSlot::ClearSlot()
 
     bHasIngredient = false;
     IngredientInstance = FIngredientInstance(); // Reset to default
+    CachedAverageColor = FLinearColor::White; // Reset cached color
+    
+    // Clean up dynamic materials
+    PreparationDynamicMaterial = nullptr;
 
     // Update all display elements
     UpdateDisplay();
@@ -459,10 +475,18 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         TArray<FGameplayTag> PrepTags;
         IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
         bool bIsSuspicious = PrepTags.Num() >= 2;
+        bool bHasPreparations = PrepTags.Num() > 0;
+        bool bIsPreppedLocation = (Location == EPUIngredientSlotLocation::Prepped);
         
-        // Apply material instance if suspicious in prepped area
-        if (bIsSuspicious && Location == EPUIngredientSlotLocation::Prepped && SuspiciousMaterialInstance.IsValid())
+        // Determine which material instance to use
+        UMaterialInstanceDynamic* MaterialToUse = nullptr;
+        TSoftObjectPtr<UMaterialInterface> MaterialInstanceToUse;
+        
+        if (bIsSuspicious && bIsPreppedLocation && SuspiciousMaterialInstance.IsValid())
         {
+            // Use suspicious material (takes priority)
+            MaterialInstanceToUse = SuspiciousMaterialInstance;
+            
             // Create or reuse dynamic material instance
             if (!SuspiciousDynamicMaterial)
             {
@@ -473,32 +497,77 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for suspicious ingredient icon"));
                 }
             }
+            MaterialToUse = SuspiciousDynamicMaterial;
             
-            // Update material parameters if we have a dynamic material
+            // Clean up preparation material since we're using suspicious
+            if (PreparationDynamicMaterial)
+            {
+                PreparationDynamicMaterial = nullptr;
+            }
+        }
+        else if (bHasPreparations && bIsPreppedLocation && PreparationMaterialInstance.IsValid())
+        {
+            // Use preparation material
+            MaterialInstanceToUse = PreparationMaterialInstance;
+            
+            // Create or reuse dynamic material instance
+            if (!PreparationDynamicMaterial)
+            {
+                UMaterialInterface* BaseMaterial = PreparationMaterialInstance.LoadSynchronous();
+                if (BaseMaterial)
+                {
+                    PreparationDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for preparation-tinted ingredient icon"));
+                }
+            }
+            MaterialToUse = PreparationDynamicMaterial;
+            
+            // Clean up suspicious material since we're using preparation
             if (SuspiciousDynamicMaterial)
             {
-                // Set texture parameter (assuming parameter name is "Texture" - adjust if different)
-                SuspiciousDynamicMaterial->SetTextureParameterValue(TEXT("Texture"), TextureToUse);
-                
-                // Set pixelate factor parameter (assuming parameter name is "PixelateFactor" - adjust if different)
-                SuspiciousDynamicMaterial->SetScalarParameterValue(TEXT("PixelateFactor"), SuspiciousPixelateFactor);
-                
-                // Apply the material to the ingredient icon
-                IngredientIcon->SetBrushFromMaterial(SuspiciousDynamicMaterial);
-                
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied suspicious material to ingredient icon (Texture: %s, Pixelate: %.2f)"), 
-                    *TextureToUse->GetName(), SuspiciousPixelateFactor);
+                SuspiciousDynamicMaterial = nullptr;
             }
-            else
+        }
+        
+        // Apply material instance if we have one
+        if (MaterialToUse)
+        {
+            // Always update material parameters to ensure they're current
+            // Set texture parameter (this is the swapped texture when in prepped location)
+            MaterialToUse->SetTextureParameterValue(TEXT("Texture"), TextureToUse);
+            
+            // Update parameters based on which material we're using
+            if (bIsSuspicious && MaterialToUse == SuspiciousDynamicMaterial)
             {
-                // Fallback to texture if material creation failed
-                IngredientIcon->SetBrushFromTexture(TextureToUse);
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - Failed to create dynamic material, using texture fallback"));
+                // Set color parameter using cached average color as Vector4 (same color from base ingredient)
+                FVector4 ColorVector(CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B, CachedAverageColor.A);
+                MaterialToUse->SetVectorParameterValue(TEXT("Color"), ColorVector);
+                
+                // Set pixelate factor parameter for suspicious material (2+ preps) - use the configured value (default 10)
+                MaterialToUse->SetScalarParameterValue(TEXT("PixelateFactor"), SuspiciousPixelateFactor);
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied suspicious material to ingredient icon (Texture: %s, Color: RGB(%.3f, %.3f, %.3f), Pixelate: %.2f)"), 
+                    *TextureToUse->GetName(), CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B, SuspiciousPixelateFactor);
             }
+            else if (bHasPreparations && MaterialToUse == PreparationDynamicMaterial)
+            {
+                // Set color parameter using cached average color as Vector4
+                FVector4 ColorVector(CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B, CachedAverageColor.A);
+                MaterialToUse->SetVectorParameterValue(TEXT("Color"), ColorVector);
+                
+                // Set pixelate factor to 1000 for first preparation (essentially no pixelation)
+                MaterialToUse->SetScalarParameterValue(TEXT("PixelateFactor"), 1000.0f);
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied preparation-tinted material to ingredient icon (Texture: %s, Color: RGB(%.3f, %.3f, %.3f), Pixelate: 1000.0)"), 
+                    *TextureToUse->GetName(), CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B);
+            }
+            
+            // Apply the material to the ingredient icon
+            IngredientIcon->SetBrushFromMaterial(MaterialToUse);
         }
         else
         {
-            // Not suspicious or not in prepped area, use normal texture
+            // No material instance available, use normal texture
             IngredientIcon->SetBrushFromTexture(TextureToUse);
         }
         
@@ -1097,6 +1166,154 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
     {
         return IngredientInstance.IngredientData.PreviewTexture;
     }
+}
+
+void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
+{
+    if (!bHasIngredient)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No ingredient in slot"));
+        return;
+    }
+
+    // Get the ORIGINAL ingredient texture (NOT the swapped prep texture)
+    // Use PreppedTexture if available, otherwise fallback to PreviewTexture
+    UTexture2D* Texture = IngredientInstance.IngredientData.PreppedTexture;
+    if (!Texture)
+    {
+        Texture = IngredientInstance.IngredientData.PreviewTexture;
+    }
+    
+    if (!Texture)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No original ingredient texture found (PreppedTexture or PreviewTexture) for ingredient: %s"),
+            *IngredientInstance.IngredientData.DisplayName.ToString());
+        return;
+    }
+    
+    UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Using ORIGINAL ingredient texture: %s (not prep texture)"),
+        *Texture->GetName());
+
+    // Get texture dimensions
+    const int32 Width = Texture->GetSizeX();
+    const int32 Height = Texture->GetSizeY();
+    
+    if (Width <= 0 || Height <= 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Invalid texture dimensions: %dx%d"),
+            Width, Height);
+        return;
+    }
+
+    // Get the source image from the texture using FImageUtils
+    FImage SourceImage;
+    if (!FImageUtils::GetTexture2DSourceImage(Texture, SourceImage))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Failed to get source image from texture: %s"),
+            *Texture->GetName());
+        return;
+    }
+
+    // Calculate average color
+    int64 TotalR = 0;
+    int64 TotalG = 0;
+    int64 TotalB = 0;
+    int32 PixelCount = 0;
+
+    // Access the raw data from FImage
+    // FImage stores data in RawData array, format depends on the image format
+    // Typically RGBA or RGB format
+    const TArray64<uint8>& RawData = SourceImage.RawData;
+    const int32 DataSize = RawData.Num();
+    
+    // Assume RGBA format (4 bytes per pixel) - adjust if needed
+    const int32 BytesPerPixel = 4;
+    const int32 ExpectedDataSize = Width * Height * BytesPerPixel;
+    
+    if (DataSize < ExpectedDataSize)
+    {
+        // Try RGB format (3 bytes per pixel)
+        const int32 BytesPerPixelRGB = 3;
+        const int32 ExpectedDataSizeRGB = Width * Height * BytesPerPixelRGB;
+        
+        if (DataSize >= ExpectedDataSizeRGB)
+        {
+            // RGB format
+            for (int32 Y = 0; Y < Height; Y++)
+            {
+                for (int32 X = 0; X < Width; X++)
+                {
+                    const int32 PixelIndex = (Y * Width + X) * BytesPerPixelRGB;
+                    
+                    if (PixelIndex + 2 < DataSize)
+                    {
+                        // Unreal textures are typically BGRA format, so swap R and B
+                        uint8 B = RawData[PixelIndex];
+                        uint8 G = RawData[PixelIndex + 1];
+                        uint8 R = RawData[PixelIndex + 2];
+
+                        TotalR += R;
+                        TotalG += G;
+                        TotalB += B;
+                        PixelCount++;
+                    }
+                }
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Unexpected data size: %d (expected at least %d or %d)"),
+                DataSize, ExpectedDataSize, ExpectedDataSizeRGB);
+            return;
+        }
+    }
+    else
+    {
+        // RGBA format
+        for (int32 Y = 0; Y < Height; Y++)
+        {
+            for (int32 X = 0; X < Width; X++)
+            {
+                const int32 PixelIndex = (Y * Width + X) * BytesPerPixel;
+                
+                if (PixelIndex + 2 < DataSize)
+                {
+                    // Unreal textures are typically BGRA format, so swap R and B
+                    uint8 B = RawData[PixelIndex];
+                    uint8 G = RawData[PixelIndex + 1];
+                    uint8 R = RawData[PixelIndex + 2];
+
+                    TotalR += R;
+                    TotalG += G;
+                    TotalB += B;
+                    PixelCount++;
+                }
+            }
+        }
+    }
+
+    if (PixelCount > 0)
+    {
+        uint8 AvgR = static_cast<uint8>(TotalR / PixelCount);
+        uint8 AvgG = static_cast<uint8>(TotalG / PixelCount);
+        uint8 AvgB = static_cast<uint8>(TotalB / PixelCount);
+
+        // Cache the average color (convert from 0-255 range to 0-1 range for FLinearColor)
+        CachedAverageColor = FLinearColor(
+            AvgR / 255.0f,
+            AvgG / 255.0f,
+            AvgB / 255.0f,
+            1.0f
+        );
+
+        UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) cached as LinearColor(%.3f, %.3f, %.3f) from texture: %s (Size: %dx%d, Pixels: %d)"),
+            AvgR, AvgG, AvgB, CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B, *Texture->GetName(), Width, Height, PixelCount);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No pixels processed"));
+    }
+
 }
 
 bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
@@ -3086,6 +3303,9 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
                 
+                // Get average color from ingredient texture
+                GetAverageColorFromIngredientTexture();
+                
                 // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
                 if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
                 {
@@ -3125,6 +3345,9 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
             {
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via component"));
+                
+                // Get average color from ingredient texture
+                GetAverageColorFromIngredientTexture();
                 
                 // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
                 if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
