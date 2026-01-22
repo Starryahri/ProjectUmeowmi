@@ -432,6 +432,7 @@ private:
     void UpdatePrepIcons();
     void UpdatePrepBowls();
     UTexture2D* GetPreparationTexture(const FGameplayTag& PreparationTag) const;
+    UTexture2D* GetPreparationPrepTexture(const FGameplayTag& PreparationTag, UDataTable* PrepDataTable) const;
     void UpdateQuantityControl();
     void ClearDisplay();
 

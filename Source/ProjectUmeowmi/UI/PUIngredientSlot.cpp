@@ -242,6 +242,17 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     UpdateTimeTempSliders();
     UpdateSliderVisibility();
 
+    // If ingredient is added to Prep area, automatically create/update prepped slot
+    if (bHasIngredient && Location == EPUIngredientSlotLocation::Prep)
+    {
+        UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        if (DishWidget)
+        {
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Ingredient added to Prep area, creating/updating prepped slot"));
+            DishWidget->CreateOrUpdatePreppedSlot(IngredientInstance);
+        }
+    }
+
     // Call Blueprint event (only if we actually have an ingredient)
     if (bHasIngredient)
     {
@@ -259,8 +270,8 @@ void UPUIngredientSlot::ClearSlot()
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Clearing slot: %s"), *GetName());
 
-    // If we're in prep or active ingredient area and have an ingredient with preparations, remove the prepped slot
-    if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient && IngredientInstance.Preparations.Num() > 0)
+    // If we're in prep or active ingredient area and have an ingredient, remove the prepped slot
+    if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient)
     {
         UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Removing prepped slot for ingredient with preparations"));
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
@@ -492,6 +503,42 @@ UTexture2D* UPUIngredientSlot::GetPreparationTexture(const FGameplayTag& Prepara
         else
         {
             UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation not found in data table: %s"), *PrepName);
+        }
+    }
+    
+    return nullptr;
+}
+
+UTexture2D* UPUIngredientSlot::GetPreparationPrepTexture(const FGameplayTag& PreparationTag, UDataTable* PrepDataTable) const
+{
+    if (!PrepDataTable)
+    {
+        return nullptr;
+    }
+
+    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+    FString PrepFullTag = PreparationTag.ToString();
+    int32 PrepLastPeriodIndex;
+    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+    {
+        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+        FName PrepRowName = FName(*PrepName);
+        
+        if (FPUPreparationBase* Preparation = PrepDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetPreparationPrepTexture")))
+        {
+            if (Preparation->PrepTexture)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationPrepTexture - Found PrepTexture for preparation: %s"), *PrepName);
+                return Preparation->PrepTexture;
+            }
+            else
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationPrepTexture - Preparation %s has no PrepTexture"), *PrepName);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationPrepTexture - Preparation not found in data table: %s"), *PrepName);
         }
     }
     
@@ -949,8 +996,53 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
     }
     else if (Location == EPUIngredientSlotLocation::Prepped)
     {
-        // Prepped slots use PreppedTexture, with PreviewTexture as fallback
-        UTexture2D* Texture = IngredientInstance.IngredientData.PreppedTexture;
+        // Prepped slots should use the preparation's PrepTexture if a preparation is applied
+        // Fallback chain: PrepTexture -> PreppedTexture -> PreviewTexture
+        UTexture2D* Texture = nullptr;
+        
+        // First, check if the ingredient has any preparations applied
+        if (IngredientInstance.Preparations.Num() > 0)
+        {
+            // Get the preparation data table
+            UDataTable* PrepDataTable = nullptr;
+            
+            // Try to get from the ingredient's data table first
+            if (IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+            {
+                PrepDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
+            }
+            
+            // Fallback to the slot's preparation data table if available
+            if (!PrepDataTable && PreparationDataTable)
+            {
+                PrepDataTable = PreparationDataTable;
+            }
+            
+            if (PrepDataTable)
+            {
+                // Get the first preparation's PrepTexture (you could extend this to handle multiple preparations)
+                TArray<FGameplayTag> PreparationTags;
+                IngredientInstance.Preparations.GetGameplayTagArray(PreparationTags);
+                
+                if (PreparationTags.Num() > 0)
+                {
+                    Texture = GetPreparationPrepTexture(PreparationTags[0], PrepDataTable);
+                    if (Texture)
+                    {
+                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Prepped slot using PrepTexture from preparation: %s"),
+                            *PreparationTags[0].ToString());
+                    }
+                }
+            }
+        }
+        
+        // Fallback to PreppedTexture if no preparation texture was found
+        if (!Texture)
+        {
+            Texture = IngredientInstance.IngredientData.PreppedTexture;
+        }
+        
+        // Fallback to PreviewTexture if still no texture
         if (!Texture)
         {
             Texture = IngredientInstance.IngredientData.PreviewTexture;
@@ -960,11 +1052,13 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
                     *IngredientInstance.IngredientData.DisplayName.ToString());
             }
         }
+        
         if (!Texture)
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prepped slot has no PreppedTexture or PreviewTexture for ingredient: %s"),
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prepped slot has no PrepTexture, PreppedTexture, or PreviewTexture for ingredient: %s"),
                 *IngredientInstance.IngredientData.DisplayName.ToString());
         }
+        
         return Texture;
     }
     else // ActiveIngredientArea or Plating

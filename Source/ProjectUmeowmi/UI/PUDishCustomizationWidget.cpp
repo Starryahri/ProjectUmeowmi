@@ -105,6 +105,53 @@ void UPUDishCustomizationWidget::OnInitialDishDataReceived(const FPUDishBase& In
     UE_LOG(LogTemp, Display, TEXT("📥 PUDishCustomizationWidget::OnInitialDishDataReceived - Updating current dish data"));
     CurrentDishData = InitialDishData;
     
+    // ALWAYS create prepped slots for all existing ingredients - they MUST appear in prepped area (bowls)
+    UE_LOG(LogTemp, Display, TEXT("📥 PUDishCustomizationWidget::OnInitialDishDataReceived - Creating prepped slots for %d existing ingredients"), 
+        InitialDishData.IngredientInstances.Num());
+    
+    for (const FIngredientInstance& IngredientInstance : InitialDishData.IngredientInstances)
+    {
+        if (IngredientInstance.IngredientData.IngredientTag.IsValid() && IngredientInstance.Quantity > 0)
+        {
+            UE_LOG(LogTemp, Display, TEXT("📥 PUDishCustomizationWidget::OnInitialDishDataReceived - Creating prepped slot for: %s (ID: %d, Qty: %d)"),
+                *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+            CreateOrUpdatePreppedSlot(IngredientInstance);
+        }
+    }
+    
+    // Also populate prep slots with existing ingredients (so they appear in prep area too)
+    UE_LOG(LogTemp, Display, TEXT("📥 PUDishCustomizationWidget::OnInitialDishDataReceived - Populating %d prep slots with existing ingredients"), 
+        CreatedIngredientSlots.Num());
+    
+    for (UPUIngredientSlot* PrepSlot : CreatedIngredientSlots)
+    {
+        if (!PrepSlot || !PrepSlot->IsValidLowLevel() || PrepSlot->GetLocation() != EPUIngredientSlotLocation::Prep)
+        {
+            continue;
+        }
+        
+        // Try to find a matching ingredient from the dish data
+        for (const FIngredientInstance& DishIngredient : InitialDishData.IngredientInstances)
+        {
+            if (DishIngredient.IngredientData.IngredientTag.IsValid() && DishIngredient.Quantity > 0)
+            {
+                // Check if this prep slot matches this ingredient (by tag)
+                const FIngredientInstance& SlotIngredient = PrepSlot->GetIngredientInstance();
+                FGameplayTag SlotTag = SlotIngredient.IngredientTag.IsValid() ? SlotIngredient.IngredientTag : SlotIngredient.IngredientData.IngredientTag;
+                FGameplayTag DishTag = DishIngredient.IngredientTag.IsValid() ? DishIngredient.IngredientTag : DishIngredient.IngredientData.IngredientTag;
+                
+                if (SlotTag == DishTag)
+                {
+                    // Found a match - populate the prep slot with the actual ingredient instance
+                    UE_LOG(LogTemp, Display, TEXT("📥 PUDishCustomizationWidget::OnInitialDishDataReceived - Populating prep slot with ingredient: %s (ID: %d, Qty: %d)"),
+                        *DishIngredient.IngredientData.DisplayName.ToString(), DishIngredient.InstanceID, DishIngredient.Quantity);
+                    PrepSlot->SetIngredientInstance(DishIngredient);
+                    break; // Found match, move to next prep slot
+                }
+            }
+        }
+    }
+    
     // Call the Blueprint event
     UE_LOG(LogTemp, Display, TEXT("📥 PUDishCustomizationWidget::OnInitialDishDataReceived - Calling Blueprint event OnDishDataReceived"));
     OnDishDataReceived(InitialDishData);
@@ -2454,23 +2501,37 @@ void UPUDishCustomizationWidget::SetPreppedIngredientContainer(UPanelWidget* Con
 {
     PreppedIngredientContainer = Container;
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::SetPreppedIngredientContainer - Prepped ingredient container set"));
+    
+    // If we already have dish data with ingredients, create prepped slots for them now
+    if (CurrentDishData.IngredientInstances.Num() > 0)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::SetPreppedIngredientContainer - Creating prepped slots for %d existing ingredients"), 
+            CurrentDishData.IngredientInstances.Num());
+        
+        for (const FIngredientInstance& IngredientInstance : CurrentDishData.IngredientInstances)
+        {
+            if (IngredientInstance.IngredientData.IngredientTag.IsValid() && IngredientInstance.Quantity > 0)
+            {
+                UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::SetPreppedIngredientContainer - Creating prepped slot for: %s (ID: %d)"),
+                    *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID);
+                CreateOrUpdatePreppedSlot(IngredientInstance);
+            }
+        }
+    }
 }
 
 void UPUDishCustomizationWidget::CreateOrUpdatePreppedSlot(const FIngredientInstance& IngredientInstance)
 {
-    // Only create prepped slots if we're in prep stage and have a container
+    // Only create prepped slots if we have a container
     if (!PreppedIngredientContainer.IsValid())
     {
-        UE_LOG(LogTemp, Display, TEXT("ℹ️ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - No prepped container set, skipping"));
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - No prepped container set! Cannot create prepped slot for: %s"), 
+            *IngredientInstance.IngredientData.DisplayName.ToString());
+        UE_LOG(LogTemp, Warning, TEXT("⚠️   This ingredient will be added to prepped area when container is set via SetPreppedIngredientContainer"));
         return;
     }
 
-    // Only create prepped slots if the ingredient has preparations
-    if (IngredientInstance.Preparations.Num() == 0)
-    {
-        UE_LOG(LogTemp, Display, TEXT("ℹ️ PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - Ingredient has no preparations, skipping"));
-        return;
-    }
+    // Allow creating prepped slots even without preparations (ingredients in prep area should appear in prepped area)
 
     // Use ingredient tag as the key (one prepped slot per ingredient, regardless of preparation combo)
     FString Key = IngredientInstance.IngredientData.IngredientTag.ToString();
