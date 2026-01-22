@@ -7,6 +7,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Blueprint/WidgetTree.h"
 #include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUIngredientDragDropOperation.h"
 #include "Input/Events.h"
@@ -166,6 +167,9 @@ void UPUIngredientSlot::NativeDestruct()
     // Clear external container reference to prevent invalid pointer access during GC
     // Note: QuantityControlContainer is a BindWidget property, so it's managed by the widget tree
     RadialMenuContainer = nullptr;
+
+    // Clean up dynamic material instance
+    SuspiciousDynamicMaterial = nullptr;
 
     Super::NativeDestruct();
 }
@@ -451,7 +455,53 @@ void UPUIngredientSlot::UpdateIngredientIcon()
     UTexture2D* TextureToUse = GetTextureForLocation();
     if (TextureToUse)
     {
-        IngredientIcon->SetBrushFromTexture(TextureToUse);
+        // Check if ingredient is suspicious (2+ preparations) and we're in prepped area
+        TArray<FGameplayTag> PrepTags;
+        IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
+        bool bIsSuspicious = PrepTags.Num() >= 2;
+        
+        // Apply material instance if suspicious in prepped area
+        if (bIsSuspicious && Location == EPUIngredientSlotLocation::Prepped && SuspiciousMaterialInstance.IsValid())
+        {
+            // Create or reuse dynamic material instance
+            if (!SuspiciousDynamicMaterial)
+            {
+                UMaterialInterface* BaseMaterial = SuspiciousMaterialInstance.LoadSynchronous();
+                if (BaseMaterial)
+                {
+                    SuspiciousDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for suspicious ingredient icon"));
+                }
+            }
+            
+            // Update material parameters if we have a dynamic material
+            if (SuspiciousDynamicMaterial)
+            {
+                // Set texture parameter (assuming parameter name is "Texture" - adjust if different)
+                SuspiciousDynamicMaterial->SetTextureParameterValue(TEXT("Texture"), TextureToUse);
+                
+                // Set pixelate factor parameter (assuming parameter name is "PixelateFactor" - adjust if different)
+                SuspiciousDynamicMaterial->SetScalarParameterValue(TEXT("PixelateFactor"), SuspiciousPixelateFactor);
+                
+                // Apply the material to the ingredient icon
+                IngredientIcon->SetBrushFromMaterial(SuspiciousDynamicMaterial);
+                
+                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied suspicious material to ingredient icon (Texture: %s, Pixelate: %.2f)"), 
+                    *TextureToUse->GetName(), SuspiciousPixelateFactor);
+            }
+            else
+            {
+                // Fallback to texture if material creation failed
+                IngredientIcon->SetBrushFromTexture(TextureToUse);
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - Failed to create dynamic material, using texture fallback"));
+            }
+        }
+        else
+        {
+            // Not suspicious or not in prepped area, use normal texture
+            IngredientIcon->SetBrushFromTexture(TextureToUse);
+        }
+        
         IngredientIcon->SetVisibility(ESlateVisibility::Visible);
         
         // Grey out the icon if quantity is 0, but NOT for Pantry, Prep, or Prepped locations

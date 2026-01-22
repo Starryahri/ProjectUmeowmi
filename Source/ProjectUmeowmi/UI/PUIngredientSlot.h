@@ -13,6 +13,7 @@ class UTextBlock;
 class UImage;
 class UPUIngredientQuantityControl;
 class USlider;
+class UMaterialInstanceDynamic;
 
 // Location enum for ingredient slots
 UENUM(BlueprintType)
@@ -309,6 +310,18 @@ protected:
 
     UPROPERTY(meta = (BindWidget))
     UImage* SuspiciousIcon;
+
+    // Material instance for suspicious icon in prepped area
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Suspicious", meta = (ToolTip = "Material instance to use for suspicious icon in prepped area"))
+    TSoftObjectPtr<UMaterialInterface> SuspiciousMaterialInstance;
+
+    // Pixelate factor for suspicious material (exposed parameter)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Suspicious", meta = (ToolTip = "Pixelate factor to apply to suspicious material"))
+    float SuspiciousPixelateFactor = 10.0f;
+
+    // Dynamic material instance created from SuspiciousMaterialInstance
+    UPROPERTY()
+    UMaterialInstanceDynamic* SuspiciousDynamicMaterial = nullptr;
 
     // Hover/focus text display
     UPROPERTY(meta = (BindWidget))
