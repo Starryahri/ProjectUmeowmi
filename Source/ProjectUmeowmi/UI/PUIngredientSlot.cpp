@@ -1299,21 +1299,134 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
         uint8 AvgB = static_cast<uint8>(TotalB / PixelCount);
 
         // Cache the average color (convert from 0-255 range to 0-1 range for FLinearColor)
-        CachedAverageColor = FLinearColor(
+        FLinearColor BaseColor = FLinearColor(
             AvgR / 255.0f,
             AvgG / 255.0f,
             AvgB / 255.0f,
             1.0f
         );
 
-        UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) cached as LinearColor(%.3f, %.3f, %.3f) from texture: %s (Size: %dx%d, Pixels: %d)"),
-            AvgR, AvgG, AvgB, CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B, *Texture->GetName(), Width, Height, PixelCount);
+        // Check if ingredient is suspicious (2+ preparations) - if so, skip saturation boost
+        TArray<FGameplayTag> PrepTags;
+        IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
+        bool bIsSuspicious = PrepTags.Num() >= 2;
+
+        // Boost saturation to make colors more vibrant (but not for suspicious ingredients)
+        if (bIsSuspicious)
+        {
+            // Use base color without saturation boost for suspicious ingredients
+            CachedAverageColor = BaseColor;
+            UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) -> Base(%.3f, %.3f, %.3f) [SUSPICIOUS - No saturation boost] from texture: %s (Size: %dx%d, Pixels: %d)"),
+                AvgR, AvgG, AvgB, 
+                BaseColor.R, BaseColor.G, BaseColor.B,
+                *Texture->GetName(), Width, Height, PixelCount);
+        }
+        else
+        {
+            // Boost saturation for non-suspicious ingredients
+            CachedAverageColor = BoostColorSaturation(BaseColor, ColorSaturationMultiplier);
+            UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) -> Base(%.3f, %.3f, %.3f) -> Boosted(%.3f, %.3f, %.3f) from texture: %s (Size: %dx%d, Pixels: %d, Saturation: %.2fx)"),
+                AvgR, AvgG, AvgB, 
+                BaseColor.R, BaseColor.G, BaseColor.B,
+                CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B,
+                *Texture->GetName(), Width, Height, PixelCount, ColorSaturationMultiplier);
+        }
     }
     else
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No pixels processed"));
     }
 
+}
+
+FLinearColor UPUIngredientSlot::BoostColorSaturation(const FLinearColor& Color, float SaturationMultiplier) const
+{
+    // Clamp multiplier to valid range
+    float Multiplier = FMath::Clamp(SaturationMultiplier, 1.0f, 3.0f);
+    
+    // If multiplier is 1.0, no change needed
+    if (FMath::IsNearlyEqual(Multiplier, 1.0f))
+    {
+        return Color;
+    }
+
+    // Convert RGB to HSV
+    // FLinearColor uses RGB, we need to manually convert to HSV
+    float R = Color.R;
+    float G = Color.G;
+    float B = Color.B;
+    
+    float Max = FMath::Max3(R, G, B);
+    float Min = FMath::Min3(R, G, B);
+    float Delta = Max - Min;
+    
+    float H = 0.0f;
+    float S = (Max > 0.0f) ? (Delta / Max) : 0.0f;
+    float V = Max;
+    
+    // Calculate Hue
+    if (Delta > 0.0f)
+    {
+        if (FMath::IsNearlyEqual(Max, R))
+        {
+            H = 60.0f * FMath::Fmod(((G - B) / Delta), 6.0f);
+        }
+        else if (FMath::IsNearlyEqual(Max, G))
+        {
+            H = 60.0f * (((B - R) / Delta) + 2.0f);
+        }
+        else // Max == B
+        {
+            H = 60.0f * (((R - G) / Delta) + 4.0f);
+        }
+        
+        if (H < 0.0f)
+        {
+            H += 360.0f;
+        }
+    }
+    
+    // Boost saturation
+    S = FMath::Clamp(S * Multiplier, 0.0f, 1.0f);
+    
+    // Convert HSV back to RGB
+    float C = V * S;
+    float X = C * (1.0f - FMath::Abs(FMath::Fmod(H / 60.0f, 2.0f) - 1.0f));
+    float m = V - C;
+    
+    float NewR = 0.0f, NewG = 0.0f, NewB = 0.0f;
+    
+    if (H < 60.0f)
+    {
+        NewR = C; NewG = X; NewB = 0.0f;
+    }
+    else if (H < 120.0f)
+    {
+        NewR = X; NewG = C; NewB = 0.0f;
+    }
+    else if (H < 180.0f)
+    {
+        NewR = 0.0f; NewG = C; NewB = X;
+    }
+    else if (H < 240.0f)
+    {
+        NewR = 0.0f; NewG = X; NewB = C;
+    }
+    else if (H < 300.0f)
+    {
+        NewR = X; NewG = 0.0f; NewB = C;
+    }
+    else // H < 360.0f
+    {
+        NewR = C; NewG = 0.0f; NewB = X;
+    }
+    
+    // Add the lightness component
+    NewR = FMath::Clamp(NewR + m, 0.0f, 1.0f);
+    NewG = FMath::Clamp(NewG + m, 0.0f, 1.0f);
+    NewB = FMath::Clamp(NewB + m, 0.0f, 1.0f);
+    
+    return FLinearColor(NewR, NewG, NewB, Color.A);
 }
 
 bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)

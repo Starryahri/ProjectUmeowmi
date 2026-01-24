@@ -335,6 +335,10 @@ protected:
     UPROPERTY()
     FLinearColor CachedAverageColor = FLinearColor::White;
 
+    // Color saturation multiplier for intensifying average colors (1.0 = no change, 1.5 = 50% more saturated, 2.0 = double saturation)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Preparation", meta = (ToolTip = "Multiplier to boost color saturation (1.0 = original, higher = more vibrant)", ClampMin = "1.0", ClampMax = "3.0"))
+    float ColorSaturationMultiplier = 1.5f;
+
     // Hover/focus text display
     UPROPERTY(meta = (BindWidget))
     UTextBlock* HoverText;
@@ -490,6 +494,9 @@ private:
 
     // Get average color from ingredient texture
     void GetAverageColorFromIngredientTexture();
+
+    // Boost color saturation using HSV conversion
+    FLinearColor BoostColorSaturation(const FLinearColor& Color, float SaturationMultiplier) const;
 
     // Quantity control event handlers
     UFUNCTION()

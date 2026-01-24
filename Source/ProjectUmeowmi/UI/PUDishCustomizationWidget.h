@@ -117,12 +117,13 @@ public:
     //   - bCreateEmptySlots: If true, creates empty slots up to MaxSlots. If false, only creates slots for existing ingredients
     //   - bEnableDrag: Whether to enable drag functionality on the slots
     //   - IngredientSource: Array of ingredient instances to use. If empty, uses CurrentDishData.IngredientInstances
+    //   - FirstSlotLeftPadding: Left padding to apply to the first slot when added directly to container (not using shelving widgets). Useful for aligning with skewed backgrounds.
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
-    void CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource);
+    void CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding = 0.0f);
     
     // Convenience function that uses CurrentDishData.IngredientInstances (no IngredientSource parameter needed)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
-    void CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots = 12, bool bUseShelvingWidgets = false, bool bCreateEmptySlots = true, bool bEnableDrag = true);
+    void CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots = 12, bool bUseShelvingWidgets = false, bool bCreateEmptySlots = true, bool bEnableDrag = true, float FirstSlotLeftPadding = 0.0f);
     
     // Helper function to convert ingredient data table to ingredient instances array
     // Takes a data table containing FPUIngredientBase rows and converts them to FIngredientInstance array

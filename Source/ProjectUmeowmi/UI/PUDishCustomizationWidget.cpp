@@ -7,6 +7,12 @@
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/ScrollBox.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/VerticalBoxSlot.h"
+#include "Components/WrapBox.h"
+#include "Components/WrapBoxSlot.h"
 #include "Blueprint/WidgetTree.h"
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
@@ -615,7 +621,7 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
     }
     
     // Use unified CreateSlots function with shelving widgets enabled
-    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Prep, AvailableIngredients.Num(), true, false, false, PantryInstances);
+    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Prep, AvailableIngredients.Num(), true, false, false, PantryInstances, 0.0f);
     
     // Post-process: Set up special logic for prep stage slots (selection state, pantry click handler)
     for (int32 i = 0; i < CreatedIngredientSlots.Num() && i < AvailableIngredients.Num(); ++i)
@@ -713,7 +719,7 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientSlots()
     // Use unified CreateSlots function
     // For plating, we want to create slots for each ingredient instance (no empty slots)
     // Use Plating location (not ActiveIngredientArea)
-    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Plating, 12, false, false, true, DishData.IngredientInstances);
+    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Plating, 12, false, false, true, DishData.IngredientInstances, 0.0f);
     
     // Call the plating stage initialized event
     OnPlatingStageInitialized(DishData);
@@ -1642,7 +1648,7 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentShelvingWidget(UPUIngredientSlo
     return false;
 }
 
-void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource)
+void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding)
 {
     UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Creating slots (Location: %d, MaxSlots: %d, UseShelving: %s, CreateEmpty: %s, EnableDrag: %s)"), 
         (int32)Location, MaxSlots, bUseShelvingWidgets ? TEXT("YES") : TEXT("NO"), bCreateEmptySlots ? TEXT("YES") : TEXT("NO"), bEnableDrag ? TEXT("YES") : TEXT("NO"));
@@ -1817,6 +1823,37 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
             {
                 Container->AddChild(IngredientSlot);
                 UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Added slot %d directly to container"), i);
+                
+                // Apply left padding to first slot if it's prep location and padding is specified
+                if (i == 0 && Location == EPUIngredientSlotLocation::Prep && FirstSlotLeftPadding > 0.0f)
+                {
+                    // Try to get the slot and apply padding based on container type
+                    if (UWrapBox* WrapBox = Cast<UWrapBox>(Container))
+                    {
+                        if (UWrapBoxSlot* WrapBoxSlot = Cast<UWrapBoxSlot>(IngredientSlot->Slot))
+                        {
+                            FMargin CurrentPadding = WrapBoxSlot->GetPadding();
+                            WrapBoxSlot->SetPadding(FMargin(FirstSlotLeftPadding, CurrentPadding.Top, CurrentPadding.Right, CurrentPadding.Bottom));
+                            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Applied left padding %.2f to first prep slot"), FirstSlotLeftPadding);
+                        }
+                    }
+                    else if (UHorizontalBox* HorizontalBox = Cast<UHorizontalBox>(Container))
+                    {
+                        if (UHorizontalBoxSlot* HorizontalBoxSlot = Cast<UHorizontalBoxSlot>(IngredientSlot->Slot))
+                        {
+                            FMargin CurrentPadding = HorizontalBoxSlot->GetPadding();
+                            HorizontalBoxSlot->SetPadding(FMargin(FirstSlotLeftPadding, CurrentPadding.Top, CurrentPadding.Right, CurrentPadding.Bottom));
+                            UE_LOG(LogTemp, Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Applied left padding %.2f to first prep slot"), FirstSlotLeftPadding);
+                        }
+                    }
+                    else if (UCanvasPanel* CanvasPanel = Cast<UCanvasPanel>(Container))
+                    {
+                        // For CanvasPanel, we'd need to adjust position instead of padding
+                        // This would require getting the slot position and adding the offset
+                        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateSlots - CanvasPanel padding not yet implemented for prep area"));
+                    }
+                    // Add other container types as needed (VerticalBox, etc.)
+                }
             }
             else
             {
@@ -1831,12 +1868,12 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
     bIngredientSlotsCreated = true;
 }
 
-void UPUDishCustomizationWidget::CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag)
+void UPUDishCustomizationWidget::CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, float FirstSlotLeftPadding)
 {
     // Call the main CreateSlots function with an empty ingredient source array
     // This will cause it to use CurrentDishData.IngredientInstances
     TArray<FIngredientInstance> EmptyArray;
-    CreateSlots(Container, Location, MaxSlots, bUseShelvingWidgets, bCreateEmptySlots, bEnableDrag, EmptyArray);
+    CreateSlots(Container, Location, MaxSlots, bUseShelvingWidgets, bCreateEmptySlots, bEnableDrag, EmptyArray, FirstSlotLeftPadding);
 }
 
 TArray<FIngredientInstance> UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable(UDataTable* IngredientDataTable)
