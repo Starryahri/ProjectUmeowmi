@@ -3416,8 +3416,11 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
                 
-                // Get average color from ingredient texture
+                // Get average color from ingredient texture (recalculate to ensure it's up to date)
                 GetAverageColorFromIngredientTexture();
+                
+                // Update the icon to apply the newly calculated color and pixelation
+                UpdateIngredientIcon();
                 
                 // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
                 if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
@@ -3459,8 +3462,11 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 SetIngredientInstance(UpdatedInstance);
                 UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via component"));
                 
-                // Get average color from ingredient texture
+                // Get average color from ingredient texture (recalculate to ensure it's up to date)
                 GetAverageColorFromIngredientTexture();
+                
+                // Update the icon to apply the newly calculated color and pixelation
+                UpdateIngredientIcon();
                 
                 // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
                 if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
