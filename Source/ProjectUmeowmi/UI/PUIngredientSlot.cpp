@@ -471,18 +471,23 @@ void UPUIngredientSlot::UpdateIngredientIcon()
     UTexture2D* TextureToUse = GetTextureForLocation();
     if (TextureToUse)
     {
-        // Check if ingredient is suspicious (2+ preparations) and we're in prepped area
+        // Check if ingredient is suspicious (2+ preparations)
         TArray<FGameplayTag> PrepTags;
         IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
         bool bIsSuspicious = PrepTags.Num() >= 2;
         bool bHasPreparations = PrepTags.Num() > 0;
-        bool bIsPreppedLocation = (Location == EPUIngredientSlotLocation::Prepped);
+        // Use preparation/suspicious materials in both Prepped (prep stage bowls) and
+        // ActiveIngredientArea (cooking stage) so the main ingredient icon visually reflects
+        // chopped/minced/pureed/suspicious state in cooking as well.
+        bool bUsePrepMaterials =
+            (Location == EPUIngredientSlotLocation::Prepped ||
+             Location == EPUIngredientSlotLocation::ActiveIngredientArea);
         
         // Determine which material instance to use
         UMaterialInstanceDynamic* MaterialToUse = nullptr;
         TSoftObjectPtr<UMaterialInterface> MaterialInstanceToUse;
         
-        if (bIsSuspicious && bIsPreppedLocation && SuspiciousMaterialInstance.IsValid())
+        if (bUsePrepMaterials && bIsSuspicious && SuspiciousMaterialInstance.IsValid())
         {
             // Use suspicious material (takes priority)
             MaterialInstanceToUse = SuspiciousMaterialInstance;
@@ -505,7 +510,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 PreparationDynamicMaterial = nullptr;
             }
         }
-        else if (bHasPreparations && bIsPreppedLocation && PreparationMaterialInstance.IsValid())
+        else if (bUsePrepMaterials && bHasPreparations && PreparationMaterialInstance.IsValid())
         {
             // Use preparation material
             MaterialInstanceToUse = PreparationMaterialInstance;
@@ -1095,9 +1100,11 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
         }
         return Texture;
     }
-    else if (Location == EPUIngredientSlotLocation::Prepped)
+    else if (Location == EPUIngredientSlotLocation::Prepped || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
     {
-        // Prepped slots should use the preparation's PrepTexture if a preparation is applied
+        // Prepped slots (and cooking stage ActiveIngredientArea slots) should use the
+        // preparation's PrepTexture if a preparation is applied so the main ingredient
+        // icon shows the chopped/minced/pureed version.
         // Fallback chain: PrepTexture -> PreppedTexture -> PreviewTexture
         UTexture2D* Texture = nullptr;
         
@@ -1162,7 +1169,7 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
         
         return Texture;
     }
-    else // ActiveIngredientArea or Plating
+    else // Plating
     {
         return IngredientInstance.IngredientData.PreviewTexture;
     }
@@ -1723,10 +1730,16 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
         // Show prep menu if:
-        // 1. Drag is disabled, OR
-        // 2. Shift is held down (allows menu access even when drag is enabled), OR
-        // 3. This is a Prep slot (Prep slots always show menu on click, even with drag enabled)
-        bool bShouldShowMenu = !bDragEnabled || bShiftPressed || Location == EPUIngredientSlotLocation::Prep;
+        // 1. This is a Prep slot (Prep slots always show menu on click, regardless of drag), OR
+        // 2. Shift is held down AND drag is enabled (allows menu access even when drag is enabled)
+        //
+        // IMPORTANT:
+        // - For non-Prep slots created via CreateSlotsFromDishData with bEnableDrag = false,
+        //   we SHOULD NOT show the radial menu on simple left-click. In that case bDragEnabled
+        //   is false and Location != Prep, so the menu will not open.
+        bool bShouldShowMenu =
+            (Location == EPUIngredientSlotLocation::Prep) ||
+            (bShiftPressed && bDragEnabled);
         if (bShouldShowMenu)
         {
             if (bShiftPressed)
