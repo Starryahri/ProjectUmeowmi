@@ -380,10 +380,11 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Prepped")
     TWeakObjectPtr<class UPanelWidget> PreppedIngredientContainer;
 
-    // Map to track prepped slots by ingredient tag (for quick lookup)
-    // One prepped slot per ingredient, updated when preparations change
+    // Map to track prepped slots by ingredient instance ID (for quick lookup)
+    // One prepped slot per unique ingredient instance, so duplicates of the same ingredient
+    // in different prep slots each get their own bowl in the prepped area.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Prepped")
-    TMap<FString, class UPUIngredientSlot*> PreppedSlotMap;
+    TMap<int32, class UPUIngredientSlot*> PreppedSlotMap;
 
     // Widget reference for pantry container (set in Blueprint)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Pantry")

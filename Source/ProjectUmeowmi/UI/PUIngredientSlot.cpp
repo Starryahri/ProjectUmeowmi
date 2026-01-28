@@ -1774,10 +1774,11 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     else if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
         // Right click - show combined menu (preparations + actions)
-        // Disable right-click menu in ActiveIngredientArea
-        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+        // Only allow right-click radial menu in Prep slots (plate area).
+        // Disable in all other locations, including ActiveIngredientArea and Prepped (bowls).
+        if (Location != EPUIngredientSlotLocation::Prep)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click disabled in ActiveIngredientArea"));
+            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click radial menu disabled for this slot location: %d"), (int32)Location);
             return FReply::Unhandled();
         }
         
@@ -1791,6 +1792,13 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
 
 void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
 {
+    // Radial menus are only allowed in Prep slots (plate area).
+    if (Location != EPUIngredientSlotLocation::Prep)
+    {
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Blocked radial menu for non-Prep slot (Location: %d)"), (int32)Location);
+        return;
+    }
+
     if (IsEmpty())
     {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Cannot show menu on empty slot"));
