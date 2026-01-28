@@ -697,35 +697,47 @@ void UPUIngredientSlot::UpdatePrepBowls()
         return;
     }
 
-    // Select textures based on random flag
-    UTexture2D* SelectedFrontTexture = nullptr;
-    UTexture2D* SelectedBackTexture = nullptr;
+    // Use a deterministic random stream seeded by the ingredient instance ID so the same
+    // instance always gets the same bowl selection across widgets and refreshes.
+    int32 InstanceID = IngredientInstance.InstanceID;
+
+    // If we somehow don't have a valid instance ID, fall back to zero (first textures).
+    if (InstanceID == 0)
+    {
+        InstanceID = 1;
+    }
+
+    FRandomStream Stream(InstanceID);
+
+    int32 FrontIndex = 0;
+    int32 BackIndex = 0;
 
     if (bUseRandomPrepBowls)
     {
-        // Random selection: any front with any back
-        int32 FrontIndex = FMath::RandRange(0, PrepBowlFrontTextures.Num() - 1);
-        int32 BackIndex = FMath::RandRange(0, PrepBowlBackTextures.Num() - 1);
-        
-        SelectedFrontTexture = PrepBowlFrontTextures[FrontIndex];
-        SelectedBackTexture = PrepBowlBackTextures[BackIndex];
-        
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Random selection (Front: %d, Back: %d)"),
-            FrontIndex, BackIndex);
+        // Random selection: any front with any back (but deterministic per instance)
+        FrontIndex = Stream.RandRange(0, PrepBowlFrontTextures.Num() - 1);
+        BackIndex  = Stream.RandRange(0, PrepBowlBackTextures.Num() - 1);
+
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic random selection (InstanceID: %d, Front: %d, Back: %d)"),
+            IngredientInstance.InstanceID, FrontIndex, BackIndex);
     }
     else
     {
-        // Paired selection: use same index from both arrays
-        // Use the minimum length to ensure we have valid pairs
+        // Paired selection: use same index from both arrays (deterministic per instance)
         int32 MaxIndex = FMath::Min(PrepBowlFrontTextures.Num(), PrepBowlBackTextures.Num()) - 1;
-        int32 SelectedIndex = FMath::RandRange(0, MaxIndex);
-        
-        SelectedFrontTexture = PrepBowlFrontTextures[SelectedIndex];
-        SelectedBackTexture = PrepBowlBackTextures[SelectedIndex];
-        
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Paired selection (Index: %d)"),
-            SelectedIndex);
+        int32 SelectedIndex = Stream.RandRange(0, MaxIndex);
+        FrontIndex = BackIndex = SelectedIndex;
+
+        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic paired selection (InstanceID: %d, Index: %d)"),
+            IngredientInstance.InstanceID, SelectedIndex);
     }
+
+    UTexture2D* SelectedFrontTexture = PrepBowlFrontTextures.IsValidIndex(FrontIndex)
+        ? PrepBowlFrontTextures[FrontIndex]
+        : nullptr;
+    UTexture2D* SelectedBackTexture = PrepBowlBackTextures.IsValidIndex(BackIndex)
+        ? PrepBowlBackTextures[BackIndex]
+        : nullptr;
 
     // Set front bowl texture and visibility
     if (PrepBowlFront)

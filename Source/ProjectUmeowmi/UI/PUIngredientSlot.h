@@ -267,8 +267,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Prep Bowls", meta = (ToolTip = "Array of back prep bowl textures (should match length of PrepBowlFrontTextures)"))
     TArray<UTexture2D*> PrepBowlBackTextures;
 
-    // Flag to use random prep bowl selection (any front with any back) instead of paired selection
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Prep Bowls", meta = (ToolTip = "If true, randomly selects any front with any back. If false, uses paired selection (same index)"))
+    // Flag to use random prep bowl selection (any front with any back) instead of paired selection.
+    // The actual selection is deterministic per IngredientInstanceID, so the same instance always
+    // gets the same bowl combination across widgets and UI refreshes.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Prep Bowls", meta = (ToolTip = "If true, selects any front with any back using a deterministic random stream per ingredient instance. If false, uses paired selection (same index)"))
     bool bUseRandomPrepBowls = false;
 
     // UI Components (will be bound in Blueprint)
