@@ -1,7 +1,15 @@
 #include "PUDishBase.h"
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
+#include "PUDishBlueprintLibrary.h"
 #include "Engine/DataTable.h"
+
+// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+namespace
+{
+    // Enables verbose logging when resolving ingredient tags to data table rows.
+    constexpr bool bPU_LogIngredientRowLookups = false;
+}
 
 // Initialize the static counter
 std::atomic<int32> FPUDishBase::GlobalInstanceCounter(0);
@@ -19,64 +27,60 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
 {
     if (!IngredientDataTable.IsValid())
     {
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::GetIngredient - IngredientDataTable is not valid!"));
         return false;
     }
     
     UDataTable* LoadedIngredientDataTable = IngredientDataTable.LoadSynchronous();
     if (!LoadedIngredientDataTable)
     {
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Failed to load IngredientDataTable!"));
         return false;
     }
     
-    // Get the ingredient name from the tag (everything after the last period) and convert to lowercase
-    FString FullTag = IngredientTag.ToString();
-    int32 LastPeriodIndex;
-    if (FullTag.FindLastChar('.', LastPeriodIndex))
+    // Get the ingredient row name from the tag (removes "Ingredient." prefix, converts to lowercase, removes periods)
+    FName RowName = UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(IngredientTag);
+    if (bPU_LogIngredientRowLookups)
     {
-        FString IngredientName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-        FName RowName = FName(*IngredientName);
+        //UE_LOG(LogTemp,Display, TEXT("🔍 FPUDishBase::GetIngredient - Looking for tag: %s, RowName: %s"),
+            //*IngredientTag.ToString(), *RowName.ToString());
+    }
         
-        if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
+    if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
+    {
+        OutIngredient = *FoundIngredient;
+        
+        // Load preparation data if available
+        if (OutIngredient.PreparationDataTable.IsValid())
         {
-            OutIngredient = *FoundIngredient;
-            
-            // Load preparation data if available
-            if (OutIngredient.PreparationDataTable.IsValid())
+            UDataTable* LoadedPreparationDataTable = OutIngredient.PreparationDataTable.LoadSynchronous();
+            if (LoadedPreparationDataTable)
             {
-                UDataTable* LoadedPreparationDataTable = OutIngredient.PreparationDataTable.LoadSynchronous();
-                if (LoadedPreparationDataTable)
+                // Apply any active preparations to the ingredient
+                for (const FGameplayTag& PrepTag : OutIngredient.ActivePreparations)
                 {
-                    // Apply any active preparations to the ingredient
-                    for (const FGameplayTag& PrepTag : OutIngredient.ActivePreparations)
+                    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
+                    FString PrepFullTag = PrepTag.ToString();
+                    int32 PrepLastPeriodIndex;
+                    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
                     {
-                        // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                        FString PrepFullTag = PrepTag.ToString();
-                        int32 PrepLastPeriodIndex;
-                        if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                        FName PrepRowName = FName(*PrepName);
+                        
+                        if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
                         {
-                            FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                            FName PrepRowName = FName(*PrepName);
-                            
-                            if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
-                            {
-                                // Apply preparation modifiers
-                                for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
-                                {
-                                    FName PropertyName = Modifier.GetPropertyName();
-                                    float CurrentValue = OutIngredient.GetPropertyValue(PropertyName);
-                                    float NewValue = Modifier.ApplyModification(CurrentValue);
-                                    OutIngredient.SetPropertyValue(PropertyName, NewValue);
-                                }
-                            }
+                            // Apply preparation modifiers
+                            Preparation->ApplyModifiers(OutIngredient.FlavorAspects, OutIngredient.TextureAspects);
                         }
                     }
                 }
             }
-            
-            return true;
         }
+        
+        return true;
     }
     
+    //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Could not find ingredient row '%s' in data table!"), *RowName.ToString());
     return false;
 }
 
@@ -117,156 +121,41 @@ int32 FPUDishBase::GetTotalIngredientQuantity() const
     return TotalQuantity;
 }
 
-float FPUDishBase::GetTotalValueForProperty(const FName& PropertyName) const
+float FPUDishBase::GetTotalFlavorAspect(const FName& AspectName) const
 {
     float TotalValue = 0.0f;
     
-    UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Calculating total for property '%s' with %d ingredient instances"), 
-        *PropertyName.ToString(), IngredientInstances.Num());
-    
-    // Sum up values from all ingredients (including their preparation modifications)
-    for (int32 i = 0; i < IngredientInstances.Num(); ++i)
+    // Sum up values from all ingredients
+    // Use the aspects directly from IngredientData which already includes:
+    // - Base aspects
+    // - Preparation modifications
+    // - Time/temperature modifications
+    // - Quantity multiplication
+    for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        const FIngredientInstance& Instance = IngredientInstances[i];
-        
-        UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Processing instance %d (%s), quantity: %d"), 
-            i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity);
-        
-        // Get the ingredient with preparations applied
-        FPUIngredientBase PreparedIngredient;
-        if (GetIngredient(Instance.IngredientData.IngredientTag, PreparedIngredient))
-        {
-            float BaseValue = PreparedIngredient.GetPropertyValue(PropertyName);
-            UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Base value for %s: %.2f"), 
-                *Instance.IngredientData.IngredientTag.ToString(), BaseValue);
-            
-            // Apply the preparations from the instance to the prepared ingredient
-            if (Instance.IngredientData.PreparationDataTable.IsValid())
-            {
-                UDataTable* LoadedPreparationDataTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous();
-                if (LoadedPreparationDataTable)
-                {
-                    UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Found preparation data table, active preparations: %d"), 
-                        Instance.IngredientData.ActivePreparations.Num());
-                    
-                    // Apply each preparation's modifiers
-                    for (const FGameplayTag& PrepTag : Instance.IngredientData.ActivePreparations)
-                    {
-                        UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Applying preparation: %s"), 
-                            *PrepTag.ToString());
-                        
-                        // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                        FString PrepFullTag = PrepTag.ToString();
-                        int32 PrepLastPeriodIndex;
-                        if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
-                        {
-                            FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                            FName PrepRowName = FName(*PrepName);
-                            
-                            UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Looking for preparation row: %s"), 
-                                *PrepRowName.ToString());
-                            
-                            if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetTotalValueForProperty")))
-                            {
-                                UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Found preparation with %d modifiers"), 
-                                    Preparation->PropertyModifiers.Num());
-                                
-                                // Apply preparation modifiers
-                                for (const FPropertyModifier& Modifier : Preparation->PropertyModifiers)
-                                {
-                                    FName ModifierPropertyName = Modifier.GetPropertyName();
-                                    UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Checking modifier for property: %s"), 
-                                        *ModifierPropertyName.ToString());
-                                    
-                                    if (ModifierPropertyName == PropertyName)
-                                    {
-                                        float CurrentValue = PreparedIngredient.GetPropertyValue(PropertyName);
-                                        float NewValue = Modifier.ApplyModification(CurrentValue);
-                                        PreparedIngredient.SetPropertyValue(PropertyName, NewValue);
-                                        
-                                        UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Applied modifier: %.2f -> %.2f"), 
-                                            CurrentValue, NewValue);
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                UE_LOG(LogTemp, Warning, TEXT("FPUDishBase::GetTotalValueForProperty: Could not find preparation row: %s"), 
-                                    *PrepRowName.ToString());
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("FPUDishBase::GetTotalValueForProperty: Could not load preparation data table"));
-                }
-            }
-            else
-            {
-                UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: No preparation data table available"));
-            }
-            
-            float FinalValue = PreparedIngredient.GetPropertyValue(PropertyName);
-            float QuantityAdjustedValue = FinalValue * Instance.Quantity;
-            TotalValue += QuantityAdjustedValue;
-            
-            UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Final value for %s: %.2f (quantity adjusted: %.2f)"), 
-                *Instance.IngredientData.IngredientTag.ToString(), FinalValue, QuantityAdjustedValue);
-        }
-        else
-        {
-            // Fallback to the unprepared data if we can't get the prepared ingredient
-            float FallbackValue = Instance.IngredientData.GetPropertyValue(PropertyName);
-            float QuantityAdjustedValue = FallbackValue * Instance.Quantity;
-            TotalValue += QuantityAdjustedValue;
-            
-            UE_LOG(LogTemp, Warning, TEXT("FPUDishBase::GetTotalValueForProperty: Using fallback value for %s: %.2f (quantity adjusted: %.2f)"), 
-                *Instance.IngredientData.IngredientTag.ToString(), FallbackValue, QuantityAdjustedValue);
-        }
+        // Use the aspects directly from IngredientData (already calculated with all modifiers and quantity)
+        float AspectValue = Instance.IngredientData.GetFlavorAspect(AspectName);
+        TotalValue += AspectValue * Instance.Quantity;
     }
-    
-    UE_LOG(LogTemp, Log, TEXT("FPUDishBase::GetTotalValueForProperty: Total value for property '%s': %.2f"), 
-        *PropertyName.ToString(), TotalValue);
     
     return TotalValue;
 }
 
-TArray<FIngredientProperty> FPUDishBase::GetPropertiesWithTag(const FGameplayTag& Tag) const
-{
-    TArray<FIngredientProperty> Properties;
-    
-    // Collect properties from all ingredients
-    for (const FIngredientInstance& Instance : IngredientInstances)
-    {
-        if (Instance.IngredientData.HasPropertiesWithTag(Tag))
-        {
-            // Add all properties with matching tag, multiplied by quantity
-            for (const FIngredientProperty& Property : Instance.IngredientData.NaturalProperties)
-            {
-                if (Property.PropertyTags.HasTag(Tag))
-                {
-                    // Create a copy of the property with the value multiplied by quantity
-                    FIngredientProperty QuantityAdjustedProperty = Property;
-                    QuantityAdjustedProperty.Value = Property.Value * Instance.Quantity;
-                    Properties.Add(QuantityAdjustedProperty);
-                }
-            }
-        }
-    }
-    
-    return Properties;
-}
-
-float FPUDishBase::GetTotalValueForTag(const FGameplayTag& Tag) const
+float FPUDishBase::GetTotalTextureAspect(const FName& AspectName) const
 {
     float TotalValue = 0.0f;
     
-    // Sum up values from all ingredients (including their preparation modifications)
+    // Sum up values from all ingredients
+    // Use the aspects directly from IngredientData which already includes:
+    // - Base aspects
+    // - Preparation modifications
+    // - Time/temperature modifications
+    // - Quantity multiplication
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
-        // Multiply the total value for the tag by the quantity of this ingredient
-        TotalValue += Instance.IngredientData.GetTotalValueForTag(Tag) * Instance.Quantity;
+        // Use the aspects directly from IngredientData (already calculated with all modifiers and quantity)
+        float AspectValue = Instance.IngredientData.GetTextureAspect(AspectName);
+        TotalValue += AspectValue * Instance.Quantity;
     }
     
     return TotalValue;
@@ -294,9 +183,9 @@ FText FPUDishBase::GetCurrentDisplayName() const
         return CustomName;
     }
     
-    // Count how many ingredients have more than 2 preparations (dubious ingredients)
+    // Count how many ingredients have 2 or more preparations (suspicious ingredients)
     int32 TotalIngredients = 0;
-    int32 DubiousIngredients = 0;
+    int32 SuspiciousIngredients = 0;
     
     for (const FIngredientInstance& Instance : IngredientInstances)
     {
@@ -304,17 +193,17 @@ FText FPUDishBase::GetCurrentDisplayName() const
         FGameplayTagContainer Preparations = Instance.Preparations.Num() > 0 ? Instance.Preparations : Instance.IngredientData.ActivePreparations;
         
         TotalIngredients += Instance.Quantity;
-        if (Preparations.Num() > 2)
+        if (Preparations.Num() > 1)
         {
-            DubiousIngredients += Instance.Quantity;
+            SuspiciousIngredients += Instance.Quantity;
         }
     }
     
-    // If more than half of the ingredients are dubious, apply "Dubious" to the dish
-    if (TotalIngredients > 0 && DubiousIngredients > TotalIngredients / 2)
+    // If more than half of the ingredients are suspicious, apply "Suspicious" to the dish
+    if (TotalIngredients > 0 && SuspiciousIngredients > TotalIngredients / 2)
     {
         FString BaseDishName = DisplayName.ToString();
-        return FText::FromString(TEXT("Dubious ") + BaseDishName);
+        return FText::FromString(TEXT("Suspicious ") + BaseDishName);
     }
     
     // Track quantities of each ingredient
@@ -479,12 +368,12 @@ void FPUDishBase::SetIngredientPlating(int32 InstanceID, const FVector& Position
         Instance.PlatingScale = Scale;
         Instance.bIsPlated = true;
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ FPUDishBase::SetIngredientPlating - Set plating for instance %d: Pos(%.2f,%.2f,%.2f) Rot(%.2f,%.2f,%.2f) Scale(%.2f,%.2f,%.2f)"), 
-            InstanceID, Position.X, Position.Y, Position.Z, Rotation.Pitch, Rotation.Yaw, Rotation.Roll, Scale.X, Scale.Y, Scale.Z);
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ FPUDishBase::SetIngredientPlating - Set plating for instance %d: Pos(%.2f,%.2f,%.2f) Rot(%.2f,%.2f,%.2f) Scale(%.2f,%.2f,%.2f)"), 
+            //InstanceID, Position.X, Position.Y, Position.Z, Rotation.Pitch, Rotation.Yaw, Rotation.Roll, Scale.X, Scale.Y, Scale.Z);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::SetIngredientPlating - Instance %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::SetIngredientPlating - Instance %d not found"), InstanceID);
     }
 }
 
@@ -496,11 +385,11 @@ void FPUDishBase::ClearIngredientPlating(int32 InstanceID)
         FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
         Instance.bIsPlated = false;
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ FPUDishBase::ClearIngredientPlating - Cleared plating for instance %d"), InstanceID);
+        // //UE_LOG(LogTemp,Display, TEXT("🍽️ FPUDishBase::ClearIngredientPlating - Cleared plating for instance %d"), InstanceID);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::ClearIngredientPlating - Instance %d not found"), InstanceID);
+        // //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::ClearIngredientPlating - Instance %d not found"), InstanceID);
     }
 }
 

@@ -55,7 +55,8 @@ The preparation system allows players to apply various preparations (like "chopp
    - **PreparationTag**: Gameplay tag (e.g., "Prep.Chopped", "Prep.Cooked")
    - **DisplayName**: Human-readable name (e.g., "Chopped", "Cooked")
    - **Description**: Optional description
-   - **PreviewTexture**: Optional icon texture
+   - **IconTexture**: Optional icon texture
+   - **PrepTexture**: Optional preparation texture
    - **NamePrefix/NameSuffix**: How the preparation affects ingredient names
    - **PropertyModifiers**: How the preparation affects ingredient properties
 

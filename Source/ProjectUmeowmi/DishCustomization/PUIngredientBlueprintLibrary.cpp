@@ -20,34 +20,34 @@ FText UPUIngredientBlueprintLibrary::GetCurrentDisplayName(const FPUIngredientBa
     return Ingredient.GetCurrentDisplayName();
 }
 
-float UPUIngredientBlueprintLibrary::GetPropertyValue(const FPUIngredientBase& Ingredient, const FName& PropertyName)
+float UPUIngredientBlueprintLibrary::GetFlavorAspect(const FPUIngredientBase& Ingredient, const FName& AspectName)
 {
-    return Ingredient.GetPropertyValue(PropertyName);
+    return Ingredient.GetFlavorAspect(AspectName);
 }
 
-void UPUIngredientBlueprintLibrary::SetPropertyValue(FPUIngredientBase& Ingredient, const FName& PropertyName, float Value)
+float UPUIngredientBlueprintLibrary::GetTextureAspect(const FPUIngredientBase& Ingredient, const FName& AspectName)
 {
-    Ingredient.SetPropertyValue(PropertyName, Value);
+    return Ingredient.GetTextureAspect(AspectName);
 }
 
-bool UPUIngredientBlueprintLibrary::HasProperty(const FPUIngredientBase& Ingredient, const FName& PropertyName)
+void UPUIngredientBlueprintLibrary::SetFlavorAspect(FPUIngredientBase& Ingredient, const FName& AspectName, float Value)
 {
-    return Ingredient.HasProperty(PropertyName);
+    Ingredient.SetFlavorAspect(AspectName, Value);
 }
 
-TArray<FIngredientProperty> UPUIngredientBlueprintLibrary::GetPropertiesByTag(const FPUIngredientBase& Ingredient, const FGameplayTag& Tag)
+void UPUIngredientBlueprintLibrary::SetTextureAspect(FPUIngredientBase& Ingredient, const FName& AspectName, float Value)
 {
-    return Ingredient.GetPropertiesByTag(Tag);
+    Ingredient.SetTextureAspect(AspectName, Value);
 }
 
-bool UPUIngredientBlueprintLibrary::HasPropertiesWithTag(const FPUIngredientBase& Ingredient, const FGameplayTag& Tag)
+float UPUIngredientBlueprintLibrary::GetTotalFlavorValue(const FPUIngredientBase& Ingredient)
 {
-    return Ingredient.HasPropertiesWithTag(Tag);
+    return Ingredient.GetTotalFlavorValue();
 }
 
-float UPUIngredientBlueprintLibrary::GetTotalValueForTag(const FPUIngredientBase& Ingredient, const FGameplayTag& Tag)
+float UPUIngredientBlueprintLibrary::GetTotalTextureValue(const FPUIngredientBase& Ingredient)
 {
-    return Ingredient.GetTotalValueForTag(Tag);
+    return Ingredient.GetTotalTextureValue();
 }
 
 TArray<FGameplayTag> UPUIngredientBlueprintLibrary::GetEffectsAtQuantity(const FPUIngredientBase& Ingredient, int32 Quantity)

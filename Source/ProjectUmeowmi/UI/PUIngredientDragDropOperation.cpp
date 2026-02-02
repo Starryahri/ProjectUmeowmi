@@ -1,31 +1,62 @@
 #include "PUIngredientDragDropOperation.h"
-#include "PUCookingStageWidget.h"
+#include "PUDishCustomizationWidget.h"
+
+// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+namespace
+{
+    constexpr bool bPU_LogIngredientDragDebug = false;
+}
 
 UPUIngredientDragDropOperation::UPUIngredientDragDropOperation()
 {
-    InstanceID = 0; // Will be set when SetupIngredientDrag is called
-    Quantity = 1;
+    // IngredientInstance will be set when SetupIngredientDrag is called
 }
 
-void UPUIngredientDragDropOperation::SetupIngredientDrag(const FGameplayTag& InIngredientTag, const FPUIngredientBase& InIngredientData, int32 InInstanceID, int32 InQuantity)
+void UPUIngredientDragDropOperation::SetupIngredientDrag(const FIngredientInstance& InIngredientInstance)
 {
-    IngredientTag = InIngredientTag;
-    IngredientData = InIngredientData;
+    IngredientInstance = InIngredientInstance;
     
-    // Generate a unique ID if none provided (InInstanceID == 0)
-    if (InInstanceID == 0)
+    // Ensure IngredientTag is set from IngredientData if not already set
+    if (!IngredientInstance.IngredientTag.IsValid() && IngredientInstance.IngredientData.IngredientTag.IsValid())
+    {
+        IngredientInstance.IngredientTag = IngredientInstance.IngredientData.IngredientTag;
+    }
+    
+    // Generate a unique ID if none provided (InstanceID == 0)
+    // This happens when dragging from pantry slots
+    bool bFromPantry = (IngredientInstance.InstanceID == 0);
+    if (bFromPantry)
     {
         // Use GUID-based unique ID generation
-        InstanceID = UPUCookingStageWidget::GenerateGUIDBasedInstanceID();
-        UE_LOG(LogTemp, Display, TEXT("🔍 Generated GUID-based InstanceID: %d"), InstanceID);
+        IngredientInstance.InstanceID = UPUDishCustomizationWidget::GenerateGUIDBasedInstanceID();
+        // Set quantity to 1 when dragging from pantry
+        IngredientInstance.Quantity = 1;
+
+        if (bPU_LogIngredientDragDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🔍 Generated GUID-based InstanceID: %d (from pantry, quantity set to 1, tag: %s)"), 
+            //    IngredientInstance.InstanceID, *IngredientInstance.IngredientTag.ToString());
+        }
+    }
+
+    if (bPU_LogIngredientDragDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetupIngredientDrag - Set up drag for ingredient %s (ID: %d, Qty: %d, Tag: %s, FromPantry: %s)"), 
+        //    *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity,
+        //    *IngredientInstance.IngredientTag.ToString(), bFromPantry ? TEXT("YES") : TEXT("NO"));
+    }
+}
+
+void UPUIngredientDragDropOperation::SetDragVisualWidget(UWidget* VisualWidget)
+{
+    if (VisualWidget)
+    {
+        DefaultDragVisual = VisualWidget;
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetDragVisualWidget - Set drag visual widget: %s"), 
+        //    *VisualWidget->GetName());
     }
     else
     {
-        InstanceID = InInstanceID;
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientDragDropOperation::SetDragVisualWidget - VisualWidget is null"));
     }
-    
-    Quantity = InQuantity;
-
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetupIngredientDrag - Set up drag for ingredient %s (ID: %d, Qty: %d)"), 
-        *IngredientTag.ToString(), InstanceID, Quantity);
 } 

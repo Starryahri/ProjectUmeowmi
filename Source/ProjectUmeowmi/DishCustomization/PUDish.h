@@ -24,15 +24,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
     bool RemoveIngredient(const FGameplayTag& IngredientTag);
 
-    // Property queries
-    UFUNCTION(BlueprintCallable, Category = "Dish|Properties")
-    float GetTotalValueForProperty(const FName& PropertyName) const;
+    // Aspect queries
+    UFUNCTION(BlueprintCallable, Category = "Dish|Aspects")
+    float GetTotalFlavorAspect(const FName& AspectName) const;
 
-    UFUNCTION(BlueprintCallable, Category = "Dish|Properties")
-    TArray<FIngredientProperty> GetPropertiesWithTag(const FGameplayTag& Tag) const;
-
-    UFUNCTION(BlueprintCallable, Category = "Dish|Properties")
-    float GetTotalValueForTag(const FGameplayTag& Tag) const;
+    UFUNCTION(BlueprintCallable, Category = "Dish|Aspects")
+    float GetTotalTextureAspect(const FName& AspectName) const;
 
     UFUNCTION(BlueprintCallable, Category = "Dish|Ingredients")
     bool HasIngredient(const FGameplayTag& IngredientTag) const;

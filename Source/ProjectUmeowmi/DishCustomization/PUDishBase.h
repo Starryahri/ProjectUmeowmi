@@ -56,6 +56,15 @@ struct FIngredientInstance
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Plating")
     bool bIsPlated = false;
+
+    // Time and Temperature values (0.0 to 1.0)
+    // Time: 0.0 = None, 0.33 = Low, 0.66 = Mid, 1.0 = Long
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Cooking", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+    float TimeValue = 0.0f;
+
+    // Temperature: 0.0 = Raw, 0.33 = Low, 0.66 = Med, 1.0 = Hot
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Cooking", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+    float TemperatureValue = 0.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -96,14 +105,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Naming")
     FText CustomName;
 
-    // Get the total value for a specific property across all ingredients
-    float GetTotalValueForProperty(const FName& PropertyName) const;
+    // Get the total value for a specific flavor aspect across all ingredients
+    float GetTotalFlavorAspect(const FName& AspectName) const;
 
-    // Get all properties that match a specific tag
-    TArray<FIngredientProperty> GetPropertiesWithTag(const FGameplayTag& Tag) const;
-
-    // Get the total value for all properties with a specific tag
-    float GetTotalValueForTag(const FGameplayTag& Tag) const;
+    // Get the total value for a specific texture aspect across all ingredients
+    float GetTotalTextureAspect(const FName& AspectName) const;
 
     // Check if the dish has a specific ingredient
     bool HasIngredient(const FGameplayTag& IngredientTag) const;

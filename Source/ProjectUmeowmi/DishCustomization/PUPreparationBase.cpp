@@ -51,53 +51,82 @@ FText FPUPreparationBase::GetModifiedName(const FText& BaseName) const
     return FText::FromString(Result);
 }
 
-void FPUPreparationBase::ApplyModifiers(TArray<FIngredientProperty>& Properties) const
+void FPUPreparationBase::ApplyModifiers(FFlavorAspects& FlavorAspects, FTextureAspects& TextureAspects) const
 {
-    for (const FPropertyModifier& Modifier : PropertyModifiers)
+    for (const FAspectModifier& Modifier : AspectModifiers)
     {
-        FName PropertyName = Modifier.GetPropertyName();
+        FName AspectName = Modifier.AspectName;
+        FString AspectStr = AspectName.ToString().ToLower();
         
-        // Find or create the property
-        bool bFound = false;
-        for (FIngredientProperty& Property : Properties)
+        if (Modifier.AspectType == EAspectType::Flavor)
         {
-            if (Property.GetPropertyName() == PropertyName)
-            {
-                Property.Value = Modifier.ApplyModification(Property.Value);
-                bFound = true;
-                break;
-            }
+            if (AspectStr == TEXT("umami"))
+                FlavorAspects.Umami = Modifier.ApplyModification(FlavorAspects.Umami);
+            else if (AspectStr == TEXT("sweet"))
+                FlavorAspects.Sweet = Modifier.ApplyModification(FlavorAspects.Sweet);
+            else if (AspectStr == TEXT("salt"))
+                FlavorAspects.Salt = Modifier.ApplyModification(FlavorAspects.Salt);
+            else if (AspectStr == TEXT("sour"))
+                FlavorAspects.Sour = Modifier.ApplyModification(FlavorAspects.Sour);
+            else if (AspectStr == TEXT("bitter"))
+                FlavorAspects.Bitter = Modifier.ApplyModification(FlavorAspects.Bitter);
+            else if (AspectStr == TEXT("spicy"))
+                FlavorAspects.Spicy = Modifier.ApplyModification(FlavorAspects.Spicy);
         }
-
-        if (!bFound)
+        else // EAspectType::Texture
         {
-            FIngredientProperty NewProperty;
-            NewProperty.PropertyType = Modifier.PropertyType;
-            if (Modifier.PropertyType == EIngredientPropertyType::Custom)
-            {
-                NewProperty.CustomPropertyName = Modifier.CustomPropertyName;
-            }
-            NewProperty.Value = Modifier.ApplyModification(0.0f); // Start from 0 for new properties
-            NewProperty.Description = Modifier.Description;
-            NewProperty.PropertyTags = Modifier.ModifierTags;
-            Properties.Add(NewProperty);
+            if (AspectStr == TEXT("rich"))
+                TextureAspects.Rich = Modifier.ApplyModification(TextureAspects.Rich);
+            else if (AspectStr == TEXT("juicy"))
+                TextureAspects.Juicy = Modifier.ApplyModification(TextureAspects.Juicy);
+            else if (AspectStr == TEXT("tender"))
+                TextureAspects.Tender = Modifier.ApplyModification(TextureAspects.Tender);
+            else if (AspectStr == TEXT("chewy"))
+                TextureAspects.Chewy = Modifier.ApplyModification(TextureAspects.Chewy);
+            else if (AspectStr == TEXT("crispy"))
+                TextureAspects.Crispy = Modifier.ApplyModification(TextureAspects.Crispy);
+            else if (AspectStr == TEXT("crumbly"))
+                TextureAspects.Crumbly = Modifier.ApplyModification(TextureAspects.Crumbly);
         }
     }
 }
 
-void FPUPreparationBase::RemoveModifiers(TArray<FIngredientProperty>& Properties) const
+void FPUPreparationBase::RemoveModifiers(FFlavorAspects& FlavorAspects, FTextureAspects& TextureAspects) const
 {
-    for (const FPropertyModifier& Modifier : PropertyModifiers)
+    for (const FAspectModifier& Modifier : AspectModifiers)
     {
-        FName PropertyName = Modifier.GetPropertyName();
+        FName AspectName = Modifier.AspectName;
+        FString AspectStr = AspectName.ToString().ToLower();
         
-        for (FIngredientProperty& Property : Properties)
+        if (Modifier.AspectType == EAspectType::Flavor)
         {
-            if (Property.GetPropertyName() == PropertyName)
-            {
-                Property.Value = Modifier.RemoveModification(Property.Value);
-                break;
-            }
+            if (AspectStr == TEXT("umami"))
+                FlavorAspects.Umami = Modifier.RemoveModification(FlavorAspects.Umami);
+            else if (AspectStr == TEXT("sweet"))
+                FlavorAspects.Sweet = Modifier.RemoveModification(FlavorAspects.Sweet);
+            else if (AspectStr == TEXT("salt"))
+                FlavorAspects.Salt = Modifier.RemoveModification(FlavorAspects.Salt);
+            else if (AspectStr == TEXT("sour"))
+                FlavorAspects.Sour = Modifier.RemoveModification(FlavorAspects.Sour);
+            else if (AspectStr == TEXT("bitter"))
+                FlavorAspects.Bitter = Modifier.RemoveModification(FlavorAspects.Bitter);
+            else if (AspectStr == TEXT("spicy"))
+                FlavorAspects.Spicy = Modifier.RemoveModification(FlavorAspects.Spicy);
+        }
+        else // EAspectType::Texture
+        {
+            if (AspectStr == TEXT("rich"))
+                TextureAspects.Rich = Modifier.RemoveModification(TextureAspects.Rich);
+            else if (AspectStr == TEXT("juicy"))
+                TextureAspects.Juicy = Modifier.RemoveModification(TextureAspects.Juicy);
+            else if (AspectStr == TEXT("tender"))
+                TextureAspects.Tender = Modifier.RemoveModification(TextureAspects.Tender);
+            else if (AspectStr == TEXT("chewy"))
+                TextureAspects.Chewy = Modifier.RemoveModification(TextureAspects.Chewy);
+            else if (AspectStr == TEXT("crispy"))
+                TextureAspects.Crispy = Modifier.RemoveModification(TextureAspects.Crispy);
+            else if (AspectStr == TEXT("crumbly"))
+                TextureAspects.Crumbly = Modifier.RemoveModification(TextureAspects.Crumbly);
         }
     }
 } 

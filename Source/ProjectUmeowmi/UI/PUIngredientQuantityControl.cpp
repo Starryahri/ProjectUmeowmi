@@ -21,33 +21,33 @@ void UPUIngredientQuantityControl::NativeConstruct()
 {
     Super::NativeConstruct();
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Widget constructed: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Widget constructed: %s"), *GetName());
     
     // Bind button events
     if (DecreaseQuantityButton)
     {
         DecreaseQuantityButton->OnClicked.AddDynamic(this, &UPUIngredientQuantityControl::OnDecreaseQuantityClicked);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Decrease button event bound"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Decrease button event bound"));
     }
     
     if (IncreaseQuantityButton)
     {
         IncreaseQuantityButton->OnClicked.AddDynamic(this, &UPUIngredientQuantityControl::OnIncreaseQuantityClicked);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Increase button event bound"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Increase button event bound"));
     }
     
     if (RemoveButton)
     {
         RemoveButton->OnClicked.AddDynamic(this, &UPUIngredientQuantityControl::OnRemoveButtonClicked);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Remove button event bound"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Remove button event bound"));
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Widget setup complete"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Widget setup complete"));
 }
 
 void UPUIngredientQuantityControl::NativeDestruct()
 {
-    UE_LOG(LogTemp, Display, TEXT("PUIngredientQuantityControl::NativeDestruct - Widget destructing"));
+    //UE_LOG(LogTemp,Display, TEXT("PUIngredientQuantityControl::NativeDestruct - Widget destructing"));
     
     // Unbind button events
     if (DecreaseQuantityButton)
@@ -73,8 +73,8 @@ void UPUIngredientQuantityControl::NativeDestruct()
 
 void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstance& InIngredientInstance)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Setting ingredient instance: %s (ID: %d)"), 
-        *InIngredientInstance.IngredientData.DisplayName.ToString(), InIngredientInstance.InstanceID);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Setting ingredient instance: %s (ID: %d)"), 
+    //    *InIngredientInstance.IngredientData.DisplayName.ToString(), InIngredientInstance.InstanceID);
     
     // Update ingredient instance data
     IngredientInstance = InIngredientInstance;
@@ -85,7 +85,7 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     if (IngredientIcon && IngredientInstance.IngredientData.PreviewTexture)
     {
         IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Updated ingredient icon"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Updated ingredient icon"));
     }
     
     // Update quantity controls
@@ -100,12 +100,12 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     // Call Blueprint event
     OnIngredientInstanceSet(IngredientInstance);
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Ingredient instance set successfully"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Ingredient instance set successfully"));
 }
 
 void UPUIngredientQuantityControl::SetPreparationCheckboxClass(TSubclassOf<UPUPreparationCheckbox> InPreparationCheckboxClass)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetPreparationCheckboxClass - Setting preparation checkbox class"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetPreparationCheckboxClass - Setting preparation checkbox class"));
     
     PreparationCheckboxClass = InPreparationCheckboxClass;
     
@@ -120,8 +120,16 @@ void UPUIngredientQuantityControl::SetQuantity(int32 NewQuantity)
 {
     if (NewQuantity != IngredientInstance.Quantity)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetQuantity - Changing quantity from %d to %d"), 
-            IngredientInstance.Quantity, NewQuantity);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetQuantity - Changing quantity from %d to %d"), 
+        //    IngredientInstance.Quantity, NewQuantity);
+        
+        // If quantity reaches zero, remove the ingredient instance
+        if (NewQuantity <= 0)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetQuantity - Quantity reached zero, removing ingredient instance"));
+            RemoveIngredientInstance();
+            return;
+        }
         
         IngredientInstance.Quantity = NewQuantity;
         UpdateQuantityControls();
@@ -140,12 +148,12 @@ void UPUIngredientQuantityControl::UpdateQuantityText()
         FString QuantityText = FString::Printf(TEXT("x%d"), IngredientInstance.Quantity);
         QuantityNumberText->SetText(FText::FromString(QuantityText));
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdateQuantityText - Updated quantity text to: %s"), 
-            *QuantityText);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::UpdateQuantityText - Updated quantity text to: %s"), 
+        //    *QuantityText);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ PUIngredientQuantityControl::UpdateQuantityText - QuantityNumberText is null"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUIngredientQuantityControl::UpdateQuantityText - QuantityNumberText is null"));
     }
 }
 
@@ -153,8 +161,8 @@ void UPUIngredientQuantityControl::AddPreparation(const FGameplayTag& Preparatio
 {
     if (!IngredientInstance.Preparations.HasTag(PreparationTag))
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation - Adding preparation: %s"), 
-            *PreparationTag.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation - Adding preparation: %s"), 
+        //    *PreparationTag.ToString());
         
         IngredientInstance.Preparations.AddTag(PreparationTag);
         
@@ -164,11 +172,11 @@ void UPUIngredientQuantityControl::AddPreparation(const FGameplayTag& Preparatio
         // Log the current preparation state
         TArray<FGameplayTag> CurrentPreparations;
         IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation - Current preparations for instance %d: %d total"), 
-            IngredientInstance.InstanceID, CurrentPreparations.Num());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation - Current preparations for instance %d: %d total"), 
+        //    IngredientInstance.InstanceID, CurrentPreparations.Num());
         for (const FGameplayTag& Prep : CurrentPreparations)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation -   - %s"), *Prep.ToString());
+            //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::AddPreparation -   - %s"), *Prep.ToString());
         }
         
         // Update the UI to reflect the new name
@@ -186,8 +194,8 @@ void UPUIngredientQuantityControl::RemovePreparation(const FGameplayTag& Prepara
 {
     if (IngredientInstance.Preparations.HasTag(PreparationTag))
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation - Removing preparation: %s"), 
-            *PreparationTag.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation - Removing preparation: %s"), 
+        //    *PreparationTag.ToString());
         
         IngredientInstance.Preparations.RemoveTag(PreparationTag);
         
@@ -197,11 +205,11 @@ void UPUIngredientQuantityControl::RemovePreparation(const FGameplayTag& Prepara
         // Log the current preparation state
         TArray<FGameplayTag> CurrentPreparations;
         IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation - Current preparations for instance %d: %d total"), 
-            IngredientInstance.InstanceID, CurrentPreparations.Num());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation - Current preparations for instance %d: %d total"), 
+        //    IngredientInstance.InstanceID, CurrentPreparations.Num());
         for (const FGameplayTag& Prep : CurrentPreparations)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation -   - %s"), *Prep.ToString());
+            //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation -   - %s"), *Prep.ToString());
         }
         
         // Update the UI to reflect the new name
@@ -222,8 +230,8 @@ bool UPUIngredientQuantityControl::HasPreparation(const FGameplayTag& Preparatio
 
 void UPUIngredientQuantityControl::RemoveIngredientInstance()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Removing ingredient instance: %d"), 
-        IngredientInstance.InstanceID);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Removing ingredient instance: %d"), 
+    //    IngredientInstance.InstanceID);
     
     // Broadcast removal event with widget reference
     OnQuantityControlRemoved.Broadcast(IngredientInstance.InstanceID, this);
@@ -233,20 +241,33 @@ void UPUIngredientQuantityControl::RemoveIngredientInstance()
     
     // Remove this widget from viewport
     RemoveFromParent();
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Widget removed from viewport"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Widget removed from viewport"));
 }
 
 void UPUIngredientQuantityControl::OnDecreaseQuantityClicked()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::OnDecreaseQuantityClicked - Decrease button clicked"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnDecreaseQuantityClicked - Decrease button clicked"));
     
-    int32 NewQuantity = FMath::Max(IngredientInstance.Quantity - 1, IngredientInstance.IngredientData.MinQuantity);
+    int32 NewQuantity = IngredientInstance.Quantity - 1;
+    
+    // If quantity would go to zero or below, remove the ingredient instance
+    if (NewQuantity <= 0)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnDecreaseQuantityClicked - Quantity would reach zero, removing ingredient instance"));
+        RemoveIngredientInstance();
+        return;
+    }
+    
+    // Clamp to minimum quantity from ingredient data
+    int32 MinQuantity = IngredientInstance.IngredientData.MinQuantity;
+    NewQuantity = FMath::Max(NewQuantity, MinQuantity);
+    
     SetQuantity(NewQuantity);
 }
 
 void UPUIngredientQuantityControl::OnIncreaseQuantityClicked()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::OnIncreaseQuantityClicked - Increase button clicked"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnIncreaseQuantityClicked - Increase button clicked"));
     
     int32 NewQuantity = FMath::Min(IngredientInstance.Quantity + 1, IngredientInstance.IngredientData.MaxQuantity);
     SetQuantity(NewQuantity);
@@ -254,15 +275,15 @@ void UPUIngredientQuantityControl::OnIncreaseQuantityClicked()
 
 void UPUIngredientQuantityControl::OnRemoveButtonClicked()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::OnRemoveButtonClicked - Remove button clicked"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnRemoveButtonClicked - Remove button clicked"));
     
     RemoveIngredientInstance();
 }
 
 void UPUIngredientQuantityControl::OnPreparationCheckboxChanged(const FGameplayTag& PreparationTag, bool bIsChecked)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::OnPreparationCheckboxChanged - Preparation %s %s"), 
-        *PreparationTag.ToString(), bIsChecked ? TEXT("added") : TEXT("removed"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnPreparationCheckboxChanged - Preparation %s %s"), 
+    //    *PreparationTag.ToString(), bIsChecked ? TEXT("added") : TEXT("removed"));
     
     if (bIsChecked)
     {
@@ -292,12 +313,12 @@ void UPUIngredientQuantityControl::UpdateQuantityControls()
         IncreaseQuantityButton->SetIsEnabled(bCanIncrease);
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdateQuantityControls - Quantity controls updated"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::UpdateQuantityControls - Quantity controls updated"));
 }
 
 void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Updating preparation checkboxes"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Updating preparation checkboxes"));
     
     // Clear existing checkboxes
     ClearPreparationCheckboxes();
@@ -305,21 +326,21 @@ void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
     // Check if we have a preparation data table
     if (!IngredientInstance.IngredientData.PreparationDataTable.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
+        //UE_LOG(LogTemp,Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
         return;
     }
     
     UDataTable* LoadedPreparationDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
     if (!LoadedPreparationDataTable)
     {
-        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Failed to load preparation data table"));
+        //UE_LOG(LogTemp,Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Failed to load preparation data table"));
         return;
     }
     
     TArray<FPUPreparationBase*> PreparationRows;
     LoadedPreparationDataTable->GetAllRows<FPUPreparationBase>(TEXT("UpdatePreparationCheckboxes"), PreparationRows);
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Found %d preparation options"), PreparationRows.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Found %d preparation options"), PreparationRows.Num());
     
     // Create checkboxes for each available preparation
     for (FPUPreparationBase* PreparationData : PreparationRows)
@@ -334,7 +355,7 @@ void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
         }
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Preparation checkboxes updated successfully"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Preparation checkboxes updated successfully"));
 }
 
 void UPUIngredientQuantityControl::UpdateIngredientDisplay()
@@ -346,24 +367,24 @@ void UPUIngredientQuantityControl::UpdateIngredientDisplay()
     if (IngredientNameText)
     {
         IngredientNameText->SetText(CurrentDisplayName);
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::UpdateIngredientDisplay - Updated ingredient name to: %s"), 
-            *CurrentDisplayName.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::UpdateIngredientDisplay - Updated ingredient name to: %s"), 
+        //    *CurrentDisplayName.ToString());
     }
 }
 
 void UPUIngredientQuantityControl::BroadcastChange()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange - Broadcasting ingredient instance change for instance %d"), 
-        IngredientInstance.InstanceID);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange - Broadcasting ingredient instance change for instance %d"), 
+    //    IngredientInstance.InstanceID);
     
     // Log the current state of the ingredient instance being broadcast
     TArray<FGameplayTag> CurrentPreparations;
     IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange - Instance %d has %d preparations:"), 
-        IngredientInstance.InstanceID, CurrentPreparations.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange - Instance %d has %d preparations:"), 
+    //    IngredientInstance.InstanceID, CurrentPreparations.Num());
     for (const FGameplayTag& Prep : CurrentPreparations)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange -   - %s"), *Prep.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::BroadcastChange -   - %s"), *Prep.ToString());
     }
     
     // Broadcast the change event with updated ingredient instance
@@ -375,7 +396,7 @@ void UPUIngredientQuantityControl::ClearPreparationCheckboxes()
     if (PreparationsScrollBox)
     {
         PreparationsScrollBox->ClearChildren();
-        UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::ClearPreparationCheckboxes - Cleared preparation checkboxes"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::ClearPreparationCheckboxes - Cleared preparation checkboxes"));
     }
 }
 
@@ -383,7 +404,7 @@ void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparatio
 {
     if (!PreparationCheckboxClass || !PreparationsScrollBox)
     {
-        UE_LOG(LogTemp, Warning, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Missing checkbox class or scroll box"));
+        //UE_LOG(LogTemp,Warning, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Missing checkbox class or scroll box"));
         return;
     }
     
@@ -391,19 +412,19 @@ void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparatio
     UPUPreparationCheckbox* PreparationCheckbox = CreateWidget<UPUPreparationCheckbox>(this, PreparationCheckboxClass);
     if (!PreparationCheckbox)
     {
-        UE_LOG(LogTemp, Error, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Failed to create preparation checkbox widget"));
+        //UE_LOG(LogTemp,Error, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Failed to create preparation checkbox widget"));
         return;
     }
     
-    // Get the preview texture
-    UTexture2D* PreviewTexture = PreparationData.PreviewTexture;
+    // Get the icon texture
+    UTexture2D* IconTexture = PreparationData.IconTexture;
     
     // Set the preparation data
     PreparationCheckbox->SetPreparationData(
         PreparationData.PreparationTag,
         PreparationData.DisplayName,
         PreparationData.Description,
-        PreviewTexture
+        IconTexture
     );
     
     // Set the initial checked state
@@ -415,15 +436,15 @@ void UPUIngredientQuantityControl::CreatePreparationCheckbox(const FPUPreparatio
     // Add the checkbox to the scroll box
     PreparationsScrollBox->AddChild(PreparationCheckbox);
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Created checkbox for preparation: %s (applied: %s)"), 
-        *PreparationData.DisplayName.ToString(), bIsCurrentlyApplied ? TEXT("true") : TEXT("false"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::CreatePreparationCheckbox - Created checkbox for preparation: %s (applied: %s)"), 
+    //    *PreparationData.DisplayName.ToString(), bIsCurrentlyApplied ? TEXT("true") : TEXT("false"));
 }
 
 // Drag functionality implementation
 FReply UPUIngredientQuantityControl::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::NativeOnMouseButtonDown - Mouse button down on quantity control: %s (Drag enabled: %s)"), 
-        *IngredientInstance.IngredientData.DisplayName.ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::NativeOnMouseButtonDown - Mouse button down on quantity control: %s (Drag enabled: %s)"), 
+    //    *IngredientInstance.IngredientData.DisplayName.ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"));
     
     // Only handle left mouse button and only if drag is enabled
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bDragEnabled)
@@ -437,35 +458,30 @@ FReply UPUIngredientQuantityControl::NativeOnMouseButtonDown(const FGeometry& In
 
 void UPUIngredientQuantityControl::SetDragEnabled(bool bEnabled)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::SetDragEnabled - Setting drag enabled to %s for quantity control: %s"), 
-        bEnabled ? TEXT("TRUE") : TEXT("FALSE"), *IngredientInstance.IngredientData.DisplayName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetDragEnabled - Setting drag enabled to %s for quantity control: %s"), 
+    //    bEnabled ? TEXT("TRUE") : TEXT("FALSE"), *IngredientInstance.IngredientData.DisplayName.ToString());
     
     bDragEnabled = bEnabled;
 }
 
 UPUIngredientDragDropOperation* UPUIngredientQuantityControl::CreateDragDropOperation() const
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 PUIngredientQuantityControl::CreateDragDropOperation - Creating drag operation for quantity control %s (ID: %d, Qty: %d)"), 
-        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::CreateDragDropOperation - Creating drag operation for quantity control %s (ID: %d, Qty: %d)"), 
+    //    *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
 
     // Create the drag drop operation
     UPUIngredientDragDropOperation* DragOperation = NewObject<UPUIngredientDragDropOperation>(GetWorld(), UPUIngredientDragDropOperation::StaticClass());
 
     if (DragOperation)
     {
-        // Set up the drag operation with ingredient data
-        DragOperation->SetupIngredientDrag(
-            IngredientInstance.IngredientData.IngredientTag,
-            IngredientInstance.IngredientData,
-            IngredientInstance.InstanceID,
-            IngredientInstance.Quantity
-        );
+        // Set up the drag operation with ingredient instance
+        DragOperation->SetupIngredientDrag(IngredientInstance);
         
-        UE_LOG(LogTemp, Display, TEXT("✅ PUIngredientQuantityControl::CreateDragDropOperation - Successfully created drag operation"));
+        //UE_LOG(LogTemp,Display, TEXT("✅ PUIngredientQuantityControl::CreateDragDropOperation - Successfully created drag operation"));
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ PUIngredientQuantityControl::CreateDragDropOperation - Failed to create drag operation"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ PUIngredientQuantityControl::CreateDragDropOperation - Failed to create drag operation"));
     }
 
     return DragOperation;

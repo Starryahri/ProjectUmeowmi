@@ -54,7 +54,7 @@ public:
     virtual bool OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName);
 
     // Interaction methods
-    bool CanInteract() const;
+    virtual bool CanInteract() const;
     virtual void StartInteraction();
     virtual void EndInteraction();
 
@@ -139,6 +139,10 @@ protected:
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
     
+protected:
+    // Protected helper for derived classes to check if player is in range
+    bool IsPlayerInRange() const;
+
 private:
     // Internal state
     bool bIsInteracting = false;
@@ -151,7 +155,6 @@ private:
 
     // Helper methods
     void UpdateInteractionWidget();
-    bool IsPlayerInRange() const;
     UDlgDialogue* GetRandomDialogue() const;
     void ResetUsedDialogues();
     void DrawDebugRange() const;

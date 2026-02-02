@@ -5,7 +5,8 @@
 #include "PUDishBase.h"
 #include "PUPreparationBase.h"
 #include "../ProjectUmeowmiCharacter.h"
-#include "../UI/PUCookingStageWidget.h"
+#include "../UI/PUDishCustomizationWidget.h"
+#include "Components/SlateWrapperTypes.h"
 #include "PUDishCustomizationComponent.generated.h"
 
 // Forward declarations
@@ -60,6 +61,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
     void SetDishCustomizationComponentOnWidget(UUserWidget* Widget);
 
+    // Function to set the currently active customization widget (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
+    void SetActiveCustomizationWidget(UPUDishCustomizationWidget* ActiveWidget);
+
     // Function to set the initial dish data from an order
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Orders")
     void SetInitialDishData(const FPUDishBase& InitialDishData);
@@ -95,6 +100,28 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void EndPlatingStage();
+
+    // Ingredient dragging (called from ingredient mesh)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void StartDraggingIngredient(class APUIngredientMesh* Ingredient);
+
+    // Camera switching functions (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
+    void SwitchToCookingCamera();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
+    void SwitchToPlatingCamera();
+
+    // Plating placement management (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void ResetPlatingPlacements();
+
+    // Dish mesh management (for stage navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
+    void SwapDishContainerMesh(UStaticMesh* NewDishMesh);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
+    void RestoreOriginalDishContainerMesh();
 
     // Planning mode functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
@@ -134,13 +161,22 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     TSubclassOf<UUserWidget> CustomizationWidgetClass;
 
+	// Optional: explicitly specify the HUD widget class (e.g. WBP_HUD) to hide during customization.
+	// If unset, we fall back to finding widgets whose name/class contains "WBP_HUD".
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
+	TSubclassOf<UUserWidget> HUDWidgetClass;
+
+	// Which visibility to use when hiding the HUD during customization.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
+	ESlateVisibility HUDHiddenVisibility = ESlateVisibility::Collapsed;
+
     // Original widget class (stored before switching to plating)
     UPROPERTY()
     TSubclassOf<UUserWidget> OriginalWidgetClass;
 
-    // Widget class to spawn for cooking stage
+    // Widget class to spawn for cooking stage (should inherit from PUDishCustomizationWidget)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")
-    TSubclassOf<class UPUCookingStageWidget> CookingStageWidgetClass;
+    TSubclassOf<class UPUDishCustomizationWidget> CookingStageWidgetClass;
 
     // Widget class to spawn for plating stage
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|UI")
@@ -263,7 +299,7 @@ protected:
     UUserWidget* CustomizationWidget;
 
     UPROPERTY()
-    UPUCookingStageWidget* CookingStageWidget;
+    UPUDishCustomizationWidget* CookingStageWidget;
 
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;
@@ -302,6 +338,9 @@ protected:
     UCameraComponent* PlatingStationCamera = nullptr;
 
 private:
+	// Hide/show HUD widgets when entering/exiting customization.
+	void SetHUDVisible(bool bShouldBeVisible);
+
     // Spawn visual 3D mesh for ingredient
     void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
     float TargetCameraDistance = 0.0f;
@@ -344,11 +383,9 @@ private:
 
     // Cooking stage camera handling
     void StartCookingStageCameraTransition();
-    void SwitchToCookingCamera();
     void SwitchToCharacterCamera();
 
     // Plating stage camera handling
-    void SwitchToPlatingCamera();
     void SetPlatingCameraPositionOffset(const FVector& NewOffset);
     void StartPlatingCameraTransition();
     void UpdatePlatingCameraTransition(float DeltaTime);
@@ -359,7 +396,6 @@ private:
     int32 GetPlacedQuantity(int32 InstanceID) const;
     void PlaceIngredient(int32 InstanceID);
     void RemoveIngredient(int32 InstanceID);
-    void ResetPlatingPlacements();
 
     // Blueprint-callable plating limits
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
@@ -371,8 +407,8 @@ private:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     int32 GetPlacedQuantityByTag(const FGameplayTag& IngredientTag) const;
 
-    // Update ingredient button quantity display
-    void UpdateIngredientButtonQuantity(int32 InstanceID);
+    // Update ingredient slot quantity display (for plating mode - uses slots, not buttons)
+    void UpdateIngredientSlotQuantity(int32 InstanceID);
 
     // Reset all plating (restore original quantities and clear placed ingredients)
     UFUNCTION(BlueprintCallable, Category = "Plating")
@@ -381,14 +417,6 @@ private:
     // Clear all 3D ingredient meshes
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ClearAll3DIngredientMeshes();
-
-    // Swap dish container mesh
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
-    void SwapDishContainerMesh(UStaticMesh* NewDishMesh);
-
-    // Restore original dish container mesh
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
-    void RestoreOriginalDishContainerMesh();
 
     // Store original dish container mesh
     void StoreOriginalDishContainerMesh();

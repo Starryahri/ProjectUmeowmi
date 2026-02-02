@@ -21,17 +21,17 @@ void UPUOrderComponent::BeginPlay()
 {
     Super::BeginPlay();
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::BeginPlay - Order component initialized"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::BeginPlay - Order component initialized"));
 }
 
 void UPUOrderComponent::GenerateNewOrder()
 {
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateNewOrder - Starting order generation"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateNewOrder - Starting order generation"));
     
     // Validate the world first
     if (!GetWorld())
     {
-        UE_LOG(LogTemp, Error, TEXT("UPUOrderComponent::GenerateNewOrder - No valid world!"));
+        //UE_LOG(LogTemp,Error, TEXT("UPUOrderComponent::GenerateNewOrder - No valid world!"));
         return;
     }
     
@@ -47,14 +47,14 @@ void UPUOrderComponent::GenerateNewOrder()
     
     if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateNewOrder - Player has completed order, refusing to generate new order"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateNewOrder - Player has completed order, refusing to generate new order"));
         return;
     }
     
     // Clear any existing order (only if no completed order)
     if (bHasActiveOrder)
     {
-        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateNewOrder - Clearing existing order"));
+        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateNewOrder - Clearing existing order"));
         ClearCurrentOrder();
     }
     
@@ -64,7 +64,7 @@ void UPUOrderComponent::GenerateNewOrder()
     // Set active flag
     bHasActiveOrder = true;
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateNewOrder - Order generated successfully"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateNewOrder - Order generated successfully"));
     CurrentOrder.LogOrderDetails();
     
     // Broadcast the event
@@ -73,10 +73,10 @@ void UPUOrderComponent::GenerateNewOrder()
 
 void UPUOrderComponent::ClearCurrentOrder()
 {
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::ClearCurrentOrder - Clearing current order"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::ClearCurrentOrder - Clearing current order"));
     
     // Properly clean up UObject references before clearing
-    UE_LOG(LogTemp, Display, TEXT("UPUOrderComponent::ClearCurrentOrder - Cleaning up UObject references"));
+    //UE_LOG(LogTemp,Display, TEXT("UPUOrderComponent::ClearCurrentOrder - Cleaning up UObject references"));
     
     // Clear UObject references in the completed dish
     if (CurrentOrder.CompletedDish.PreviewTexture)
@@ -144,18 +144,18 @@ void UPUOrderComponent::ClearCurrentOrder()
     CurrentOrder = FPUOrderBase();
     bHasActiveOrder = false;
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::ClearCurrentOrder - Order cleared"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::ClearCurrentOrder - Order cleared"));
 }
 
 bool UPUOrderComponent::ValidateDish(const FPUDishBase& Dish) const
 {
     if (!bHasActiveOrder)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::ValidateDish - No active order to validate against"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::ValidateDish - No active order to validate against"));
         return false;
     }
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::ValidateDish - Validating dish against current order"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::ValidateDish - Validating dish against current order"));
     return UPUOrderBlueprintLibrary::ValidateDish(CurrentOrder, Dish);
 }
 
@@ -163,17 +163,17 @@ float UPUOrderComponent::GetSatisfactionScore(const FPUDishBase& Dish) const
 {
     if (!bHasActiveOrder)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GetSatisfactionScore - No active order to score against"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GetSatisfactionScore - No active order to score against"));
         return 0.0f;
     }
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GetSatisfactionScore - Calculating satisfaction score"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GetSatisfactionScore - Calculating satisfaction score"));
     return UPUOrderBlueprintLibrary::GetSatisfactionScore(CurrentOrder, Dish);
 }
 
 void UPUOrderComponent::GenerateSimpleOrder()
 {
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Generating simple order"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Generating simple order"));
     
     // Get a random dish tag with safety check
     FGameplayTag DishTag;
@@ -181,7 +181,7 @@ void UPUOrderComponent::GenerateSimpleOrder()
     
     if (!DishTag.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get valid dish tag, using default"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get valid dish tag, using default"));
         DishTag = FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee"));
     }
     
@@ -189,33 +189,33 @@ void UPUOrderComponent::GenerateSimpleOrder()
     FPUDishBase BaseDish;
     bool bGotBaseDish = false;
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is %s"), 
-        DishDataTable ? TEXT("valid") : TEXT("NULL"));
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is %s"), 
+    //    DishDataTable ? TEXT("valid") : TEXT("NULL"));
     
     if (DishDataTable && IsValid(DishDataTable))
     {
-        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Attempting to get dish from data table"));
+        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Attempting to get dish from data table"));
         bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, BaseDish);
-        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - GetDishFromDataTable result: %s"), 
-            bGotBaseDish ? TEXT("SUCCESS") : TEXT("FAILED"));
+        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - GetDishFromDataTable result: %s"), 
+        //    bGotBaseDish ? TEXT("SUCCESS") : TEXT("FAILED"));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is not set or invalid! This will cause issues."));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is not set or invalid! This will cause issues."));
     }
     
     if (!bGotBaseDish)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get base dish, creating empty dish"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get base dish, creating empty dish"));
         BaseDish.DishTag = DishTag;
         BaseDish.DisplayName = FText::FromString(DishTag.ToString());
         BaseDish.IngredientDataTable = nullptr; // Ensure no ingredient data table
         BaseDish.IngredientInstances.Empty(); // Ensure no ingredient instances
-        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Created fallback dish: %s"), *BaseDish.DisplayName.ToString());
+        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Created fallback dish: %s"), *BaseDish.DisplayName.ToString());
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Successfully got base dish: %s"), *BaseDish.DisplayName.ToString());
+        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Successfully got base dish: %s"), *BaseDish.DisplayName.ToString());
     }
     
     // Create a unique order ID
@@ -228,8 +228,8 @@ void UPUOrderComponent::GenerateSimpleOrder()
         FText::FromString(DefaultTargetFlavor.ToString())
     );
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Creating order with ID: %s for dish: %s"), 
-        *OrderID.ToString(), *DishTag.ToString());
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Creating order with ID: %s for dish: %s"), 
+    //    *OrderID.ToString(), *DishTag.ToString());
     
     // Create the order using the Blueprint Library with safety check
     CurrentOrder = UPUOrderBlueprintLibrary::CreateSimpleOrder(
@@ -244,22 +244,22 @@ void UPUOrderComponent::GenerateSimpleOrder()
     // Set the base dish in the order
     CurrentOrder.BaseDish = BaseDish;
     
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Order created successfully with base dish: %s (%d ingredients)"), 
-        *BaseDish.DisplayName.ToString(), BaseDish.IngredientInstances.Num());
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Order created successfully with base dish: %s (%d ingredients)"), 
+    //    *BaseDish.DisplayName.ToString(), BaseDish.IngredientInstances.Num());
     
     // Debug: Log the base dish details
-    UE_LOG(LogTemp, Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Base dish details:"));
-    UE_LOG(LogTemp, Log, TEXT("  - Dish Tag: %s"), *BaseDish.DishTag.ToString());
-    UE_LOG(LogTemp, Log, TEXT("  - Display Name: %s"), *BaseDish.DisplayName.ToString());
-    UE_LOG(LogTemp, Log, TEXT("  - Ingredient Data Table: %s"), BaseDish.IngredientDataTable.IsValid() ? TEXT("Valid") : TEXT("NULL"));
-    UE_LOG(LogTemp, Log, TEXT("  - Ingredient Instances: %d"), BaseDish.IngredientInstances.Num());
+    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Base dish details:"));
+    //UE_LOG(LogTemp,Log, TEXT("  - Dish Tag: %s"), *BaseDish.DishTag.ToString());
+    //UE_LOG(LogTemp,Log, TEXT("  - Display Name: %s"), *BaseDish.DisplayName.ToString());
+    //UE_LOG(LogTemp,Log, TEXT("  - Ingredient Data Table: %s"), BaseDish.IngredientDataTable.IsValid() ? TEXT("Valid") : TEXT("NULL"));
+    //UE_LOG(LogTemp,Log, TEXT("  - Ingredient Instances: %d"), BaseDish.IngredientInstances.Num());
     
     for (int32 i = 0; i < BaseDish.IngredientInstances.Num(); i++)
     {
         const FIngredientInstance& Instance = BaseDish.IngredientInstances[i];
         // Use convenient field if available, fallback to data field
         FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
-        UE_LOG(LogTemp, Log, TEXT("    - Instance %d: %s (Qty: %d)"), 
-            i, *InstanceTag.ToString(), Instance.Quantity);
+        //UE_LOG(LogTemp,Log, TEXT("    - Instance %d: %s (Qty: %d)"), 
+        //    i, *InstanceTag.ToString(), Instance.Quantity);
     }
 } 

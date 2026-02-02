@@ -3,6 +3,12 @@
 #include "GameplayTagContainer.h"
 #include "Kismet/GameplayStatics.h"
 
+// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+namespace
+{
+    constexpr bool bPU_LogCookingStationDishDebug = false;
+}
+
 APUCookingStation::APUCookingStation()
 {
     PrimaryActorTick.bCanEverTick = false;
@@ -47,34 +53,40 @@ void APUCookingStation::BeginPlay()
     // Bind to dish customization events
     if (IsValid(DishCustomizationComponent))
     {
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::BeginPlay - Binding to OnCustomizationEnded event"));
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::BeginPlay - Binding to OnCustomizationEnded event"));
+        }
         DishCustomizationComponent->OnCustomizationEnded.AddDynamic(this, &APUCookingStation::OnCustomizationEnded);
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::BeginPlay - Event binding completed"));
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::BeginPlay - Event binding completed"));
+        }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("CookingStation::BeginPlay - DishCustomizationComponent is null, cannot bind events"));
+        //UE_LOG(LogTemp,Warning, TEXT("CookingStation::BeginPlay - DishCustomizationComponent is null, cannot bind events"));
     }
 }
 
 void APUCookingStation::StartInteraction()
 {
-    UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Attempting to start interaction"));
+    //UE_LOG(LogTemp,Log, TEXT("CookingStation::StartInteraction - Attempting to start interaction"));
     
     // Get the character that triggered the interaction
     AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
     if (!Character)
     {
-        UE_LOG(LogTemp, Error, TEXT("CookingStation::StartInteraction - Failed to get Character reference"));
+        //UE_LOG(LogTemp,Error, TEXT("CookingStation::StartInteraction - Failed to get Character reference"));
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Got character reference"));
+    //UE_LOG(LogTemp,Log, TEXT("CookingStation::StartInteraction - Got character reference"));
     
     // Check if we're already in customization mode
     if (IsValid(DishCustomizationComponent) && DishCustomizationComponent->IsCustomizing())
     {
-        UE_LOG(LogTemp, Log, TEXT("CookingStation::StartInteraction - Already in customization mode, ignoring interaction"));
+        //UE_LOG(LogTemp,Log, TEXT("CookingStation::StartInteraction - Already in customization mode, ignoring interaction"));
         return;
     }
 
@@ -82,29 +94,35 @@ void APUCookingStation::StartInteraction()
     if (Character->HasCurrentOrder())
     {
         const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has active order: %s"), 
-            *CurrentOrder.OrderID.ToString());
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Player has active order: %s"), 
+            //    *CurrentOrder.OrderID.ToString());
+        }
         
         // Use event-driven data passing
         if (CurrentOrder.BaseDish.DishTag.IsValid())
         {
-            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Broadcasting initial dish data from order: %s"), 
-                *CurrentOrder.BaseDish.DisplayName.ToString());
-            
-            // Debug: Log the base dish details
-            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Base dish details:"));
-            UE_LOG(LogTemp, Display, TEXT("  - Dish Tag: %s"), *CurrentOrder.BaseDish.DishTag.ToString());
-            UE_LOG(LogTemp, Display, TEXT("  - Display Name: %s"), *CurrentOrder.BaseDish.DisplayName.ToString());
-            UE_LOG(LogTemp, Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable.IsValid() ? TEXT("Valid") : TEXT("NULL"));
-            UE_LOG(LogTemp, Display, TEXT("  - Ingredient Instances: %d"), CurrentOrder.BaseDish.IngredientInstances.Num());
-            
-            for (int32 i = 0; i < CurrentOrder.BaseDish.IngredientInstances.Num(); i++)
+            if (bPU_LogCookingStationDishDebug)
             {
-                const FIngredientInstance& Instance = CurrentOrder.BaseDish.IngredientInstances[i];
-                // Use convenient field if available, fallback to data field
-                FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
-                UE_LOG(LogTemp, Display, TEXT("    - Instance %d: %s (Qty: %d)"), 
-                    i, *InstanceTag.ToString(), Instance.Quantity);
+                //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Broadcasting initial dish data from order: %s"), 
+                //    *CurrentOrder.BaseDish.DisplayName.ToString());
+                
+                // Debug: Log the base dish details
+                //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Base dish details:"));
+                //UE_LOG(LogTemp,Display, TEXT("  - Dish Tag: %s"), *CurrentOrder.BaseDish.DishTag.ToString());
+                //UE_LOG(LogTemp,Display, TEXT("  - Display Name: %s"), *CurrentOrder.BaseDish.DisplayName.ToString());
+                //UE_LOG(LogTemp,Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable.IsValid() ? TEXT("Valid") : TEXT("NULL"));
+                //UE_LOG(LogTemp,Display, TEXT("  - Ingredient Instances: %d"), CurrentOrder.BaseDish.IngredientInstances.Num());
+                
+                for (int32 i = 0; i < CurrentOrder.BaseDish.IngredientInstances.Num(); i++)
+                {
+                    const FIngredientInstance& Instance = CurrentOrder.BaseDish.IngredientInstances[i];
+                    // Use convenient field if available, fallback to data field
+                    FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+                    //UE_LOG(LogTemp,Display, TEXT("    - Instance %d: %s (Qty: %d)"), 
+                    //    i, *InstanceTag.ToString(), Instance.Quantity);
+                }
             }
             
             // Use the event-driven approach
@@ -112,18 +130,21 @@ void APUCookingStation::StartInteraction()
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
+            //UE_LOG(LogTemp,Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
         }
 
         // Set the data tables on the dish customization component
         if (IngredientDataTable && PreparationDataTable)
         {
-            UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Setting data tables on dish customization component"));
+            if (bPU_LogCookingStationDishDebug)
+            {
+                //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Setting data tables on dish customization component"));
+            }
             DishCustomizationComponent->SetDataTables(DishDataTable, IngredientDataTable, PreparationDataTable);
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartInteraction - Data tables not set on cooking station"));
+            //UE_LOG(LogTemp,Warning, TEXT("CookingStation::StartInteraction - Data tables not set on cooking station"));
         }
         
         // Start dish customization with the character reference
@@ -143,7 +164,10 @@ void APUCookingStation::StartInteraction()
     }
     else
     {
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::StartInteraction - Player has no active order, starting dialogue"));
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Player has no active order, starting dialogue"));
+        }
         
         // Let parent handle dialogue creation and interaction state
         Super::StartInteraction();
@@ -168,7 +192,10 @@ void APUCookingStation::EndInteraction()
 
 void APUCookingStation::OnCustomizationEnded()
 {
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - FUNCTION CALLED! Dish customization completed"));
+    if (bPU_LogCookingStationDishDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnCustomizationEnded - FUNCTION CALLED! Dish customization completed"));
+    }
     
     // Get the player character
     AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
@@ -180,18 +207,21 @@ void APUCookingStation::OnCustomizationEnded()
         const FPUDishBase& CompletedDish = DishCustomizationComponent->GetCurrentDishData();
             const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
             
-            UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Validating dish against order: %s"), 
-                *CurrentOrder.OrderID.ToString());
-            
-            // Debug: Log the dish data
-            UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Dish data: %d ingredients"), 
-                CompletedDish.IngredientInstances.Num());
-            
-            for (int32 i = 0; i < CompletedDish.IngredientInstances.Num(); i++)
+            if (bPU_LogCookingStationDishDebug)
             {
-                const FIngredientInstance& Instance = CompletedDish.IngredientInstances[i];
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - Ingredient %d: %s (Qty: %d)"), 
-                    i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity);
+                //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnCustomizationEnded - Validating dish against order: %s"), 
+                //    *CurrentOrder.OrderID.ToString());
+                
+                // Debug: Log the dish data
+                //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnCustomizationEnded - Dish data: %d ingredients"), 
+                //    CompletedDish.IngredientInstances.Num());
+                
+                for (int32 i = 0; i < CompletedDish.IngredientInstances.Num(); i++)
+                {
+                    const FIngredientInstance& Instance = CompletedDish.IngredientInstances[i];
+                    //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnCustomizationEnded - Ingredient %d: %s (Qty: %d)"), 
+                    //    i, *Instance.IngredientData.IngredientTag.ToString(), Instance.Quantity);
+                }
             }
             
             // Validate the dish against the current order using helper function
@@ -211,12 +241,15 @@ void APUCookingStation::OnCustomizationEnded()
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("CookingStation::OnCustomizationEnded - DishCustomizationComponent is null"));
+            //UE_LOG(LogTemp,Warning, TEXT("CookingStation::OnCustomizationEnded - DishCustomizationComponent is null"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::OnCustomizationEnded - No active order to validate against"));
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnCustomizationEnded - No active order to validate against"));
+        }
     }
     
     EndInteraction();
@@ -224,21 +257,30 @@ void APUCookingStation::OnCustomizationEnded()
 
 bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const FPUOrderBase& Order, float& OutSatisfactionScore) const
 {
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Validating dish against order: %s"), *Order.OrderID.ToString());
+    if (bPU_LogCookingStationDishDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Validating dish against order: %s"), *Order.OrderID.ToString());
+    }
     
     // Check minimum ingredient count
     int32 IngredientCount = Dish.IngredientInstances.Num();
     bool bMeetsMinIngredients = IngredientCount >= Order.MinIngredientCount;
     
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish has %d ingredients, minimum required: %d"), 
-        IngredientCount, Order.MinIngredientCount);
+    if (bPU_LogCookingStationDishDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish has %d ingredients, minimum required: %d"), 
+        //    IngredientCount, Order.MinIngredientCount);
+    }
     
     // Check flavor value if there's a target flavor
     bool bMeetsFlavorRequirement = true;
     if (!Order.TargetFlavorProperty.IsNone())
     {
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Looking for flavor property: %s"), *Order.TargetFlavorProperty.ToString());
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish has %d ingredients"), Dish.IngredientInstances.Num());
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Looking for flavor property: %s"), *Order.TargetFlavorProperty.ToString());
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish has %d ingredients"), Dish.IngredientInstances.Num());
+        }
         
         // Debug each ingredient's flavor contribution
         for (int32 i = 0; i < Dish.IngredientInstances.Num(); ++i)
@@ -247,9 +289,12 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
             FPUIngredientBase Ingredient;
             if (Dish.GetIngredientForInstance(i, Ingredient))
             {
-                float IngredientFlavor = Ingredient.GetPropertyValue(Order.TargetFlavorProperty);
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %d (%s) has flavor value: %.2f"), 
-                    i, *Instance.IngredientData.IngredientTag.ToString(), IngredientFlavor);
+                float IngredientFlavor = Ingredient.GetFlavorAspect(Order.TargetFlavorProperty);
+                if (bPU_LogCookingStationDishDebug)
+                {
+                    //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %d (%s) has flavor value: %.2f"), 
+                    //    i, *Instance.IngredientData.IngredientTag.ToString(), IngredientFlavor);
+                }
                 
                 // Log preparations for this instance
                 if (Instance.IngredientData.ActivePreparations.Num() > 0)
@@ -261,31 +306,38 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
                     {
                         PrepString += PrepTag.ToString() + TEXT(", ");
                     }
-                    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - %s"), *PrepString);
+                    if (bPU_LogCookingStationDishDebug)
+                    {
+                        //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - %s"), *PrepString);
+                    }
                 }
                 else
                 {
-                    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - No preparations applied"));
+                    if (bPU_LogCookingStationDishDebug)
+                    {
+                        //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - No preparations applied"));
+                    }
                 }
                 
-                // Debug the ingredient's properties
-                UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s has %d natural properties"), 
-                    *Instance.IngredientData.IngredientTag.ToString(), Ingredient.NaturalProperties.Num());
-                
-                for (int32 j = 0; j < Ingredient.NaturalProperties.Num(); j++)
+                // Debug the ingredient's aspects
+                if (bPU_LogCookingStationDishDebug)
                 {
-                    const FIngredientProperty& Property = Ingredient.NaturalProperties[j];
-                    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Property %d: %s = %.2f"), 
-                        j, *Property.GetPropertyName().ToString(), Property.Value);
+                    //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s flavor aspects: Umami=%.2f, Sweet=%.2f, Salt=%.2f, Sour=%.2f, Bitter=%.2f, Spicy=%.2f"), 
+                    //    *Instance.IngredientData.IngredientTag.ToString(), 
+                    //    Ingredient.FlavorAspects.Umami, Ingredient.FlavorAspects.Sweet, Ingredient.FlavorAspects.Salt,
+                    //    Ingredient.FlavorAspects.Sour, Ingredient.FlavorAspects.Bitter, Ingredient.FlavorAspects.Spicy);
                 }
             }
         }
         
-        float FlavorValue = Dish.GetTotalValueForProperty(Order.TargetFlavorProperty);
+        float FlavorValue = Dish.GetTotalFlavorAspect(Order.TargetFlavorProperty);
         bMeetsFlavorRequirement = FlavorValue >= Order.MinFlavorValue;
         
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish flavor value: %.2f, minimum required: %.2f"), 
-            FlavorValue, Order.MinFlavorValue);
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish flavor value: %.2f, minimum required: %.2f"), 
+            //    FlavorValue, Order.MinFlavorValue);
+        }
     }
     
     // Calculate satisfaction score
@@ -294,8 +346,11 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
     // Order is always completed when submitted - satisfaction score indicates quality
     bool bOrderCompleted = true;
     
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::ValidateDishAgainstOrder - Order completed: YES, Satisfaction: %.2f"), 
-        OutSatisfactionScore);
+    if (bPU_LogCookingStationDishDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Order completed: YES, Satisfaction: %.2f"), 
+        //    OutSatisfactionScore);
+    }
     
     return bOrderCompleted;
 }
@@ -308,15 +363,15 @@ float APUCookingStation::CalculateSatisfactionScore(const FPUDishBase& Dish, con
     
     if (!Order.TargetFlavorProperty.IsNone())
     {
-        float FlavorValue = Dish.GetTotalValueForProperty(Order.TargetFlavorProperty);
+        float FlavorValue = Dish.GetTotalFlavorAspect(Order.TargetFlavorProperty);
         FlavorScore = FMath::Min(1.0f, FlavorValue / Order.MinFlavorValue);
     }
     
     // Weighted average: 60% ingredients, 40% flavor
     float SatisfactionScore = (IngredientScore * 0.6f) + (FlavorScore * 0.4f);
     
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::CalculateSatisfactionScore - Ingredient Score: %.2f, Flavor Score: %.2f, Final Score: %.2f"), 
-        IngredientScore, FlavorScore, SatisfactionScore);
+    //UE_LOG(LogTemp,Display, TEXT("CookingStation::CalculateSatisfactionScore - Ingredient Score: %.2f, Flavor Score: %.2f, Final Score: %.2f"), 
+    //    IngredientScore, FlavorScore, SatisfactionScore);
     
     return SatisfactionScore;
 }
@@ -325,7 +380,7 @@ float APUCookingStation::CalculateSatisfactionScore(const FPUDishBase& Dish, con
 
 void APUCookingStation::StartNoOrderDialogue()
 {
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::StartNoOrderDialogue - Starting no order dialogue"));
+    //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartNoOrderDialogue - Starting no order dialogue"));
     
     // Use TalkingObject's built-in dialogue system
     if (AvailableDialogues.Num() > 0)
@@ -334,14 +389,14 @@ void APUCookingStation::StartNoOrderDialogue()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("CookingStation::StartNoOrderDialogue - No dialogue available"));
+        //UE_LOG(LogTemp,Warning, TEXT("CookingStation::StartNoOrderDialogue - No dialogue available"));
     }
 }
 
 // Override dialogue participant methods for cooking station specific logic
 bool APUCookingStation::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
 {
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::CheckCondition - Condition: %s"), *ConditionName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("CookingStation::CheckCondition - Condition: %s"), *ConditionName.ToString());
     
     // Call parent implementation first
     bool bParentResult = Super::CheckCondition_Implementation(Context, ConditionName);
@@ -369,7 +424,7 @@ bool APUCookingStation::CheckCondition_Implementation(const UDlgContext* Context
 
 bool APUCookingStation::OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName)
 {
-    UE_LOG(LogTemp, Display, TEXT("CookingStation::OnDialogueEvent - Event: %s"), *EventName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnDialogueEvent - Event: %s"), *EventName.ToString());
     
     // Call parent implementation first
     bool bParentResult = Super::OnDialogueEvent_Implementation(Context, EventName);
@@ -377,7 +432,7 @@ bool APUCookingStation::OnDialogueEvent_Implementation(UDlgContext* Context, FNa
     // Handle cooking station specific dialogue events
     if (EventName == TEXT("EndDialogue"))
     {
-        UE_LOG(LogTemp, Display, TEXT("CookingStation::OnDialogueEvent - Ending dialogue"));
+        //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnDialogueEvent - Ending dialogue"));
         EndInteraction();
         return true;
     }

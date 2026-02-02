@@ -17,17 +17,27 @@ enum class EModificationType : uint8
     Multiplicative
 };
 
-// Property modifier definition
+// Aspect type enum - determines if modifier affects flavor or texture
+UENUM(BlueprintType)
+enum class EAspectType : uint8
+{
+    Flavor,
+    Texture
+};
+
+// Aspect modifier definition
 USTRUCT(BlueprintType)
-struct FPropertyModifier
+struct FAspectModifier
 {
     GENERATED_BODY()
 
+    // Whether this modifier affects flavor or texture
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    EIngredientPropertyType PropertyType = EIngredientPropertyType::Custom;
+    EAspectType AspectType = EAspectType::Flavor;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier", meta = (EditCondition = "PropertyType == EIngredientPropertyType::Custom"))
-    FName CustomPropertyName;
+    // Name of the aspect to modify (e.g., "Umami", "Sweet", "Rich", "Tender")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
+    FName AspectName;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     EModificationType ModificationType = EModificationType::Additive;
@@ -37,27 +47,6 @@ struct FPropertyModifier
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     FText Description;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FGameplayTagContainer ModifierTags;
-
-    // Helper function to get the property name
-    FName GetPropertyName() const
-    {
-        if (PropertyType == EIngredientPropertyType::Custom)
-        {
-            return CustomPropertyName;
-        }
-        
-        // Get the enum string and extract just the value name (remove "EIngredientPropertyType::" prefix)
-        FString EnumString = UEnum::GetValueAsString(PropertyType);
-        FString ValueName;
-        if (EnumString.Split(TEXT("::"), nullptr, &ValueName))
-        {
-            return FName(*ValueName);
-        }
-        return FName(*EnumString);
-    }
 
     // Helper function to apply the modification
     float ApplyModification(float BaseValue) const
@@ -119,7 +108,10 @@ public:
 
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Visual")
-    UTexture2D* PreviewTexture;
+    UTexture2D* IconTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Visual")
+    UTexture2D* PrepTexture;
 
     // Name Modification
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Naming")
@@ -134,9 +126,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Naming", meta = (EditCondition = "OverridesBaseName"))
     FText SpecialName;
 
-    // Property Modifiers
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Properties")
-    TArray<FPropertyModifier> PropertyModifiers;
+    // Aspect Modifiers
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Aspects")
+    TArray<FAspectModifier> AspectModifiers;
 
     // Tags
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preparation|Tags")
@@ -152,6 +144,6 @@ public:
     // Helper Functions
     bool CanApplyToIngredient(const FGameplayTagContainer& IngredientTags) const;
     FText GetModifiedName(const FText& BaseName) const;
-    void ApplyModifiers(TArray<FIngredientProperty>& Properties) const;
-    void RemoveModifiers(TArray<FIngredientProperty>& Properties) const;
+    void ApplyModifiers(FFlavorAspects& FlavorAspects, FTextureAspects& TextureAspects) const;
+    void RemoveModifiers(FFlavorAspects& FlavorAspects, FTextureAspects& TextureAspects) const;
 }; 

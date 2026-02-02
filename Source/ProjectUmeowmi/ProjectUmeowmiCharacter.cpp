@@ -74,7 +74,7 @@ void AProjectUmeowmiCharacter::BeginPlay()
 	// Initialize the camera position based on the starting index
 	InitializeCameraPosition();
 
-	UE_LOG(LogTemp, Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
+	//UE_LOG(LogTemp,Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -87,7 +87,7 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 	// Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{
-		UE_LOG(LogTemp, Log, TEXT("Controller changed - PlayerController found"));
+		//UE_LOG(LogTemp,Log, TEXT("Controller changed - PlayerController found"));
 		
 		// Always show mouse cursor
 		PlayerController->bShowMouseCursor = true;
@@ -95,26 +95,26 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 		
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
-			UE_LOG(LogTemp, Log, TEXT("Enhanced Input Subsystem found"));
+			//UE_LOG(LogTemp,Log, TEXT("Enhanced Input Subsystem found"));
 			
 			if (DefaultMappingContext)
 			{
 				Subsystem->AddMappingContext(DefaultMappingContext, 0);
-				UE_LOG(LogTemp, Log, TEXT("Default mapping context added successfully"));
+				//UE_LOG(LogTemp,Log, TEXT("Default mapping context added successfully"));
 			}
 			else
 			{
-				UE_LOG(LogTemp, Warning, TEXT("Default mapping context is null!"));
+				//UE_LOG(LogTemp,Warning, TEXT("Default mapping context is null!"));
 			}
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Enhanced Input Subsystem not found!"));
+			//UE_LOG(LogTemp,Warning, TEXT("Enhanced Input Subsystem not found!"));
 		}
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Controller changed - No PlayerController found!"));
+		//UE_LOG(LogTemp,Warning, TEXT("Controller changed - No PlayerController found!"));
 	}
 }
 
@@ -384,9 +384,9 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::Interact - CurrentTalkingObject: %s, CurrentInteractable: %s"), 
-		CurrentTalkingObject ? *CurrentTalkingObject->GetName() : TEXT("NULL"),
-		CurrentInteractable ? TEXT("Valid") : TEXT("NULL"));
+	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::Interact - CurrentTalkingObject: %s, CurrentInteractable: %s"), 
+	//	CurrentTalkingObject ? *CurrentTalkingObject->GetName() : TEXT("NULL"),
+	//	CurrentInteractable ? TEXT("Valid") : TEXT("NULL"));
 		
 	if (CurrentTalkingObject)
 	{
@@ -404,7 +404,7 @@ void AProjectUmeowmiCharacter::RegisterTalkingObject(ATalkingObject* TalkingObje
 	CurrentTalkingObject = TalkingObject;
 	
 	// Log the registration
-	UE_LOG(LogTemp, Log, TEXT("Registered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+	//UE_LOG(LogTemp,Log, TEXT("Registered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
 }
 
 void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingObject)
@@ -416,7 +416,7 @@ void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingOb
 		CurrentTalkingObject = nullptr;
 		
 		// Log the unregistration
-		UE_LOG(LogTemp, Log, TEXT("Unregistered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+		//UE_LOG(LogTemp,Log, TEXT("Unregistered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
 	}
 }
 
@@ -452,30 +452,30 @@ void AProjectUmeowmiCharacter::UnregisterInteractable(TScriptInterface<IPUIntera
 void AProjectUmeowmiCharacter::OnInteractionStarted()
 {
 	// Handle interaction started
-	UE_LOG(LogTemp, Log, TEXT("Interaction started"));
+	//UE_LOG(LogTemp,Log, TEXT("Interaction started"));
 }
 
 void AProjectUmeowmiCharacter::OnInteractionEnded()
 {
 	// Handle interaction ended
-	UE_LOG(LogTemp, Log, TEXT("Interaction ended"));
+	//UE_LOG(LogTemp,Log, TEXT("Interaction ended"));
 }
 
 void AProjectUmeowmiCharacter::OnInteractionFailed()
 {
 	// Handle interaction failed
-	UE_LOG(LogTemp, Log, TEXT("Interaction failed"));
+	//UE_LOG(LogTemp,Log, TEXT("Interaction failed"));
 }
 
 // Order System Integration
 void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Setting current order: %s"), *Order.OrderID.ToString());
+	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Setting current order: %s"), *Order.OrderID.ToString());
 	
 	// Clean up any existing UObject references before setting new order
 	if (bHasCurrentOrder)
 	{
-		UE_LOG(LogTemp, Display, TEXT("SetCurrentOrder - Cleaning up existing UObject references"));
+		//UE_LOG(LogTemp,Display, TEXT("SetCurrentOrder - Cleaning up existing UObject references"));
 		CleanupOrderUObjectReferences(CurrentOrder);
 	}
 	
@@ -484,20 +484,20 @@ void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
 	
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Order set successfully"));
+	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Order set successfully"));
 }
 
 void AProjectUmeowmiCharacter::ClearCurrentOrder()
 {
-	UE_LOG(LogTemp, Display, TEXT("=== CLEARING CURRENT ORDER ==="));
-	UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
-	UE_LOG(LogTemp, Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
-	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	//UE_LOG(LogTemp,Display, TEXT("=== CLEARING CURRENT ORDER ==="));
+	//UE_LOG(LogTemp,Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
+	//UE_LOG(LogTemp,Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
+	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
 	// Properly clean up UObject references before clearing
-	UE_LOG(LogTemp, Display, TEXT("ClearCurrentOrder - Cleaning up UObject references"));
+	//UE_LOG(LogTemp,Display, TEXT("ClearCurrentOrder - Cleaning up UObject references"));
 	CleanupOrderUObjectReferences(CurrentOrder);
 	
 	// Now safely clear the order data
@@ -506,17 +506,17 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
 	
-	UE_LOG(LogTemp, Display, TEXT("=== ORDER CLEARED ==="));
-	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
-	UE_LOG(LogTemp, Display, TEXT("========================="));
+	//UE_LOG(LogTemp,Display, TEXT("=== ORDER CLEARED ==="));
+	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	//UE_LOG(LogTemp,Display, TEXT("========================="));
 }
 
 void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float SatisfactionScore)
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::SetOrderResult - Order completed: YES, Satisfaction: %.2f"), 
-		SatisfactionScore);
+	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::SetOrderResult - Order completed: YES, Satisfaction: %.2f"), 
+	//	SatisfactionScore);
 	
 	// Orders are always completed when submitted - satisfaction score indicates quality
 	bHasCurrentOrder = false;      // Clear active flag
@@ -529,7 +529,7 @@ void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float Satisfactio
 
 void AProjectUmeowmiCharacter::DisplayOrderResult()
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::DisplayOrderResult - Displaying order result"));
+	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::DisplayOrderResult - Displaying order result"));
 	
 	// Orders are always completed - satisfaction score indicates quality
 	// Determine satisfaction level
@@ -551,10 +551,10 @@ void AProjectUmeowmiCharacter::DisplayOrderResult()
 		SatisfactionLevel = TEXT("Okay.");
 	}
 	
-	UE_LOG(LogTemp, Display, TEXT("=== ORDER COMPLETED ==="));
-	UE_LOG(LogTemp, Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
-	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %s (%.1f%%)"), *SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
-	UE_LOG(LogTemp, Display, TEXT("====================="));
+	//UE_LOG(LogTemp,Display, TEXT("=== ORDER COMPLETED ==="));
+	//UE_LOG(LogTemp,Display, TEXT("Order: %s"), *CurrentOrder.OrderDescription.ToString());
+	//UE_LOG(LogTemp,Display, TEXT("Satisfaction: %s (%.1f%%)"), *SatisfactionLevel, CurrentOrderSatisfaction * 100.0f);
+	//UE_LOG(LogTemp,Display, TEXT("====================="));
 	
 	// Call the order completed event
 	OnOrderCompleted();
@@ -562,22 +562,22 @@ void AProjectUmeowmiCharacter::DisplayOrderResult()
 
 void AProjectUmeowmiCharacter::ClearCompletedOrder()
 {
-	UE_LOG(LogTemp, Display, TEXT("=== CLEARING COMPLETED ORDER ==="));
-	UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
-	UE_LOG(LogTemp, Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
-	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	//UE_LOG(LogTemp,Display, TEXT("=== CLEARING COMPLETED ORDER ==="));
+	//UE_LOG(LogTemp,Display, TEXT("Order ID: %s"), *CurrentOrder.OrderID.ToString());
+	//UE_LOG(LogTemp,Display, TEXT("Order Description: %s"), *CurrentOrder.OrderDescription.ToString());
+	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
 	
 	// Validate that we can safely clear the order
 	if (!bCurrentOrderCompleted)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ClearCompletedOrder - Cannot clear: order not completed"));
+		//UE_LOG(LogTemp,Warning, TEXT("ClearCompletedOrder - Cannot clear: order not completed"));
 		return;
 	}
 	
 	// Properly clean up UObject references before clearing
-	UE_LOG(LogTemp, Display, TEXT("ClearCompletedOrder - Cleaning up UObject references"));
+	//UE_LOG(LogTemp,Display, TEXT("ClearCompletedOrder - Cleaning up UObject references"));
 	CleanupOrderUObjectReferences(CurrentOrder);
 	
 	// Now safely clear the order data
@@ -586,11 +586,11 @@ void AProjectUmeowmiCharacter::ClearCompletedOrder()
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
 	
-	UE_LOG(LogTemp, Display, TEXT("=== COMPLETED ORDER CLEARED ==="));
-	UE_LOG(LogTemp, Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
-	UE_LOG(LogTemp, Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
-	UE_LOG(LogTemp, Display, TEXT("================================="));
+	//UE_LOG(LogTemp,Display, TEXT("=== COMPLETED ORDER CLEARED ==="));
+	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Is Completed: %s"), bCurrentOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+	//UE_LOG(LogTemp,Display, TEXT("Satisfaction Score: %.2f"), CurrentOrderSatisfaction);
+	//UE_LOG(LogTemp,Display, TEXT("================================="));
 }
 
 FText AProjectUmeowmiCharacter::GetOrderResultText() const
@@ -628,22 +628,22 @@ FText AProjectUmeowmiCharacter::GetOrderResultText() const
 
 void AProjectUmeowmiCharacter::OnOrderCompleted()
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderCompleted - Order completed successfully!"));
+	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::OnOrderCompleted - Order completed successfully!"));
 	
 	// This function can be overridden in Blueprints to add visual/audio feedback
 	// For now, just log the completion
-	UE_LOG(LogTemp, Display, TEXT("🎉 ORDER COMPLETED! 🎉"));
-	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %.1f%%"), CurrentOrderSatisfaction * 100.0f);
+	//UE_LOG(LogTemp,Display, TEXT("🎉 ORDER COMPLETED! 🎉"));
+	//UE_LOG(LogTemp,Display, TEXT("Satisfaction: %.1f%%"), CurrentOrderSatisfaction * 100.0f);
 }
 
 void AProjectUmeowmiCharacter::OnOrderFailed()
 {
-	UE_LOG(LogTemp, Display, TEXT("ProjectUmeowmiCharacter::OnOrderFailed - Order completed with low satisfaction"));
+	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::OnOrderFailed - Order completed with low satisfaction"));
 	
 	// This function can be overridden in Blueprints to add visual/audio feedback
 	// Note: Orders are now always completed - this event is for low satisfaction scenarios
-	UE_LOG(LogTemp, Display, TEXT("⚠️ ORDER COMPLETED WITH LOW SATISFACTION ⚠️"));
-	UE_LOG(LogTemp, Display, TEXT("Satisfaction: %.1f%% - Try again for better results!"), CurrentOrderSatisfaction * 100.0f);
+	//UE_LOG(LogTemp,Display, TEXT("⚠️ ORDER COMPLETED WITH LOW SATISFACTION ⚠️"));
+	//UE_LOG(LogTemp,Display, TEXT("Satisfaction: %.1f%% - Try again for better results!"), CurrentOrderSatisfaction * 100.0f);
 }
 
 void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order)
@@ -727,12 +727,12 @@ void AProjectUmeowmiCharacter::HideMouseCursor()
 
 void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up character: %s"), *GetName());
+	//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up character: %s"), *GetName());
 	
 	// Clear order UObject references to prevent garbage collection issues
 	if (bHasCurrentOrder || bCurrentOrderCompleted)
 	{
-		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up order UObject references"));
+		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up order UObject references"));
 		CleanupOrderUObjectReferences(CurrentOrder);
 		
 		// Clear the order data
@@ -745,21 +745,21 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// Clear talking object reference to prevent dangling references
 	if (CurrentTalkingObject)
 	{
-		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing talking object reference"));
+		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing talking object reference"));
 		CurrentTalkingObject = nullptr;
 	}
 	
 	// Clear interactable reference
 	if (CurrentInteractable)
 	{
-		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing interactable reference"));
+		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing interactable reference"));
 		CurrentInteractable = nullptr;
 	}
 	
 	// Clear dialogue box reference
 	if (DialogueBox)
 	{
-		UE_LOG(LogTemp, Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing dialogue box reference"));
+		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing dialogue box reference"));
 		DialogueBox = nullptr;
 	}
 	

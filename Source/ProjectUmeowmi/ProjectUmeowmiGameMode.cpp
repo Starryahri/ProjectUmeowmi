@@ -6,13 +6,14 @@
 #include "DlgSystem/DlgContext.h"
 #include "GameFramework/PlayerController.h"
 #include "UI/PUDialogueBox.h"
+#include "PUProjectUmeowmiGameInstance.h"
 
 #include "UObject/ConstructorHelpers.h"
 
 AProjectUmeowmiGameMode::AProjectUmeowmiGameMode()
 {
 	// set default pawn class to our Blueprinted character
-	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/Characters/Bao/Blueprints/BP_Bao"));
+	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/LuckyFatCatDiner/Characters/Bao/Blueprints/BP_Bao"));
 	if (PlayerPawnBPClass.Class != NULL)
 	{
 		DefaultPawnClass = PlayerPawnBPClass.Class;
@@ -26,6 +27,12 @@ AProjectUmeowmiGameMode::AProjectUmeowmiGameMode()
 void AProjectUmeowmiGameMode::StartPlay()
 {
 	Super::StartPlay();
+	
+	// Notify GameInstance that a new level has started so it can complete any pending transitions
+	if (UPUProjectUmeowmiGameInstance* PUGameInstance = GetWorld() ? Cast<UPUProjectUmeowmiGameInstance>(GetWorld()->GetGameInstance()) : nullptr)
+	{
+		PUGameInstance->OnLevelLoaded();
+	}
 	
 	// Check if we should automatically start a cutscene
 	if (bAutoStartCutscene && LevelCutsceneDialogue)
@@ -46,7 +53,7 @@ void AProjectUmeowmiGameMode::StartLevelCutscene(UDlgDialogue* CutsceneDialogue)
 		return;
 	}
 	
-	UE_LOG(LogTemp, Log, TEXT("Starting level cutscene with dialogue: %s"), *CutsceneDialogue->GetName());
+	//UE_LOG(LogTemp,Log, TEXT("Starting level cutscene with dialogue: %s"), *CutsceneDialogue->GetName());
 	
 	// Disable player input but keep mouse visible
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
@@ -60,14 +67,14 @@ void AProjectUmeowmiGameMode::StartLevelCutscene(UDlgDialogue* CutsceneDialogue)
 	ACharacter* PlayerCharacter = Cast<ACharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
 	if (!PlayerCharacter)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to get player character for cutscene"));
+		//UE_LOG(LogTemp,Error, TEXT("Failed to get player character for cutscene"));
 		return;
 	}
 	
 	AProjectUmeowmiCharacter* ProjectCharacter = Cast<AProjectUmeowmiCharacter>(PlayerCharacter);
 	if (!ProjectCharacter)
 	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to cast player character to ProjectUmeowmiCharacter"));
+		//UE_LOG(LogTemp,Error, TEXT("Failed to cast player character to ProjectUmeowmiCharacter"));
 		return;
 	}
 	
@@ -102,7 +109,7 @@ void AProjectUmeowmiGameMode::StartLevelCutscene(UDlgDialogue* CutsceneDialogue)
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Failed to start cutscene dialogue"));
+		//UE_LOG(LogTemp,Warning, TEXT("Failed to start cutscene dialogue"));
 		EndLevelCutscene();
 	}
 }
@@ -114,7 +121,7 @@ void AProjectUmeowmiGameMode::EndLevelCutscene()
 		return;
 	}
 	
-	UE_LOG(LogTemp, Log, TEXT("Ending level cutscene"));
+	//UE_LOG(LogTemp,Log, TEXT("Ending level cutscene"));
 	
 	// Re-enable player input and ensure mouse is visible
 	if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
@@ -153,7 +160,7 @@ void AProjectUmeowmiGameMode::EndLevelCutscene()
 
 void AProjectUmeowmiGameMode::OnCutsceneDialogueEnded(UDlgContext* Context)
 {
-	UE_LOG(LogTemp, Log, TEXT("Cutscene dialogue ended"));
+	//UE_LOG(LogTemp,Log, TEXT("Cutscene dialogue ended"));
 	EndLevelCutscene();
 }
 

@@ -12,92 +12,111 @@ class UDataTable;
 class UStaticMesh;
 struct FPUPreparationBase;
 
-// Property types enum
+// Forward declare enums from PUPreparationBase (to avoid circular dependency)
+enum class EAspectType : uint8;
+enum class EModificationType : uint8;
+
+// Time state enum for discrete mapping
 UENUM(BlueprintType)
-enum class EIngredientPropertyType : uint8
+enum class ETimeState : uint8
 {
-    Sweetness,
-    Saltiness,
-    Sourness,
-    Bitterness,
-    Umami,
-    Spiciness,
-    Thickness,
-    Smoothness,
-    Cohesion,
-    Temperature,
-    Watery,
-    Firm,
-    Crunchy,
-    Creamy,
-    Chewy,
-    Crumbly,
-    Custom UMETA(DisplayName = "Custom Property")
+    None = 0,   // 0.0
+    Low = 1,    // 0.33
+    Mid = 2,    // 0.66
+    Long = 3    // 1.0
 };
 
-// Property definition with value and tags
+// Temperature state enum for discrete mapping
+UENUM(BlueprintType)
+enum class ETemperatureState : uint8
+{
+    Raw = 0,    // 0.0
+    Low = 1,    // 0.33
+    Med = 2,    // 0.66
+    Hot = 3     // 1.0
+};
+
+// Time/Temperature modifier entry - defines how a specific aspect changes at a specific time/temp state
 USTRUCT(BlueprintType)
-struct FIngredientProperty
+struct FTimeTempModifier
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    EIngredientPropertyType PropertyType = EIngredientPropertyType::Custom;
+    // Time state this modifier applies to (None, Low, Mid, Long)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    ETimeState TimeState = ETimeState::None;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property", meta = (EditCondition = "PropertyType == EIngredientPropertyType::Custom"))
-    FName CustomPropertyName;
+    // Temperature state this modifier applies to (Raw, Low, Med, Hot)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    ETemperatureState TemperatureState = ETemperatureState::Raw;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    float Value = 0.0f;
+    // Aspect to modify (e.g., "Umami", "Crispy", "Tender")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    FName AspectName;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    FText DisplayName;
+    // Whether this affects flavor or texture (0 = Flavor, 1 = Texture)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    uint8 AspectType = 0; // 0 = Flavor, 1 = Texture (matches EAspectType)
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property")
-    FText Description;
+    // How to apply the modification (0 = Additive, 1 = Multiplicative)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    uint8 ModificationType = 0; // 0 = Additive, 1 = Multiplicative (matches EModificationType)
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Property", meta = (Categories = "Profile"))
-    FGameplayTagContainer PropertyTags;
-
-    // Helper function to get the property name
-    FName GetPropertyName() const
-    {
-        if (PropertyType == EIngredientPropertyType::Custom)
-        {
-            return CustomPropertyName;
-        }
-        
-        // Get the enum string and extract just the value name (remove "EIngredientPropertyType::" prefix)
-        FString EnumString = UEnum::GetValueAsString(PropertyType);
-        FString ValueName;
-        if (EnumString.Split(TEXT("::"), nullptr, &ValueName))
-        {
-            return FName(*ValueName);
-        }
-        return FName(*EnumString);
-    }
+    // Modification value
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
+    float ModificationValue = 0.0f;
 };
 
-// Preparation modifier
+// Flavor aspects - the six basic flavors
+// Range: 0.0 to 5.0, increments of 0.5
 USTRUCT(BlueprintType)
-struct FPreparationModifier
+struct FFlavorAspects
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FName ModifierName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Umami = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FText DisplayName;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Salt = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FText Description;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Sweet = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    TMap<FName, float> PropertyModifiers;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Sour = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FGameplayTagContainer ModifierTags;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Bitter = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Flavor", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Spicy = 0.0f;
+};
+
+// Texture aspects - the six texture properties
+// Range: 0.0 to 5.0, increments of 0.5
+USTRUCT(BlueprintType)
+struct FTextureAspects
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Rich = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Juicy = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Tender = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Chewy = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Crispy = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Texture", meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+    float Crumbly = 0.0f;
 };
 
 // Main ingredient struct
@@ -124,14 +143,24 @@ public:
     UTexture2D* PreviewTexture;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    UTexture2D* PantryTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    UTexture2D* PreppedTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UMaterialInterface> MaterialInstance;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UStaticMesh> IngredientMesh;
 
-    // Natural Properties
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Properties")
-    TArray<FIngredientProperty> NaturalProperties;
+    // Flavor Aspects
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Aspects")
+    FFlavorAspects FlavorAspects;
+
+    // Texture Aspects
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Aspects")
+    FTextureAspects TextureAspects;
 
     // Quantity Management
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Quantity")
@@ -162,13 +191,28 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Effects")
     TMap<int32, FGameplayTagContainer> QuantitySpecialEffects;
 
+    // Time/Temperature Modifiers (per-ingredient overrides)
+    // If empty, will use default rules. If populated, these override defaults for this ingredient.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Time/Temperature")
+    TArray<FTimeTempModifier> TimeTemperatureModifiers;
+
+    // Whether to use custom time/temp modifiers (if false, uses default rules)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Time/Temperature")
+    bool bUseCustomTimeTempModifiers = false;
+
     // Helper Functions
-    float GetPropertyValue(const FName& PropertyName) const;
-    void SetPropertyValue(const FName& PropertyName, float Value);
-    bool HasProperty(const FName& PropertyName) const;
-    TArray<FIngredientProperty> GetPropertiesByTag(const FGameplayTag& Tag) const;
-    bool HasPropertiesWithTag(const FGameplayTag& Tag) const;
-    float GetTotalValueForTag(const FGameplayTag& Tag) const;
+    // Get flavor aspect value by name
+    float GetFlavorAspect(const FName& AspectName) const;
+    // Get texture aspect value by name
+    float GetTextureAspect(const FName& AspectName) const;
+    // Set flavor aspect value by name
+    void SetFlavorAspect(const FName& AspectName, float Value);
+    // Set texture aspect value by name
+    void SetTextureAspect(const FName& AspectName, float Value);
+    // Get total flavor value (sum of all flavor aspects)
+    float GetTotalFlavorValue() const;
+    // Get total texture value (sum of all texture aspects)
+    float GetTotalTextureValue() const;
     TArray<FGameplayTag> GetEffectsAtQuantity(int32 Quantity) const;
 
     // Preparation Functions
@@ -176,4 +220,20 @@ public:
     bool RemovePreparation(const FPUPreparationBase& Preparation);
     bool HasPreparation(const FGameplayTag& PreparationTag) const;
     FText GetCurrentDisplayName() const;
+
+    // Time/Temperature Functions
+    // Calculate modified aspects based on time and temperature values (0.0 to 1.0)
+    void CalculateTimeTempModifiedAspects(float TimeValue, float TemperatureValue, FFlavorAspects& OutFlavor, FTextureAspects& OutTexture) const;
+    
+    // Get modified flavor aspects (includes time/temp calculations)
+    FFlavorAspects GetModifiedFlavorAspects(float TimeValue, float TemperatureValue) const;
+    
+    // Get modified texture aspects (includes time/temp calculations)
+    FTextureAspects GetModifiedTextureAspects(float TimeValue, float TemperatureValue) const;
+
+    // Helper: Map slider value (0.0-1.0) to discrete time state
+    static ETimeState MapTimeValueToState(float TimeValue);
+    
+    // Helper: Map slider value (0.0-1.0) to discrete temperature state
+    static ETemperatureState MapTemperatureValueToState(float TemperatureValue);
 }; 

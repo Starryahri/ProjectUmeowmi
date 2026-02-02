@@ -84,17 +84,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish")
     static bool DecrementIngredientQuantityByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, int32 Amount = 1);
 
-    // Get the total value for a specific property
-    UFUNCTION(BlueprintCallable, Category = "Dish")
-    static float GetTotalValueForProperty(const FPUDishBase& Dish, const FName& PropertyName);
+    // Get the total value for a specific flavor aspect
+    UFUNCTION(BlueprintCallable, Category = "Dish|Aspects")
+    static float GetTotalFlavorAspect(const FPUDishBase& Dish, const FName& AspectName);
 
-    // Get all properties that match a specific tag
-    UFUNCTION(BlueprintCallable, Category = "Dish")
-    static TArray<FIngredientProperty> GetPropertiesWithTag(const FPUDishBase& Dish, const FGameplayTag& Tag);
-
-    // Get the total value for all properties with a specific tag
-    UFUNCTION(BlueprintCallable, Category = "Dish")
-    static float GetTotalValueForTag(const FPUDishBase& Dish, const FGameplayTag& Tag);
+    // Get the total value for a specific texture aspect
+    UFUNCTION(BlueprintCallable, Category = "Dish|Aspects")
+    static float GetTotalTextureAspect(const FPUDishBase& Dish, const FName& AspectName);
 
     // Check if the dish has a specific ingredient
     UFUNCTION(BlueprintCallable, Category = "Dish")
@@ -148,4 +144,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Dish|Plating")
     static bool GetIngredientPlating(const FPUDishBase& Dish, int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale);
+
+    // Helper function to convert ingredient tag to data table row name
+    // Removes "Ingredient." prefix, converts to lowercase, and removes all periods
+    // Example: "Ingredient.Noodle.Bihon" -> "noodlebihon"
+    static FName GetIngredientRowNameFromTag(const FGameplayTag& IngredientTag);
 }; 
