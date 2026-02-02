@@ -24,6 +24,12 @@
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
 #include "Framework/Application/SlateApplication.h"
 
+// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+namespace
+{
+    constexpr bool bPU_LogIngredientSlotDebug = false;
+}
+
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
     , Location(EPUIngredientSlotLocation::ActiveIngredientArea)
@@ -39,28 +45,40 @@ void UPUIngredientSlot::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeConstruct - Slot widget constructed: %s"), *GetName());
+    if (bPU_LogIngredientSlotDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeConstruct - Slot widget constructed: %s"), *GetName());
+    }
 
     // Try to find and cache the dish widget if not already set
     if (!CachedDishWidget.IsValid())
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::NativeConstruct - Cached dish widget not set, attempting to find it"));
+        if (bPU_LogIngredientSlotDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::NativeConstruct - Cached dish widget not set, attempting to find it"));
+        }
         UPUDishCustomizationWidget* FoundWidget = GetDishCustomizationWidget();
         if (FoundWidget)
         {
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Found and cached dish widget: %s"), *FoundWidget->GetName());
+            if (bPU_LogIngredientSlotDebug)
+            {
+                //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Found and cached dish widget: %s"), *FoundWidget->GetName());
+            }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeConstruct - Could not find dish widget during construction"));
+            // //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::NativeConstruct - Could not find dish widget during construction"));
         }
     }
     else
     {
         if (UPUDishCustomizationWidget* DishWidget = CachedDishWidget.Get())
         {
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Cached dish widget already set: %s"), 
-                *DishWidget->GetName());
+            if (bPU_LogIngredientSlotDebug)
+            {
+                //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::NativeConstruct - Cached dish widget already set: %s"), 
+                //    *DishWidget->GetName());
+            }
         }
     }
 
@@ -94,8 +112,11 @@ void UPUIngredientSlot::NativeConstruct()
     // SetIngredientInstance will call UpdateDisplay() internally
     if (InitialIngredientInstance.IngredientData.IngredientTag.IsValid())
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeConstruct - Initial ingredient instance found, applying: %s"), 
-            *InitialIngredientInstance.IngredientData.DisplayName.ToString());
+        if (bPU_LogIngredientSlotDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeConstruct - Initial ingredient instance found, applying: %s"), 
+            //    *InitialIngredientInstance.IngredientData.DisplayName.ToString());
+        }
         SetIngredientInstance(InitialIngredientInstance);
     }
     else
@@ -177,8 +198,8 @@ void UPUIngredientSlot::NativeDestruct()
 
 void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngredientInstance)
 {
-    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Setting ingredient instance (Slot: %s)"), *GetName());
-    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Input Instance ID: %d, Qty: %d, Preparations: %d"),
+    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Setting ingredient instance (Slot: %s)"), *GetName());
+    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Input Instance ID: %d, Qty: %d, Preparations: %d"),
     //     InIngredientInstance.InstanceID, InIngredientInstance.Quantity, InIngredientInstance.Preparations.Num());
 
     // Store the instance data
@@ -191,24 +212,33 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     {
         // ActivePreparations has more (or newer) preparations - sync to Preparations
         IngredientInstance.Preparations = IngredientInstance.IngredientData.ActivePreparations;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Synced %d ActivePreparations from IngredientData to Preparations"), 
-            IngredientInstance.IngredientData.ActivePreparations.Num());
+        if (bPU_LogIngredientSlotDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Synced %d ActivePreparations from IngredientData to Preparations"), 
+            //    IngredientInstance.IngredientData.ActivePreparations.Num());
+        }
     }
     else if (IngredientInstance.Preparations.Num() > 0 && IngredientInstance.IngredientData.ActivePreparations.Num() == 0)
     {
         // Preparations has data but ActivePreparations is empty - sync the other way
         IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Synced %d Preparations to ActivePreparations"), 
-            IngredientInstance.Preparations.Num());
+        if (bPU_LogIngredientSlotDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Synced %d Preparations to ActivePreparations"), 
+            //    IngredientInstance.Preparations.Num());
+        }
     }
     else if (IngredientInstance.Preparations.Num() > 0 && IngredientInstance.IngredientData.ActivePreparations.Num() > 0)
     {
         // Both have data - merge them (ActivePreparations takes precedence)
         IngredientInstance.Preparations = IngredientInstance.IngredientData.ActivePreparations;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Merged preparations: ActivePreparations has %d, using that"), 
-            IngredientInstance.IngredientData.ActivePreparations.Num());
+        if (bPU_LogIngredientSlotDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Merged preparations: ActivePreparations has %d, using that"), 
+            //    IngredientInstance.IngredientData.ActivePreparations.Num());
+        }
     }
-    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Final: Preparations=%d, ActivePreparations=%d"), 
+    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Final: Preparations=%d, ActivePreparations=%d"), 
     //     IngredientInstance.Preparations.Num(), IngredientInstance.IngredientData.ActivePreparations.Num());
     
     // Set plating-specific properties
@@ -220,14 +250,14 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     if (InIngredientInstance.Quantity <= 0 || InIngredientInstance.InstanceID == 0)
     {
         bHasIngredient = false;
-        // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Quantity is 0 or InstanceID is 0, treating as empty (but storing ingredient data for display)"));
+        // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Quantity is 0 or InstanceID is 0, treating as empty (but storing ingredient data for display)"));
     }
     else
     {
         bHasIngredient = true;
     }
 
-    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Stored Ingredient: %s (ID: %d, Qty: %d, Preparations: %d, HasIngredient: %s)"),
+    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Stored Ingredient: %s (ID: %d, Qty: %d, Preparations: %d, HasIngredient: %s)"),
     //     *IngredientInstance.IngredientData.DisplayName.ToString(),
     //     IngredientInstance.InstanceID,
     //     IngredientInstance.Quantity,
@@ -264,7 +294,7 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
         if (DishWidget)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Ingredient added to Prep area, creating/updating prepped slot"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Ingredient added to Prep area, creating/updating prepped slot"));
             DishWidget->CreateOrUpdatePreppedSlot(IngredientInstance);
         }
     }
@@ -284,12 +314,12 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
 
 void UPUIngredientSlot::ClearSlot()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Clearing slot: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Clearing slot: %s"), *GetName());
 
     // If we're in prep or active ingredient area and have an ingredient, remove the prepped slot
     if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Removing prepped slot for ingredient with preparations"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Removing prepped slot for ingredient with preparations"));
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
         if (DishWidget)
         {
@@ -316,7 +346,7 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
     if (Location != InLocation)
     {
         Location = InLocation;
-        // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetLocation - Location changed to: %d"), (int32)Location);
+        // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetLocation - Location changed to: %d"), (int32)Location);
 
         // Update slider visibility when location changes
         UpdateSliderVisibility();
@@ -348,7 +378,7 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
 
 void UPUIngredientSlot::UpdateDisplay()
 {
-    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
+    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
     //     *GetName(), IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
     // For pantry, prep, and prepped slots, we want to show the texture even if "empty" (quantity 0)
@@ -412,14 +442,14 @@ void UPUIngredientSlot::UpdateDisplay()
                 if (QuantityControlWidget)
                 {
                     QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlWidget to Visible in %s stage"), 
-                        Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlWidget to Visible in %s stage"), 
+                    //    Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
                 }
                 if (QuantityControlContainer)
                 {
                     QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlContainer to Visible in %s stage"), 
-                        Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - FORCED QuantityControlContainer to Visible in %s stage"), 
+                    //    Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
                 }
             }
             else
@@ -428,12 +458,12 @@ void UPUIngredientSlot::UpdateDisplay()
                 if (QuantityControlWidget)
                 {
                     QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Hiding QuantityControlWidget (in plating mode)"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Hiding QuantityControlWidget (in plating mode)"));
                 }
                 if (QuantityControlContainer)
                 {
                     QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Hiding QuantityControlContainer (in plating mode)"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Hiding QuantityControlContainer (in plating mode)"));
                 }
             }
         }
@@ -444,7 +474,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
 {
     if (!IngredientIcon)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - IngredientIcon component not found"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - IngredientIcon component not found"));
         return;
     }
 
@@ -499,7 +529,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 if (BaseMaterial)
                 {
                     SuspiciousDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for suspicious ingredient icon"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for suspicious ingredient icon"));
                 }
             }
             MaterialToUse = SuspiciousDynamicMaterial;
@@ -522,7 +552,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 if (BaseMaterial)
                 {
                     PreparationDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for preparation-tinted ingredient icon"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for preparation-tinted ingredient icon"));
                 }
             }
             MaterialToUse = PreparationDynamicMaterial;
@@ -551,8 +581,8 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 // Set pixelate factor parameter for suspicious material (2+ preps) - use the configured value (default 10)
                 MaterialToUse->SetScalarParameterValue(TEXT("PixelateFactor"), SuspiciousPixelateFactor);
                 
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied suspicious material to ingredient icon (Texture: %s, Color: RGB(%.3f, %.3f, %.3f), Pixelate: %.2f)"), 
-                    *TextureToUse->GetName(), CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B, SuspiciousPixelateFactor);
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied suspicious material to ingredient icon (Texture: %s, Color: RGB(%.3f, %.3f, %.3f), Pixelate: %.2f)"), 
+                //    *TextureToUse->GetName(), CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B, SuspiciousPixelateFactor);
             }
             else if (bHasPreparations && MaterialToUse == PreparationDynamicMaterial)
             {
@@ -563,8 +593,8 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 // Set pixelate factor to 1000 for first preparation (essentially no pixelation)
                 MaterialToUse->SetScalarParameterValue(TEXT("PixelateFactor"), 1000.0f);
                 
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied preparation-tinted material to ingredient icon (Texture: %s, Color: RGB(%.3f, %.3f, %.3f), Pixelate: 1000.0)"), 
-                    *TextureToUse->GetName(), CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B);
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Applied preparation-tinted material to ingredient icon (Texture: %s, Color: RGB(%.3f, %.3f, %.3f), Pixelate: 1000.0)"), 
+                //    *TextureToUse->GetName(), CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B);
             }
             
             // Apply the material to the ingredient icon
@@ -583,22 +613,22 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         {
             // Grey color: 0.5, 0.5, 0.5, 1.0
             IngredientIcon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture and GREYED OUT (quantity is 0) for location: %d (Texture: %s)"),
-                (int32)Location, *TextureToUse->GetName());
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture and GREYED OUT (quantity is 0) for location: %d (Texture: %s)"),
+            //    (int32)Location, *TextureToUse->GetName());
         }
         else
         {
             // Normal white color: 1.0, 1.0, 1.0, 1.0
             IngredientIcon->SetColorAndOpacity(FLinearColor::White);
-        // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture for location: %d (Texture: %s)"),
+        // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture for location: %d (Texture: %s)"),
         //     (int32)Location, *TextureToUse->GetName());
         }
     }
     else
     {
         IngredientIcon->SetVisibility(ESlateVisibility::Collapsed);
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - No texture found for ingredient: %s (Location: %d)"),
-            *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - No texture found for ingredient: %s (Location: %d)"),
+        //    *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
     }
 }
 
@@ -606,7 +636,7 @@ UTexture2D* UPUIngredientSlot::GetPreparationTexture(const FGameplayTag& Prepara
 {
     if (!PreparationDataTable)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - PreparationDataTable not set"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - PreparationDataTable not set"));
         return nullptr;
     }
 
@@ -622,17 +652,17 @@ UTexture2D* UPUIngredientSlot::GetPreparationTexture(const FGameplayTag& Prepara
         {
             if (Preparation->IconTexture)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationTexture - Found texture for preparation: %s"), *PrepName);
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationTexture - Found texture for preparation: %s"), *PrepName);
                 return Preparation->IconTexture;
             }
             else
             {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation %s has no IconTexture"), *PrepName);
+                //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation %s has no IconTexture"), *PrepName);
             }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation not found in data table: %s"), *PrepName);
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationTexture - Preparation not found in data table: %s"), *PrepName);
         }
     }
     
@@ -658,17 +688,17 @@ UTexture2D* UPUIngredientSlot::GetPreparationPrepTexture(const FGameplayTag& Pre
         {
             if (Preparation->PrepTexture)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationPrepTexture - Found PrepTexture for preparation: %s"), *PrepName);
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationPrepTexture - Found PrepTexture for preparation: %s"), *PrepName);
                 return Preparation->PrepTexture;
             }
             else
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationPrepTexture - Preparation %s has no PrepTexture"), *PrepName);
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationPrepTexture - Preparation %s has no PrepTexture"), *PrepName);
             }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationPrepTexture - Preparation not found in data table: %s"), *PrepName);
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetPreparationPrepTexture - Preparation not found in data table: %s"), *PrepName);
         }
     }
     
@@ -689,8 +719,8 @@ void UPUIngredientSlot::UpdatePrepBowls()
     // Check if we have valid texture arrays
     if (PrepBowlFrontTextures.Num() == 0 || PrepBowlBackTextures.Num() == 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepBowls - Prep bowl texture arrays are empty (Front: %d, Back: %d)"),
-            PrepBowlFrontTextures.Num(), PrepBowlBackTextures.Num());
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepBowls - Prep bowl texture arrays are empty (Front: %d, Back: %d)"),
+        //    PrepBowlFrontTextures.Num(), PrepBowlBackTextures.Num());
         // Hide prep bowls if no textures available
         if (PrepBowlFront) PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
         if (PrepBowlBack) PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
@@ -718,8 +748,8 @@ void UPUIngredientSlot::UpdatePrepBowls()
         FrontIndex = Stream.RandRange(0, PrepBowlFrontTextures.Num() - 1);
         BackIndex  = Stream.RandRange(0, PrepBowlBackTextures.Num() - 1);
 
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic random selection (InstanceID: %d, Front: %d, Back: %d)"),
-            IngredientInstance.InstanceID, FrontIndex, BackIndex);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic random selection (InstanceID: %d, Front: %d, Back: %d)"),
+        //    IngredientInstance.InstanceID, FrontIndex, BackIndex);
     }
     else
     {
@@ -728,8 +758,8 @@ void UPUIngredientSlot::UpdatePrepBowls()
         int32 SelectedIndex = Stream.RandRange(0, MaxIndex);
         FrontIndex = BackIndex = SelectedIndex;
 
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic paired selection (InstanceID: %d, Index: %d)"),
-            IngredientInstance.InstanceID, SelectedIndex);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic paired selection (InstanceID: %d, Index: %d)"),
+        //    IngredientInstance.InstanceID, SelectedIndex);
     }
 
     UTexture2D* SelectedFrontTexture = PrepBowlFrontTextures.IsValidIndex(FrontIndex)
@@ -746,8 +776,8 @@ void UPUIngredientSlot::UpdatePrepBowls()
         {
             PrepBowlFront->SetBrushFromTexture(SelectedFrontTexture);
             PrepBowlFront->SetVisibility(ESlateVisibility::Visible);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set front bowl texture: %s"),
-                *SelectedFrontTexture->GetName());
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set front bowl texture: %s"),
+            //    *SelectedFrontTexture->GetName());
         }
         else
         {
@@ -762,8 +792,8 @@ void UPUIngredientSlot::UpdatePrepBowls()
         {
             PrepBowlBack->SetBrushFromTexture(SelectedBackTexture);
             PrepBowlBack->SetVisibility(ESlateVisibility::Visible);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set back bowl texture: %s"),
-                *SelectedBackTexture->GetName());
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set back bowl texture: %s"),
+            //    *SelectedBackTexture->GetName());
         }
         else
         {
@@ -797,7 +827,7 @@ void UPUIngredientSlot::UpdatePrepIcons()
         {
             SuspiciousIcon->SetVisibility(ESlateVisibility::Visible);
             // TODO: Set suspicious icon texture when available
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Showing suspicious icon (2+ preps)"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Showing suspicious icon (2+ preps)"));
         }
     }
     else if (PrepCount == 1)
@@ -818,11 +848,11 @@ void UPUIngredientSlot::UpdatePrepIcons()
                 if (PrepTexture)
                 {
                     PrepIcon1->SetBrushFromTexture(PrepTexture);
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Set prep icon 1 texture: %s"), *PrepTexture->GetName());
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepIcons - Set prep icon 1 texture: %s"), *PrepTexture->GetName());
                 }
                 else
                 {
-                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepIcons - No texture found for first preparation: %s"), *PrepTags[0].ToString());
+                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepIcons - No texture found for first preparation: %s"), *PrepTags[0].ToString());
                 }
             }
         }
@@ -838,7 +868,7 @@ void UPUIngredientSlot::UpdatePrepIcons()
 
 void UPUIngredientSlot::UpdateQuantityControl()
 {
-    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - START (HasIngredient: %s, Widget: %s, Class: %s, Container: %s)"),
+    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - START (HasIngredient: %s, Widget: %s, Class: %s, Container: %s)"),
     //     bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
     //     QuantityControlWidget ? TEXT("EXISTS") : TEXT("NULL"),
     //     QuantityControlClass ? TEXT("SET") : TEXT("NULL"),
@@ -852,7 +882,7 @@ void UPUIngredientSlot::UpdateQuantityControl()
             QuantityControlWidget->OnQuantityControlChanged.RemoveDynamic(this, &UPUIngredientSlot::OnQuantityControlChanged);
             QuantityControlWidget->OnQuantityControlRemoved.RemoveDynamic(this, &UPUIngredientSlot::OnQuantityControlRemoved);
             bQuantityControlEventsBound = false;
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Events unbound from quantity control"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Events unbound from quantity control"));
         }
 
         // Remove quantity control if slot is empty
@@ -870,7 +900,7 @@ void UPUIngredientSlot::UpdateQuantityControl()
 
     if (!QuantityControlContainer)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlContainer is not set! Cannot add quantity control."));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlContainer is not set! Cannot add quantity control."));
         return;
     }
 
@@ -883,7 +913,7 @@ void UPUIngredientSlot::UpdateQuantityControl()
             if (UPUIngredientQuantityControl* ExistingWidget = Cast<UPUIngredientQuantityControl>(QuantityControlContainer->GetChildAt(i)))
             {
                 QuantityControlWidget = ExistingWidget;
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Found existing quantity control widget in container"));
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Found existing quantity control widget in container"));
                 break;
             }
         }
@@ -896,18 +926,18 @@ void UPUIngredientSlot::UpdateQuantityControl()
         if (QuantityControlWidget)
         {
             QuantityControlContainer->AddChild(QuantityControlWidget);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Created quantity control widget dynamically"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Created quantity control widget dynamically"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - Failed to create quantity control widget"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - Failed to create quantity control widget"));
         }
     }
     else if (!QuantityControlWidget && !QuantityControlClass)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - No quantity control widget found and QuantityControlClass is not set!"));
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   Either place a WBP_IngredientQuantityControl widget in the QuantityControlContainer in Blueprint,"));
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   OR set the QuantityControlClass property in the slot widget's defaults."));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - No quantity control widget found and QuantityControlClass is not set!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️   Either place a WBP_IngredientQuantityControl widget in the QuantityControlContainer in Blueprint,"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️   OR set the QuantityControlClass property in the slot widget's defaults."));
         return;
     }
 
@@ -917,14 +947,14 @@ void UPUIngredientSlot::UpdateQuantityControl()
         QuantityControlWidget->OnQuantityControlChanged.AddDynamic(this, &UPUIngredientSlot::OnQuantityControlChanged);
         QuantityControlWidget->OnQuantityControlRemoved.AddDynamic(this, &UPUIngredientSlot::OnQuantityControlRemoved);
         bQuantityControlEventsBound = true;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Events bound to quantity control"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Events bound to quantity control"));
     }
 
     // Update quantity control with current ingredient instance
     if (QuantityControlWidget)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget EXISTS, Location: %d (ActiveIngredientArea=%d)"),
-            (int32)Location, (int32)EPUIngredientSlotLocation::ActiveIngredientArea);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget EXISTS, Location: %d (ActiveIngredientArea=%d)"),
+        //    (int32)Location, (int32)EPUIngredientSlotLocation::ActiveIngredientArea);
         
         // Hide quantity control in plating mode, pantry, and prepped stages
         // Show it in cooking stage (ActiveIngredientArea) and prep stage, but NOT in plating mode
@@ -944,24 +974,24 @@ void UPUIngredientSlot::UpdateQuantityControl()
             {
                 QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
             }
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Hiding quantity control and container (PlatingMode: %s, Location: %d)"), 
-                bIsPlatingMode ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Hiding quantity control and container (PlatingMode: %s, Location: %d)"), 
+            //    bIsPlatingMode ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
             return;
         }
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - SHOWING quantity control (Location: %d)"), (int32)Location);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Setting ingredient instance on quantity control"));
-        UE_LOG(LogTemp, Display, TEXT("🎯   Slot Instance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d, HasIngredient: %s"),
-            IngredientInstance.InstanceID,
-            IngredientInstance.Quantity,
-            *IngredientInstance.IngredientData.DisplayName.ToString(),
-            IngredientInstance.Preparations.Num(),
-            bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - SHOWING quantity control (Location: %d)"), (int32)Location);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Setting ingredient instance on quantity control"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯   Slot Instance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d, HasIngredient: %s"),
+        //    IngredientInstance.InstanceID,
+        //    IngredientInstance.Quantity,
+        //    *IngredientInstance.IngredientData.DisplayName.ToString(),
+        //    IngredientInstance.Preparations.Num(),
+        //    bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
         
         // Verify the instance has a valid ID before setting
         if (IngredientInstance.InstanceID == 0)
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - WARNING: IngredientInstance has InstanceID = 0! This might be a problem."));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - WARNING: IngredientInstance has InstanceID = 0! This might be a problem."));
         }
         
         QuantityControlWidget->SetIngredientInstance(IngredientInstance);
@@ -971,31 +1001,31 @@ void UPUIngredientSlot::UpdateQuantityControl()
         if (QuantityControlContainer)
         {
             QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Set QuantityControlContainer to Visible"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - Set QuantityControlContainer to Visible"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlContainer is NULL! Container cannot be shown."));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlContainer is NULL! Container cannot be shown."));
         }
         
         // Verify it was set correctly
         const FIngredientInstance& SetInstance = QuantityControlWidget->GetIngredientInstance();
         ESlateVisibility CurrentVisibility = QuantityControlWidget->GetVisibility();
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - After setting, Quantity Control has Instance ID: %d, Qty: %d, Visibility: %d"),
-            SetInstance.InstanceID, SetInstance.Quantity, (int32)CurrentVisibility);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateQuantityControl - After setting, Quantity Control has Instance ID: %d, Qty: %d, Visibility: %d"),
+        //    SetInstance.InstanceID, SetInstance.Quantity, (int32)CurrentVisibility);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget is NULL! Cannot show quantity control."));
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   QuantityControlContainer: %s, QuantityControlClass: %s"),
-            QuantityControlContainer ? TEXT("EXISTS") : TEXT("NULL"),
-            QuantityControlClass ? TEXT("SET") : TEXT("NULL"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdateQuantityControl - QuantityControlWidget is NULL! Cannot show quantity control."));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️   QuantityControlContainer: %s, QuantityControlClass: %s"),
+        //    QuantityControlContainer ? TEXT("EXISTS") : TEXT("NULL"),
+        //    QuantityControlClass ? TEXT("SET") : TEXT("NULL"));
     }
 }
 
 void UPUIngredientSlot::ClearDisplay()
 {
-    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Clearing display"));
+    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Clearing display"));
 
     // Hide icon
     if (IngredientIcon)
@@ -1026,14 +1056,14 @@ void UPUIngredientSlot::ClearDisplay()
         if (QuantityControlWidget)
         {
             QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control in %s stage (not removing)"), 
-                Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control in %s stage (not removing)"), 
+            //    Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
         }
         if (QuantityControlContainer)
         {
             QuantityControlContainer->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control container in %s stage (not removing)"), 
-                Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Hiding quantity control container in %s stage (not removing)"), 
+            //    Location == EPUIngredientSlotLocation::Prep ? TEXT("prep") : TEXT("cooking"));
         }
     }
     else
@@ -1057,7 +1087,7 @@ void UPUIngredientSlot::ClearDisplay()
                 {
                     QuantityControlContainer->RemoveChild(FoundWidget);
                     FoundWidget->RemoveFromParent();
-                    // UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Removed quantity control widget found in container"));
+                    // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearDisplay - Removed quantity control widget found in container"));
                     break;
                 }
             }
@@ -1090,14 +1120,14 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
             Texture = IngredientInstance.IngredientData.PreviewTexture;
             if (Texture)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Pantry slot using PreviewTexture as fallback for ingredient: %s"),
-                    *IngredientInstance.IngredientData.DisplayName.ToString());
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Pantry slot using PreviewTexture as fallback for ingredient: %s"),
+                //    *IngredientInstance.IngredientData.DisplayName.ToString());
             }
         }
         if (!Texture)
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Pantry slot has no PantryTexture or PreviewTexture for ingredient: %s"),
-                *IngredientInstance.IngredientData.DisplayName.ToString());
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Pantry slot has no PantryTexture or PreviewTexture for ingredient: %s"),
+            //    *IngredientInstance.IngredientData.DisplayName.ToString());
         }
         return Texture;
     }
@@ -1107,8 +1137,8 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
         UTexture2D* Texture = IngredientInstance.IngredientData.PreviewTexture;
         if (!Texture)
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prep slot has no PreviewTexture for ingredient: %s"),
-                *IngredientInstance.IngredientData.DisplayName.ToString());
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prep slot has no PreviewTexture for ingredient: %s"),
+            //    *IngredientInstance.IngredientData.DisplayName.ToString());
         }
         return Texture;
     }
@@ -1149,8 +1179,8 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
                     Texture = GetPreparationPrepTexture(PreparationTags[0], PrepDataTable);
                     if (Texture)
                     {
-                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Prepped slot using PrepTexture from preparation: %s"),
-                            *PreparationTags[0].ToString());
+                        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Prepped slot using PrepTexture from preparation: %s"),
+                        //    *PreparationTags[0].ToString());
                     }
                 }
             }
@@ -1168,15 +1198,15 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
             Texture = IngredientInstance.IngredientData.PreviewTexture;
             if (Texture)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Prepped slot using PreviewTexture as fallback for ingredient: %s"),
-                    *IngredientInstance.IngredientData.DisplayName.ToString());
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetTextureForLocation - Prepped slot using PreviewTexture as fallback for ingredient: %s"),
+                //    *IngredientInstance.IngredientData.DisplayName.ToString());
             }
         }
         
         if (!Texture)
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prepped slot has no PrepTexture, PreppedTexture, or PreviewTexture for ingredient: %s"),
-                *IngredientInstance.IngredientData.DisplayName.ToString());
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prepped slot has no PrepTexture, PreppedTexture, or PreviewTexture for ingredient: %s"),
+            //    *IngredientInstance.IngredientData.DisplayName.ToString());
         }
         
         return Texture;
@@ -1191,7 +1221,7 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
 {
     if (!bHasIngredient)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No ingredient in slot"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No ingredient in slot"));
         return;
     }
 
@@ -1205,13 +1235,13 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
     
     if (!Texture)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No original ingredient texture found (PreppedTexture or PreviewTexture) for ingredient: %s"),
-            *IngredientInstance.IngredientData.DisplayName.ToString());
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No original ingredient texture found (PreppedTexture or PreviewTexture) for ingredient: %s"),
+        //    *IngredientInstance.IngredientData.DisplayName.ToString());
         return;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Using ORIGINAL ingredient texture: %s (not prep texture)"),
-        *Texture->GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Using ORIGINAL ingredient texture: %s (not prep texture)"),
+    //    *Texture->GetName());
 
     // Get texture dimensions
     const int32 Width = Texture->GetSizeX();
@@ -1219,8 +1249,8 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
     
     if (Width <= 0 || Height <= 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Invalid texture dimensions: %dx%d"),
-            Width, Height);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Invalid texture dimensions: %dx%d"),
+        //    Width, Height);
         return;
     }
 
@@ -1228,8 +1258,8 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
     FImage SourceImage;
     if (!FImageUtils::GetTexture2DSourceImage(Texture, SourceImage))
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Failed to get source image from texture: %s"),
-            *Texture->GetName());
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Failed to get source image from texture: %s"),
+        //    *Texture->GetName());
         return;
     }
 
@@ -1281,8 +1311,8 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Unexpected data size: %d (expected at least %d or %d)"),
-                DataSize, ExpectedDataSize, ExpectedDataSizeRGB);
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Unexpected data size: %d (expected at least %d or %d)"),
+            //    DataSize, ExpectedDataSize, ExpectedDataSizeRGB);
             return;
         }
     }
@@ -1335,25 +1365,25 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
         {
             // Use base color without saturation boost for suspicious ingredients
             CachedAverageColor = BaseColor;
-            UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) -> Base(%.3f, %.3f, %.3f) [SUSPICIOUS - No saturation boost] from texture: %s (Size: %dx%d, Pixels: %d)"),
-                AvgR, AvgG, AvgB, 
-                BaseColor.R, BaseColor.G, BaseColor.B,
-                *Texture->GetName(), Width, Height, PixelCount);
+            //UE_LOG(LogTemp,Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) -> Base(%.3f, %.3f, %.3f) [SUSPICIOUS - No saturation boost] from texture: %s (Size: %dx%d, Pixels: %d)"),
+            //    AvgR, AvgG, AvgB, 
+            //    BaseColor.R, BaseColor.G, BaseColor.B,
+            //    *Texture->GetName(), Width, Height, PixelCount);
         }
         else
         {
             // Boost saturation for non-suspicious ingredients
             CachedAverageColor = BoostColorSaturation(BaseColor, ColorSaturationMultiplier);
-            UE_LOG(LogTemp, Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) -> Base(%.3f, %.3f, %.3f) -> Boosted(%.3f, %.3f, %.3f) from texture: %s (Size: %dx%d, Pixels: %d, Saturation: %.2fx)"),
-                AvgR, AvgG, AvgB, 
-                BaseColor.R, BaseColor.G, BaseColor.B,
-                CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B,
-                *Texture->GetName(), Width, Height, PixelCount, ColorSaturationMultiplier);
+            //UE_LOG(LogTemp,Display, TEXT("🎨 UPUIngredientSlot::GetAverageColorFromIngredientTexture - Average color: RGB(%d, %d, %d) -> Base(%.3f, %.3f, %.3f) -> Boosted(%.3f, %.3f, %.3f) from texture: %s (Size: %dx%d, Pixels: %d, Saturation: %.2fx)"),
+            //    AvgR, AvgG, AvgB, 
+            //    BaseColor.R, BaseColor.G, BaseColor.B,
+            //    CachedAverageColor.R, CachedAverageColor.G, CachedAverageColor.B,
+            //    *Texture->GetName(), Width, Height, PixelCount, ColorSaturationMultiplier);
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No pixels processed"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - No pixels processed"));
     }
 
 }
@@ -1453,8 +1483,8 @@ bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDra
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragOver - Drag over slot: %s (Location: %d, Empty: %s)"),
-            *GetName(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragOver - Drag over slot: %s (Location: %d, Empty: %s)"),
+        //    *GetName(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
 
         // In cooking stage, allow drag over whether slot is empty or not (for swapping)
         if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
@@ -1477,8 +1507,8 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Drop on slot: %s (Ingredient: %s, Location: %d, Empty: %s)"),
-            *GetName(), *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Drop on slot: %s (Ingredient: %s, Location: %d, Empty: %s)"),
+        //    *GetName(), *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
 
         // In cooking stage (ActiveIngredientArea) or prep stage (Prep), handle both empty slots (move) and occupied slots (swap)
         if (Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prep)
@@ -1486,7 +1516,7 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
             // SAFETY CHECK: If InstanceID is 0, this is from pantry - generate new GUID and set quantity to 1
             if (IngredientDragOp->IngredientInstance.InstanceID == 0)
             {
-                UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::NativeOnDrop - Detected pantry drag (ID: 0), generating new GUID and setting quantity to 1"));
+                //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::NativeOnDrop - Detected pantry drag (ID: 0), generating new GUID and setting quantity to 1"));
                 IngredientDragOp->IngredientInstance.InstanceID = GenerateGUIDBasedInstanceID();
                 IngredientDragOp->IngredientInstance.Quantity = 1;
                 // Ensure IngredientTag is set (should be from IngredientData, but set it explicitly for consistency)
@@ -1494,54 +1524,57 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                 {
                     IngredientDragOp->IngredientInstance.IngredientTag = IngredientDragOp->IngredientInstance.IngredientData.IngredientTag;
                 }
-                UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::NativeOnDrop - Generated new InstanceID: %d, Quantity: 1, Tag: %s"), 
-                    IngredientDragOp->IngredientInstance.InstanceID, *IngredientDragOp->IngredientInstance.IngredientTag.ToString());
+                if (bPU_LogIngredientSlotDebug)
+                {
+                    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::NativeOnDrop - Generated new InstanceID: %d, Quantity: 1, Tag: %s"), 
+                    //    IngredientDragOp->IngredientInstance.InstanceID, *IngredientDragOp->IngredientInstance.IngredientTag.ToString());
+                }
             }
             
             // Store the target slot's ingredient instance if it exists (for swapping)
             FIngredientInstance TargetSlotIngredient = IngredientInstance;
             bool bTargetSlotHasIngredient = !IsEmpty();
             
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Cooking stage drop (Target empty: %s)"), 
-                bTargetSlotHasIngredient ? TEXT("FALSE") : TEXT("TRUE"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Cooking stage drop (Target empty: %s)"), 
+            //    bTargetSlotHasIngredient ? TEXT("FALSE") : TEXT("TRUE"));
             
             if (bTargetSlotHasIngredient)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯   Target slot has ingredient - ID: %d, Qty: %d, Ingredient: %s"),
-                    TargetSlotIngredient.InstanceID,
-                    TargetSlotIngredient.Quantity,
-                    *TargetSlotIngredient.IngredientData.DisplayName.ToString());
+                //UE_LOG(LogTemp,Display, TEXT("🎯   Target slot has ingredient - ID: %d, Qty: %d, Ingredient: %s"),
+                //    TargetSlotIngredient.InstanceID,
+                //    TargetSlotIngredient.Quantity,
+                //    *TargetSlotIngredient.IngredientData.DisplayName.ToString());
             }
             
-            UE_LOG(LogTemp, Display, TEXT("🎯   Drag Operation IngredientInstance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d"),
-                IngredientDragOp->IngredientInstance.InstanceID,
-                IngredientDragOp->IngredientInstance.Quantity,
-                *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(),
-                IngredientDragOp->IngredientInstance.Preparations.Num());
+            //UE_LOG(LogTemp,Display, TEXT("🎯   Drag Operation IngredientInstance - ID: %d, Qty: %d, Ingredient: %s, Preparations: %d"),
+            //    IngredientDragOp->IngredientInstance.InstanceID,
+            //    IngredientDragOp->IngredientInstance.Quantity,
+            //    *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(),
+            //    IngredientDragOp->IngredientInstance.Preparations.Num());
 
             // Set the target slot with the dragged ingredient
             SetIngredientInstance(IngredientDragOp->IngredientInstance);
             
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - After SetIngredientInstance, slot has - ID: %d, Qty: %d, HasIngredient: %s, Location: %d"),
-                IngredientInstance.InstanceID,
-                IngredientInstance.Quantity,
-                bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
-                (int32)Location);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - After SetIngredientInstance, slot has - ID: %d, Qty: %d, HasIngredient: %s, Location: %d"),
+            //    IngredientInstance.InstanceID,
+            //    IngredientInstance.Quantity,
+            //    bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
+            //    (int32)Location);
             
             // FORCE update and show quantity control after drop
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - FORCING quantity control to be visible after drop"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - FORCING quantity control to be visible after drop"));
             UpdateQuantityControl();
             
             // Double-check visibility is set correctly
             if (QuantityControlWidget)
             {
                 QuantityControlWidget->SetVisibility(ESlateVisibility::Visible);
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Explicitly set QuantityControlWidget to Visible"));
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Explicitly set QuantityControlWidget to Visible"));
             }
             if (QuantityControlContainer)
             {
                 QuantityControlContainer->SetVisibility(ESlateVisibility::Visible);
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Explicitly set QuantityControlContainer to Visible"));
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Explicitly set QuantityControlContainer to Visible"));
             }
 
             // Find the source slot (the slot we dragged from) in the cooking stage
@@ -1555,7 +1588,7 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
             if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(ParentWidget))
             {
                 AllSlots = DishWidget->GetCreatedIngredientSlots();
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget, got %d slots"), AllSlots.Num());
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget, got %d slots"), AllSlots.Num());
             }
             else
             {
@@ -1566,7 +1599,7 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                     if (UPUDishCustomizationWidget* FoundDishWidget = Cast<UPUDishCustomizationWidget>(Parent))
                     {
                         AllSlots = FoundDishWidget->GetCreatedIngredientSlots();
-                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget via hierarchy, got %d slots"), AllSlots.Num());
+                        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Found PUDishCustomizationWidget via hierarchy, got %d slots"), AllSlots.Num());
                         break;
                     }
                     if (Parent->GetParent())
@@ -1581,8 +1614,8 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
             }
 
             // Find the source slot with the same InstanceID in the cooking stage
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Searching %d slots for source slot with InstanceID: %d"), 
-                AllSlots.Num(), IngredientDragOp->IngredientInstance.InstanceID);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Searching %d slots for source slot with InstanceID: %d"), 
+            //    AllSlots.Num(), IngredientDragOp->IngredientInstance.InstanceID);
             
             bool bFoundSourceSlot = false;
             for (UPUIngredientSlot* SourceSlot : AllSlots)
@@ -1590,11 +1623,11 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                 if (SourceSlot && SourceSlot != this)
                 {
                     const FIngredientInstance& SourceInstance = SourceSlot->GetIngredientInstance();
-                    UE_LOG(LogTemp, Display, TEXT("🎯   Checking slot: %s (Location: %d, InstanceID: %d, HasIngredient: %s)"),
-                        *SourceSlot->GetName(),
-                        (int32)SourceSlot->GetLocation(),
-                        SourceInstance.InstanceID,
-                        SourceSlot->IsEmpty() ? TEXT("FALSE") : TEXT("TRUE"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯   Checking slot: %s (Location: %d, InstanceID: %d, HasIngredient: %s)"),
+                    //    *SourceSlot->GetName(),
+                    //    (int32)SourceSlot->GetLocation(),
+                    //    SourceInstance.InstanceID,
+                    //    SourceSlot->IsEmpty() ? TEXT("FALSE") : TEXT("TRUE"));
                     
                     if ((SourceSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea || 
                          SourceSlot->GetLocation() == EPUIngredientSlotLocation::Prep) &&
@@ -1604,8 +1637,8 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                         if (bTargetSlotHasIngredient)
                         {
                             // SWAP: Set source slot with target slot's ingredient
-                            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - SWAPPING: Setting source slot %s with target slot's ingredient (ID: %d)"), 
-                                *SourceSlot->GetName(), TargetSlotIngredient.InstanceID);
+                            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - SWAPPING: Setting source slot %s with target slot's ingredient (ID: %d)"), 
+                            //    *SourceSlot->GetName(), TargetSlotIngredient.InstanceID);
                             SourceSlot->SetIngredientInstance(TargetSlotIngredient);
                             
                             // Update quantity control on source slot after swap
@@ -1622,7 +1655,7 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                         else
                         {
                             // MOVE: Clear the source slot
-                            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - MOVING: Clearing source slot: %s"), *SourceSlot->GetName());
+                            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - MOVING: Clearing source slot: %s"), *SourceSlot->GetName());
                             SourceSlot->ClearSlot();
                         }
                         bFoundSourceSlot = true;
@@ -1633,8 +1666,8 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
             
             if (!bFoundSourceSlot)
             {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeOnDrop - Could not find source slot with InstanceID: %d!"), 
-                    IngredientDragOp->IngredientInstance.InstanceID);
+                //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::NativeOnDrop - Could not find source slot with InstanceID: %d!"), 
+                //    IngredientDragOp->IngredientInstance.InstanceID);
             }
 
             // Broadcast drop event
@@ -1650,7 +1683,7 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
         if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
         {
             QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Ensuring quantity control stays hidden in plating stage after drop"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Ensuring quantity control stays hidden in plating stage after drop"));
         }
 
         // Broadcast drop event
@@ -1667,8 +1700,8 @@ void UPUIngredientSlot::NativeOnDragEnter(const FGeometry& InGeometry, const FDr
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragEnter - Drag entered slot: %s"),
-            *GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragEnter - Drag entered slot: %s"),
+        //    *GetName());
         OnDragOverSlot();
     }
 }
@@ -1678,8 +1711,8 @@ void UPUIngredientSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent,
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragLeave - Drag left slot: %s"),
-            *GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragLeave - Drag left slot: %s"),
+        //    *GetName());
         OnDragLeaveSlot();
     }
     
@@ -1687,14 +1720,14 @@ void UPUIngredientSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent,
     if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
     {
         QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragLeave - Ensuring quantity control stays hidden in plating stage"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDragLeave - Ensuring quantity control stays hidden in plating stage"));
     }
 }
 
 FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s, Location: %d)"),
-        *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s, Location: %d)"),
+    //    *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
     // Special handling for pantry slots - clicking should select the ingredient (not drag)
     if (Location == EPUIngredientSlotLocation::Pantry && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
@@ -1702,14 +1735,14 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         // Pantry slots: if we have valid ingredient data, treat click as selection (not drag)
         if (IngredientInstance.IngredientData.IngredientTag.IsValid())
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Pantry slot clicked, triggering OnEmptySlotClicked for selection"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Pantry slot clicked, triggering OnEmptySlotClicked for selection"));
             // Use OnEmptySlotClicked event for pantry slot selection (bound to OnPantrySlotClicked in cooking stage)
             OnEmptySlotClicked.Broadcast(this);
             return FReply::Handled();
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeOnMouseButtonDown - Pantry slot clicked but no valid ingredient tag"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::NativeOnMouseButtonDown - Pantry slot clicked but no valid ingredient tag"));
         }
     }
 
@@ -1723,7 +1756,7 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         bDragEnabled && bHasIngredient && 
         InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Drag enabled, letting drag system handle left click"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Drag enabled, letting drag system handle left click"));
         return FReply::Unhandled(); // Let drag system handle it
     }
 
@@ -1732,7 +1765,7 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         // Empty slot clicked - open pantry (only for non-pantry locations)
         if (Location != EPUIngredientSlotLocation::Pantry)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Empty slot clicked, opening pantry"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Empty slot clicked, opening pantry"));
             OnEmptySlotClicked.Broadcast(this);
             return FReply::Handled();
         }
@@ -1756,15 +1789,15 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         {
             if (bShiftPressed)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Shift+Left click, showing prep radial menu (drag enabled but using modifier)"));
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Shift+Left click, showing prep radial menu (drag enabled but using modifier)"));
             }
             else if (Location == EPUIngredientSlotLocation::Prep)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click on Prep slot, showing prep radial menu"));
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click on Prep slot, showing prep radial menu"));
             }
             else
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click (drag disabled), showing prep radial menu"));
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click (drag disabled), showing prep radial menu"));
             }
             ShowRadialMenu(true);
             return FReply::Handled();
@@ -1778,11 +1811,11 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         // Disable in all other locations, including ActiveIngredientArea and Prepped (bowls).
         if (Location != EPUIngredientSlotLocation::Prep)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click radial menu disabled for this slot location: %d"), (int32)Location);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click radial menu disabled for this slot location: %d"), (int32)Location);
             return FReply::Unhandled();
         }
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click, showing combined radial menu"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click, showing combined radial menu"));
         ShowRadialMenu(true, true); // bIsPrepMenu=true, bIncludeActions=true
         return FReply::Handled();
     }
@@ -1795,22 +1828,22 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
     // Radial menus are only allowed in Prep slots (plate area).
     if (Location != EPUIngredientSlotLocation::Prep)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Blocked radial menu for non-Prep slot (Location: %d)"), (int32)Location);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Blocked radial menu for non-Prep slot (Location: %d)"), (int32)Location);
         return;
     }
 
     if (IsEmpty())
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Cannot show menu on empty slot"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Cannot show menu on empty slot"));
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Showing radial menu (Prep: %s, IncludeActions: %s)"),
-        bIsPrepMenu ? TEXT("TRUE") : TEXT("FALSE"), bIncludeActions ? TEXT("TRUE") : TEXT("FALSE"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Showing radial menu (Prep: %s, IncludeActions: %s)"),
+    //    bIsPrepMenu ? TEXT("TRUE") : TEXT("FALSE"), bIncludeActions ? TEXT("TRUE") : TEXT("FALSE"));
 
     if (!RadialMenuWidgetClass)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - RadialMenuWidgetClass not set"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - RadialMenuWidgetClass not set"));
         return;
     }
 
@@ -1820,11 +1853,11 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
         RadialMenuWidget = CreateWidget<UPURadialMenu>(GetWorld(), RadialMenuWidgetClass);
         if (!RadialMenuWidget)
         {
-            UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::ShowRadialMenu - Failed to create radial menu widget"));
+            //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::ShowRadialMenu - Failed to create radial menu widget"));
             return;
         }
 
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu widget created"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu widget created"));
     }
 
     // Bind to menu events only once to avoid duplicate callbacks
@@ -1833,7 +1866,7 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
         RadialMenuWidget->OnMenuItemSelected.AddUniqueDynamic(this, &UPUIngredientSlot::OnRadialMenuItemSelected);
         RadialMenuWidget->OnMenuClosed.AddUniqueDynamic(this, &UPUIngredientSlot::OnRadialMenuClosed);
         bRadialMenuEventsBound = true;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Bound radial menu events"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Bound radial menu events"));
     }
 
     // Get the slot's screen position
@@ -1873,7 +1906,7 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
     
     if (MenuItems.Num() == 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - No menu items to display"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - No menu items to display"));
         return;
     }
 
@@ -1884,7 +1917,7 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
         if (!RadialMenuWidget->GetParent())
         {
             RadialMenuContainer->AddChild(RadialMenuWidget);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Added menu to container: %s"), *RadialMenuContainer->GetName());
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Added menu to container: %s"), *RadialMenuContainer->GetName());
         }
         
         // Get container size - use multiple methods to ensure we get valid size
@@ -1920,8 +1953,8 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
                     RadialMenuWidget->ShowMenuAtPosition(ContainerCenter);
                 }
                 
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Using container center: (%.2f, %.2f)"), 
-                    ContainerCenter.X, ContainerCenter.Y);
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Using container center: (%.2f, %.2f)"), 
+                //    ContainerCenter.X, ContainerCenter.Y);
             }
             else if (IsValid(RadialMenuContainer))
             {
@@ -1937,7 +1970,7 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
                     RadialMenuWidget->ShowMenuAtPosition(ContainerRelativePosition);
                 }
                 
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Container size not available, using converted position"));
+                //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Container size not available, using converted position"));
             }
         }
     }
@@ -1949,16 +1982,16 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
         {
             RadialMenuWidget->SetMenuItems(MenuItems);
             RadialMenuWidget->ShowMenuAtPosition(SlotScreenPosition);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - No container set, added to viewport"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - No container set, added to viewport"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - RadialMenuWidget is invalid!"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - RadialMenuWidget is invalid!"));
         }
     }
     
     bRadialMenuVisible = true;
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu shown with %d items"), MenuItems.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu shown with %d items"), MenuItems.Num());
 }
 
 void UPUIngredientSlot::HideRadialMenu()
@@ -1967,21 +2000,21 @@ void UPUIngredientSlot::HideRadialMenu()
     {
         RadialMenuWidget->HideMenu();
         bRadialMenuVisible = false;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideRadialMenu - Radial menu hidden"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::HideRadialMenu - Radial menu hidden"));
     }
 }
 
 void UPUIngredientSlot::SetRadialMenuContainer(UPanelWidget* InContainer)
 {
     RadialMenuContainer = InContainer;
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetRadialMenuContainer - Set radial menu container: %s"), 
-        InContainer ? *InContainer->GetName() : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetRadialMenuContainer - Set radial menu container: %s"), 
+    //    InContainer ? *InContainer->GetName() : TEXT("NULL"));
 }
 
 void UPUIngredientSlot::OnQuantityControlChanged(const FIngredientInstance& InIngredientInstance)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::OnQuantityControlChanged - Quantity control changed (ID: %d, Qty: %d)"),
-        InIngredientInstance.InstanceID, InIngredientInstance.Quantity);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::OnQuantityControlChanged - Quantity control changed (ID: %d, Qty: %d)"),
+    //    InIngredientInstance.InstanceID, InIngredientInstance.Quantity);
 
     // Update instance if IDs match
     if (bHasIngredient && IngredientInstance.InstanceID == InIngredientInstance.InstanceID)
@@ -2004,8 +2037,8 @@ void UPUIngredientSlot::OnQuantityControlChanged(const FIngredientInstance& InIn
 
 void UPUIngredientSlot::OnQuantityControlRemoved(int32 InstanceID, UPUIngredientQuantityControl* InQuantityControlWidget)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::OnQuantityControlRemoved - Quantity control removed (ID: %d)"),
-        InstanceID);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::OnQuantityControlRemoved - Quantity control removed (ID: %d)"),
+    //    InstanceID);
 
     // Clear the slot
     ClearSlot();
@@ -2015,8 +2048,8 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
 {
     Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Mouse entered slot: %s"),
-        *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Mouse entered slot: %s"),
+    //    *GetName());
 
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
@@ -2032,7 +2065,7 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
             OutlineColor.A = 1.0f;
             Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
             PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Showing outline on plate background"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Showing outline on plate background"));
         }
         else
         {
@@ -2042,7 +2075,7 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
             OutlineColor.A = 1.0f;
             Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
             PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Enabled outline on plate background"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Enabled outline on plate background"));
         }
     }
 }
@@ -2051,8 +2084,8 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 {
     Super::NativeOnMouseLeave(InMouseEvent);
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Mouse left slot: %s"),
-        *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Mouse left slot: %s"),
+    //    *GetName());
 
     // Hide hover text (but not for prepped slots - they should always show hover text)
     if (Location != EPUIngredientSlotLocation::Prepped)
@@ -2069,8 +2102,8 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
         OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
         Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
         PlateBackground->SetBrush(Brush);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Outline alpha set to: %.2f (Selected: %s)"), 
-            OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Outline alpha set to: %.2f (Selected: %s)"), 
+        //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
     }
 }
 
@@ -2078,8 +2111,8 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
 {
     Super::NativeOnAddedToFocusPath(InFocusEvent);
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Focus added to slot: %s"),
-        *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Focus added to slot: %s"),
+    //    *GetName());
 
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
@@ -2094,7 +2127,7 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
             OutlineColor.A = 1.0f;
             Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
             PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Showing outline on plate background"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Showing outline on plate background"));
         }
         else
         {
@@ -2103,7 +2136,7 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
             OutlineColor.A = 1.0f;
             Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
             PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Enabled outline on plate background"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Enabled outline on plate background"));
         }
     }
 }
@@ -2112,8 +2145,8 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
 {
     Super::NativeOnRemovedFromFocusPath(InFocusEvent);
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Focus removed from slot: %s"),
-        *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Focus removed from slot: %s"),
+    //    *GetName());
 
     // Hide hover text
     UpdateHoverTextVisibility(false);
@@ -2127,8 +2160,8 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
         OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
         Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
         PlateBackground->SetBrush(Brush);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Outline alpha set to: %.2f (Selected: %s)"), 
-            OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Outline alpha set to: %.2f (Selected: %s)"), 
+        //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
     }
 }
 
@@ -2159,24 +2192,24 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
     {
         // Just return the base ingredient name without preparations
         FText Result = IngredientInstance.IngredientData.DisplayName;
-        UE_LOG(LogTemp, Display, TEXT("🎯   Prep area - returning base name: %s"), *Result.ToString());
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - END"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯   Prep area - returning base name: %s"), *Result.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - END"));
         return Result;
     }
 
     // Debug: Log what preparations we have
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - START"));
-    UE_LOG(LogTemp, Display, TEXT("🎯   Ingredient: %s"), *IngredientInstance.IngredientData.DisplayName.ToString());
-    UE_LOG(LogTemp, Display, TEXT("🎯   Preparations count: %d"), IngredientInstance.Preparations.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - START"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯   Ingredient: %s"), *IngredientInstance.IngredientData.DisplayName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🎯   Preparations count: %d"), IngredientInstance.Preparations.Num());
     
     TArray<FGameplayTag> PrepTags;
     IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
     for (const FGameplayTag& PrepTag : PrepTags)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯   Preparation tag: %s"), *PrepTag.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("🎯   Preparation tag: %s"), *PrepTag.ToString());
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯   PreparationDataTable set: %s"), PreparationDataTable ? TEXT("YES") : TEXT("NO"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯   PreparationDataTable set: %s"), PreparationDataTable ? TEXT("YES") : TEXT("NO"));
 
     // Get preparation data table from slot property
     FPUIngredientBase IngredientDataCopy = IngredientInstance.IngredientData;
@@ -2186,18 +2219,18 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
     {
         // Set the preparation data table on the ingredient data copy
         IngredientDataCopy.PreparationDataTable = PreparationDataTable;
-        UE_LOG(LogTemp, Display, TEXT("🎯   Set PreparationDataTable on ingredient data copy"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯   Set PreparationDataTable on ingredient data copy"));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️   PreparationDataTable not set on slot!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️   PreparationDataTable not set on slot!"));
     }
 
     // Sync Preparations with ActivePreparations before calling GetCurrentDisplayName()
     // GetCurrentDisplayName() uses ActivePreparations to look up preparations from the data table
     IngredientDataCopy.ActivePreparations = IngredientInstance.Preparations;
     
-    UE_LOG(LogTemp, Display, TEXT("🎯   After sync, ActivePreparations count: %d"), IngredientDataCopy.ActivePreparations.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯   After sync, ActivePreparations count: %d"), IngredientDataCopy.ActivePreparations.Num());
     
     // Use the ingredient's GetCurrentDisplayName() which already handles preparations correctly
     // This method looks up preparations from the data table and uses NamePrefix properly
@@ -2205,8 +2238,8 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
     // and uses "Suspicious IngredientName" for 2+ preparations
     FText Result = IngredientDataCopy.GetCurrentDisplayName();
     
-    UE_LOG(LogTemp, Display, TEXT("🎯   GetCurrentDisplayName() returned: %s"), *Result.ToString());
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - END"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯   GetCurrentDisplayName() returned: %s"), *Result.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - END"));
     
     return Result;
 }
@@ -2243,8 +2276,8 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
         FText DisplayText = GetIngredientDisplayText();
         HoverText->SetText(DisplayText);
         HoverText->SetVisibility(ESlateVisibility::Visible);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateHoverTextVisibility - Showing hover text: %s"),
-            *DisplayText.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateHoverTextVisibility - Showing hover text: %s"),
+        //    *DisplayText.ToString());
     }
     else
     {
@@ -2252,7 +2285,7 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
         if (Location != EPUIngredientSlotLocation::Prepped)
         {
             HoverText->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdateHoverTextVisibility - Hiding hover text"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateHoverTextVisibility - Hiding hover text"));
         }
     }
 }
@@ -2273,11 +2306,11 @@ void UPUIngredientSlot::SetSelected(bool bSelected)
             OutlineColor.A = bSelected ? 1.0f : 0.0f;
             Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
             PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Outline alpha set to: %.2f (Selected: %s)"), 
-                OutlineColor.A, bSelected ? TEXT("TRUE") : TEXT("FALSE"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Outline alpha set to: %.2f (Selected: %s)"), 
+            //    OutlineColor.A, bSelected ? TEXT("TRUE") : TEXT("FALSE"));
         }
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Selection changed to: %s"), bSelected ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Selection changed to: %s"), bSelected ? TEXT("TRUE") : TEXT("FALSE"));
     }
 }
 
@@ -2301,8 +2334,8 @@ void UPUIngredientSlot::UpdatePlateBackgroundOpacity()
     Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
     PlateBackground->SetBrush(Brush);
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::UpdatePlateBackgroundOpacity - Set opacity to: 1.0 (always 100%%), outline alpha: %.2f (Selected: %s)"), 
-        OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePlateBackgroundOpacity - Set opacity to: 1.0 (always 100%%), outline alpha: %.2f (Selected: %s)"), 
+    //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
 TArray<FPUIngredientBase> UPUIngredientSlot::GetIngredientData() const
@@ -2335,7 +2368,7 @@ TArray<FPUIngredientBase> UPUIngredientSlot::GetIngredientData() const
         RootWidget = RootWidget->GetTypedOuter<UUserWidget>();
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetIngredientData - Could not find customization component"));
+    //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetIngredientData - Could not find customization component"));
     return TArray<FPUIngredientBase>();
 }
 
@@ -2350,8 +2383,8 @@ int32 UPUIngredientSlot::GenerateGUIDBasedInstanceID()
     // Ensure it's positive (hash can be negative)
     UniqueID = FMath::Abs(UniqueID);
     
-    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GenerateGUIDBasedInstanceID - Generated GUID-based InstanceID: %d from GUID: %s"), 
-        UniqueID, *NewGUID.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::GenerateGUIDBasedInstanceID - Generated GUID-based InstanceID: %d from GUID: %s"), 
+    //    UniqueID, *NewGUID.ToString());
     
     return UniqueID;
 }
@@ -2361,33 +2394,33 @@ int32 UPUIngredientSlot::GenerateUniqueInstanceID() const
     // Call the static GUID-based function
     int32 UniqueID = GenerateGUIDBasedInstanceID();
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GenerateUniqueInstanceID - Generated unique ID %d for ingredient slot"), UniqueID);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GenerateUniqueInstanceID - Generated unique ID %d for ingredient slot"), UniqueID);
     
     return UniqueID;
 }
 
 void UPUIngredientSlot::SetDragEnabled(bool bEnabled)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDragEnabled - Setting drag enabled to %s"), 
-        bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetDragEnabled - Setting drag enabled to %s"), 
+    //    bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
     
     bDragEnabled = bEnabled;
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDragEnabled - Drag enabled set to: %s"), bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetDragEnabled - Drag enabled set to: %s"), bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
 FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Preview mouse button down (Drag enabled: %s, HasIngredient: %s, Button: %s)"), 
-        bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), 
-        bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
-        *InMouseEvent.GetEffectingButton().ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Preview mouse button down (Drag enabled: %s, HasIngredient: %s, Button: %s)"), 
+    //    bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), 
+    //    bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
+    //    *InMouseEvent.GetEffectingButton().ToString());
 
     // If the radial menu is currently visible, don't start drag detection from this slot.
     // Let the radial menu / its buttons handle the click so a single click selects an item.
     if (bRadialMenuVisible)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Radial menu visible, skipping drag detection"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Radial menu visible, skipping drag detection"));
         return FReply::Unhandled();
     }
     
@@ -2410,8 +2443,8 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
             ClickPosition.Y >= ContainerAbsolutePosition.Y && 
             ClickPosition.Y <= ContainerAbsolutePosition.Y + ContainerSize.Y)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Click is on quantity control (pos: %.2f,%.2f, container: %.2f,%.2f size: %.2f,%.2f), letting it handle the event"), 
-                ClickPosition.X, ClickPosition.Y, ContainerAbsolutePosition.X, ContainerAbsolutePosition.Y, ContainerSize.X, ContainerSize.Y);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Click is on quantity control (pos: %.2f,%.2f, container: %.2f,%.2f size: %.2f,%.2f), letting it handle the event"), 
+            //    ClickPosition.X, ClickPosition.Y, ContainerAbsolutePosition.X, ContainerAbsolutePosition.Y, ContainerSize.X, ContainerSize.Y);
             return FReply::Unhandled(); // Let the quantity control buttons handle the click
         }
     }
@@ -2430,7 +2463,7 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         // If user wants to drag, they can do it by actually dragging (we'll handle that separately if needed)
         if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Pantry slot clicked, allowing click handler to process (no drag detection)"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Pantry slot clicked, allowing click handler to process (no drag detection)"));
             // Return Unhandled so NativeOnMouseButtonDown can process the click for selection
             return FReply::Unhandled();
         }
@@ -2447,42 +2480,42 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bCanDrag && !bIsPantrySlot && !bShiftPressed)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s (Location: %d)"), 
-            *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s (Location: %d)"), 
+        //    *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
         
         // Hide quantity control widget when dragging in plating stage
         if (Location == EPUIngredientSlotLocation::Plating && QuantityControlWidget)
         {
             QuantityControlWidget->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Hiding quantity control during drag in plating stage"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Hiding quantity control during drag in plating stage"));
         }
         
         // Start drag detection - this will call the Blueprint OnDragDetected event
         // Use DetectDrag which will trigger OnDragDetected when the mouse moves
         FReply Reply = FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - DetectDrag called, Reply.IsEventHandled: %s"), 
-            Reply.IsEventHandled() ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - DetectDrag called, Reply.IsEventHandled: %s"), 
+        //    Reply.IsEventHandled() ? TEXT("TRUE") : TEXT("FALSE"));
         return Reply;
     }
     else if (bShiftPressed && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
         // Shift is pressed - don't start drag, let the click handler show the menu
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Shift pressed, skipping drag detection (menu will be shown)"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Shift pressed, skipping drag detection (menu will be shown)"));
         return FReply::Unhandled();
     }
     else
     {
         if (!bDragEnabled)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Drag not enabled"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Drag not enabled"));
         }
         if (!bHasIngredient)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Slot has no ingredient"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Slot has no ingredient"));
         }
         if (InMouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Not left mouse button"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Not left mouse button"));
         }
     }
     
@@ -2491,8 +2524,8 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
 
 UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOperation() const
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d, Location: %d)"), 
-        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity, (int32)Location);
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d, Location: %d)"), 
+    //    *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity, (int32)Location);
 
     // Create the drag drop operation
     UPUIngredientDragDropOperation* DragOperation = NewObject<UPUIngredientDragDropOperation>(GetWorld(), UPUIngredientDragDropOperation::StaticClass());
@@ -2508,19 +2541,19 @@ UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOpera
         if (DragVisual)
         {
             DragOperation->SetDragVisualWidget(DragVisual);
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Created drag visual widget with ingredient icon"));
+            //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Created drag visual widget with ingredient icon"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::CreateIngredientDragDropOperation - Failed to create drag visual widget"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::CreateIngredientDragDropOperation - Failed to create drag visual widget"));
         }
         
-        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Successfully created drag operation (After Setup: ID: %d, Qty: %d)"), 
-            DragOperation->IngredientInstance.InstanceID, DragOperation->IngredientInstance.Quantity);
+        //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::CreateIngredientDragDropOperation - Successfully created drag operation (After Setup: ID: %d, Qty: %d)"), 
+        //    DragOperation->IngredientInstance.InstanceID, DragOperation->IngredientInstance.Quantity);
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::CreateIngredientDragDropOperation - Failed to create drag operation"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::CreateIngredientDragDropOperation - Failed to create drag operation"));
     }
 
     return DragOperation;
@@ -2528,12 +2561,12 @@ UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOpera
 
 UPUIngredientSlot* UPUIngredientSlot::CreateDragVisualWidget() const
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::CreateDragVisualWidget - Creating drag visual widget for ingredient: %s"), 
-        *IngredientInstance.IngredientData.DisplayName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::CreateDragVisualWidget - Creating drag visual widget for ingredient: %s"), 
+    //    *IngredientInstance.IngredientData.DisplayName.ToString());
 
     if (!GetWorld())
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::CreateDragVisualWidget - No world context available"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::CreateDragVisualWidget - No world context available"));
         return nullptr;
     }
 
@@ -2577,31 +2610,31 @@ UPUIngredientSlot* UPUIngredientSlot::CreateDragVisualWidget() const
             DragVisualWidget->IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
             DragVisualWidget->IngredientIcon->SetVisibility(ESlateVisibility::Visible);
             DragVisualWidget->IngredientIcon->SetColorAndOpacity(FLinearColor::White);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::CreateDragVisualWidget - Explicitly set ingredient icon texture: %s"), 
-                *IngredientInstance.IngredientData.PreviewTexture->GetName());
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::CreateDragVisualWidget - Explicitly set ingredient icon texture: %s"), 
+                //    *IngredientInstance.IngredientData.PreviewTexture->GetName());
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::CreateDragVisualWidget - IngredientIcon is null or PreviewTexture is null"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::CreateDragVisualWidget - IngredientIcon is null or PreviewTexture is null"));
             if (!DragVisualWidget->IngredientIcon)
             {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️   IngredientIcon component not found in drag visual widget"));
+                //UE_LOG(LogTemp,Warning, TEXT("⚠️   IngredientIcon component not found in drag visual widget"));
             }
             if (!IngredientInstance.IngredientData.PreviewTexture)
             {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️   PreviewTexture is null for ingredient: %s"), 
-                    *IngredientInstance.IngredientData.DisplayName.ToString());
+                //UE_LOG(LogTemp,Warning, TEXT("⚠️   PreviewTexture is null for ingredient: %s"), 
+                //    *IngredientInstance.IngredientData.DisplayName.ToString());
             }
         }
         
         // Update display to ensure everything is set correctly
         DragVisualWidget->UpdateDisplay();
         
-        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::CreateDragVisualWidget - Successfully created drag visual widget with ingredient icon"));
+        //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::CreateDragVisualWidget - Successfully created drag visual widget with ingredient icon"));
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::CreateDragVisualWidget - Failed to create drag visual widget"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::CreateDragVisualWidget - Failed to create drag visual widget"));
     }
 
     return DragVisualWidget;
@@ -2617,8 +2650,8 @@ void UPUIngredientSlot::DecreaseQuantity()
         IngredientInstance.Quantity = RemainingQuantity;
         UpdateQuantityDisplay();
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::DecreaseQuantity - Quantity decreased to %d (RemainingQuantity: %d, IngredientInstance.Quantity: %d)"), 
-            RemainingQuantity, RemainingQuantity, IngredientInstance.Quantity);
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::DecreaseQuantity - Quantity decreased to %d (RemainingQuantity: %d, IngredientInstance.Quantity: %d)"), 
+        //    RemainingQuantity, RemainingQuantity, IngredientInstance.Quantity);
         
         // Call Blueprint event
         OnQuantityChanged(RemainingQuantity);
@@ -2630,7 +2663,7 @@ void UPUIngredientSlot::ResetQuantity()
     RemainingQuantity = MaxQuantity;
     UpdateQuantityDisplay();
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantity - Quantity reset to %d"), RemainingQuantity);
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantity - Quantity reset to %d"), RemainingQuantity);
     
     // Call Blueprint event
     OnQuantityChanged(RemainingQuantity);
@@ -2672,8 +2705,8 @@ void UPUIngredientSlot::ResetQuantityFromDishData()
             // Update bHasIngredient flag based on new quantity
             bHasIngredient = (IngredientInstance.Quantity > 0 && IngredientInstance.InstanceID != 0);
             
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantityFromDishData - Reset quantity to %d from dish data (bHasIngredient: %s)"), 
-                IngredientInstance.Quantity, bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
+            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::ResetQuantityFromDishData - Reset quantity to %d from dish data (bHasIngredient: %s)"), 
+            //    IngredientInstance.Quantity, bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"));
             
             // Update all visual displays
             UpdateQuantityDisplay();
@@ -2684,24 +2717,24 @@ void UPUIngredientSlot::ResetQuantityFromDishData()
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ResetQuantityFromDishData - Could not find ingredient instance with ID %d"), IngredientInstance.InstanceID);
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ResetQuantityFromDishData - Could not find ingredient instance with ID %d"), IngredientInstance.InstanceID);
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ResetQuantityFromDishData - Could not find dish customization widget or component"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ResetQuantityFromDishData - Could not find dish customization widget or component"));
     }
 }
 
 void UPUIngredientSlot::UpdatePlatingDisplay()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePlatingDisplay - Updating plating display"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::UpdatePlatingDisplay - Updating plating display"));
     
     // Update the ingredient icon/texture
     if (IngredientIcon)
     {
         IngredientIcon->SetBrushFromTexture(IngredientInstance.IngredientData.PreviewTexture);
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePlatingDisplay - Updated icon texture"));
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::UpdatePlatingDisplay - Updated icon texture"));
     }
     
     // Update quantity and preparation displays
@@ -2725,7 +2758,7 @@ void UPUIngredientSlot::UpdateQuantityDisplay()
         if (!bIsPlatingMode && (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prepped))
         {
             QuantityText->SetVisibility(ESlateVisibility::Collapsed);
-            // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d, PlatingMode: false)"), (int32)Location);
+            // //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Hiding QuantityText (Location: %d, PlatingMode: false)"), (int32)Location);
         }
         else if (bHasIngredient && IngredientInstance.InstanceID != 0)
         {
@@ -2734,14 +2767,14 @@ void UPUIngredientSlot::UpdateQuantityDisplay()
             FString QuantityString = FString::Printf(TEXT("x%d"), Quantity);
             QuantityText->SetText(FText::FromString(QuantityString));
             QuantityText->SetVisibility(ESlateVisibility::Visible);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Updated quantity: %s (from IngredientInstance.Quantity, PlatingMode: %s)"), 
-                *QuantityString, bIsPlatingMode ? TEXT("TRUE") : TEXT("FALSE"));
+            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - Updated quantity: %s (from IngredientInstance.Quantity, PlatingMode: %s)"), 
+            //    *QuantityString, bIsPlatingMode ? TEXT("TRUE") : TEXT("FALSE"));
         }
         else
         {
             // No ingredient, hide the text
             QuantityText->SetVisibility(ESlateVisibility::Collapsed);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - No ingredient, hiding QuantityText"));
+            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::UpdateQuantityDisplay - No ingredient, hiding QuantityText"));
         }
     }
 }
@@ -2754,14 +2787,14 @@ void UPUIngredientSlot::UpdatePreparationDisplay()
         if (Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Plating || Location == EPUIngredientSlotLocation::Prepped)
         {
             PreparationText->SetVisibility(ESlateVisibility::Collapsed);
-            // UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Hiding PreparationText (Location: %d)"), (int32)Location);
+            // //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Hiding PreparationText (Location: %d)"), (int32)Location);
         }
         else
         {
             FString IconText = GetPreparationIconText();
             PreparationText->SetText(FText::FromString(IconText));
             PreparationText->SetVisibility(ESlateVisibility::Visible);
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Updated preparation icons: %s"), *IconText);
+            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::UpdatePreparationDisplay - Updated preparation icons: %s"), *IconText);
         }
     }
     
@@ -2801,41 +2834,41 @@ FString UPUIngredientSlot::GetPreparationIconText() const
     {
         FString PrepName = Prep.ToString().Replace(TEXT("Prep."), TEXT(""));
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Processing preparation tag: %s (cleaned: %s)"), 
-            *Prep.ToString(), *PrepName);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Processing preparation tag: %s (cleaned: %s)"), 
+        //    *Prep.ToString(), *PrepName);
         
         // Map preparation tags to text abbreviations
         if (PrepName.Contains(TEXT("Dehydrate")) || PrepName.Contains(TEXT("Dried")))
         {
             IconString += TEXT("[D]");
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Dehydrate/Dried: [D]"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Dehydrate/Dried: [D]"));
         }
         else if (PrepName.Contains(TEXT("Mince")) || PrepName.Contains(TEXT("Minced")))
         {
             IconString += TEXT("[M]");
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Mince/Minced: [M]"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Mince/Minced: [M]"));
         }
         else if (PrepName.Contains(TEXT("Boiled")))
         {
             IconString += TEXT("[B]");
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Boiled: [B]"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Boiled: [B]"));
         }
         else if (PrepName.Contains(TEXT("Chopped")))
         {
             IconString += TEXT("[C]");
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Chopped: [C]"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Chopped: [C]"));
         }
         else if (PrepName.Contains(TEXT("Caramelized")))
         {
             IconString += TEXT("[CR]");
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Caramelized: [CR]"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Matched Caramelized: [CR]"));
         }
         else
         {
             // Default abbreviation for unknown preparations
             IconString += TEXT("[?]");
-            UE_LOG(LogTemp, Warning, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Unknown preparation: %s (cleaned: %s)"), 
-                *Prep.ToString(), *PrepName);
+            //UE_LOG(LogTemp,Warning, TEXT("🎯 UPUIngredientSlot::GetPreparationIconText - Unknown preparation: %s (cleaned: %s)"), 
+            //    *Prep.ToString(), *PrepName);
         }
     }
     
@@ -2844,14 +2877,14 @@ FString UPUIngredientSlot::GetPreparationIconText() const
 
 void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPosition)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
-        *IngredientInstance.IngredientData.DisplayName.ToString(), ScreenPosition.X, ScreenPosition.Y);
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
+    //    *IngredientInstance.IngredientData.DisplayName.ToString(), ScreenPosition.X, ScreenPosition.Y);
 
     // Convert screen position to world position using raycast
     APlayerController* PlayerController = GetOwningPlayer();
     if (!PlayerController)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - No player controller"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - No player controller"));
         return;
     }
 
@@ -2878,8 +2911,8 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
     {
         // Use the actual mouse position (viewport space)
         MousePosition = FVector2D(MouseX, MouseY);
-        UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Using actual mouse position from player controller: (%.0f,%.0f)"), 
-            MousePosition.X, MousePosition.Y);
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Using actual mouse position from player controller: (%.0f,%.0f)"), 
+        //    MousePosition.X, MousePosition.Y);
     }
     else
     {
@@ -2909,21 +2942,21 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                     ConvertedPosition.X <= ViewportSizeX && ConvertedPosition.Y <= ViewportSizeY)
                 {
                     MousePosition = ConvertedPosition;
-                    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Converted widget space (%.0f,%.0f) + widget pos (%.0f,%.0f) = viewport (%.0f,%.0f)"), 
-                        ScreenPosition.X, ScreenPosition.Y, 
-                        WidgetAbsolutePosition.X, WidgetAbsolutePosition.Y,
-                        MousePosition.X, MousePosition.Y);
+                    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Converted widget space (%.0f,%.0f) + widget pos (%.0f,%.0f) = viewport (%.0f,%.0f)"), 
+                    //    ScreenPosition.X, ScreenPosition.Y, 
+                    //    WidgetAbsolutePosition.X, WidgetAbsolutePosition.Y,
+                    //    MousePosition.X, MousePosition.Y);
                 }
                 else
                 {
                     // Passed position might already be in viewport space
-                    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Using passed position as-is (%.0f,%.0f) - assuming viewport space"), 
-                        MousePosition.X, MousePosition.Y);
+                    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Using passed position as-is (%.0f,%.0f) - assuming viewport space"), 
+                    //    MousePosition.X, MousePosition.Y);
                 }
             }
             else
             {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ [SPAWN] Could not get cached widget, using passed position as-is"));
+                //UE_LOG(LogTemp,Warning, TEXT("⚠️ [SPAWN] Could not get cached widget, using passed position as-is"));
             }
         }
     }
@@ -2932,12 +2965,12 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
     if (MousePosition.X < -1000 || MousePosition.X > ViewportSizeX + 1000 || 
         MousePosition.Y < -1000 || MousePosition.Y > ViewportSizeY + 1000)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ [SPAWN] Position (%.2f,%.2f) seems far outside viewport bounds (%dx%d)"), 
-            MousePosition.X, MousePosition.Y, ViewportSizeX, ViewportSizeY);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [SPAWN] Position (%.2f,%.2f) seems far outside viewport bounds (%dx%d)"), 
+        //    MousePosition.X, MousePosition.Y, ViewportSizeX, ViewportSizeY);
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ [SPAWN] Viewport: %dx%d, Final position: (%.0f,%.0f)"), 
-        ViewportSizeX, ViewportSizeY, MousePosition.X, MousePosition.Y);
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Viewport: %dx%d, Final position: (%.0f,%.0f)"), 
+    //    ViewportSizeX, ViewportSizeY, MousePosition.X, MousePosition.Y);
     
     // Find the dish customization station in the world
     TArray<AActor*> FoundActors;
@@ -2958,7 +2991,7 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
     
     if (DishStation)
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
         
         // Convert screen position to world space ray
         // Use the actual mouse position for accurate deprojection
@@ -2971,9 +3004,9 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
         
         if (bDeprojectSuccess)
         {
-            UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Deprojected screen (%.0f,%.0f) to world ray: Start (%.2f,%.2f,%.2f), Direction (%.2f,%.2f,%.2f)"), 
-                MousePosition.X, MousePosition.Y, WorldLocation.X, WorldLocation.Y, WorldLocation.Z, 
-                WorldDirection.X, WorldDirection.Y, WorldDirection.Z);
+            //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Deprojected screen (%.0f,%.0f) to world ray: Start (%.2f,%.2f,%.2f), Direction (%.2f,%.2f,%.2f)"), 
+            //    MousePosition.X, MousePosition.Y, WorldLocation.X, WorldLocation.Y, WorldLocation.Z, 
+            //    WorldDirection.X, WorldDirection.Y, WorldDirection.Z);
             
             // Try to do a line trace to find the bowl/station surface
             // Use multi-trace to find all hits and prioritize the bowl mesh
@@ -2987,8 +3020,8 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
             
             bool bHit = GetWorld()->LineTraceMultiByChannel(HitResults, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
             
-            UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Line trace from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) found %d hits"), 
-                TraceStart.X, TraceStart.Y, TraceStart.Z, TraceEnd.X, TraceEnd.Y, TraceEnd.Z, HitResults.Num());
+            //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Line trace from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) found %d hits"), 
+            //    TraceStart.X, TraceStart.Y, TraceStart.Z, TraceEnd.X, TraceEnd.Y, TraceEnd.Z, HitResults.Num());
             
             if (bHit && HitResults.Num() > 0)
             {
@@ -3008,7 +3041,7 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                             {
                                 BestHit = Hit;
                                 bFoundBowl = true;
-                                UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Found bowl mesh component: %s"), *ComponentName);
+                                //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Found bowl mesh component: %s"), *ComponentName);
                                 break;
                             }
                         }
@@ -3025,15 +3058,15 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                 {
                     // Found a surface - use the hit location directly
                     SpawnPosition = BestHit.Location;
-                    UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Line trace hit surface: %s (Component: %s) at (%.2f,%.2f,%.2f)"), 
-                        BestHit.GetActor() ? *BestHit.GetActor()->GetName() : TEXT("NULL"),
-                        BestHit.Component.IsValid() ? *BestHit.Component->GetName() : TEXT("NULL"),
-                        SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                    //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Line trace hit surface: %s (Component: %s) at (%.2f,%.2f,%.2f)"), 
+                    //    BestHit.GetActor() ? *BestHit.GetActor()->GetName() : TEXT("NULL"),
+                    //    BestHit.Component.IsValid() ? *BestHit.Component->GetName() : TEXT("NULL"),
+                    //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
                     
                     // Log the screen-to-world conversion for debugging
                     FVector2D ScreenPos = FVector2D(MousePosition.X, MousePosition.Y);
-                    UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Screen (%.0f,%.0f) -> World (%.2f,%.2f,%.2f) via trace"), 
-                        ScreenPos.X, ScreenPos.Y, SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                    //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Screen (%.0f,%.0f) -> World (%.2f,%.2f,%.2f) via trace"), 
+                    //    ScreenPos.X, ScreenPos.Y, SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
                 }
                 else
                 {
@@ -3061,7 +3094,7 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                     {
                         FBoxSphereBounds BowlBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
                         StationHeight = BowlBounds.Origin.Z + (BowlBounds.BoxExtent.Z * 0.5f);
-                        UE_LOG(LogTemp, Display, TEXT("🔍 [SPAWN] Found bowl mesh component, using height: %.2f"), StationHeight);
+                        //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Found bowl mesh component, using height: %.2f"), StationHeight);
                         break;
                     }
                 }
@@ -3073,23 +3106,23 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                     if (T > 0.0f) // Only if ray is going downward or forward
                     {
                         SpawnPosition = WorldLocation + (WorldDirection * T);
-                        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Calculated intersection with station surface plane at: (%.2f,%.2f,%.2f)"), 
-                            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                        //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Calculated intersection with station surface plane at: (%.2f,%.2f,%.2f)"), 
+                        //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
                     }
                     else
                     {
                         // Ray is going away from the surface, use station center as fallback
                         SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
-                        UE_LOG(LogTemp, Warning, TEXT("⚠️ Ray going away from surface, using station center: (%.2f,%.2f,%.2f)"), 
-                            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                        //UE_LOG(LogTemp,Warning, TEXT("⚠️ Ray going away from surface, using station center: (%.2f,%.2f,%.2f)"), 
+                        //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
                     }
                 }
                 else
                 {
                     // Ray is parallel to the surface, use station center
                     SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
-                    UE_LOG(LogTemp, Warning, TEXT("⚠️ Ray parallel to surface, using station center: (%.2f,%.2f,%.2f)"), 
-                        SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ Ray parallel to surface, using station center: (%.2f,%.2f,%.2f)"), 
+                    //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
                 }
             }
         }
@@ -3099,18 +3132,18 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
             FVector StationLocation = DishStation->GetActorLocation();
             FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
             SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ Failed to deproject screen position, using station center: (%.2f,%.2f,%.2f)"), 
-                SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ Failed to deproject screen position, using station center: (%.2f,%.2f,%.2f)"), 
+            //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ No dish customization station found! Spawning at default position."));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ No dish customization station found! Spawning at default position."));
         
         // Fallback: spawn near the player
         SpawnPosition = CameraLocation + (CameraRotation.Vector() * 300.0f);
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Fallback spawn position: (%.2f,%.2f,%.2f)"), 
-            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+        //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Fallback spawn position: (%.2f,%.2f,%.2f)"), 
+        //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
     }
     
     // Find the dish customization component and spawn the ingredient
@@ -3125,13 +3158,13 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
                 // Check if we're in plating mode before spawning
                 if (!DishComponent->IsPlatingMode())
                 {
-                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Not in plating mode, aborting spawn"));
+                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Not in plating mode, aborting spawn"));
                     return;
                 }
                 
-                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Calling SpawnIngredientIn3DByInstanceID on customization component"));
+                //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Calling SpawnIngredientIn3DByInstanceID on customization component"));
                 DishComponent->SpawnIngredientIn3DByInstanceID(IngredientInstance.InstanceID, SpawnPosition);
-                UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - SpawnIngredientIn3DByInstanceID call completed"));
+                //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - SpawnIngredientIn3DByInstanceID call completed"));
                 break;
             }
         }
@@ -3140,7 +3173,7 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
     // If we didn't find a component or weren't in plating mode, return early
     if (!DishComponent)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Could not find dish customization component"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Could not find dish customization component"));
         return;
     }
     
@@ -3149,42 +3182,42 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
     // both RemainingQuantity and IngredientInstance.Quantity in sync.
     // This prevents double-decrementing the quantity.
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - END (quantity update handled by UpdateIngredientSlotQuantity)"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - END (quantity update handled by UpdateIngredientSlotQuantity)"));
 }
 
 void UPUIngredientSlot::SetTextVisibility(bool bShowQuantity, bool bShowDescription)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Setting text visibility: Quantity=%s, Description=%s"), 
-        bShowQuantity ? TEXT("TRUE") : TEXT("FALSE"), bShowDescription ? TEXT("TRUE") : TEXT("FALSE"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Setting text visibility: Quantity=%s, Description=%s"), 
+    //    bShowQuantity ? TEXT("TRUE") : TEXT("FALSE"), bShowDescription ? TEXT("TRUE") : TEXT("FALSE"));
     
     // Control quantity text visibility
     if (QuantityText)
     {
         QuantityText->SetVisibility(bShowQuantity ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Set quantity text visibility to: %s"), 
-            bShowQuantity ? TEXT("Visible") : TEXT("Hidden"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Set quantity text visibility to: %s"), 
+        //    bShowQuantity ? TEXT("Visible") : TEXT("Hidden"));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SetTextVisibility - QuantityText component not found"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::SetTextVisibility - QuantityText component not found"));
     }
     
     // Control preparation/description text visibility
     if (PreparationText)
     {
         PreparationText->SetVisibility(bShowDescription ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Set preparation text visibility to: %s"), 
-            bShowDescription ? TEXT("Visible") : TEXT("Hidden"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetTextVisibility - Set preparation text visibility to: %s"), 
+        //    bShowDescription ? TEXT("Visible") : TEXT("Hidden"));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::SetTextVisibility - PreparationText component not found"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::SetTextVisibility - PreparationText component not found"));
     }
 }
 
 void UPUIngredientSlot::HideAllText()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Hiding all text elements"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Hiding all text elements"));
     LogTextComponentStatus();
     SetTextVisibility(false, false);
     
@@ -3192,53 +3225,53 @@ void UPUIngredientSlot::HideAllText()
     if (QuantityText)
     {
         QuantityText->SetVisibility(ESlateVisibility::Collapsed);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Force collapsed quantity text"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Force collapsed quantity text"));
     }
     
     if (PreparationText)
     {
         PreparationText->SetVisibility(ESlateVisibility::Collapsed);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Force collapsed preparation text"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::HideAllText - Force collapsed preparation text"));
     }
 }
 
 void UPUIngredientSlot::ShowAllText()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ShowAllText - Showing all text elements"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowAllText - Showing all text elements"));
     LogTextComponentStatus();
     SetTextVisibility(true, true);
 }
 
 void UPUIngredientSlot::LogTextComponentStatus()
 {
-    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::LogTextComponentStatus - Checking text component status"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::LogTextComponentStatus - Checking text component status"));
     
-    UE_LOG(LogTemp, Display, TEXT("🔍 QuantityText: %s"), QuantityText ? TEXT("FOUND") : TEXT("NULL"));
-    UE_LOG(LogTemp, Display, TEXT("🔍 PreparationText: %s"), PreparationText ? TEXT("FOUND") : TEXT("NULL"));
-    UE_LOG(LogTemp, Display, TEXT("🔍 HoverText: %s"), HoverText ? TEXT("FOUND") : TEXT("NULL"));
-    UE_LOG(LogTemp, Display, TEXT("🔍 IngredientIcon: %s"), IngredientIcon ? TEXT("FOUND") : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 QuantityText: %s"), QuantityText ? TEXT("FOUND") : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 PreparationText: %s"), PreparationText ? TEXT("FOUND") : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 HoverText: %s"), HoverText ? TEXT("FOUND") : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 IngredientIcon: %s"), IngredientIcon ? TEXT("FOUND") : TEXT("NULL"));
     
     if (QuantityText)
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 QuantityText visibility: %s"), 
-            QuantityText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
+        //UE_LOG(LogTemp,Display, TEXT("🔍 QuantityText visibility: %s"), 
+        //    QuantityText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
     }
     
     if (PreparationText)
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 PreparationText visibility: %s"), 
-            PreparationText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
+        //UE_LOG(LogTemp,Display, TEXT("🔍 PreparationText visibility: %s"), 
+        //    PreparationText->GetVisibility() == ESlateVisibility::Visible ? TEXT("VISIBLE") : TEXT("HIDDEN"));
     }
 }
 
 void UPUIngredientSlot::OnRadialMenuItemSelected(const FRadialMenuItem& SelectedItem)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::OnRadialMenuItemSelected - Item selected: %s (Tag: %s)"),
-        *SelectedItem.Label.ToString(), *SelectedItem.ActionTag.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::OnRadialMenuItemSelected - Item selected: %s (Tag: %s)"),
+    //    *SelectedItem.Label.ToString(), *SelectedItem.ActionTag.ToString());
 
     if (!SelectedItem.bIsEnabled)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::OnRadialMenuItemSelected - Item is disabled, ignoring selection"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::OnRadialMenuItemSelected - Item is disabled, ignoring selection"));
         return;
     }
 
@@ -3263,7 +3296,7 @@ void UPUIngredientSlot::OnRadialMenuItemSelected(const FRadialMenuItem& Selected
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::OnRadialMenuItemSelected - Unknown action tag: %s"), *TagString);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::OnRadialMenuItemSelected - Unknown action tag: %s"), *TagString);
     }
     
     // Hide the menu after selection
@@ -3272,7 +3305,7 @@ void UPUIngredientSlot::OnRadialMenuItemSelected(const FRadialMenuItem& Selected
 
 void UPUIngredientSlot::OnRadialMenuClosed()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::OnRadialMenuClosed - Radial menu closed"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::OnRadialMenuClosed - Radial menu closed"));
     bRadialMenuVisible = false;
 }
 
@@ -3288,8 +3321,8 @@ FVector2D UPUIngredientSlot::GetSlotScreenPosition() const
     // Calculate center position of the slot
     FVector2D CenterPosition = AbsolutePosition + (AbsoluteSize * 0.5f);
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::GetSlotScreenPosition - Slot center: (%.2f, %.2f)"),
-        CenterPosition.X, CenterPosition.Y);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetSlotScreenPosition - Slot center: (%.2f, %.2f)"),
+        //CenterPosition.X, CenterPosition.Y);
     
     return CenterPosition;
 }
@@ -3300,7 +3333,7 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
 
     if (!bHasIngredient)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - Slot has no ingredient"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - Slot has no ingredient"));
         return MenuItems;
     }
 
@@ -3313,7 +3346,7 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
 
     if (!PrepDataTable)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - No preparation data table set on radial menu widget"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::BuildPreparationMenuItems - No preparation data table set on radial menu widget"));
         return MenuItems;
     }
 
@@ -3321,14 +3354,14 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
     TArray<FPUPreparationBase*> PreparationRows;
     PrepDataTable->GetAllRows<FPUPreparationBase>(TEXT("BuildPreparationMenuItems"), PreparationRows);
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Found %d total preparations"), PreparationRows.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Found %d total preparations"), PreparationRows.Num());
     
     // Sort preparations by their tag name to ensure consistent ordering
     PreparationRows.Sort([](const FPUPreparationBase& A, const FPUPreparationBase& B) {
         return A.PreparationTag.ToString() < B.PreparationTag.ToString();
     });
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Sorted preparations by tag name"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Sorted preparations by tag name"));
 
     // Build menu items for each preparation
     for (FPUPreparationBase* PreparationData : PreparationRows)
@@ -3368,13 +3401,13 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildPreparationMenuItems() const
 
         MenuItems.Add(MenuItem);
 
-        UE_LOG(LogTemp, Display, TEXT("🎯   Preparation: %s (Compatible: %s, Applied: %s)"),
-            *MenuItem.Label.ToString(),
-            bIsCompatible ? TEXT("YES") : TEXT("NO"),
-            bIsApplied ? TEXT("YES") : TEXT("NO"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯   Preparation: %s (Compatible: %s, Applied: %s)"),
+        //    *MenuItem.Label.ToString(),
+        //    bIsCompatible ? TEXT("YES") : TEXT("NO"),
+        //    bIsApplied ? TEXT("YES") : TEXT("NO"));
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Built %d menu items"), MenuItems.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::BuildPreparationMenuItems - Built %d menu items"), MenuItems.Num());
     return MenuItems;
 }
 
@@ -3384,7 +3417,7 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildActionMenuItems() const
 
     if (!bHasIngredient)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::BuildActionMenuItems - Slot has no ingredient"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::BuildActionMenuItems - Slot has no ingredient"));
         return MenuItems;
     }
 
@@ -3407,7 +3440,7 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildActionMenuItems() const
         MenuItems.Add(ClearPrepsItem);
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::BuildActionMenuItems - Built %d action menu items"), MenuItems.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::BuildActionMenuItems - Built %d action menu items"), MenuItems.Num());
     return MenuItems;
 }
 
@@ -3415,24 +3448,24 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
 {
     if (!bHasIngredient || IngredientInstance.InstanceID == 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Invalid ingredient instance"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Invalid ingredient instance"));
         return false;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Applying preparation %s to instance %d"),
-        *PreparationTag.ToString(), IngredientInstance.InstanceID);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Applying preparation %s to instance %d"),
+    //    *PreparationTag.ToString(), IngredientInstance.InstanceID);
 
     // Get the dish customization widget and update dish data
     UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
     if (DishWidget)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish customization widget, applying preparation"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish customization widget, applying preparation"));
         
         // Get the current dish data from the dish customization widget
         FPUDishBase CurrentDish = DishWidget->GetCurrentDishData();
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
-            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
+        //    CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
 
         // Apply the preparation using the blueprint library
         bool bSuccess = UPUDishBlueprintLibrary::ApplyPreparationByID(CurrentDish, IngredientInstance.InstanceID, PreparationTag);
@@ -3447,7 +3480,7 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
             if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
             {
                 SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
+                //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully"));
                 
                 // Get average color from ingredient texture (recalculate to ensure it's up to date)
                 GetAverageColorFromIngredientTexture();
@@ -3458,14 +3491,14 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
                 if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
                 {
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In prep/active ingredient area, creating/updating prepped slot"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In prep/active ingredient area, creating/updating prepped slot"));
                     DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
                 }
             }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
         }
         
         return bSuccess;
@@ -3475,7 +3508,7 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
     UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
     if (DishComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish component, applying preparation via component"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - Found dish component, applying preparation via component"));
         
         // Get the current dish data
         FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
@@ -3493,7 +3526,7 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
             if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
             {
                 SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via component"));
+                //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::ApplyPreparationToIngredient - Preparation applied successfully via component"));
                 
                 // Get average color from ingredient texture (recalculate to ensure it's up to date)
                 GetAverageColorFromIngredientTexture();
@@ -3507,7 +3540,7 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                     UPUDishCustomizationWidget* PreppedDishWidget = GetDishCustomizationWidget();
                     if (PreppedDishWidget)
                     {
-                        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In prep/active ingredient area, creating/updating prepped slot (via component path)"));
+                        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In prep/active ingredient area, creating/updating prepped slot (via component path)"));
                         PreppedDishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
                     }
                 }
@@ -3515,13 +3548,13 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Failed to apply preparation"));
         }
 
         return bSuccess;
     }
     
-    UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::ApplyPreparationToIngredient - Could not find dish customization widget or component! Cannot apply preparation."));
+    //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::ApplyPreparationToIngredient - Could not find dish customization widget or component! Cannot apply preparation."));
     return false;
 }
 
@@ -3529,29 +3562,29 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
 {
     if (!bHasIngredient || IngredientInstance.InstanceID == 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Invalid ingredient instance"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Invalid ingredient instance"));
         return false;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Removing preparation %s from instance %d"),
-        *PreparationTag.ToString(), IngredientInstance.InstanceID);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Removing preparation %s from instance %d"),
+    //    *PreparationTag.ToString(), IngredientInstance.InstanceID);
 
     // Get the dish customization widget and update dish data
     UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
     if (DishWidget)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish customization widget, removing preparation"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish customization widget, removing preparation"));
         
         // Get the current dish data from the dish customization widget
         FPUDishBase CurrentDish = DishWidget->GetCurrentDishData();
         
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
-            CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Dish has %d ingredient instances, looking for ID: %d"), 
+        //    CurrentDish.IngredientInstances.Num(), IngredientInstance.InstanceID);
 
         // If we're in active ingredient area, remove the old prepped slot first (before removing the prep)
         if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - In active ingredient area, removing old prepped slot"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - In active ingredient area, removing old prepped slot"));
             DishWidget->RemovePreppedSlot(IngredientInstance);
         }
         
@@ -3568,19 +3601,19 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
             if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
             {
                 SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully"));
+                //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully"));
                 
                 // If we're in active ingredient area and still have preparations, create/update the prepped slot with new state
                 if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
                 {
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - In active ingredient area, creating/updating prepped slot with remaining preps"));
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - In active ingredient area, creating/updating prepped slot with remaining preps"));
                     DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
                 }
             }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
         }
         
         return bSuccess;
@@ -3590,7 +3623,7 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
     UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
     if (DishComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish component, removing preparation via component"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RemovePreparationFromIngredient - Found dish component, removing preparation via component"));
         
         // Get the current dish data
         FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
@@ -3608,25 +3641,25 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
             if (CurrentDish.GetIngredientInstanceByID(IngredientInstance.InstanceID, UpdatedInstance))
             {
                 SetIngredientInstance(UpdatedInstance);
-                UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via component"));
+                //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::RemovePreparationFromIngredient - Preparation removed successfully via component"));
             }
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Failed to remove preparation"));
         }
 
         return bSuccess;
     }
     
-    UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::RemovePreparationFromIngredient - Could not find dish customization widget or component! Cannot remove preparation."));
+    //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::RemovePreparationFromIngredient - Could not find dish customization widget or component! Cannot remove preparation."));
     return false;
 }
 
 void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
 {
     FString ActionString = ActionTag.ToString();
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Executing action: %s"), *ActionString);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Executing action: %s"), *ActionString);
 
     if (ActionString == TEXT("Action.Remove"))
     {
@@ -3634,10 +3667,10 @@ void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
         if (DishWidget)
         {
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found dish widget, removing instance ID: %d"), IngredientInstance.InstanceID);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found dish widget, removing instance ID: %d"), IngredientInstance.InstanceID);
             DishWidget->RemoveIngredientInstance(IngredientInstance.InstanceID);
             ClearSlot();
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via widget"));
+            //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via widget"));
         }
         else
         {
@@ -3645,23 +3678,23 @@ void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
             UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
             if (DishComponent)
             {
-                UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found dish component, removing instance ID: %d"), IngredientInstance.InstanceID);
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ExecuteAction - Found dish component, removing instance ID: %d"), IngredientInstance.InstanceID);
                 FPUDishBase CurrentDish = DishComponent->GetCurrentDishData();
                 bool bSuccess = UPUDishBlueprintLibrary::RemoveIngredientInstanceByID(CurrentDish, IngredientInstance.InstanceID);
                 if (bSuccess)
                 {
                     DishComponent->UpdateCurrentDishData(CurrentDish);
                     ClearSlot();
-                    UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via component"));
+                    //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - Ingredient removed successfully via component"));
                 }
                 else
                 {
-                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ExecuteAction - Failed to remove ingredient instance ID: %d"), IngredientInstance.InstanceID);
+                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ExecuteAction - Failed to remove ingredient instance ID: %d"), IngredientInstance.InstanceID);
                 }
             }
             else
             {
-                UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::ExecuteAction - Could not find dish customization widget or component! Cannot remove ingredient."));
+                //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::ExecuteAction - Could not find dish customization widget or component! Cannot remove ingredient."));
             }
         }
     }
@@ -3676,11 +3709,11 @@ void UPUIngredientSlot::ExecuteAction(const FGameplayTag& ActionTag)
             RemovePreparationFromIngredient(PrepTag);
         }
         
-        UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - All preparations cleared"));
+        //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::ExecuteAction - All preparations cleared"));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::ExecuteAction - Unknown action: %s"), *ActionString);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ExecuteAction - Unknown action: %s"), *ActionString);
     }
 }
 
@@ -3725,30 +3758,30 @@ UPUDishCustomizationComponent* UPUIngredientSlot::GetDishCustomizationComponent(
 
 UPUDishCustomizationWidget* UPUIngredientSlot::GetDishCustomizationWidget() const
 {
-    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - START (Slot: %s)"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - START (Slot: %s)"), *GetName());
     
     // First, check if we have a cached reference
     if (CachedDishWidget.IsValid())
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Found cached widget: %s"), 
-            *CachedDishWidget.Get()->GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Found cached widget: %s"), 
+        //    *CachedDishWidget.Get()->GetName());
         return CachedDishWidget.Get();
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::GetDishCustomizationWidget - Cached widget is NULL or invalid"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetDishCustomizationWidget - Cached widget is NULL or invalid"));
     }
 
     // Try to get it from the outer widget (slots are created with dish widget as outer)
-    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetOuter() traversal"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetOuter() traversal"));
     UObject* Outer = GetOuter();
     int32 OuterDepth = 0;
     while (Outer && OuterDepth < 10) // Limit depth to prevent infinite loops
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍   Outer[%d]: %s (Class: %s)"), OuterDepth, *Outer->GetName(), *Outer->GetClass()->GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🔍   Outer[%d]: %s (Class: %s)"), OuterDepth, *Outer->GetName(), *Outer->GetClass()->GetName());
         if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(Outer))
         {
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetOuter(): %s"), *DishWidget->GetName());
+            //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetOuter(): %s"), *DishWidget->GetName());
             // Cache it for future use
             const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = DishWidget;
             return DishWidget;
@@ -3758,15 +3791,15 @@ UPUDishCustomizationWidget* UPUIngredientSlot::GetDishCustomizationWidget() cons
     }
 
     // Try to find the dish customization widget by traversing up the widget hierarchy
-    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetParent() traversal"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetParent() traversal"));
     UWidget* Parent = GetParent();
     int32 ParentDepth = 0;
     while (Parent && ParentDepth < 10) // Limit depth to prevent infinite loops
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍   Parent[%d]: %s (Class: %s)"), ParentDepth, *Parent->GetName(), *Parent->GetClass()->GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🔍   Parent[%d]: %s (Class: %s)"), ParentDepth, *Parent->GetName(), *Parent->GetClass()->GetName());
         if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(Parent))
         {
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetParent(): %s"), *DishWidget->GetName());
+            //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetParent(): %s"), *DishWidget->GetName());
             // Cache it for future use
             const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = DishWidget;
             return DishWidget;
@@ -3778,7 +3811,7 @@ UPUDishCustomizationWidget* UPUIngredientSlot::GetDishCustomizationWidget() cons
             {
                 if (UPUDishCustomizationWidget* FoundDishWidget = Cast<UPUDishCustomizationWidget>(RootWidget))
                 {
-                    UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via CookingStageWidget: %s"), *FoundDishWidget->GetName());
+                    //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via CookingStageWidget: %s"), *FoundDishWidget->GetName());
                     // Cache it for future use
                     const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = FoundDishWidget;
                     return FoundDishWidget;
@@ -3791,15 +3824,15 @@ UPUDishCustomizationWidget* UPUIngredientSlot::GetDishCustomizationWidget() cons
     }
     
     // Try GetTypedOuter as a last resort
-    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetTypedOuter() traversal"));
+    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::GetDishCustomizationWidget - Trying GetTypedOuter() traversal"));
     UUserWidget* RootWidget = GetTypedOuter<UUserWidget>();
     int32 TypedOuterDepth = 0;
     while (RootWidget && TypedOuterDepth < 10)
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍   TypedOuter[%d]: %s (Class: %s)"), TypedOuterDepth, *RootWidget->GetName(), *RootWidget->GetClass()->GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🔍   TypedOuter[%d]: %s (Class: %s)"), TypedOuterDepth, *RootWidget->GetName(), *RootWidget->GetClass()->GetName());
         if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(RootWidget))
         {
-            UE_LOG(LogTemp, Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetTypedOuter(): %s"), *DishWidget->GetName());
+            //UE_LOG(LogTemp,Display, TEXT("✅ UPUIngredientSlot::GetDishCustomizationWidget - Found via GetTypedOuter(): %s"), *DishWidget->GetName());
             // Cache it for future use
             const_cast<UPUIngredientSlot*>(this)->CachedDishWidget = DishWidget;
             return DishWidget;
@@ -3808,15 +3841,15 @@ UPUDishCustomizationWidget* UPUIngredientSlot::GetDishCustomizationWidget() cons
         TypedOuterDepth++;
     }
     
-    UE_LOG(LogTemp, Error, TEXT("❌ UPUIngredientSlot::GetDishCustomizationWidget - Could not find dish widget! Slot: %s"), *GetName());
+    //UE_LOG(LogTemp,Error, TEXT("❌ UPUIngredientSlot::GetDishCustomizationWidget - Could not find dish widget! Slot: %s"), *GetName());
     return nullptr;
 }
 
 void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* InDishWidget)
 {
     CachedDishWidget = InDishWidget;
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::SetDishCustomizationWidget - Cached dish widget reference: %s"), 
-        InDishWidget ? *InDishWidget->GetName() : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetDishCustomizationWidget - Cached dish widget reference: %s"), 
+    //    InDishWidget ? *InDishWidget->GetName() : TEXT("NULL"));
 }
 
 // ============================================================================
@@ -3883,7 +3916,7 @@ void UPUIngredientSlot::RecalculateAspectsFromBase()
         
         if (!IngredientTagToUse.IsValid())
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - No valid ingredient tag found!"));
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - No valid ingredient tag found!"));
             return;
         }
         
@@ -3895,7 +3928,7 @@ void UPUIngredientSlot::RecalculateAspectsFromBase()
                 if (Component->IngredientDataTable)
                 {
                     CurrentDish.IngredientDataTable = TSoftObjectPtr<UDataTable>(Component->IngredientDataTable);
-                    UE_LOG(LogTemp, Display, TEXT("🔍 UPUIngredientSlot::RecalculateAspectsFromBase - Using component's ingredient data table"));
+                    //UE_LOG(LogTemp,Display, TEXT("🔍 UPUIngredientSlot::RecalculateAspectsFromBase - Using component's ingredient data table"));
                 }
             }
         }
@@ -3912,8 +3945,8 @@ void UPUIngredientSlot::RecalculateAspectsFromBase()
             FFlavorAspects PerUnitFlavor = BaseIngredient.FlavorAspects;
             FTextureAspects PerUnitTexture = BaseIngredient.TextureAspects;
             
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Base aspects: Umami=%.2f, Sweet=%.2f, Time=%.2f, Temp=%.2f, Qty=%d"),
-                PerUnitFlavor.Umami, PerUnitFlavor.Sweet, IngredientInstance.TimeValue, IngredientInstance.TemperatureValue, IngredientInstance.Quantity);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Base aspects: Umami=%.2f, Sweet=%.2f, Time=%.2f, Temp=%.2f, Qty=%d"),
+            //    PerUnitFlavor.Umami, PerUnitFlavor.Sweet, IngredientInstance.TimeValue, IngredientInstance.TemperatureValue, IngredientInstance.Quantity);
             
             // Apply time/temp modifiers to get per-unit modified aspects
             BaseIngredient.CalculateTimeTempModifiedAspects(
@@ -3923,8 +3956,8 @@ void UPUIngredientSlot::RecalculateAspectsFromBase()
                 PerUnitTexture
             );
             
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - After time/temp: Umami=%.2f, Sweet=%.2f"),
-                PerUnitFlavor.Umami, PerUnitFlavor.Sweet);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - After time/temp: Umami=%.2f, Sweet=%.2f"),
+            //    PerUnitFlavor.Umami, PerUnitFlavor.Sweet);
             
             // Store per-unit aspects (quantity multiplication happens in GetTotalFlavorAspect when summing)
             // This keeps IngredientData consistent - it always represents a single unit
@@ -3942,9 +3975,9 @@ void UPUIngredientSlot::RecalculateAspectsFromBase()
             IngredientInstance.IngredientData.TextureAspects.Crispy = PerUnitTexture.Crispy;
             IngredientInstance.IngredientData.TextureAspects.Crumbly = PerUnitTexture.Crumbly;
             
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Final per-unit aspects: Umami=%.2f, Sweet=%.2f (Qty=%d, Total Umami=%.2f)"),
-                IngredientInstance.IngredientData.FlavorAspects.Umami, IngredientInstance.IngredientData.FlavorAspects.Sweet, 
-                IngredientInstance.Quantity, IngredientInstance.IngredientData.FlavorAspects.Umami * IngredientInstance.Quantity);
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Final per-unit aspects: Umami=%.2f, Sweet=%.2f (Qty=%d, Total Umami=%.2f)"),
+            //    IngredientInstance.IngredientData.FlavorAspects.Umami, IngredientInstance.IngredientData.FlavorAspects.Sweet, 
+            //    IngredientInstance.Quantity, IngredientInstance.IngredientData.FlavorAspects.Umami * IngredientInstance.Quantity);
             
             // Update dish data (triggers OnDishDataChanged and updates radar chart automatically)
             for (int32 i = 0; i < CurrentDish.IngredientInstances.Num(); i++)
@@ -3952,23 +3985,23 @@ void UPUIngredientSlot::RecalculateAspectsFromBase()
                 if (CurrentDish.IngredientInstances[i].InstanceID == IngredientInstance.InstanceID)
                 {
                     CurrentDish.IngredientInstances[i] = IngredientInstance;
-                    UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Updated ingredient instance %d in dish data"), IngredientInstance.InstanceID);
+                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Updated ingredient instance %d in dish data"), IngredientInstance.InstanceID);
                     break;
                 }
             }
             
             DishWidget->UpdateDishData(CurrentDish);
-            UE_LOG(LogTemp, Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Called UpdateDishData"));
+            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::RecalculateAspectsFromBase - Called UpdateDishData"));
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - Failed to get ingredient from dish data table! Tag: %s"),
-                *IngredientTagToUse.ToString());
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - Failed to get ingredient from dish data table! Tag: %s"),
+            //    *IngredientTagToUse.ToString());
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - Could not find dish widget!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::RecalculateAspectsFromBase - Could not find dish widget!"));
     }
 }
 

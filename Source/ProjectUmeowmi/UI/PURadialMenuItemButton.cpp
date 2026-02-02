@@ -21,7 +21,7 @@ void UPURadialMenuItemButton::NativeConstruct()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenuItemButton::NativeConstruct - ItemButton not found! Make sure to bind it in Blueprint."));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenuItemButton::NativeConstruct - ItemButton not found! Make sure to bind it in Blueprint."));
     }
 }
 
@@ -55,8 +55,8 @@ void UPURadialMenuItemButton::SetMenuItemData(const FRadialMenuItem& MenuItem, i
         ItemButton->SetTouchMethod(EButtonTouchMethod::PreciseTap);
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenuItemButton::SetMenuItemData - Set data for item %d: %s (Enabled: %s)"),
-        ItemIndex, *MenuItem.Label.ToString(), MenuItem.bIsEnabled ? TEXT("YES") : TEXT("NO"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenuItemButton::SetMenuItemData - Set data for item %d: %s (Enabled: %s)"),
+    //    ItemIndex, *MenuItem.Label.ToString(), MenuItem.bIsEnabled ? TEXT("YES") : TEXT("NO"));
 
     // Call Blueprint event
     OnMenuItemDataSet(MenuItemData, ItemIndex);
@@ -66,14 +66,14 @@ void UPURadialMenuItemButton::HandleButtonClicked()
 {
     if (ItemIndex >= 0)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenuItemButton::HandleButtonClicked - Button clicked for item %d"), ItemIndex);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenuItemButton::HandleButtonClicked - Button clicked for item %d"), ItemIndex);
         
         // Broadcast the event with the index
         OnItemClicked.Broadcast(ItemIndex);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenuItemButton::HandleButtonClicked - Button clicked but ItemIndex is invalid: %d"), ItemIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenuItemButton::HandleButtonClicked - Button clicked but ItemIndex is invalid: %d"), ItemIndex);
     }
 }
 

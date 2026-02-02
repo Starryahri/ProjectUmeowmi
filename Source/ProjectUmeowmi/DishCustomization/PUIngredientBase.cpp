@@ -201,23 +201,22 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
                         FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
                         FName PrepRowName = FName(*PrepName);
                         
-                        UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Looking up preparation: Tag=%s, RowName=%s"), 
-                            *PrepFullTag, *PrepRowName.ToString());
+                        ////UE_LOG(LogTemp,Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Looking up preparation: Tag=%s, RowName=%s"), *PrepFullTag, *PrepRowName.ToString());
                         
                         if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetCurrentDisplayName")))
                         {
-                            UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Found preparation: DisplayName=%s, NamePrefix=%s, NameSuffix=%s"), 
-                                *Preparation->DisplayName.ToString(), 
-                                *Preparation->NamePrefix.ToString(), 
-                                *Preparation->NameSuffix.ToString());
+                            //UE_LOG(LogTemp,Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Found preparation: DisplayName=%s, NamePrefix=%s, NameSuffix=%s"), 
+                            //    *Preparation->DisplayName.ToString(), 
+                            //    *Preparation->NamePrefix.ToString(), 
+                            //    *Preparation->NameSuffix.ToString());
                             
                             // If any preparation overrides the base name, use the special name
                             if (Preparation->OverridesBaseName)
                             {
                                 SpecialOverrideName = Preparation->SpecialName.ToString();
                                 bHasSpecialOverride = true;
-                                UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Preparation overrides base name with: %s"), 
-                                    *SpecialOverrideName);
+                                ////UE_LOG(LogTemp,Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Preparation overrides base name with: %s"), 
+                                //    *SpecialOverrideName);
                                 break; // Special override takes precedence, stop processing
                             }
                             
@@ -229,8 +228,8 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
                                     CombinedPrefix += " ";
                                 }
                                 CombinedPrefix += Preparation->NamePrefix.ToString();
-                                UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Added prefix '%s', CombinedPrefix now: '%s'"), 
-                                    *Preparation->NamePrefix.ToString(), *CombinedPrefix);
+                                ////UE_LOG(LogTemp,Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Added prefix '%s', CombinedPrefix now: '%s'"), 
+                                //    *Preparation->NamePrefix.ToString(), *CombinedPrefix);
                             }
                             
                             if (!Preparation->NameSuffix.IsEmpty())
@@ -240,14 +239,14 @@ FText FPUIngredientBase::GetCurrentDisplayName() const
                                     CombinedSuffix = " " + CombinedSuffix;
                                 }
                                 CombinedSuffix = Preparation->NameSuffix.ToString() + CombinedSuffix;
-                                UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Added suffix '%s', CombinedSuffix now: '%s'"), 
-                                    *Preparation->NameSuffix.ToString(), *CombinedSuffix);
+                                ////UE_LOG(LogTemp,Display, TEXT("🔍 FPUIngredientBase::GetCurrentDisplayName - Added suffix '%s', CombinedSuffix now: '%s'"), 
+                                //    *Preparation->NameSuffix.ToString(), *CombinedSuffix);
                             }
                         }
                         else
                         {
-                            UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUIngredientBase::GetCurrentDisplayName - Could not find preparation row '%s' in data table!"), 
-                                *PrepRowName.ToString());
+                            ////UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUIngredientBase::GetCurrentDisplayName - Could not find preparation row '%s' in data table!"), 
+                            //    *PrepRowName.ToString());
                         }
                     }
                 }
@@ -395,8 +394,8 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
     }
     
     // Apply modifiers that match the current time/temp state
-    UE_LOG(LogTemp, Display, TEXT("🔍 FPUIngredientBase::CalculateTimeTempModifiedAspects - TimeState: %d, TempState: %d, Checking %d modifiers"),
-        (int32)TimeState, (int32)TempState, ModifiersToApply.Num());
+    ////UE_LOG(LogTemp,Display, TEXT("🔍 FPUIngredientBase::CalculateTimeTempModifiedAspects - TimeState: %d, TempState: %d, Checking %d modifiers"),
+    //    (int32)TimeState, (int32)TempState, ModifiersToApply.Num());
     
     for (const FTimeTempModifier& Modifier : ModifiersToApply)
     {
@@ -404,10 +403,10 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
         bool bTimeMatches = (Modifier.TimeState == TimeState);
         bool bTempMatches = (Modifier.TemperatureState == TempState);
         
-        UE_LOG(LogTemp, Display, TEXT("🔍   Modifier: Time=%d (match: %s), Temp=%d (match: %s), Aspect=%s, Value=%.2f"),
-            (int32)Modifier.TimeState, bTimeMatches ? TEXT("YES") : TEXT("NO"),
-            (int32)Modifier.TemperatureState, bTempMatches ? TEXT("YES") : TEXT("NO"),
-            *Modifier.AspectName.ToString(), Modifier.ModificationValue);
+        ////UE_LOG(LogTemp,Display, TEXT("🔍   Modifier: Time=%d (match: %s), Temp=%d (match: %s), Aspect=%s, Value=%.2f"),
+        //    (int32)Modifier.TimeState, bTimeMatches ? TEXT("YES") : TEXT("NO"),
+        //    (int32)Modifier.TemperatureState, bTempMatches ? TEXT("YES") : TEXT("NO"),
+        //    *Modifier.AspectName.ToString(), Modifier.ModificationValue);
         
         if (bTimeMatches && bTempMatches)
         {
@@ -451,8 +450,8 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
             
             if (bFound)
             {
-                UE_LOG(LogTemp, Display, TEXT("🔍   Applying modifier: Current=%f, Modifier=%f, Type=%d"),
-                    CurrentValue, Modifier.ModificationValue, (int32)Modifier.ModificationType);
+                ////UE_LOG(LogTemp,Display, TEXT("🔍   Applying modifier: Current=%f, Modifier=%f, Type=%d"),
+                //    CurrentValue, Modifier.ModificationValue, (int32)Modifier.ModificationType);
                 
                 // Apply modification
                 float ModifiedValue = CurrentValue;
@@ -465,14 +464,14 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
                     ModifiedValue = CurrentValue * Modifier.ModificationValue;
                 }
                 
-                UE_LOG(LogTemp, Display, TEXT("🔍   After modification: %f"), ModifiedValue);
+                ////UE_LOG(LogTemp,Display, TEXT("🔍   After modification: %f"), ModifiedValue);
                 
                 // Only clamp minimum to 0 (allow values above 5.0 for visibility on radar chart)
                 // Round to 0.5 increments
                 ModifiedValue = FMath::Max(ModifiedValue, 0.0f);
                 ModifiedValue = FMath::RoundToFloat(ModifiedValue * 2.0f) / 2.0f;
                 
-                UE_LOG(LogTemp, Display, TEXT("🔍   After rounding: %f"), ModifiedValue);
+                ////UE_LOG(LogTemp,Display, TEXT("🔍   After rounding: %f"), ModifiedValue);
                 
                 // Set the modified value directly in output (don't modify const object)
                 if (Modifier.AspectType == 0) // Flavor

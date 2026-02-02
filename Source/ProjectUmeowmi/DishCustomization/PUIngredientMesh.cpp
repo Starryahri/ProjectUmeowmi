@@ -32,7 +32,7 @@ APUIngredientMesh::APUIngredientMesh()
     // Enable mouse interaction events
     MeshComponent->SetNotifyRigidBodyCollision(true);
     
-    UE_LOG(LogTemp, Display, TEXT("🖱️ Ingredient mesh created with mouse events bound"));
+    //UE_LOG(LogTemp,Display, TEXT("🖱️ Ingredient mesh created with mouse events bound"));
 
     // Initialize state
     bIsHovered = false;
@@ -87,13 +87,13 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
 
 void APUIngredientMesh::OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🖱️ Hover BEGIN called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 
-        *GetName(), bIsHovered ? TEXT("True") : TEXT("False"), bIsGrabbed ? TEXT("True") : TEXT("False"));
+    //UE_LOG(LogTemp,Display, TEXT("🖱️ Hover BEGIN called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 
+    //    *GetName(), bIsHovered ? TEXT("True") : TEXT("False"), bIsGrabbed ? TEXT("True") : TEXT("False"));
     
     if (!bIsHovered && !bIsGrabbed)
     {
         bIsHovered = true;
-        UE_LOG(LogTemp, Display, TEXT("🖱️ Hover BEGIN processed on ingredient: %s"), *GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🖱️ Hover BEGIN processed on ingredient: %s"), *GetName());
         
         // Apply hover material
         if (HoverMaterial)
@@ -109,13 +109,13 @@ void APUIngredientMesh::OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent)
 
 void APUIngredientMesh::OnMouseHoverEnd(UPrimitiveComponent* TouchedComponent)
 {
-    UE_LOG(LogTemp, Display, TEXT("🖱️ Hover END called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 
-        *GetName(), bIsHovered ? TEXT("True") : TEXT("False"), bIsGrabbed ? TEXT("True") : TEXT("False"));
+    //UE_LOG(LogTemp,Display, TEXT("🖱️ Hover END called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 
+    //    *GetName(), bIsHovered ? TEXT("True") : TEXT("False"), bIsGrabbed ? TEXT("True") : TEXT("False"));
     
     if (bIsHovered && !bIsGrabbed)
     {
         bIsHovered = false;
-        UE_LOG(LogTemp, Display, TEXT("🖱️ Hover END processed on ingredient: %s"), *GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🖱️ Hover END processed on ingredient: %s"), *GetName());
         
         // Restore original material
         if (IngredientData.MaterialInstance.IsValid())
@@ -143,8 +143,8 @@ void APUIngredientMesh::OnMouseGrab()
         FVector CurrentPos = GetActorLocation();
         bool bWasVisible = MeshComponent && MeshComponent->IsVisible();
         
-        UE_LOG(LogTemp, Display, TEXT("🖱️ [GRAB] OnMouseGrab - %s at (%.2f,%.2f,%.2f), Visible: %s"), 
-            *GetName(), CurrentPos.X, CurrentPos.Y, CurrentPos.Z, bWasVisible ? TEXT("Yes") : TEXT("No"));
+        //UE_LOG(LogTemp,Display, TEXT("🖱️ [GRAB] OnMouseGrab - %s at (%.2f,%.2f,%.2f), Visible: %s"), 
+        //    *GetName(), CurrentPos.X, CurrentPos.Y, CurrentPos.Z, bWasVisible ? TEXT("Yes") : TEXT("No"));
         
         bIsGrabbed = true;
         bIsHovered = false;
@@ -162,7 +162,7 @@ void APUIngredientMesh::OnMouseGrab()
             MeshComponent->SetVisibility(true);
             MeshComponent->SetHiddenInGame(false);
             
-            UE_LOG(LogTemp, Display, TEXT("🖱️ [GRAB] Disabled physics, ensured visibility for %s"), *GetName());
+            //UE_LOG(LogTemp,Display, TEXT("🖱️ [GRAB] Disabled physics, ensured visibility for %s"), *GetName());
         }
         
         // Apply grabbed material
@@ -173,8 +173,8 @@ void APUIngredientMesh::OnMouseGrab()
         
         // Verify position after changes
         FVector PosAfterGrab = GetActorLocation();
-        UE_LOG(LogTemp, Display, TEXT("🖱️ [GRAB] After grab setup - %s at (%.2f,%.2f,%.2f)"), 
-            *GetName(), PosAfterGrab.X, PosAfterGrab.Y, PosAfterGrab.Z);
+        //UE_LOG(LogTemp,Display, TEXT("🖱️ [GRAB] After grab setup - %s at (%.2f,%.2f,%.2f)"), 
+        //    *GetName(), PosAfterGrab.X, PosAfterGrab.Y, PosAfterGrab.Z);
         
         // Broadcast the grabbed event
         OnIngredientGrabbed.Broadcast();
@@ -228,14 +228,14 @@ void APUIngredientMesh::UpdatePosition(const FVector& NewPosition)
     UWorld* World = GetWorld();
     if (!World)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ APUIngredientMesh::UpdatePosition - No valid world"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ APUIngredientMesh::UpdatePosition - No valid world"));
         return;
     }
     
     // Safety check: ensure the actor is still valid
     if (!IsValid(this))
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ APUIngredientMesh::UpdatePosition - Actor is no longer valid"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ APUIngredientMesh::UpdatePosition - Actor is no longer valid"));
         return;
     }
     
@@ -247,7 +247,7 @@ void APUIngredientMesh::UpdatePosition(const FVector& NewPosition)
     // Only update if we have a valid location
     if (TargetLocation.ContainsNaN())
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Target location contains NaN, ignoring"), *GetName());
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Target location contains NaN, ignoring"), *GetName());
         return;
     }
     
@@ -255,8 +255,8 @@ void APUIngredientMesh::UpdatePosition(const FVector& NewPosition)
     float DistanceFromOriginal = FVector::Dist(TargetLocation, OriginalPosition);
     if (DistanceFromOriginal > 10000.0f)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Target position too far from original (%.2f units), clamping"), 
-            *GetName(), DistanceFromOriginal);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Target position too far from original (%.2f units), clamping"), 
+        //    *GetName(), DistanceFromOriginal);
         // Clamp to a reasonable distance
         FVector Direction = (TargetLocation - OriginalPosition).GetSafeNormal();
         TargetLocation = OriginalPosition + (Direction * 1000.0f);
@@ -281,20 +281,20 @@ void APUIngredientMesh::UpdatePosition(const FVector& NewPosition)
         FVector VerifyLocation = GetActorLocation();
         if (FVector::Dist(VerifyLocation, NewLocation) > 1.0f)
         {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Location mismatch! Set to (%.2f,%.2f,%.2f) but got (%.2f,%.2f,%.2f)"), 
-                *GetName(), 
-                NewLocation.X, NewLocation.Y, NewLocation.Z,
-                VerifyLocation.X, VerifyLocation.Y, VerifyLocation.Z);
+            //UE_LOG(LogTemp,Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Location mismatch! Set to (%.2f,%.2f,%.2f) but got (%.2f,%.2f,%.2f)"), 
+            //    *GetName(), 
+            //    NewLocation.X, NewLocation.Y, NewLocation.Z,
+            //    VerifyLocation.X, VerifyLocation.Y, VerifyLocation.Z);
         }
         
         OnIngredientMoved.Broadcast(NewLocation);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Cannot update position (Valid: %s, NaN: %s)"), 
-            *GetName(), 
-            IsValid(this) ? TEXT("Yes") : TEXT("No"),
-            NewLocation.ContainsNaN() ? TEXT("Yes") : TEXT("No"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [POS] UpdatePosition - %s: Cannot update position (Valid: %s, NaN: %s)"), 
+        //    *GetName(), 
+        //    IsValid(this) ? TEXT("Yes") : TEXT("No"),
+        //    NewLocation.ContainsNaN() ? TEXT("Yes") : TEXT("No"));
     }
 }
 
@@ -313,21 +313,21 @@ void APUIngredientMesh::UpdateRotation(const FRotator& NewRotation)
 
 void APUIngredientMesh::NotifyActorBeginCursorOver()
 {
-    UE_LOG(LogTemp, Display, TEXT("🖱️ Actor cursor over BEGIN: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🖱️ Actor cursor over BEGIN: %s"), *GetName());
     OnMouseHoverBegin(nullptr);
 }
 
 void APUIngredientMesh::NotifyActorEndCursorOver()
 {
-    UE_LOG(LogTemp, Display, TEXT("🖱️ Actor cursor over END: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🖱️ Actor cursor over END: %s"), *GetName());
     OnMouseHoverEnd(nullptr);
 }
 
 void APUIngredientMesh::NotifyActorOnClicked(FKey ButtonPressed)
 {
     FVector CurrentPos = GetActorLocation();
-    UE_LOG(LogTemp, Display, TEXT("🖱️ [CLICK] Actor clicked: %s (Button: %s) at position (%.2f,%.2f,%.2f)"), 
-        *GetName(), *ButtonPressed.ToString(), CurrentPos.X, CurrentPos.Y, CurrentPos.Z);
+    //UE_LOG(LogTemp,Display, TEXT("🖱️ [CLICK] Actor clicked: %s (Button: %s) at position (%.2f,%.2f,%.2f)"), 
+    //    *GetName(), *ButtonPressed.ToString(), CurrentPos.X, CurrentPos.Y, CurrentPos.Z);
     
     // Only handle left mouse button clicks
     if (ButtonPressed == EKeys::LeftMouseButton)
@@ -342,12 +342,12 @@ void APUIngredientMesh::NotifyActorOnClicked(FKey ButtonPressed)
             {
                 if (DishComponent->IsPlatingMode())
                 {
-                    UE_LOG(LogTemp, Display, TEXT("🖱️ [CLICK] Notifying dish customization component of ingredient click for %s"), *GetName());
+                    //UE_LOG(LogTemp,Display, TEXT("🖱️ [CLICK] Notifying dish customization component of ingredient click for %s"), *GetName());
                     
                     // Verify ingredient is still valid before proceeding
                     if (!IsValid(this))
                     {
-                        UE_LOG(LogTemp, Error, TEXT("❌ [CLICK] Ingredient %s is no longer valid!"), *GetName());
+                        //UE_LOG(LogTemp,Error, TEXT("❌ [CLICK] Ingredient %s is no longer valid!"), *GetName());
                         return;
                     }
                     
@@ -359,21 +359,21 @@ void APUIngredientMesh::NotifyActorOnClicked(FKey ButtonPressed)
                     if (IsValid(this))
                     {
                         FVector PosAfterStartDrag = GetActorLocation();
-                        UE_LOG(LogTemp, Display, TEXT("🖱️ [CLICK] After StartDraggingIngredient - %s at position (%.2f,%.2f,%.2f)"), 
-                            *GetName(), PosAfterStartDrag.X, PosAfterStartDrag.Y, PosAfterStartDrag.Z);
+                        //UE_LOG(LogTemp,Display, TEXT("🖱️ [CLICK] After StartDraggingIngredient - %s at position (%.2f,%.2f,%.2f)"), 
+                        //    *GetName(), PosAfterStartDrag.X, PosAfterStartDrag.Y, PosAfterStartDrag.Z);
                     }
                     return;
                 }
             }
         }
         
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ [CLICK] Could not find dish customization component in plating mode"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [CLICK] Could not find dish customization component in plating mode"));
     }
 }
 
 void APUIngredientMesh::TestMouseInteraction()
 {
-    UE_LOG(LogTemp, Display, TEXT("🧪 Testing mouse interaction for ingredient: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🧪 Testing mouse interaction for ingredient: %s"), *GetName());
     
     APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
     if (PlayerController)
@@ -382,26 +382,26 @@ void APUIngredientMesh::TestMouseInteraction()
         float MouseX, MouseY;
         PlayerController->GetMousePosition(MouseX, MouseY);
         
-        UE_LOG(LogTemp, Display, TEXT("🧪 Mouse position: (%.0f, %.0f)"), MouseX, MouseY);
+        //UE_LOG(LogTemp,Display, TEXT("🧪 Mouse position: (%.0f, %.0f)"), MouseX, MouseY);
         
         // Raycast from mouse position
         FHitResult HitResult;
         if (PlayerController->GetHitResultUnderCursor(ECC_Visibility, false, HitResult))
         {
-            UE_LOG(LogTemp, Display, TEXT("🧪 Hit something: %s"), HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("NULL"));
+            //UE_LOG(LogTemp,Display, TEXT("🧪 Hit something: %s"), HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("NULL"));
             
             if (HitResult.GetActor() == this)
             {
-                UE_LOG(LogTemp, Display, TEXT("🧪 SUCCESS: Mouse is hitting this ingredient!"));
+                //UE_LOG(LogTemp,Display, TEXT("🧪 SUCCESS: Mouse is hitting this ingredient!"));
             }
             else
             {
-                UE_LOG(LogTemp, Display, TEXT("🧪 Mouse is hitting something else"));
+                //UE_LOG(LogTemp,Display, TEXT("🧪 Mouse is hitting something else"));
             }
         }
         else
         {
-            UE_LOG(LogTemp, Display, TEXT("🧪 No hit under cursor"));
+            //UE_LOG(LogTemp,Display, TEXT("🧪 No hit under cursor"));
         }
     }
 } 

@@ -4,6 +4,19 @@
 #include "PUPreparationBase.h"
 #include "../UI/PUDishCustomizationWidget.h"
 
+// Debug output toggles (kept in code, but disabled by default to avoid startup/on-screen spam).
+namespace
+{
+    // Enables extra UE_LOG lines while loading dishes/ingredients from data tables.
+    constexpr bool bPU_LogDishDataTableDebug = false;
+
+    // Enables on-screen debug messages while loading dishes/ingredients from data tables.
+    constexpr bool bPU_ShowDishDataTableOnScreenDebug = false;
+
+    // Enables tag-heavy logs (dish/ingredient gameplay tags) which can be noisy during customization startup.
+    constexpr bool bPU_LogDishTagSpam = false;
+}
+
 FName UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(const FGameplayTag& IngredientTag)
 {
     // Remove "Ingredient." prefix, convert to lowercase, and remove all periods
@@ -30,14 +43,14 @@ FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, co
     // Validate the dish has an ingredient data table
     if (!Dish.IngredientDataTable.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::AddIngredient - Dish has no ingredient data table"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::AddIngredient - Dish has no ingredient data table"));
         return FIngredientInstance();
     }
     
     UDataTable* LoadedIngredientDataTable = Dish.IngredientDataTable.LoadSynchronous();
     if (!LoadedIngredientDataTable)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::AddIngredient - Failed to load ingredient data table"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::AddIngredient - Failed to load ingredient data table"));
         return FIngredientInstance();
     }
     
@@ -87,13 +100,16 @@ FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, co
         // Add the instance to the dish
         Dish.IngredientInstances.Add(NewInstance);
         
-        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::AddIngredient - Added ingredient %s with %d preparations"), 
-            *IngredientTag.ToString(), Preparations.Num());
+        if (bPU_LogDishTagSpam)
+        {
+            //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::AddIngredient - Added ingredient %s with %d preparations"),
+            //    *IngredientTag.ToString(), Preparations.Num());
+        }
         
         return NewInstance;
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::AddIngredient - Ingredient %s not found in data table"), *IngredientTag.ToString());
+    //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::AddIngredient - Ingredient %s not found in data table"), *IngredientTag.ToString());
     return FIngredientInstance();
 }
 
@@ -109,13 +125,13 @@ bool UPUDishBlueprintLibrary::RemoveIngredientInstance(FPUDishBase& Dish, int32 
     // Check if the instance index is valid
     if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstance - Invalid instance index: %d"), InstanceIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstance - Invalid instance index: %d"), InstanceIndex);
         return false;
     }
 
     // Remove the instance
     Dish.IngredientInstances.RemoveAt(InstanceIndex);
-    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstance - Removed instance at index %d"), InstanceIndex);
+    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstance - Removed instance at index %d"), InstanceIndex);
     
     return true;
 }
@@ -125,7 +141,7 @@ bool UPUDishBlueprintLibrary::RemoveIngredientQuantity(FPUDishBase& Dish, int32 
     // Check if the instance index is valid
     if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Invalid instance index: %d"), InstanceIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Invalid instance index: %d"), InstanceIndex);
         return false;
     }
 
@@ -134,21 +150,21 @@ bool UPUDishBlueprintLibrary::RemoveIngredientQuantity(FPUDishBase& Dish, int32 
     // Check if we have enough quantity to remove
     if (Instance.Quantity < Quantity)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Not enough quantity. Have: %d, Requested: %d"), 
-            Instance.Quantity, Quantity);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Not enough quantity. Have: %d, Requested: %d"), 
+        //    Instance.Quantity, Quantity);
         return false;
     }
 
     // Remove the quantity
     Instance.Quantity -= Quantity;
-    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Removed %d from instance %d. Remaining: %d"), 
-        Quantity, InstanceIndex, Instance.Quantity);
+    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Removed %d from instance %d. Remaining: %d"), 
+    //    Quantity, InstanceIndex, Instance.Quantity);
 
     // Auto-cleanup: Remove instance if quantity reaches 0
     if (Instance.Quantity <= 0)
     {
         Dish.IngredientInstances.RemoveAt(InstanceIndex);
-        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Auto-removed empty instance at index %d"), InstanceIndex);
+        //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantity - Auto-removed empty instance at index %d"), InstanceIndex);
     }
     
     return true;
@@ -175,8 +191,8 @@ bool UPUDishBlueprintLibrary::IncrementIngredientAmount(FPUDishBase& Dish, const
                 if (Instance.Quantity + Amount <= BaseIngredient.MaxQuantity)
                 {
                     Instance.Quantity += Amount;
-                    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::IncrementIngredientAmount - Added %d to instance %d. New quantity: %d"), 
-                        Amount, i, Instance.Quantity);
+                    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::IncrementIngredientAmount - Added %d to instance %d. New quantity: %d"), 
+                    //    Amount, i, Instance.Quantity);
                     return true;
                 }
             }
@@ -207,14 +223,14 @@ bool UPUDishBlueprintLibrary::DecrementIngredientAmount(FPUDishBase& Dish, const
                 if (Instance.Quantity - Amount >= BaseIngredient.MinQuantity)
                 {
                     Instance.Quantity -= Amount;
-                    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientAmount - Removed %d from instance %d. New quantity: %d"), 
-                        Amount, i, Instance.Quantity);
+                    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientAmount - Removed %d from instance %d. New quantity: %d"), 
+                    //    Amount, i, Instance.Quantity);
 
                     // Auto-cleanup: Remove instance if quantity reaches 0
                     if (Instance.Quantity <= 0)
                     {
                         Dish.IngredientInstances.RemoveAt(i);
-                        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientAmount - Auto-removed empty instance at index %d"), i);
+                        //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientAmount - Auto-removed empty instance at index %d"), i);
                     }
                     
                     return true;
@@ -283,7 +299,7 @@ bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 Instance
     // Check if the instance index is valid
     if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Invalid instance index: %d"), InstanceIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Invalid instance index: %d"), InstanceIndex);
         return false;
     }
 
@@ -292,8 +308,8 @@ bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 Instance
     // Check if this preparation is already applied (check both Preparations and ActivePreparations)
     if (Instance.IngredientData.ActivePreparations.HasTag(PreparationTag) || Instance.Preparations.HasTag(PreparationTag))
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Preparation %s already applied to instance %d"), 
-            *PreparationTag.ToString(), InstanceIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Preparation %s already applied to instance %d"), 
+        //    *PreparationTag.ToString(), InstanceIndex);
         return false;
     }
 
@@ -301,8 +317,8 @@ bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 Instance
     Instance.IngredientData.ActivePreparations.AddTag(PreparationTag);
     Instance.Preparations.AddTag(PreparationTag);
     
-    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Applied %s to instance %d (now has %d preparations)"), 
-        *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
+    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Applied %s to instance %d (now has %d preparations)"), 
+    //    *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
     
     return true;
 }
@@ -312,7 +328,7 @@ bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 Instanc
     // Check if the instance index is valid
     if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Invalid instance index: %d"), InstanceIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Invalid instance index: %d"), InstanceIndex);
         return false;
     }
 
@@ -321,8 +337,8 @@ bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 Instanc
     // Check if this preparation is actually applied (check both Preparations and ActivePreparations)
     if (!Instance.IngredientData.ActivePreparations.HasTag(PreparationTag) && !Instance.Preparations.HasTag(PreparationTag))
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Preparation %s not applied to instance %d"), 
-            *PreparationTag.ToString(), InstanceIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Preparation %s not applied to instance %d"), 
+        //    *PreparationTag.ToString(), InstanceIndex);
         return false;
     }
 
@@ -330,8 +346,8 @@ bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 Instanc
     Instance.IngredientData.ActivePreparations.RemoveTag(PreparationTag);
     Instance.Preparations.RemoveTag(PreparationTag);
     
-    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Removed %s from instance %d (now has %d preparations)"), 
-        *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
+    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Removed %s from instance %d (now has %d preparations)"), 
+    //    *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
     
     return true;
 }
@@ -341,7 +357,7 @@ bool UPUDishBlueprintLibrary::ApplyPreparationByID(FPUDishBase& Dish, int32 Inst
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparationByID - Instance ID %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparationByID - Instance ID %d not found"), InstanceID);
         return false;
     }
     return ApplyPreparation(Dish, InstanceIndex, PreparationTag);
@@ -352,7 +368,7 @@ bool UPUDishBlueprintLibrary::RemovePreparationByID(FPUDishBase& Dish, int32 Ins
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparationByID - Instance ID %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparationByID - Instance ID %d not found"), InstanceID);
         return false;
     }
     return RemovePreparation(Dish, InstanceIndex, PreparationTag);
@@ -363,7 +379,7 @@ bool UPUDishBlueprintLibrary::RemoveIngredientInstanceByID(FPUDishBase& Dish, in
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstanceByID - Instance ID %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientInstanceByID - Instance ID %d not found"), InstanceID);
         return false;
     }
     return RemoveIngredientInstance(Dish, InstanceIndex);
@@ -374,7 +390,7 @@ bool UPUDishBlueprintLibrary::RemoveIngredientQuantityByID(FPUDishBase& Dish, in
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantityByID - Instance ID %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemoveIngredientQuantityByID - Instance ID %d not found"), InstanceID);
         return false;
     }
     return RemoveIngredientQuantity(Dish, InstanceIndex, Quantity);
@@ -385,15 +401,15 @@ bool UPUDishBlueprintLibrary::IncrementIngredientQuantityByID(FPUDishBase& Dish,
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::IncrementIngredientQuantityByID - Instance ID %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::IncrementIngredientQuantityByID - Instance ID %d not found"), InstanceID);
         return false;
     }
     
     FIngredientInstance& Instance = Dish.IngredientInstances[InstanceIndex];
     Instance.Quantity += Amount;
     
-    UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::IncrementIngredientQuantityByID - Incremented instance %d quantity by %d (new total: %d)"), 
-        InstanceID, Amount, Instance.Quantity);
+    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::IncrementIngredientQuantityByID - Incremented instance %d quantity by %d (new total: %d)"), 
+    //    InstanceID, Amount, Instance.Quantity);
     
     return true;
 }
@@ -403,7 +419,7 @@ bool UPUDishBlueprintLibrary::DecrementIngredientQuantityByID(FPUDishBase& Dish,
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Instance ID %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Instance ID %d not found"), InstanceID);
         return false;
     }
     
@@ -412,8 +428,8 @@ bool UPUDishBlueprintLibrary::DecrementIngredientQuantityByID(FPUDishBase& Dish,
     // Check if we have enough quantity to remove
     if (Instance.Quantity < Amount)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Not enough quantity. Current: %d, Requested: %d"), 
-            Instance.Quantity, Amount);
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Not enough quantity. Current: %d, Requested: %d"), 
+        //    Instance.Quantity, Amount);
         return false;
     }
     
@@ -422,13 +438,13 @@ bool UPUDishBlueprintLibrary::DecrementIngredientQuantityByID(FPUDishBase& Dish,
     // If quantity reaches zero, remove the instance
     if (Instance.Quantity <= 0)
     {
-        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Quantity reached zero, removing instance %d"), InstanceID);
+        //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Quantity reached zero, removing instance %d"), InstanceID);
         Dish.IngredientInstances.RemoveAt(InstanceIndex);
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Decremented instance %d quantity by %d (new total: %d)"), 
-            InstanceID, Amount, Instance.Quantity);
+        //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::DecrementIngredientQuantityByID - Decremented instance %d quantity by %d (new total: %d)"), 
+        //    InstanceID, Amount, Instance.Quantity);
     }
     
     return true;
@@ -453,13 +469,13 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
 {
     if (!DishDataTable)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - DishDataTable is null"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - DishDataTable is null"));
         return false;
     }
 
     if (!DishTag.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - DishTag is invalid"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - DishTag is invalid"));
         return false;
     }
 
@@ -472,43 +488,69 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
         FString DishName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
         RowName = FName(*DishName);
         
-        UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"), 
-            *DishTag.ToString(), *RowName.ToString());
+        if (bPU_LogDishTagSpam)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"),
+            //    *DishTag.ToString(), *RowName.ToString());
+        }
         
         if (FPUDishBase* FoundDish = DishDataTable->FindRow<FPUDishBase>(RowName, TEXT("GetDishFromDataTable")))
         {
             OutDish = *FoundDish;
-            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Found dish: %s with %d default ingredients"), 
-                *OutDish.DisplayName.ToString(), OutDish.IngredientInstances.Num());
+            if (bPU_LogDishDataTableDebug)
+            {
+                //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Found dish: %s with %d default ingredients"),
+                //    *OutDish.DisplayName.ToString(), OutDish.IngredientInstances.Num());
+            }
             
             // DEBUG: Print dish data table path and ingredient data table status
-            FString DishDataTablePath = DishDataTable->GetPathName();
-            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish Data Table Path: %s"), *DishDataTablePath);
-            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Ingredient Data Table Provided: %s"), IngredientDataTable ? TEXT("TRUE") : TEXT("FALSE"));
-            
-            // Print to screen as well
-            if (GEngine)
+            // (Disabled globally to avoid log/on-screen debug spam. Re-enable locally as needed.)
+            /*
+            if (bPU_LogDishDataTableDebug || bPU_ShowDishDataTableOnScreenDebug)
             {
-                GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Dish Data Table: %s"), *DishDataTablePath));
-                GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Ingredient Data Table Provided: %s"), IngredientDataTable ? TEXT("TRUE") : TEXT("FALSE")));
+                const FString DishDataTablePath = DishDataTable->GetPathName();
+
+                if (bPU_LogDishDataTableDebug)
+                {
+                    //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish Data Table Path: %s"), *DishDataTablePath);
+                    //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Ingredient Data Table Provided: %s"), IngredientDataTable ? TEXT("TRUE") : TEXT("FALSE"));
+                }
+
+                // Print to screen as well
+                if (bPU_ShowDishDataTableOnScreenDebug && GEngine)
+                {
+                    GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Dish Data Table: %s"), *DishDataTablePath));
+                    GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Green, FString::Printf(TEXT("Ingredient Data Table Provided: %s"), IngredientDataTable ? TEXT("TRUE") : TEXT("FALSE")));
+                }
             }
+            */
             
             // Populate IngredientData for each instance using the convenient fields
             for (FIngredientInstance& Instance : OutDish.IngredientInstances)
             {
                 if (Instance.IngredientTag.IsValid() && IngredientDataTable)
                 {
-                    UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Populating ingredient data for tag: %s"), 
-                        *Instance.IngredientTag.ToString());
+                    if (bPU_LogDishTagSpam)
+                    {
+                        //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Populating ingredient data for tag: %s"),
+                        //    *Instance.IngredientTag.ToString());
+                    }
                     
                     // DEBUG: Print ingredient data table status
-                    UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Using provided ingredient data table"));
+                    // DEBUG: Ingredient data table logging/on-screen messages
+                    // (Disabled globally to avoid log/on-screen debug spam. Re-enable locally as needed.)
+                    /*
+                    if (bPU_LogDishDataTableDebug)
+                    {
+                        //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Using provided ingredient data table"));
+                    }
                     
                     // Print to screen as well
-                    if (GEngine)
+                    if (bPU_ShowDishDataTableOnScreenDebug && GEngine)
                     {
                         GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, FString::Printf(TEXT("Using provided ingredient data table")));
                     }
+                    */
                     
                     UDataTable* LoadedIngredientDataTable = IngredientDataTable;
                     if (LoadedIngredientDataTable)
@@ -526,8 +568,11 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
                             if (Instance.Preparations.Num() == 0 && Instance.IngredientData.ActivePreparations.Num() > 0)
                             {
                                 Instance.Preparations = Instance.IngredientData.ActivePreparations;
-                                UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Copied %d ActivePreparations from data table to Instance.Preparations"), 
-                                    Instance.IngredientData.ActivePreparations.Num());
+                                if (bPU_LogDishDataTableDebug)
+                                {
+                                    //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Copied %d ActivePreparations from data table to Instance.Preparations"),
+                                    //    Instance.IngredientData.ActivePreparations.Num());
+                                }
                             }
                             
                             // Sync both ways: if Instance.Preparations has values, use those; otherwise use ActivePreparations from data table
@@ -566,23 +611,30 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
                                 }
                             }
                             
-                            UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Successfully populated ingredient data for: %s"), 
-                                *Instance.IngredientData.DisplayName.ToString());
+                            if (bPU_LogDishDataTableDebug)
+                            {
+                                //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Successfully populated ingredient data for: %s"),
+                                //    *Instance.IngredientData.DisplayName.ToString());
+                            }
                         }
                         else
                         {
-                            UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Failed to find ingredient in data table: %s"), *IngredientRowName.ToString());
+                            //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Failed to find ingredient in data table: %s"), *IngredientRowName.ToString());
                         }
                     }
                     else
                     {
-                        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - No ingredient data table provided"));
+                        // DEBUG: Missing ingredient data table logging/on-screen messages
+                        // (Disabled globally to avoid log/on-screen debug spam. Re-enable locally as needed.)
+                        /*
+                        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - No ingredient data table provided"));
                         
                         // Print to screen as well
-                        if (GEngine)
+                        if (bPU_ShowDishDataTableOnScreenDebug && GEngine)
                         {
                             GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, FString::Printf(TEXT("No ingredient data table provided")));
                         }
+                        */
                     }
                 }
             }
@@ -591,13 +643,13 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
         }
         else
         {
-            UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s (RowName: %s)"), 
-                *DishTag.ToString(), *RowName.ToString());
+            //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s (RowName: %s)"), 
+            //    *DishTag.ToString(), *RowName.ToString());
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Invalid dish tag format: %s"), *DishTag.ToString());
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Invalid dish tag format: %s"), *DishTag.ToString());
     }
     
     return false;
@@ -624,13 +676,16 @@ FGameplayTag UPUDishBlueprintLibrary::GetRandomDishTag()
     
     if (ValidDishTags.Num() == 0)
     {
-        UE_LOG(LogTemp, Warning, TEXT("UPUDishBlueprintLibrary::GetRandomDishTag - No valid dish tags found"));
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetRandomDishTag - No valid dish tags found"));
         return FGameplayTag::EmptyTag;
     }
     
     // Return a random dish tag
     FGameplayTag RandomTag = ValidDishTags[FMath::RandRange(0, ValidDishTags.Num() - 1)];
-    UE_LOG(LogTemp, Display, TEXT("UPUDishBlueprintLibrary::GetRandomDishTag - Selected dish: %s"), *RandomTag.ToString());
+    if (bPU_LogDishTagSpam)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetRandomDishTag - Selected dish: %s"), *RandomTag.ToString());
+    }
     
     return RandomTag;
 }

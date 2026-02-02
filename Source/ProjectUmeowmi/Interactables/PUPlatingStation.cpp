@@ -57,20 +57,20 @@ void APUPlatingStation::BeginPlay()
 
 void APUPlatingStation::StartInteraction()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ APUPlatingStation::StartInteraction - Starting plating interaction"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ APUPlatingStation::StartInteraction - Starting plating interaction"));
 
     // Get the character that's interacting
     AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
     if (!Character)
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ APUPlatingStation::StartInteraction - Failed to get player character"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ APUPlatingStation::StartInteraction - Failed to get player character"));
         return;
     }
 
     // Check if character has an active order
     if (!Character->HasCurrentOrder())
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ APUPlatingStation::StartInteraction - No active order, starting dialogue"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ APUPlatingStation::StartInteraction - No active order, starting dialogue"));
         StartNoOrderDialogue();
         return;
     }
@@ -81,13 +81,13 @@ void APUPlatingStation::StartInteraction()
     // Check if the order has a completed dish from cooking
     if (!CurrentOrder.CompletedDish.DishTag.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ APUPlatingStation::StartInteraction - No completed dish from cooking"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ APUPlatingStation::StartInteraction - No completed dish from cooking"));
         StartNoOrderDialogue();
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("✅ APUPlatingStation::StartInteraction - Starting plating with dish: %s"), 
-        *CurrentOrder.CompletedDish.DisplayName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("✅ APUPlatingStation::StartInteraction - Starting plating with dish: %s"), 
+    //    *CurrentOrder.CompletedDish.DisplayName.ToString());
 
     // Set the initial dish data for plating
     if (PlatingComponent)
@@ -107,7 +107,7 @@ void APUPlatingStation::StartInteraction()
 
 void APUPlatingStation::EndInteraction()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ APUPlatingStation::EndInteraction - Ending plating interaction"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ APUPlatingStation::EndInteraction - Ending plating interaction"));
 
     if (PlatingComponent)
     {
@@ -117,13 +117,13 @@ void APUPlatingStation::EndInteraction()
 
 void APUPlatingStation::OnPlatingEnded()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ APUPlatingStation::OnPlatingEnded - Plating session ended"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ APUPlatingStation::OnPlatingEnded - Plating session ended"));
 
     // Get the character
     AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
     if (!Character)
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ APUPlatingStation::OnPlatingEnded - Failed to get player character"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ APUPlatingStation::OnPlatingEnded - Failed to get player character"));
         return;
     }
 
@@ -139,7 +139,7 @@ void APUPlatingStation::OnPlatingEnded()
         // Set the updated order back to the character
         Character->SetCurrentOrder(UpdatedOrder);
         
-        UE_LOG(LogTemp, Display, TEXT("✅ APUPlatingStation::OnPlatingEnded - Updated order with plated dish data"));
+        //UE_LOG(LogTemp,Display, TEXT("✅ APUPlatingStation::OnPlatingEnded - Updated order with plated dish data"));
     }
 
     EndInteraction();
@@ -147,7 +147,7 @@ void APUPlatingStation::OnPlatingEnded()
 
 void APUPlatingStation::StartNoOrderDialogue()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ APUPlatingStation::StartNoOrderDialogue - Starting no order dialogue"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ APUPlatingStation::StartNoOrderDialogue - Starting no order dialogue"));
     
     // Start the dialogue system with no order message
     // This will be handled by the TalkingObject base class

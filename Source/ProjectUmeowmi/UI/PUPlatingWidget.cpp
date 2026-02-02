@@ -9,6 +9,12 @@
 #include "Engine/GameViewportClient.h"
 #include "Kismet/GameplayStatics.h"
 
+// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+namespace
+{
+    constexpr bool bPU_LogPlatingWidgetDebug = false;
+}
+
 UPUPlatingWidget::UPUPlatingWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
@@ -19,7 +25,10 @@ void UPUPlatingWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::NativeConstruct - Plating widget constructed"));
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::NativeConstruct - Plating widget constructed"));
+    }
 
     // Subscribe to events
     SubscribeToEvents();
@@ -33,7 +42,10 @@ void UPUPlatingWidget::NativeConstruct()
 
 void UPUPlatingWidget::NativeDestruct()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::NativeDestruct - Plating widget destructing"));
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::NativeDestruct - Plating widget destructing"));
+    }
 
     // Unsubscribe from events
     UnsubscribeFromEvents();
@@ -49,8 +61,11 @@ void UPUPlatingWidget::NativeDestruct()
 
 void UPUPlatingWidget::OnInitialDishDataReceived(const FPUDishBase& InitialDishData)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::OnInitialDishDataReceived - Received initial dish data with %d ingredients"), 
-        InitialDishData.IngredientInstances.Num());
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::OnInitialDishDataReceived - Received initial dish data with %d ingredients"), 
+        //    InitialDishData.IngredientInstances.Num());
+    }
 
     CurrentDishData = InitialDishData;
 
@@ -63,8 +78,11 @@ void UPUPlatingWidget::OnInitialDishDataReceived(const FPUDishBase& InitialDishD
 
 void UPUPlatingWidget::OnDishDataUpdated(const FPUDishBase& UpdatedDishData)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::OnDishDataUpdated - Received updated dish data with %d ingredients"), 
-        UpdatedDishData.IngredientInstances.Num());
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::OnDishDataUpdated - Received updated dish data with %d ingredients"), 
+        //    UpdatedDishData.IngredientInstances.Num());
+    }
 
     CurrentDishData = UpdatedDishData;
 
@@ -74,7 +92,10 @@ void UPUPlatingWidget::OnDishDataUpdated(const FPUDishBase& UpdatedDishData)
 
 void UPUPlatingWidget::OnCustomizationEnded()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::OnCustomizationEnded - Customization ended"));
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::OnCustomizationEnded - Customization ended"));
+    }
 
     // Call blueprint event
     OnCustomizationModeEnded();
@@ -82,16 +103,22 @@ void UPUPlatingWidget::OnCustomizationEnded()
 
 void UPUPlatingWidget::SetCustomizationComponent(UPUDishCustomizationComponent* Component)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - Setting customization component"));
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - Component: %s"), 
-        Component ? TEXT("Valid") : TEXT("NULL"));
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - Setting customization component"));
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - Component: %s"), 
+        //    Component ? TEXT("Valid") : TEXT("NULL"));
+    }
 
     // Unsubscribe from old component if it exists
     UnsubscribeFromEvents();
 
     CustomizationComponent = Component;
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - CustomizationComponent set to: %s"), 
-        CustomizationComponent ? TEXT("Valid") : TEXT("NULL"));
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SetCustomizationComponent - CustomizationComponent set to: %s"), 
+        //    CustomizationComponent ? TEXT("Valid") : TEXT("NULL"));
+    }
 
     // Subscribe to new component if it exists
     SubscribeToEvents();
@@ -99,24 +126,33 @@ void UPUPlatingWidget::SetCustomizationComponent(UPUDishCustomizationComponent* 
 
 void UPUPlatingWidget::EndCustomizationFromUI()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - Ending customization from UI"));
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - CustomizationComponent: %s"), 
-        CustomizationComponent ? TEXT("Valid") : TEXT("NULL"));
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - Ending customization from UI"));
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - CustomizationComponent: %s"), 
+        //    CustomizationComponent ? TEXT("Valid") : TEXT("NULL"));
+    }
 
     if (CustomizationComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - Calling EndCustomization"));
+        if (bPU_LogPlatingWidgetDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::EndCustomizationFromUI - Calling EndCustomization"));
+        }
         CustomizationComponent->EndCustomization();
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUPlatingWidget::EndCustomizationFromUI - CustomizationComponent is NULL!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUPlatingWidget::EndCustomizationFromUI - CustomizationComponent is NULL!"));
     }
 }
 
 void UPUPlatingWidget::UpdateDishData(const FPUDishBase& NewDishData)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::UpdateDishData - Updating dish data"));
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::UpdateDishData - Updating dish data"));
+    }
 
     CurrentDishData = NewDishData;
 
@@ -128,8 +164,11 @@ void UPUPlatingWidget::UpdateDishData(const FPUDishBase& NewDishData)
 
 void UPUPlatingWidget::CreateIngredientButtons()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Creating ingredient buttons for %d ingredients"), 
-        CurrentDishData.IngredientInstances.Num());
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Creating ingredient buttons for %d ingredients"), 
+        //    CurrentDishData.IngredientInstances.Num());
+    }
 
     // Group ingredients by base ingredient tag
     TMap<FGameplayTag, TArray<FIngredientInstance>> GroupedIngredients;
@@ -144,8 +183,11 @@ void UPUPlatingWidget::CreateIngredientButtons()
         GroupedIngredients[BaseTag].Add(Instance);
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Grouped into %d ingredient categories"), 
-        GroupedIngredients.Num());
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Grouped into %d ingredient categories"), 
+        //    GroupedIngredients.Num());
+    }
     
     // Log the grouped ingredients for debugging
     for (const auto& Pair : GroupedIngredients)
@@ -153,8 +195,11 @@ void UPUPlatingWidget::CreateIngredientButtons()
         FGameplayTag BaseTag = Pair.Key;
         const TArray<FIngredientInstance>& Instances = Pair.Value;
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Category: %s (%d variants)"), 
-            *BaseTag.ToString(), Instances.Num());
+        if (bPU_LogPlatingWidgetDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons - Category: %s (%d variants)"), 
+            //    *BaseTag.ToString(), Instances.Num());
+        }
         
         for (const FIngredientInstance& Instance : Instances)
         {
@@ -170,8 +215,11 @@ void UPUPlatingWidget::CreateIngredientButtons()
                 PrepText = PrepNames;
             }
             
-            UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons -   - %s (%s) x%d [ID: %d]"), 
-                *Instance.IngredientData.DisplayName.ToString(), *PrepText, Instance.Quantity, Instance.InstanceID);
+            if (bPU_LogPlatingWidgetDebug)
+            {
+                //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientButtons -   - %s (%s) x%d [ID: %d]"), 
+                //    *Instance.IngredientData.DisplayName.ToString(), *PrepText, Instance.Quantity, Instance.InstanceID);
+            }
         }
     }
     
@@ -182,27 +230,42 @@ void UPUPlatingWidget::CreateIngredientButtons()
 
 void UPUPlatingWidget::OnIngredientButtonClicked(const FPUIngredientBase& IngredientData)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::OnIngredientButtonClicked - Ingredient clicked: %s"), 
-        *IngredientData.IngredientTag.ToString());
+    if (bPU_LogPlatingWidgetDebug)
+    {
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::OnIngredientButtonClicked - Ingredient clicked: %s"), 
+        //    *IngredientData.IngredientTag.ToString());
+    }
+    }
 
     // This will be handled in Blueprint to start Unreal's drag and drop
 }
 
 void UPUPlatingWidget::SpawnIngredientAtPosition(const FGameplayTag& IngredientTag, const FVector2D& ScreenPosition)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
-        *IngredientTag.ToString(), ScreenPosition.X, ScreenPosition.Y);
+    if (bPU_LogPlatingWidgetDebug)
+    {
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
+        //    *IngredientTag.ToString(), ScreenPosition.X, ScreenPosition.Y);
+    }
+    }
 
     // Convert screen position to world position using raycast
 
     APlayerController* PlayerController = GetOwningPlayer();
     if (!PlayerController)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUPlatingWidget::SpawnIngredientAtPosition - No player controller"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUPlatingWidget::SpawnIngredientAtPosition - No player controller"));
         return;
     }
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Got player controller: %s"), 
-        *PlayerController->GetName());
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Got player controller: %s"), 
+        //    *PlayerController->GetName());
+    }
 
     // Get camera location and rotation
     FVector CameraLocation;
@@ -213,8 +276,11 @@ void UPUPlatingWidget::SpawnIngredientAtPosition(const FGameplayTag& IngredientT
     int32 ViewportSizeX, ViewportSizeY;
     PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Viewport: %dx%d, Mouse: (%.0f,%.0f)"), 
-        ViewportSizeX, ViewportSizeY, ScreenPosition.X, ScreenPosition.Y);
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Viewport: %dx%d, Mouse: (%.0f,%.0f)"), 
+        //    ViewportSizeX, ViewportSizeY, ScreenPosition.X, ScreenPosition.Y);
+    }
     
     // Find the dish customization station in the world
     TArray<AActor*> FoundActors;
@@ -235,14 +301,20 @@ void UPUPlatingWidget::SpawnIngredientAtPosition(const FGameplayTag& IngredientT
     
     if (DishStation)
     {
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
+        if (bPU_LogPlatingWidgetDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
+        }
         
         // Get the station's location and bounds
         FVector StationLocation = DishStation->GetActorLocation();
         FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
         
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Station location: (%.2f,%.2f,%.2f), bounds: (%.2f,%.2f,%.2f)"), 
-            StationLocation.X, StationLocation.Y, StationLocation.Z, StationBounds.X, StationBounds.Y, StationBounds.Z);
+        if (bPU_LogPlatingWidgetDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Station location: (%.2f,%.2f,%.2f), bounds: (%.2f,%.2f,%.2f)"), 
+            //    StationLocation.X, StationLocation.Y, StationLocation.Z, StationBounds.X, StationBounds.Y, StationBounds.Z);
+        }
         
         // Calculate spawn position on the station surface
         // Use a small random offset to avoid stacking ingredients exactly on top of each other
@@ -251,41 +323,47 @@ void UPUPlatingWidget::SpawnIngredientAtPosition(const FGameplayTag& IngredientT
         
         SpawnPosition = StationLocation + FVector(RandomOffsetX, RandomOffsetY, StationBounds.Z * 0.2f);
         
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Spawning on dish customization station at: (%.2f,%.2f,%.2f)"), 
-            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+        if (bPU_LogPlatingWidgetDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Spawning on dish customization station at: (%.2f,%.2f,%.2f)"), 
+            //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+        }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ No dish customization station found! Spawning at default position."));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ No dish customization station found! Spawning at default position."));
         
         // Fallback: spawn near the player
         SpawnPosition = CameraLocation + (CameraRotation.Vector() * 300.0f);
-        UE_LOG(LogTemp, Display, TEXT("🔍 DEBUG: Fallback spawn position: (%.2f,%.2f,%.2f)"), 
-            SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
+        //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Fallback spawn position: (%.2f,%.2f,%.2f)"), 
+        //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
     }
     
     // Spawn the ingredient in 3D
     if (CustomizationComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Calling SpawnIngredientIn3D on customization component"));
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Calling SpawnIngredientIn3D on customization component"));
         CustomizationComponent->SpawnIngredientIn3D(IngredientTag, SpawnPosition);
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - SpawnIngredientIn3D call completed"));
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - SpawnIngredientIn3D call completed"));
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUPlatingWidget::SpawnIngredientAtPosition - CustomizationComponent is NULL!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUPlatingWidget::SpawnIngredientAtPosition - CustomizationComponent is NULL!"));
     }
 
     // Call blueprint event
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Calling OnIngredientSpawned Blueprint event"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - Calling OnIngredientSpawned Blueprint event"));
     OnIngredientSpawned(IngredientTag, ScreenPosition);
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - END"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SpawnIngredientAtPosition - END"));
 }
 
 UPUIngredientDragDropOperation* UPUPlatingWidget::CreateIngredientDragDropOperation(const FGameplayTag& IngredientTag, const FPUIngredientBase& IngredientData, int32 InstanceID, int32 Quantity)
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d)"), 
-        *IngredientTag.ToString(), InstanceID, Quantity);
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::CreateIngredientDragDropOperation - Creating drag operation for ingredient %s (ID: %d, Qty: %d)"), 
+        //    *IngredientTag.ToString(), InstanceID, Quantity);
+    }
 
     // Create the drag drop operation
     UPUIngredientDragDropOperation* DragOperation = nullptr;
@@ -313,11 +391,11 @@ UPUIngredientDragDropOperation* UPUPlatingWidget::CreateIngredientDragDropOperat
         // Set up the drag operation with ingredient instance
         DragOperation->SetupIngredientDrag(IngredientInstance);
         
-        UE_LOG(LogTemp, Display, TEXT("✅ UPUPlatingWidget::CreateIngredientDragDropOperation - Successfully created drag operation"));
+        //UE_LOG(LogTemp,Display, TEXT("✅ UPUPlatingWidget::CreateIngredientDragDropOperation - Successfully created drag operation"));
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ UPUPlatingWidget::CreateIngredientDragDropOperation - Failed to create drag operation"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ UPUPlatingWidget::CreateIngredientDragDropOperation - Failed to create drag operation"));
     }
 
     return DragOperation;
@@ -327,7 +405,7 @@ void UPUPlatingWidget::SubscribeToEvents()
 {
     if (CustomizationComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::SubscribeToEvents - Subscribing to customization component events"));
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::SubscribeToEvents - Subscribing to customization component events"));
 
         CustomizationComponent->OnInitialDishDataReceived.AddDynamic(this, &UPUPlatingWidget::OnInitialDishDataReceived);
         CustomizationComponent->OnDishDataUpdated.AddDynamic(this, &UPUPlatingWidget::OnDishDataUpdated);
@@ -339,7 +417,7 @@ void UPUPlatingWidget::UnsubscribeFromEvents()
 {
     if (CustomizationComponent)
     {
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::UnsubscribeFromEvents - Unsubscribing from customization component events"));
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::UnsubscribeFromEvents - Unsubscribing from customization component events"));
 
         CustomizationComponent->OnInitialDishDataReceived.RemoveDynamic(this, &UPUPlatingWidget::OnInitialDishDataReceived);
         CustomizationComponent->OnDishDataUpdated.RemoveDynamic(this, &UPUPlatingWidget::OnDishDataUpdated);
@@ -351,15 +429,18 @@ void UPUPlatingWidget::UnsubscribeFromEvents()
 
 void UPUPlatingWidget::RefreshIngredientButtons()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::RefreshIngredientButtons - Refreshing ingredient buttons"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::RefreshIngredientButtons - Refreshing ingredient buttons"));
 
     // This will be implemented in Blueprint to refresh the UI
 }
 
 TArray<FIngredientInstance> UPUPlatingWidget::GetIngredientInstancesForBase(const FGameplayTag& BaseIngredientTag) const
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetIngredientInstancesForBase - Getting instances for base ingredient: %s"), 
-        *BaseIngredientTag.ToString());
+    if (bPU_LogPlatingWidgetDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::GetIngredientInstancesForBase - Getting instances for base ingredient: %s"), 
+        //    *BaseIngredientTag.ToString());
+    }
 
     TArray<FIngredientInstance> Instances;
     
@@ -371,14 +452,14 @@ TArray<FIngredientInstance> UPUPlatingWidget::GetIngredientInstancesForBase(cons
         }
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetIngredientInstancesForBase - Found %d instances"), Instances.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::GetIngredientInstancesForBase - Found %d instances"), Instances.Num());
     
     return Instances;
 }
 
 TArray<FGameplayTag> UPUPlatingWidget::GetBaseIngredientTags() const
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetBaseIngredientTags - Getting all base ingredient tags"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::GetBaseIngredientTags - Getting all base ingredient tags"));
 
     TArray<FGameplayTag> BaseTags;
     
@@ -390,14 +471,14 @@ TArray<FGameplayTag> UPUPlatingWidget::GetBaseIngredientTags() const
         }
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::GetBaseIngredientTags - Found %d unique base ingredients"), BaseTags.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::GetBaseIngredientTags - Found %d unique base ingredients"), BaseTags.Num());
     
     return BaseTags;
 }
 
 void UPUPlatingWidget::ResetAllIngredientQuantities()
 {
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUPlatingWidget::ResetAllIngredientQuantities - Resetting all ingredient quantities"));
+    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUPlatingWidget::ResetAllIngredientQuantities - Resetting all ingredient quantities"));
 
     // This will be implemented in Blueprint to reset all ingredient button quantities
     // The Blueprint should call ResetQuantity() on all ingredient buttons

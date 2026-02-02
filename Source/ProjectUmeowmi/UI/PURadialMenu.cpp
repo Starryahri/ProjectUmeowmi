@@ -22,7 +22,7 @@ void UPURadialMenu::NativeConstruct()
 {
     Super::NativeConstruct();
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::NativeConstruct - Radial menu widget constructed: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::NativeConstruct - Radial menu widget constructed: %s"), *GetName());
 
     // Hide menu by default
     SetVisibility(ESlateVisibility::Collapsed);
@@ -31,7 +31,7 @@ void UPURadialMenu::NativeConstruct()
 
 void UPURadialMenu::NativeDestruct()
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::NativeDestruct - Radial menu widget destroyed: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::NativeDestruct - Radial menu widget destroyed: %s"), *GetName());
 
     // Clear delegates first to break any circular references
     OnMenuItemSelected.Clear();
@@ -53,7 +53,7 @@ void UPURadialMenu::SetMenuItems(const TArray<FRadialMenuItem>& InMenuItems)
 {
     MenuItems = InMenuItems;
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SetMenuItems - Setting %d menu items"), MenuItems.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::SetMenuItems - Setting %d menu items"), MenuItems.Num());
 
     // Clear existing menu items
     ClearMenuItems();
@@ -67,8 +67,8 @@ void UPURadialMenu::SetMenuItems(const TArray<FRadialMenuItem>& InMenuItems)
 
 void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
 {
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Showing menu at position (%.2f, %.2f)"), 
-        ScreenPosition.X, ScreenPosition.Y);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Showing menu at position (%.2f, %.2f)"), 
+    //    ScreenPosition.X, ScreenPosition.Y);
 
     // Set the center position
     MenuCenterPosition = ScreenPosition;
@@ -78,19 +78,19 @@ void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
     if (!GetParent() && !IsInViewport())
     {
         AddToViewport(9999); // Use very high z-order to ensure it's on top
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Added menu to viewport with z-order 9999"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Added menu to viewport with z-order 9999"));
     }
     else if (GetParent())
     {
         // Already in a container, just make sure it's visible
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Menu already in container: %s"), *GetParent()->GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Menu already in container: %s"), *GetParent()->GetName());
     }
     else if (IsInViewport())
     {
         // Already in viewport, remove and re-add to bring to front
         RemoveFromParent();
         AddToViewport(9999);
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Removed and re-added menu to viewport with z-order 9999"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Removed and re-added menu to viewport with z-order 9999"));
     }
 
     // Get widget size to center it properly
@@ -99,15 +99,15 @@ void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
     {
         // If size is zero, use a default size (should be set in Blueprint)
         WidgetSize = FVector2D(400.0f, 400.0f);
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::ShowMenuAtPosition - Widget size is zero, using default 400x400"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenu::ShowMenuAtPosition - Widget size is zero, using default 400x400"));
     }
 
     // Set position in viewport (SetPositionInViewport uses top-left corner, so offset by half size to center)
     FVector2D TopLeftPosition = ScreenPosition - (WidgetSize * 0.5f);
     SetPositionInViewport(TopLeftPosition);
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Widget size: (%.2f, %.2f), Top-left position: (%.2f, %.2f)"), 
-        WidgetSize.X, WidgetSize.Y, TopLeftPosition.X, TopLeftPosition.Y);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Widget size: (%.2f, %.2f), Top-left position: (%.2f, %.2f)"), 
+    //    WidgetSize.X, WidgetSize.Y, TopLeftPosition.X, TopLeftPosition.Y);
 
     // Show the menu
     SetVisibility(ESlateVisibility::Visible);
@@ -120,8 +120,8 @@ void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
         MenuItemsContainer->ForceLayoutPrepass();
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Menu visibility set to Visible, bIsVisible: %s"), 
-        bIsVisible ? TEXT("TRUE") : TEXT("FALSE"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Menu visibility set to Visible, bIsVisible: %s"), 
+    //    bIsVisible ? TEXT("TRUE") : TEXT("FALSE"));
 
     // Call Blueprint event
     OnMenuShown();
@@ -134,7 +134,7 @@ void UPURadialMenu::HideMenu()
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::HideMenu - Hiding menu"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::HideMenu - Hiding menu"));
 
     // Hide the menu
     SetVisibility(ESlateVisibility::Collapsed);
@@ -182,15 +182,15 @@ void UPURadialMenu::UpdateMenuLayout()
 
     if (!MenuItemsContainer)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::UpdateMenuLayout - MenuItemsContainer not set! Cannot create menu items."));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenu::UpdateMenuLayout - MenuItemsContainer not set! Cannot create menu items."));
         return;
     }
 
     // Calculate angle step between items (360 degrees / number of items)
     float AngleStep = 360.0f / ItemCount;
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Updating layout for %d items (angle step: %.2f degrees, radius: %.2f)"), 
-        ItemCount, AngleStep, ItemRadius);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Updating layout for %d items (angle step: %.2f degrees, radius: %.2f)"), 
+    //    ItemCount, AngleStep, ItemRadius);
 
     // Get container size - try multiple methods to ensure we get a valid size
     FVector2D ContainerSize = FVector2D::ZeroVector;
@@ -240,7 +240,7 @@ void UPURadialMenu::UpdateMenuLayout()
     if (ContainerSize.X == 0 || ContainerSize.Y == 0)
     {
         ContainerSize = FVector2D(400.0f, 400.0f);
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::UpdateMenuLayout - Container size is zero, using default 400x400"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenu::UpdateMenuLayout - Container size is zero, using default 400x400"));
     }
     
     // Calculate center position
@@ -248,14 +248,14 @@ void UPURadialMenu::UpdateMenuLayout()
     if (bUseCustomCenter)
     {
         CenterPosition = LayoutCenterPosition;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Using custom center: (%.2f, %.2f)"), 
-            CenterPosition.X, CenterPosition.Y);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Using custom center: (%.2f, %.2f)"), 
+        //    CenterPosition.X, CenterPosition.Y);
     }
     else
     {
         CenterPosition = ContainerSize * 0.5f;
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Container size: (%.2f, %.2f), Auto center: (%.2f, %.2f)"), 
-            ContainerSize.X, ContainerSize.Y, CenterPosition.X, CenterPosition.Y);
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Container size: (%.2f, %.2f), Auto center: (%.2f, %.2f)"), 
+        //    ContainerSize.X, ContainerSize.Y, CenterPosition.X, CenterPosition.Y);
     }
 
     // Create and position buttons for each menu item
@@ -281,8 +281,8 @@ void UPURadialMenu::UpdateMenuLayout()
                 ButtonSlot->SetAnchors(FAnchors(0.5f, 0.5f));
                 ButtonSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 
-                UE_LOG(LogTemp, Display, TEXT("🎯   Positioned item %d at angle %.2f° at position (%.2f, %.2f)"), 
-                    i, AngleDegrees, X, Y);
+                //UE_LOG(LogTemp,Display, TEXT("🎯   Positioned item %d at angle %.2f° at position (%.2f, %.2f)"), 
+                //    i, AngleDegrees, X, Y);
             }
         }
     }
@@ -294,7 +294,7 @@ void UPURadialMenu::UpdateMenuLayout()
         MenuItemsContainer->ForceLayoutPrepass();
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Created and positioned %d menu item buttons"), MenuItemButtons.Num());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::UpdateMenuLayout - Created and positioned %d menu item buttons"), MenuItemButtons.Num());
 }
 
 void UPURadialMenu::ClearMenuItems()
@@ -334,7 +334,7 @@ void UPURadialMenu::ClearMenuItems()
     // NOTE: Do NOT clear MenuItems array here - it's needed for UpdateMenuLayout()
     // MenuItems array is only cleared in NativeDestruct() to prevent GC crashes
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::ClearMenuItems - Cleared all menu item buttons"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ClearMenuItems - Cleared all menu item buttons"));
 }
 
 UPURadialMenuItemButton* UPURadialMenu::CreateMenuItemButton(const FRadialMenuItem& MenuItem, float Angle, int32 Index)
@@ -360,7 +360,7 @@ UPURadialMenuItemButton* UPURadialMenu::CreateMenuItemButton(const FRadialMenuIt
 
     if (!ItemButton)
     {
-        UE_LOG(LogTemp, Error, TEXT("❌ UPURadialMenu::CreateMenuItemButton - Failed to create button widget"));
+        //UE_LOG(LogTemp,Error, TEXT("❌ UPURadialMenu::CreateMenuItemButton - Failed to create button widget"));
         return nullptr;
     }
 
@@ -376,8 +376,8 @@ UPURadialMenuItemButton* UPURadialMenu::CreateMenuItemButton(const FRadialMenuIt
     // Store the button
     MenuItemButtons.Add(ItemButton);
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::CreateMenuItemButton - Created button for item %d: %s (Enabled: %s)"), 
-        Index, *MenuItem.Label.ToString(), MenuItem.bIsEnabled ? TEXT("YES") : TEXT("NO"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::CreateMenuItemButton - Created button for item %d: %s (Enabled: %s)"), 
+    //    Index, *MenuItem.Label.ToString(), MenuItem.bIsEnabled ? TEXT("YES") : TEXT("NO"));
 
     return ItemButton;
 }
@@ -387,8 +387,8 @@ void UPURadialMenu::SelectMenuItemByIndex(int32 ItemIndex)
 {
     if (!MenuItems.IsValidIndex(ItemIndex))
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::SelectMenuItemByIndex - Invalid item index: %d (MenuItems has %d items)"), 
-            ItemIndex, MenuItems.Num());
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenu::SelectMenuItemByIndex - Invalid item index: %d (MenuItems has %d items)"), 
+        //    ItemIndex, MenuItems.Num());
         return;
     }
 
@@ -396,20 +396,20 @@ void UPURadialMenu::SelectMenuItemByIndex(int32 ItemIndex)
     
     if (!SelectedItem.bIsEnabled)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::SelectMenuItemByIndex - Item %d is disabled"), ItemIndex);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenu::SelectMenuItemByIndex - Item %d is disabled"), ItemIndex);
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SelectMenuItemByIndex - Item %d selected: %s (Tag: %s)"), 
-        ItemIndex, *SelectedItem.Label.ToString(), *SelectedItem.ActionTag.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::SelectMenuItemByIndex - Item %d selected: %s (Tag: %s)"), 
+    //    ItemIndex, *SelectedItem.Label.ToString(), *SelectedItem.ActionTag.ToString());
 
     // Log all menu items for debugging
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SelectMenuItemByIndex - All menu items:"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::SelectMenuItemByIndex - All menu items:"));
     for (int32 i = 0; i < MenuItems.Num(); ++i)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯   [%d] %s (Tag: %s, Enabled: %s)"), 
-            i, *MenuItems[i].Label.ToString(), *MenuItems[i].ActionTag.ToString(), 
-            MenuItems[i].bIsEnabled ? TEXT("YES") : TEXT("NO"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯   [%d] %s (Tag: %s, Enabled: %s)"), 
+        //    i, *MenuItems[i].Label.ToString(), *MenuItems[i].ActionTag.ToString(), 
+        //    MenuItems[i].bIsEnabled ? TEXT("YES") : TEXT("NO"));
     }
 
     // Broadcast the selection event
@@ -420,7 +420,7 @@ void UPURadialMenu::PreviewRadialLayout()
 {
     if (!MenuItemsContainer)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::PreviewRadialLayout - MenuItemsContainer not set"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenu::PreviewRadialLayout - MenuItemsContainer not set"));
         return;
     }
 
@@ -428,11 +428,11 @@ void UPURadialMenu::PreviewRadialLayout()
     int32 ChildCount = MenuItemsContainer->GetChildrenCount();
     if (ChildCount == 0)
     {
-        UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - No children to arrange"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - No children to arrange"));
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - Arranging %d children in radial layout"), ChildCount);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - Arranging %d children in radial layout"), ChildCount);
 
     // Force layout invalidation to ensure geometry is up to date
     MenuItemsContainer->InvalidateLayoutAndVolatility();
@@ -482,7 +482,7 @@ void UPURadialMenu::PreviewRadialLayout()
     if (ContainerSize.X == 0 || ContainerSize.Y == 0)
     {
         ContainerSize = FVector2D(400.0f, 400.0f);
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPURadialMenu::PreviewRadialLayout - Container size is zero, using default 400x400. Make sure container has a size set in Blueprint!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPURadialMenu::PreviewRadialLayout - Container size is zero, using default 400x400. Make sure container has a size set in Blueprint!"));
     }
 
     // Calculate center position (use same logic as UpdateMenuLayout)
@@ -496,8 +496,8 @@ void UPURadialMenu::PreviewRadialLayout()
         CenterPosition = ContainerSize * 0.5f;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - Container size: (%.2f, %.2f), Center: (%.2f, %.2f)"), 
-        ContainerSize.X, ContainerSize.Y, CenterPosition.X, CenterPosition.Y);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - Container size: (%.2f, %.2f), Center: (%.2f, %.2f)"), 
+    //    ContainerSize.X, ContainerSize.Y, CenterPosition.X, CenterPosition.Y);
 
     // Calculate angle step between items
     float AngleStep = 360.0f / ChildCount;
@@ -527,18 +527,18 @@ void UPURadialMenu::PreviewRadialLayout()
             WidgetSlot->SetAnchors(FAnchors(0.5f, 0.5f));
             WidgetSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 
-            UE_LOG(LogTemp, Display, TEXT("🎯   Positioned child %d at angle %.2f° at position (%.2f, %.2f)"), 
-                i, AngleDegrees, X, Y);
+            //UE_LOG(LogTemp,Display, TEXT("🎯   Positioned child %d at angle %.2f° at position (%.2f, %.2f)"), 
+            //    i, AngleDegrees, X, Y);
         }
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - Arranged %d widgets in radial layout"), ChildCount);
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::PreviewRadialLayout - Arranged %d widgets in radial layout"), ChildCount);
 }
 
 void UPURadialMenu::SetPreparationDataTable(UDataTable* InDataTable)
 {
     PreparationDataTable = InDataTable;
-    UE_LOG(LogTemp, Display, TEXT("🎯 UPURadialMenu::SetPreparationDataTable - Preparation data table set: %s"), 
-        InDataTable ? *InDataTable->GetName() : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::SetPreparationDataTable - Preparation data table set: %s"), 
+    //    InDataTable ? *InDataTable->GetName() : TEXT("NULL"));
 }
 

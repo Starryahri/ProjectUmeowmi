@@ -58,12 +58,12 @@ void UPUDialogueBox::NativeConstruct()
     CurrentFadeDuration = 1.0f; // Default - will be overridden when animation starts
 
     // Debug: Log material status on construct
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::NativeConstruct - VignetteMaterialDirect: %s"), 
-        VignetteMaterialDirect ? *VignetteMaterialDirect->GetName() : TEXT("NULL"));
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::NativeConstruct - VignetteMaterial (soft): %s"), 
-        VignetteMaterial.ToSoftObjectPath().IsNull() ? TEXT("NULL") : *VignetteMaterial.ToSoftObjectPath().ToString());
-    UE_LOG(LogTemp, Warning, TEXT("PUDialogueBox::NativeConstruct - Fade Durations: In=%.6f, Out=%.6f"), 
-        VignetteFadeInDuration, VignetteFadeOutDuration);
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::NativeConstruct - VignetteMaterialDirect: %s"), 
+    //    VignetteMaterialDirect ? *VignetteMaterialDirect->GetName() : TEXT("NULL"));
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::NativeConstruct - VignetteMaterial (soft): %s"), 
+    //    VignetteMaterial.ToSoftObjectPath().IsNull() ? TEXT("NULL") : *VignetteMaterial.ToSoftObjectPath().ToString());
+    //UE_LOG(LogTemp,Warning, TEXT("PUDialogueBox::NativeConstruct - Fade Durations: In=%.6f, Out=%.6f"), 
+    //    VignetteFadeInDuration, VignetteFadeOutDuration);
 }
 
 void UPUDialogueBox::NativeDestruct()
@@ -96,15 +96,15 @@ void UPUDialogueBox::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 
 void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
 {
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Open_Implementation called"));
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Open_Implementation called"));
     // Debug logging for widget state
-    UE_LOG(LogTemp, Log, TEXT("DialogueBox pointer: %p"), this);
-    UE_LOG(LogTemp, Log, TEXT("Current visibility: %d"), (int32)GetVisibility());
-    UE_LOG(LogTemp, Log, TEXT("Is in viewport: %d"), IsInViewport());
-    UE_LOG(LogTemp, Log, TEXT("Parent widget: %p"), GetParent());
+    //UE_LOG(LogTemp,Log, TEXT("DialogueBox pointer: %p"), this);
+    //UE_LOG(LogTemp,Log, TEXT("Current visibility: %d"), (int32)GetVisibility());
+    //UE_LOG(LogTemp,Log, TEXT("Is in viewport: %d"), IsInViewport());
+    //UE_LOG(LogTemp,Log, TEXT("Parent widget: %p"), GetParent());
 
     // Initialize and animate vignette in
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Open_Implementation - Starting vignette animation (Target Intensity: %.2f)"), VignetteIntensityTarget);
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Open_Implementation - Starting vignette animation (Target Intensity: %.2f)"), VignetteIntensityTarget);
     InitializeVignetteMaterial();
     AnimateVignetteToTarget(VignetteIntensityTarget);
 
@@ -131,13 +131,13 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
 
     if (PC)
     {
-        UE_LOG(LogTemp, Log, TEXT("PlayerController found: %p"), PC);
+        //UE_LOG(LogTemp,Log, TEXT("PlayerController found: %p"), PC);
         
         // Get the local player
         ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
         if (!LocalPlayer)
         {
-            UE_LOG(LogTemp, Error, TEXT("PUDialogueBox::Open_Implementation - No local player found!"));
+            //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::Open_Implementation - No local player found!"));
             return;
         }
 
@@ -197,12 +197,12 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
         }
         else
         {
-            UE_LOG(LogTemp, Error, TEXT("PUDialogueBox::Open_Implementation - No game viewport found!"));
+            //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::Open_Implementation - No game viewport found!"));
         }
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("No PlayerController found!"));
+        //UE_LOG(LogTemp,Warning, TEXT("No PlayerController found!"));
     }
 
     Update(ActiveContext);
@@ -210,17 +210,17 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
 
 void UPUDialogueBox::Close_Implementation()
 {
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Close_Implementation called"));
-    UE_LOG(LogTemp, Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Close_Implementation called"));
+    //UE_LOG(LogTemp,Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
     
     // Clear the context reference to prevent dangling references
     CurrentContext = nullptr;
     
     SetVisibility(ESlateVisibility::Hidden);
-    UE_LOG(LogTemp, Log, TEXT("Visibility set to hidden. New visibility state: %d"), (int32)GetVisibility());
+    //UE_LOG(LogTemp,Log, TEXT("Visibility set to hidden. New visibility state: %d"), (int32)GetVisibility());
 
     // Animate vignette out
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Close_Implementation - Starting vignette fade out"));
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Close_Implementation - Starting vignette fade out"));
     AnimateVignetteToTarget(0.0f);
 
     // Try to get the player controller from the widget owner first
@@ -229,7 +229,7 @@ void UPUDialogueBox::Close_Implementation()
     // If we don't have a player controller, try to get it from the world
     if (!PC)
     {
-        UE_LOG(LogTemp, Log, TEXT("No player controller from widget owner, trying to get from world"));
+        //UE_LOG(LogTemp,Log, TEXT("No player controller from widget owner, trying to get from world"));
         if (UWorld* World = GetWorld())
         {
             PC = World->GetFirstPlayerController();
@@ -238,7 +238,7 @@ void UPUDialogueBox::Close_Implementation()
 
     if (PC)
     {
-        UE_LOG(LogTemp, Log, TEXT("Found player controller: %p"), PC);
+        //UE_LOG(LogTemp,Log, TEXT("Found player controller: %p"), PC);
         
         // Re-enable player movement and input
         PC->SetIgnoreMoveInput(false);
@@ -258,7 +258,7 @@ void UPUDialogueBox::Close_Implementation()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("Could not find player controller!"));
+        //UE_LOG(LogTemp,Warning, TEXT("Could not find player controller!"));
     }
 }
 
@@ -269,8 +269,8 @@ void UPUDialogueBox::SetVignetteMaterial(UMaterialInterface* NewVignetteMaterial
         // Set both the direct reference and the soft pointer
         VignetteMaterialDirect = NewVignetteMaterial;
         VignetteMaterial = NewVignetteMaterial;
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::SetVignetteMaterial - Vignette material set to: %s (Type: %s)"), 
-            *NewVignetteMaterial->GetName(), *NewVignetteMaterial->GetClass()->GetName());
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::SetVignetteMaterial - Vignette material set to: %s (Type: %s)"), 
+        //    *NewVignetteMaterial->GetName(), *NewVignetteMaterial->GetClass()->GetName());
         
         // If we already have a dynamic material, we need to recreate it with the new base material
         if (VignetteDynamicMaterial)
@@ -292,26 +292,26 @@ void UPUDialogueBox::SetVignetteMaterial(UMaterialInterface* NewVignetteMaterial
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("PUDialogueBox::SetVignetteMaterial - Attempted to set null vignette material"));
+        //UE_LOG(LogTemp,Warning, TEXT("PUDialogueBox::SetVignetteMaterial - Attempted to set null vignette material"));
     }
 }
 
 void UPUDialogueBox::DebugVignetteMaterial() const
 {
-    UE_LOG(LogTemp, Warning, TEXT("=== VIGNETTE MATERIAL DEBUG ==="));
-    UE_LOG(LogTemp, Warning, TEXT("VignetteMaterialDirect: %s"), 
-        VignetteMaterialDirect ? *VignetteMaterialDirect->GetName() : TEXT("NULL"));
-    UE_LOG(LogTemp, Warning, TEXT("VignetteMaterial (soft): %s"), 
-        VignetteMaterial.ToSoftObjectPath().IsNull() ? TEXT("NULL") : *VignetteMaterial.ToSoftObjectPath().ToString());
-    UE_LOG(LogTemp, Warning, TEXT("VignetteDynamicMaterial: %s"), 
-        VignetteDynamicMaterial ? *VignetteDynamicMaterial->GetName() : TEXT("NULL"));
-    UE_LOG(LogTemp, Warning, TEXT("Current Intensity: %.2f, Target: %.2f"), CurrentVignetteIntensity, TargetVignetteIntensity);
-    UE_LOG(LogTemp, Warning, TEXT("================================="));
+    //UE_LOG(LogTemp,Warning, TEXT("=== VIGNETTE MATERIAL DEBUG ==="));
+    //UE_LOG(LogTemp,Warning, TEXT("VignetteMaterialDirect: %s"), 
+    //    VignetteMaterialDirect ? *VignetteMaterialDirect->GetName() : TEXT("NULL"));
+    //UE_LOG(LogTemp,Warning, TEXT("VignetteMaterial (soft): %s"), 
+    //    VignetteMaterial.ToSoftObjectPath().IsNull() ? TEXT("NULL") : *VignetteMaterial.ToSoftObjectPath().ToString());
+    //UE_LOG(LogTemp,Warning, TEXT("VignetteDynamicMaterial: %s"), 
+    //    VignetteDynamicMaterial ? *VignetteDynamicMaterial->GetName() : TEXT("NULL"));
+    //UE_LOG(LogTemp,Warning, TEXT("Current Intensity: %.2f, Target: %.2f"), CurrentVignetteIntensity, TargetVignetteIntensity);
+    //UE_LOG(LogTemp,Warning, TEXT("================================="));
 }
 
 void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
 {
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Update_Implementation called"));
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update_Implementation called"));
     
     // Store the context for reference
     CurrentContext = ActiveContext;
@@ -351,7 +351,7 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
         // Check if dialogue has ended
         if (ActiveContext->HasDialogueEnded())
         {
-            UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Update - Dialogue has ended, closing dialogue box"));
+            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Dialogue has ended, closing dialogue box"));
             
             // Get the player character and find the current talking object
             if (ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0))
@@ -360,7 +360,7 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 {
                     if (ATalkingObject* TalkingObject = ProjectCharacter->GetCurrentTalkingObject())
                     {
-                        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::Update - Ending interaction with talking object"));
+                        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Ending interaction with talking object"));
                         TalkingObject->EndInteraction();
                     }
                 }
@@ -377,7 +377,7 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("PUDialogueBox::Update_Implementation called with invalid context"));
+        //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::Update_Implementation called with invalid context"));
         
         // Clear the context reference
         CurrentContext = nullptr;
@@ -409,7 +409,7 @@ UCameraComponent* UPUDialogueBox::GetPlayerCamera() const
 
 void UPUDialogueBox::InitializeVignetteMaterial()
 {
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Called"));
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Called"));
     
     // Check if material is set (try both soft pointer and direct pointer)
     UMaterialInterface* BaseMaterial = nullptr;
@@ -418,71 +418,71 @@ void UPUDialogueBox::InitializeVignetteMaterial()
     if (VignetteMaterialDirect)
     {
         BaseMaterial = VignetteMaterialDirect;
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Using direct material reference: %s (Type: %s)"), 
-            *BaseMaterial->GetName(), *BaseMaterial->GetClass()->GetName());
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Using direct material reference: %s (Type: %s)"), 
+        //    *BaseMaterial->GetName(), *BaseMaterial->GetClass()->GetName());
     }
     // Then try to load from soft pointer
     else if (VignetteMaterial.IsValid())
     {
         BaseMaterial = VignetteMaterial.LoadSynchronous();
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - VignetteMaterial soft pointer is valid, loading: %s"), *VignetteMaterial.ToString());
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - VignetteMaterial soft pointer is valid, loading: %s"), *VignetteMaterial.ToString());
     }
     else
     {
         // Try to load even if IsValid() returns false (sometimes the path exists but IsValid() fails)
         if (!VignetteMaterial.ToSoftObjectPath().IsNull())
         {
-            UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Soft pointer path exists, attempting to load: %s"), *VignetteMaterial.ToSoftObjectPath().ToString());
+            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Soft pointer path exists, attempting to load: %s"), *VignetteMaterial.ToSoftObjectPath().ToString());
             BaseMaterial = VignetteMaterial.LoadSynchronous();
         }
     }
     
     if (!BaseMaterial)
     {
-        UE_LOG(LogTemp, Error, TEXT("PUDialogueBox::InitializeVignetteMaterial - VignetteMaterial is not set or could not be loaded!"));
-        UE_LOG(LogTemp, Error, TEXT("  - Direct reference (VignetteMaterialDirect): %s"), 
-            VignetteMaterialDirect ? *VignetteMaterialDirect->GetName() : TEXT("NULL"));
-        UE_LOG(LogTemp, Error, TEXT("  - Soft pointer path (VignetteMaterial): %s"), 
-            VignetteMaterial.ToSoftObjectPath().IsNull() ? TEXT("NULL") : *VignetteMaterial.ToSoftObjectPath().ToString());
-        UE_LOG(LogTemp, Error, TEXT("  - INSTRUCTIONS:"));
-        UE_LOG(LogTemp, Error, TEXT("    1. Open your PUDialogueBox Blueprint"));
-        UE_LOG(LogTemp, Error, TEXT("    2. In Details panel, find 'Vignette|Settings' category"));
-        UE_LOG(LogTemp, Error, TEXT("    3. Set 'Vignette Material Direct' to your Material Instance"));
-        UE_LOG(LogTemp, Error, TEXT("    4. Recompile and test again"));
+        //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::InitializeVignetteMaterial - VignetteMaterial is not set or could not be loaded!"));
+        //UE_LOG(LogTemp,Error, TEXT("  - Direct reference (VignetteMaterialDirect): %s"), 
+        //    VignetteMaterialDirect ? *VignetteMaterialDirect->GetName() : TEXT("NULL"));
+        //UE_LOG(LogTemp,Error, TEXT("  - Soft pointer path (VignetteMaterial): %s"), 
+        //    VignetteMaterial.ToSoftObjectPath().IsNull() ? TEXT("NULL") : *VignetteMaterial.ToSoftObjectPath().ToString());
+        //UE_LOG(LogTemp,Error, TEXT("  - INSTRUCTIONS:"));
+        //UE_LOG(LogTemp,Error, TEXT("    1. Open your PUDialogueBox Blueprint"));
+        //UE_LOG(LogTemp,Error, TEXT("    2. In Details panel, find 'Vignette|Settings' category"));
+        //UE_LOG(LogTemp,Error, TEXT("    3. Set 'Vignette Material Direct' to your Material Instance"));
+        //UE_LOG(LogTemp,Error, TEXT("    4. Recompile and test again"));
         return;
     }
     
     if (VignetteDynamicMaterial)
     {
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Dynamic material already exists, skipping initialization"));
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Dynamic material already exists, skipping initialization"));
         return;
     }
     
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Base material loaded successfully: %s (Type: %s)"), 
-        *BaseMaterial->GetName(), *BaseMaterial->GetClass()->GetName());
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Base material loaded successfully: %s (Type: %s)"), 
+    //    *BaseMaterial->GetName(), *BaseMaterial->GetClass()->GetName());
 
     // Get the player's camera
     UCameraComponent* PlayerCamera = GetPlayerCamera();
     if (!PlayerCamera)
     {
-        UE_LOG(LogTemp, Warning, TEXT("PUDialogueBox::InitializeVignetteMaterial - Could not find player camera"));
+        //UE_LOG(LogTemp,Warning, TEXT("PUDialogueBox::InitializeVignetteMaterial - Could not find player camera"));
         return;
     }
 
     // Create dynamic material instance
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Creating dynamic material instance from: %s"), *BaseMaterial->GetName());
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Creating dynamic material instance from: %s"), *BaseMaterial->GetName());
     VignetteDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
     if (!VignetteDynamicMaterial)
     {
-        UE_LOG(LogTemp, Warning, TEXT("PUDialogueBox::InitializeVignetteMaterial - Failed to create dynamic material instance"));
+        //UE_LOG(LogTemp,Warning, TEXT("PUDialogueBox::InitializeVignetteMaterial - Failed to create dynamic material instance"));
         return;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Dynamic material instance created successfully"));
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Dynamic material instance created successfully"));
     
     // Set initial intensity to 0
     CurrentVignetteIntensity = 0.0f;
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Setting initial intensity parameter '%s' to 0.0"), *VignetteIntensityParameterName.ToString());
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Setting initial intensity parameter '%s' to 0.0"), *VignetteIntensityParameterName.ToString());
     VignetteDynamicMaterial->SetScalarParameterValue(VignetteIntensityParameterName, 0.0f);
 
     // Check if the blendable is already in the array to avoid duplicates
@@ -506,27 +506,27 @@ void UPUDialogueBox::InitializeVignetteMaterial()
         Blendable.Weight = 1.0f;
         
         PlayerCamera->PostProcessSettings.WeightedBlendables.Array.Add(Blendable);
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - ✓ Vignette material initialized and added to camera post process blendables (Camera: %s, Blendables count: %d)"), 
-            *PlayerCamera->GetName(), PlayerCamera->PostProcessSettings.WeightedBlendables.Array.Num());
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - ✓ Vignette material initialized and added to camera post process blendables (Camera: %s, Blendables count: %d)"), 
+        //    *PlayerCamera->GetName(), PlayerCamera->PostProcessSettings.WeightedBlendables.Array.Num());
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Vignette material already added to camera post process blendables"));
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::InitializeVignetteMaterial - Vignette material already added to camera post process blendables"));
     }
 }
 
 void UPUDialogueBox::AnimateVignetteToTarget(float TargetIntensity)
 {
-    UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Called with target intensity: %.2f"), TargetIntensity);
+    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Called with target intensity: %.2f"), TargetIntensity);
     
     // Make sure we have the material initialized
     if (!VignetteDynamicMaterial)
     {
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Material not initialized, initializing now..."));
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Material not initialized, initializing now..."));
         InitializeVignetteMaterial();
         if (!VignetteDynamicMaterial)
         {
-            UE_LOG(LogTemp, Error, TEXT("PUDialogueBox::AnimateVignetteToTarget - Failed to initialize vignette material!"));
+            //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::AnimateVignetteToTarget - Failed to initialize vignette material!"));
             return;
         }
     }
@@ -542,13 +542,13 @@ void UPUDialogueBox::AnimateVignetteToTarget(float TargetIntensity)
     bool bIsFadingIn = (TargetIntensity > CurrentVignetteIntensity);
     CurrentFadeDuration = bIsFadingIn ? VignetteFadeInDuration : VignetteFadeOutDuration;
     
-    UE_LOG(LogTemp, Warning, TEXT("=== VIGNETTE FADE DEBUG ==="));
-    UE_LOG(LogTemp, Warning, TEXT("Fade Direction: %s"), bIsFadingIn ? TEXT("IN") : TEXT("OUT"));
-    UE_LOG(LogTemp, Warning, TEXT("VignetteFadeInDuration (from Blueprint): %.6f"), VignetteFadeInDuration);
-    UE_LOG(LogTemp, Warning, TEXT("VignetteFadeOutDuration (from Blueprint): %.6f"), VignetteFadeOutDuration);
-    UE_LOG(LogTemp, Warning, TEXT("CurrentFadeDuration (being used): %.6f"), CurrentFadeDuration);
-    UE_LOG(LogTemp, Warning, TEXT("Starting fade: %.2f -> %.2f"), StartVignetteIntensity, TargetVignetteIntensity);
-    UE_LOG(LogTemp, Warning, TEXT("==========================="));
+    //UE_LOG(LogTemp,Warning, TEXT("=== VIGNETTE FADE DEBUG ==="));
+    //UE_LOG(LogTemp,Warning, TEXT("Fade Direction: %s"), bIsFadingIn ? TEXT("IN") : TEXT("OUT"));
+    //UE_LOG(LogTemp,Warning, TEXT("VignetteFadeInDuration (from Blueprint): %.6f"), VignetteFadeInDuration);
+    //UE_LOG(LogTemp,Warning, TEXT("VignetteFadeOutDuration (from Blueprint): %.6f"), VignetteFadeOutDuration);
+    //UE_LOG(LogTemp,Warning, TEXT("CurrentFadeDuration (being used): %.6f"), CurrentFadeDuration);
+    //UE_LOG(LogTemp,Warning, TEXT("Starting fade: %.2f -> %.2f"), StartVignetteIntensity, TargetVignetteIntensity);
+    //UE_LOG(LogTemp,Warning, TEXT("==========================="));
 
     // Clear any existing timer
     if (UWorld* World = GetWorld())
@@ -560,7 +560,7 @@ void UPUDialogueBox::AnimateVignetteToTarget(float TargetIntensity)
         {
             CurrentVignetteIntensity = TargetVignetteIntensity;
             VignetteDynamicMaterial->SetScalarParameterValue(VignetteIntensityParameterName, CurrentVignetteIntensity);
-            UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Already at target, skipping animation"));
+            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Already at target, skipping animation"));
             return;
         }
 
@@ -569,7 +569,7 @@ void UPUDialogueBox::AnimateVignetteToTarget(float TargetIntensity)
         {
             CurrentVignetteIntensity = TargetVignetteIntensity;
             VignetteDynamicMaterial->SetScalarParameterValue(VignetteIntensityParameterName, CurrentVignetteIntensity);
-            UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Fade duration is 0, setting immediately"));
+            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Fade duration is 0, setting immediately"));
             return;
         }
 
@@ -585,7 +585,7 @@ void UPUDialogueBox::AnimateVignetteToTarget(float TargetIntensity)
             true
         );
         
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Vignette animation started (using Tick and Timer)"));
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::AnimateVignetteToTarget - Vignette animation started (using Tick and Timer)"));
     }
 }
 
@@ -595,13 +595,13 @@ void UPUDialogueBox::UpdateVignetteIntensity()
     static bool bFirstCall = true;
     if (bFirstCall)
     {
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::UpdateVignetteIntensity - ✓ FIRST CALL - Timer is working!"));
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::UpdateVignetteIntensity - ✓ FIRST CALL - Timer is working!"));
         bFirstCall = false;
     }
     
     if (!VignetteDynamicMaterial)
     {
-        UE_LOG(LogTemp, Warning, TEXT("PUDialogueBox::UpdateVignetteIntensity - VignetteDynamicMaterial is null, clearing timer"));
+        //UE_LOG(LogTemp,Warning, TEXT("PUDialogueBox::UpdateVignetteIntensity - VignetteDynamicMaterial is null, clearing timer"));
         // Clear timer if material is invalid
         if (UWorld* World = GetWorld())
         {
@@ -616,7 +616,7 @@ void UPUDialogueBox::UpdateVignetteIntensity()
     UWorld* World = GetWorld();
     if (!World)
     {
-        UE_LOG(LogTemp, Warning, TEXT("PUDialogueBox::UpdateVignetteIntensity - No world, clearing timer"));
+        //UE_LOG(LogTemp,Warning, TEXT("PUDialogueBox::UpdateVignetteIntensity - No world, clearing timer"));
         World->GetTimerManager().ClearTimer(VignetteAnimationTimer);
         bFirstCall = true;
         return;
@@ -627,7 +627,7 @@ void UPUDialogueBox::UpdateVignetteIntensity()
     // Safety check - if delta time is 0 or invalid, skip this frame
     if (DeltaTime <= 0.0f || DeltaTime > 1.0f)
     {
-        UE_LOG(LogTemp, VeryVerbose, TEXT("PUDialogueBox::UpdateVignetteIntensity - Invalid delta time: %.4f, skipping"), DeltaTime);
+        //UE_LOG(LogTemp,VeryVerbose, TEXT("PUDialogueBox::UpdateVignetteIntensity - Invalid delta time: %.4f, skipping"), DeltaTime);
         return;
     }
 
@@ -646,7 +646,7 @@ void UPUDialogueBox::UpdateVignetteIntensity()
         {
             World->GetTimerManager().ClearTimer(VignetteAnimationTimer);
         }
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::UpdateVignetteIntensity - Instant fade (duration was 0)"));
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::UpdateVignetteIntensity - Instant fade (duration was 0)"));
         return;
     }
     
@@ -663,8 +663,8 @@ void UPUDialogueBox::UpdateVignetteIntensity()
     static int32 UpdateCounter = 0;
     if (++UpdateCounter % 10 == 0 || FMath::Abs(PreviousIntensity - CurrentVignetteIntensity) > 0.1f)
     {
-        UE_LOG(LogTemp, VeryVerbose, TEXT("PUDialogueBox::UpdateVignetteIntensity - Time: %.2f/%.2f (%.1f%%), Intensity: %.3f -> %.3f"), 
-            VignetteAnimationTime, CurrentFadeDuration, NormalizedProgress * 100.0f, PreviousIntensity, CurrentVignetteIntensity);
+        //UE_LOG(LogTemp,VeryVerbose, TEXT("PUDialogueBox::UpdateVignetteIntensity - Time: %.2f/%.2f (%.1f%%), Intensity: %.3f -> %.3f"), 
+        //    VignetteAnimationTime, CurrentFadeDuration, NormalizedProgress * 100.0f, PreviousIntensity, CurrentVignetteIntensity);
     }
 
     // Check if we've reached the target (either by time or by value)
@@ -683,8 +683,8 @@ void UPUDialogueBox::UpdateVignetteIntensity()
             World->GetTimerManager().ClearTimer(VignetteAnimationTimer);
         }
 
-        UE_LOG(LogTemp, Log, TEXT("PUDialogueBox::UpdateVignetteIntensity - ✓ Vignette animation complete at intensity: %.2f (took %.2f seconds)"), 
-            CurrentVignetteIntensity, VignetteAnimationTime);
+        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::UpdateVignetteIntensity - ✓ Vignette animation complete at intensity: %.2f (took %.2f seconds)"), 
+        //    CurrentVignetteIntensity, VignetteAnimationTime);
     }
 }
 

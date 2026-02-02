@@ -6,6 +6,7 @@
 #include "PUPreparationBase.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "../UI/PUDishCustomizationWidget.h"
+#include "Components/SlateWrapperTypes.h"
 #include "PUDishCustomizationComponent.generated.h"
 
 // Forward declarations
@@ -159,6 +160,15 @@ public:
     // UI Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     TSubclassOf<UUserWidget> CustomizationWidgetClass;
+
+	// Optional: explicitly specify the HUD widget class (e.g. WBP_HUD) to hide during customization.
+	// If unset, we fall back to finding widgets whose name/class contains "WBP_HUD".
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
+	TSubclassOf<UUserWidget> HUDWidgetClass;
+
+	// Which visibility to use when hiding the HUD during customization.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
+	ESlateVisibility HUDHiddenVisibility = ESlateVisibility::Collapsed;
 
     // Original widget class (stored before switching to plating)
     UPROPERTY()
@@ -328,6 +338,9 @@ protected:
     UCameraComponent* PlatingStationCamera = nullptr;
 
 private:
+	// Hide/show HUD widgets when entering/exiting customization.
+	void SetHUDVisible(bool bShouldBeVisible);
+
     // Spawn visual 3D mesh for ingredient
     void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
     float TargetCameraDistance = 0.0f;

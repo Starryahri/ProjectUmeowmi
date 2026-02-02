@@ -1,6 +1,12 @@
 #include "PUIngredientDragDropOperation.h"
 #include "PUDishCustomizationWidget.h"
 
+// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+namespace
+{
+    constexpr bool bPU_LogIngredientDragDebug = false;
+}
+
 UPUIngredientDragDropOperation::UPUIngredientDragDropOperation()
 {
     // IngredientInstance will be set when SetupIngredientDrag is called
@@ -25,13 +31,20 @@ void UPUIngredientDragDropOperation::SetupIngredientDrag(const FIngredientInstan
         IngredientInstance.InstanceID = UPUDishCustomizationWidget::GenerateGUIDBasedInstanceID();
         // Set quantity to 1 when dragging from pantry
         IngredientInstance.Quantity = 1;
-        UE_LOG(LogTemp, Display, TEXT("🔍 Generated GUID-based InstanceID: %d (from pantry, quantity set to 1, tag: %s)"), 
-            IngredientInstance.InstanceID, *IngredientInstance.IngredientTag.ToString());
+
+        if (bPU_LogIngredientDragDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("🔍 Generated GUID-based InstanceID: %d (from pantry, quantity set to 1, tag: %s)"), 
+            //    IngredientInstance.InstanceID, *IngredientInstance.IngredientTag.ToString());
+        }
     }
 
-    UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetupIngredientDrag - Set up drag for ingredient %s (ID: %d, Qty: %d, Tag: %s, FromPantry: %s)"), 
-        *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity,
-        *IngredientInstance.IngredientTag.ToString(), bFromPantry ? TEXT("YES") : TEXT("NO"));
+    if (bPU_LogIngredientDragDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetupIngredientDrag - Set up drag for ingredient %s (ID: %d, Qty: %d, Tag: %s, FromPantry: %s)"), 
+        //    *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity,
+        //    *IngredientInstance.IngredientTag.ToString(), bFromPantry ? TEXT("YES") : TEXT("NO"));
+    }
 }
 
 void UPUIngredientDragDropOperation::SetDragVisualWidget(UWidget* VisualWidget)
@@ -39,11 +52,11 @@ void UPUIngredientDragDropOperation::SetDragVisualWidget(UWidget* VisualWidget)
     if (VisualWidget)
     {
         DefaultDragVisual = VisualWidget;
-        UE_LOG(LogTemp, Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetDragVisualWidget - Set drag visual widget: %s"), 
-            *VisualWidget->GetName());
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientDragDropOperation::SetDragVisualWidget - Set drag visual widget: %s"), 
+        //    *VisualWidget->GetName());
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientDragDropOperation::SetDragVisualWidget - VisualWidget is null"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientDragDropOperation::SetDragVisualWidget - VisualWidget is null"));
     }
 } 

@@ -4,6 +4,13 @@
 #include "PUDishBlueprintLibrary.h"
 #include "Engine/DataTable.h"
 
+// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+namespace
+{
+    // Enables verbose logging when resolving ingredient tags to data table rows.
+    constexpr bool bPU_LogIngredientRowLookups = false;
+}
+
 // Initialize the static counter
 std::atomic<int32> FPUDishBase::GlobalInstanceCounter(0);
 
@@ -20,21 +27,24 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
 {
     if (!IngredientDataTable.IsValid())
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::GetIngredient - IngredientDataTable is not valid!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::GetIngredient - IngredientDataTable is not valid!"));
         return false;
     }
     
     UDataTable* LoadedIngredientDataTable = IngredientDataTable.LoadSynchronous();
     if (!LoadedIngredientDataTable)
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Failed to load IngredientDataTable!"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Failed to load IngredientDataTable!"));
         return false;
     }
     
     // Get the ingredient row name from the tag (removes "Ingredient." prefix, converts to lowercase, removes periods)
     FName RowName = UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(IngredientTag);
-    UE_LOG(LogTemp, Display, TEXT("🔍 FPUDishBase::GetIngredient - Looking for tag: %s, RowName: %s"), 
-        *IngredientTag.ToString(), *RowName.ToString());
+    if (bPU_LogIngredientRowLookups)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("🔍 FPUDishBase::GetIngredient - Looking for tag: %s, RowName: %s"),
+            //*IngredientTag.ToString(), *RowName.ToString());
+    }
         
     if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
     {
@@ -70,7 +80,7 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
         return true;
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Could not find ingredient row '%s' in data table!"), *RowName.ToString());
+    //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::GetIngredient - Could not find ingredient row '%s' in data table!"), *RowName.ToString());
     return false;
 }
 
@@ -358,12 +368,12 @@ void FPUDishBase::SetIngredientPlating(int32 InstanceID, const FVector& Position
         Instance.PlatingScale = Scale;
         Instance.bIsPlated = true;
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ FPUDishBase::SetIngredientPlating - Set plating for instance %d: Pos(%.2f,%.2f,%.2f) Rot(%.2f,%.2f,%.2f) Scale(%.2f,%.2f,%.2f)"), 
-            InstanceID, Position.X, Position.Y, Position.Z, Rotation.Pitch, Rotation.Yaw, Rotation.Roll, Scale.X, Scale.Y, Scale.Z);
+        //UE_LOG(LogTemp,Display, TEXT("🍽️ FPUDishBase::SetIngredientPlating - Set plating for instance %d: Pos(%.2f,%.2f,%.2f) Rot(%.2f,%.2f,%.2f) Scale(%.2f,%.2f,%.2f)"), 
+            //InstanceID, Position.X, Position.Y, Position.Z, Rotation.Pitch, Rotation.Yaw, Rotation.Roll, Scale.X, Scale.Y, Scale.Z);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::SetIngredientPlating - Instance %d not found"), InstanceID);
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::SetIngredientPlating - Instance %d not found"), InstanceID);
     }
 }
 
@@ -375,11 +385,11 @@ void FPUDishBase::ClearIngredientPlating(int32 InstanceID)
         FIngredientInstance& Instance = IngredientInstances[InstanceIndex];
         Instance.bIsPlated = false;
         
-        UE_LOG(LogTemp, Display, TEXT("🍽️ FPUDishBase::ClearIngredientPlating - Cleared plating for instance %d"), InstanceID);
+        // //UE_LOG(LogTemp,Display, TEXT("🍽️ FPUDishBase::ClearIngredientPlating - Cleared plating for instance %d"), InstanceID);
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ FPUDishBase::ClearIngredientPlating - Instance %d not found"), InstanceID);
+        // //UE_LOG(LogTemp,Warning, TEXT("⚠️ FPUDishBase::ClearIngredientPlating - Instance %d not found"), InstanceID);
     }
 }
 

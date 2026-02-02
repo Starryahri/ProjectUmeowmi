@@ -10,20 +10,20 @@ APUDishGiver::APUDishGiver()
     // Create the order component
     OrderComponent = CreateDefaultSubobject<UPUOrderComponent>(TEXT("OrderComponent"));
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::APUDishGiver - Dish giver created with order component: %s"), 
-        OrderComponent ? TEXT("SUCCESS") : TEXT("FAILED"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::APUDishGiver - Dish giver created with order component: %s"), 
+    //    OrderComponent ? TEXT("SUCCESS") : TEXT("FAILED"));
 }
 
 void APUDishGiver::BeginPlay()
 {
     Super::BeginPlay();
     
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::BeginPlay - Dish giver initialized: %s"), *GetTalkingObjectDisplayName().ToString());
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::BeginPlay - Dish giver initialized: %s"), *GetTalkingObjectDisplayName().ToString());
 }
 
 void APUDishGiver::StartInteraction()
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::StartInteraction - Starting interaction with dish giver: %s"), *GetTalkingObjectDisplayName().ToString());
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::StartInteraction - Starting interaction with dish giver: %s"), *GetTalkingObjectDisplayName().ToString());
     
     // Find the player character first to check their current order status
     AProjectUmeowmiCharacter* PlayerChar = nullptr;
@@ -38,14 +38,14 @@ void APUDishGiver::StartInteraction()
     // Check if player has a completed order first
     if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
     {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
         HandleOrderCompletion(PlayerChar);
     }
     // Check if player already has an active order
     else if (PlayerChar && PlayerChar->HasCurrentOrder())
     {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
-            *PlayerChar->GetCurrentOrder().OrderID.ToString());
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::StartInteraction - Player already has an active order: %s"), 
+            //*PlayerChar->GetCurrentOrder().OrderID.ToString());
     }
     
     // Don't generate orders automatically - let dialogue control this
@@ -55,27 +55,27 @@ void APUDishGiver::StartInteraction()
 
 void APUDishGiver::GenerateOrderForDialogue()
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Generating order for dialogue"));
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Generating order for dialogue"));
     
     // Generate the order
     if (!IsValid(OrderComponent))
     {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Order component is not valid!"));
+        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Order component is not valid!"));
         return;
     }
     
     OrderComponent->GenerateNewOrder();
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Order generated successfully"));
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Order generated successfully"));
 }
 
 void APUDishGiver::GenerateAndGiveOrderToPlayer()
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generating and giving order to player"));
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generating and giving order to player"));
     
     // Validate the order component first
     if (!IsValid(OrderComponent))
     {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order component is not valid!"));
+        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order component is not valid!"));
         return;
     }
     
@@ -91,25 +91,25 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
     
     if (!IsValid(PlayerChar))
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Could not find valid player character"));
+        //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Could not find valid player character"));
         return;
     }
     
     // Check if player already has an active order
     if (PlayerChar->HasCurrentOrder())
     {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Player already has an active order, not generating new one"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Player already has an active order, not generating new one"));
         return;
     }
     
     // Generate the order with safety checks
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Calling GenerateOrderForDialogue"));
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Calling GenerateOrderForDialogue"));
     GenerateOrderForDialogue();
     
     // Validate that the order was generated successfully
     if (!OrderComponent->HasActiveOrder())
     {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order generation failed - no active order"));
+        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order generation failed - no active order"));
         return;
     }
     
@@ -117,7 +117,7 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
     const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
     if (!Order.OrderID.IsValid())
     {
-        UE_LOG(LogTemp, Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generated order has invalid ID"));
+        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generated order has invalid ID"));
         return;
     }
     
@@ -127,7 +127,7 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
     // Set dialogue variables using helper function
     SetDialogueVariablesFromOrder(Order);
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order passed to player character: %s"), *Order.OrderID.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order passed to player character: %s"), *Order.OrderID.ToString());
 }
 
 FText APUDishGiver::GetOrderDialogueText() const
@@ -135,20 +135,20 @@ FText APUDishGiver::GetOrderDialogueText() const
     if (OrderComponent && OrderComponent->HasActiveOrder())
     {
         const FPUOrderBase& CurrentOrder = OrderComponent->GetCurrentOrder();
-        UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GetOrderDialogueText - Returning order dialogue text"));
+        //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GetOrderDialogueText - Returning order dialogue text"));
         return CurrentOrder.OrderDialogueText;
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GetOrderDialogueText - No active order available"));
+    //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::GetOrderDialogueText - No active order available"));
     return FText::FromString(TEXT("I don't have any orders right now."));
 }
 
 bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
 {
-    UE_LOG(LogTemp, Display, TEXT("=== APUDishGiver::CheckCondition CALLED ==="));
-    UE_LOG(LogTemp, Display, TEXT("Condition Name: %s"), *ConditionName.ToString());
-    UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
-    UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
+    //UE_LOG(LogTemp,Display, TEXT("=== APUDishGiver::CheckCondition CALLED ==="));
+    //UE_LOG(LogTemp,Display, TEXT("Condition Name: %s"), *ConditionName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
+    //UE_LOG(LogTemp,Display, TEXT("This Object: %s"), *GetName());
     
     // Helper function to get player character using weak reference first
     auto GetPlayerCharacter = [this]() -> AProjectUmeowmiCharacter*
@@ -179,21 +179,21 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
     if (ConditionNameStr == TEXT("HasActiveOrder"))
     {
         ConditionType = 1;
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - Matched HasActiveOrder condition"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::CheckCondition - Matched HasActiveOrder condition"));
     }
     else if (ConditionNameStr == TEXT("OrderCompleted"))
     {
         ConditionType = 2;
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - Matched OrderCompleted condition"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::CheckCondition - Matched OrderCompleted condition"));
     }
     else if (ConditionNameStr == TEXT("NoActiveOrder"))
     {
         ConditionType = 3;
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - Matched NoActiveOrder condition"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::CheckCondition - Matched NoActiveOrder condition"));
     }
     else
     {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::CheckCondition - No match for condition: '%s'"), *ConditionNameStr);
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::CheckCondition - No match for condition: '%s'"), *ConditionNameStr);
     }
     
     switch (ConditionType)
@@ -203,10 +203,10 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
             if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
             {
                 bool bHasOrder = PlayerChar->HasCurrentOrder();
-                UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: %s"), bHasOrder ? TEXT("TRUE") : TEXT("FALSE"));
+                //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: %s"), bHasOrder ? TEXT("TRUE") : TEXT("FALSE"));
                 return bHasOrder;
             }
-            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: Could not find player character, returning FALSE"));
+            //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: Could not find player character, returning FALSE"));
             return false;
         }
         
@@ -215,10 +215,10 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
             if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
             {
                 bool bOrderCompleted = PlayerChar->IsCurrentOrderCompleted();
-                UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - OrderCompleted: %s"), bOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
+                //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - OrderCompleted: %s"), bOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
                 return bOrderCompleted;
             }
-            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - OrderCompleted: Could not find player character, returning FALSE"));
+            //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::CheckCondition - OrderCompleted: Could not find player character, returning FALSE"));
             return false;
         }
         
@@ -227,22 +227,22 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
             if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
             {
                 bool bNoOrder = !PlayerChar->HasCurrentOrder();
-                UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: %s"), bNoOrder ? TEXT("TRUE") : TEXT("FALSE"));
+                //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: %s"), bNoOrder ? TEXT("TRUE") : TEXT("FALSE"));
                 return bNoOrder;
             }
-            UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: Could not find player character, returning TRUE"));
+            //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::CheckCondition - NoActiveOrder: Could not find player character, returning TRUE"));
             return true; // Default to true if we can't find the player
         }
         
         default:
-            UE_LOG(LogTemp, Log, TEXT("APUDishGiver::CheckCondition - Unknown condition: %s, calling parent"), *ConditionName.ToString());
+            //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - Unknown condition: %s, calling parent"), *ConditionName.ToString());
             return Super::CheckCondition_Implementation(Context, ConditionName);
     }
 }
 
 FText APUDishGiver::GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GetParticipantDisplayName_Implementation - Getting display name for speaker: %s"), *ActiveSpeaker.ToString());
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GetParticipantDisplayName_Implementation - Getting display name for speaker: %s"), *ActiveSpeaker.ToString());
     
     // For now, just return the base display name
     // In the future, this could be modified based on order state
@@ -252,21 +252,21 @@ FText APUDishGiver::GetParticipantDisplayName_Implementation(FName ActiveSpeaker
 // Add a simple test condition that always returns true to verify conditions are being called
 bool APUDishGiver::GetBoolValue_Implementation(FName ValueName) const
 {
-    UE_LOG(LogTemp, Display, TEXT("=== APUDishGiver::GetBoolValue CALLED ==="));
-    UE_LOG(LogTemp, Display, TEXT("Value Name: %s"), *ValueName.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("=== APUDishGiver::GetBoolValue CALLED ==="));
+    //UE_LOG(LogTemp,Display, TEXT("Value Name: %s"), *ValueName.ToString());
     
     if (ValueName == TEXT("TestCondition"))
     {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GetBoolValue - TestCondition returning TRUE"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GetBoolValue - TestCondition returning TRUE"));
         return true;
     }
     else if (ValueName == TEXT("bTestCondition"))
     {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GetBoolValue - bTestCondition returning: %s"), bTestCondition ? TEXT("TRUE") : TEXT("FALSE"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GetBoolValue - bTestCondition returning: %s"), bTestCondition ? TEXT("TRUE") : TEXT("FALSE"));
         return bTestCondition;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::GetBoolValue - Unknown value, calling parent"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GetBoolValue - Unknown value, calling parent"));
     return Super::GetBoolValue_Implementation(ValueName);
 }
 
@@ -274,11 +274,11 @@ const FPUOrderBase& APUDishGiver::GetCurrentOrder() const
 {
     if (OrderComponent && OrderComponent->HasActiveOrder())
     {
-        UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GetCurrentOrder - Returning current order"));
+        //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GetCurrentOrder - Returning current order"));
         return OrderComponent->GetCurrentOrder();
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GetCurrentOrder - No active order available"));
+    //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::GetCurrentOrder - No active order available"));
     static FPUOrderBase EmptyOrder;
     return EmptyOrder;
 }
@@ -286,33 +286,33 @@ const FPUOrderBase& APUDishGiver::GetCurrentOrder() const
 bool APUDishGiver::HasActiveOrder() const
 {
     bool bHasOrder = OrderComponent ? OrderComponent->HasActiveOrder() : false;
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::HasActiveOrder - Has active order: %s"), bHasOrder ? TEXT("YES") : TEXT("NO"));
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::HasActiveOrder - Has active order: %s"), bHasOrder ? TEXT("YES") : TEXT("NO"));
     return bHasOrder;
 }
 
 bool APUDishGiver::ValidateDish(const FPUDishBase& Dish) const
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::ValidateDish - Validating dish against current order"));
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::ValidateDish - Validating dish against current order"));
     
     if (OrderComponent)
     {
         return OrderComponent->ValidateDish(Dish);
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ValidateDish - Order component is null!"));
+    //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::ValidateDish - Order component is null!"));
     return false;
 }
 
 float APUDishGiver::GetSatisfactionScore(const FPUDishBase& Dish) const
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::GetSatisfactionScore - Calculating satisfaction score"));
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GetSatisfactionScore - Calculating satisfaction score"));
     
     if (OrderComponent)
     {
         return OrderComponent->GetSatisfactionScore(Dish);
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::GetSatisfactionScore - Order component is null!"));
+    //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::GetSatisfactionScore - Order component is null!"));
     return 0.0f;
 }
 
@@ -320,17 +320,17 @@ void APUDishGiver::HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharact
 {
     if (!IsValid(PlayerCharacter))
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::HandleOrderCompletion - Player character is null"));
+        //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::HandleOrderCompletion - Player character is null"));
         return;
     }
 
     if (!PlayerCharacter->IsCurrentOrderCompleted())
     {
-        UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - No completed order to handle"));
+        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::HandleOrderCompletion - No completed order to handle"));
         return;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Handling order completion"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::HandleOrderCompletion - Handling order completion"));
     
     // Cache the player character using weak reference
     CachedPlayerCharacter = PlayerCharacter;
@@ -341,8 +341,8 @@ void APUDishGiver::HandleOrderCompletion(AProjectUmeowmiCharacter* PlayerCharact
     // Analyze the completed dish and set dialogue variables
     AnalyzeCompletedDish(CompletedOrder);
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Order analysis complete, dialogue variables set"));
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::HandleOrderCompletion - Satisfaction: %.1f%%"), CompletedOrder.FinalSatisfactionScore * 100.0f);
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::HandleOrderCompletion - Order analysis complete, dialogue variables set"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::HandleOrderCompletion - Satisfaction: %.1f%%"), CompletedOrder.FinalSatisfactionScore * 100.0f);
     
     // Note: Order clearing is now controlled by dialogue system
     // Use ClearCompletedOrderFromPlayer dialogue event to clear when ready
@@ -383,7 +383,7 @@ FText APUDishGiver::GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerC
 
 void APUDishGiver::ClearCompletedOrderFromPlayer()
 {
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Marking order for delayed clearing"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::ClearCompletedOrderFromPlayer - Marking order for delayed clearing"));
     
     // Instead of clearing immediately, mark it for delayed clearing
     MarkOrderForClearing();
@@ -391,7 +391,7 @@ void APUDishGiver::ClearCompletedOrderFromPlayer()
 
 void APUDishGiver::MarkOrderForClearing()
 {
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::MarkOrderForClearing - Marking order for delayed clearing"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::MarkOrderForClearing - Marking order for delayed clearing"));
     
     // Mark the order for clearing
     bOrderMarkedForClearing = true;
@@ -411,7 +411,7 @@ void APUDishGiver::MarkOrderForClearing()
 
 void APUDishGiver::ExecuteDelayedOrderClearing()
 {
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Executing delayed order clearing"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Executing delayed order clearing"));
     
     // Use the cached weak reference first, then fall back to finding the player
     AProjectUmeowmiCharacter* PlayerChar = CachedPlayerCharacter.Get();
@@ -430,21 +430,21 @@ void APUDishGiver::ExecuteDelayedOrderClearing()
     
     if (!IsValid(PlayerChar))
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Could not find valid player character"));
+        //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Could not find valid player character"));
         bOrderMarkedForClearing = false;
         return;
     }
     
     if (!PlayerChar->IsCurrentOrderCompleted())
     {
-        UE_LOG(LogTemp, Warning, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Player has no completed order to clear"));
+        //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Player has no completed order to clear"));
         bOrderMarkedForClearing = false;
         return;
     }
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - About to clear completed order"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - About to clear completed order"));
     PlayerChar->ClearCompletedOrder();
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Completed order cleared successfully"));
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::ExecuteDelayedOrderClearing - Completed order cleared successfully"));
     
     // Clear the cached reference after successful clearing
     CachedPlayerCharacter = nullptr;
@@ -461,19 +461,19 @@ void APUDishGiver::SetDialogueVariablesFromOrder(const FPUOrderBase& Order)
     MinFlavorValue = Order.MinFlavorValue;
     OrderDialogueText = Order.OrderDialogueText;
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::SetDialogueVariablesFromOrder - Dialogue variables set: Ready=%s, Desc=%s, MinIng=%d, Flavor=%s, MinVal=%.1f"), 
-        bHasOrderReady ? TEXT("TRUE") : TEXT("FALSE"), 
-        *OrderDescription.ToString(), 
-        MinIngredientCount, 
-        *TargetFlavorProperty.ToString(), 
-        MinFlavorValue);
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::SetDialogueVariablesFromOrder - Dialogue variables set: Ready=%s, Desc=%s, MinIng=%d, Flavor=%s, MinVal=%.1f"), 
+        //bHasOrderReady ? TEXT("TRUE") : TEXT("FALSE"), 
+        //*OrderDescription.ToString(), 
+        //MinIngredientCount, 
+        //*TargetFlavorProperty.ToString(), 
+        //MinFlavorValue);
 }
 
 void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
 {
     const FPUDishBase& CompletedDish = CompletedOrder.CompletedDish;
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::AnalyzeCompletedDish - Analyzing completed dish for order: %s"), *CompletedOrder.OrderID.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::AnalyzeCompletedDish - Analyzing completed dish for order: %s"), *CompletedOrder.OrderID.ToString());
     
     // Set basic completion data
     bHasCompletedDish = true;
@@ -547,21 +547,21 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
         SatisfactionFeedbackText = FText::FromString(TEXT("Well, it's acceptable. Could be better, but I'll take it."));
     }
     
-    UE_LOG(LogTemp, Display, TEXT("APUDishGiver::AnalyzeCompletedDish - Analysis complete:"));
-    UE_LOG(LogTemp, Display, TEXT("  Satisfaction: %.2f"), CompletedDishSatisfaction);
-    UE_LOG(LogTemp, Display, TEXT("  Ingredient Count: %d"), CompletedDishIngredientCount);
-    UE_LOG(LogTemp, Display, TEXT("  Flavor: %s = %s (required: %s)"), 
-        *CompletedDishTargetFlavor.ToString(), 
-        *CompletedDishFlavorValue.ToString(), 
-        *CompletedDishMinFlavorValue.ToString());
-    UE_LOG(LogTemp, Display, TEXT("  Most Used: %s"), *MostUsedIngredient.ToString());
-    UE_LOG(LogTemp, Display, TEXT("  Preparations: %d"), PreparationCount);
-    UE_LOG(LogTemp, Display, TEXT("  Quality: %s"), *QualityLevel.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::AnalyzeCompletedDish - Analysis complete:"));
+    //UE_LOG(LogTemp,Display, TEXT("  Satisfaction: %.2f"), CompletedDishSatisfaction);
+    //UE_LOG(LogTemp,Display, TEXT("  Ingredient Count: %d"), CompletedDishIngredientCount);
+    //UE_LOG(LogTemp,Display, TEXT("  Flavor: %s = %s (required: %s)"), 
+        //*CompletedDishTargetFlavor.ToString(), 
+        //*CompletedDishFlavorValue.ToString(), 
+        //*CompletedDishMinFlavorValue.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("  Most Used: %s"), *MostUsedIngredient.ToString());
+    //UE_LOG(LogTemp,Display, TEXT("  Preparations: %d"), PreparationCount);
+    //UE_LOG(LogTemp,Display, TEXT("  Quality: %s"), *QualityLevel.ToString());
 }
 
 void APUDishGiver::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    UE_LOG(LogTemp, Log, TEXT("APUDishGiver::EndPlay - Cleaning up dish giver: %s"), *GetName());
+    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::EndPlay - Cleaning up dish giver: %s"), *GetName());
     
     // Clear any pending timers
     if (UWorld* World = GetWorld())
