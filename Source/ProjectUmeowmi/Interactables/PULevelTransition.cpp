@@ -3,6 +3,7 @@
 #include "Components/SphereComponent.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
+#include "DlgSystem/DlgContext.h"
 
 APULevelTransition::APULevelTransition()
 {
@@ -93,5 +94,21 @@ void APULevelTransition::OnTransitionSphereBeginOverlap(UPrimitiveComponent* Ove
 	// Otherwise, we rely on the normal talking-object interaction flow:
 	// - Base class registers this talking object with the character
 	// - Character's Interact input calls StartInteraction()
+}
+
+bool APULevelTransition::OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName)
+{
+	// Handle level transition event from dialogue
+	if (EventName == TEXT("TransitionLevel") || EventName == TEXT("LevelTransition"))
+	{
+		UE_LOG(LogTemp, Log, TEXT("APULevelTransition::OnDialogueEvent - Level transition triggered from dialogue"));
+		
+		// Perform the transition using the configured target level and spawn point
+		PerformTransition();
+		return true;
+	}
+	
+	// Let base class handle other events (like GenerateOrder, etc.)
+	return Super::OnDialogueEvent_Implementation(Context, EventName);
 }
 

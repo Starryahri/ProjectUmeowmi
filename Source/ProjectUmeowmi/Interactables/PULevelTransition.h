@@ -20,6 +20,9 @@ public:
 	// Override CanInteract so we can use the talking-object style widget without requiring dialogues
 	virtual bool CanInteract() const override;
 
+	// Override dialogue event to support level transitions from dialogue
+	virtual bool OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName) override;
+
 protected:
 	// The target level to transition to (e.g., "L_Chapter0_2_LolaRoom")
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level Transition")

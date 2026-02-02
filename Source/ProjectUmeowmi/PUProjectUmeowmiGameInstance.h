@@ -77,6 +77,13 @@ protected:
 	bool bTransitionInProgress = false;
 
 private:
+	// Stored level path for delayed loading after fade
+	FString PendingLevelPath;
+
+	/**
+	 * Called after fade out completes to actually load the level
+	 */
+	void LoadLevelAfterFade();
 	/**
 	 * Save the current player state before transitioning
 	 */

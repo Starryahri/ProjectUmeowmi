@@ -353,8 +353,49 @@ void UPUDishCustomizationComponent::EndCustomization()
         return;
     }
 
-    // Show HUD again when exiting customization (do this early so it comes back even if we early-out later).
-    SetHUDVisible(true);
+    // Set HUD to HitTestInvisible when exiting customization (non-visible but non-hit testable)
+    // This prevents the HUD from being visible but also prevents it from blocking input
+    UWorld* World = GetWorld();
+    if (World)
+    {
+        TArray<UUserWidget*> FoundWidgets;
+        
+        // If explicitly provided, just use that class.
+        if (HUDWidgetClass)
+        {
+            UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, HUDWidgetClass, /*TopLevelOnly*/ false);
+            for (UUserWidget* Widget : FoundWidgets)
+            {
+                if (IsValid(Widget))
+                {
+                    Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
+                }
+            }
+        }
+        else
+        {
+            // Fallback: search all user widgets and find something that looks like WBP_HUD.
+            UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, UUserWidget::StaticClass(), /*TopLevelOnly*/ false);
+            
+            for (UUserWidget* Widget : FoundWidgets)
+            {
+                if (!IsValid(Widget))
+                {
+                    continue;
+                }
+                
+                const FString WidgetName = Widget->GetName();
+                const FString ClassName = Widget->GetClass() ? Widget->GetClass()->GetName() : FString();
+                
+                // Typical patterns are WBP_HUD_C, WBP_HUD_C_0, etc.
+                if (WidgetName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase) ||
+                    ClassName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase))
+                {
+                    Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
+                }
+            }
+        }
+    }
 
     // End plating stage if we're in plating mode
     if (bPlatingMode)
@@ -696,6 +737,45 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             
             // Restore the original dish container mesh
             RestoreOriginalDishContainerMesh();
+            
+            // Ensure HUD is set to HitTestInvisible before broadcasting (safeguard in case something else changed it)
+            UWorld* World = GetWorld();
+            if (World)
+            {
+                TArray<UUserWidget*> FoundWidgets;
+                
+                if (HUDWidgetClass)
+                {
+                    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, HUDWidgetClass, /*TopLevelOnly*/ false);
+                    for (UUserWidget* Widget : FoundWidgets)
+                    {
+                        if (IsValid(Widget))
+                        {
+                            Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
+                        }
+                    }
+                }
+                else
+                {
+                    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, UUserWidget::StaticClass(), /*TopLevelOnly*/ false);
+                    for (UUserWidget* Widget : FoundWidgets)
+                    {
+                        if (!IsValid(Widget))
+                        {
+                            continue;
+                        }
+                        
+                        const FString WidgetName = Widget->GetName();
+                        const FString ClassName = Widget->GetClass() ? Widget->GetClass()->GetName() : FString();
+                        
+                        if (WidgetName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase) ||
+                            ClassName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase))
+                        {
+                            Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
+                        }
+                    }
+                }
+            }
             
             AProjectUmeowmiCharacter* TempCharacter = CurrentCharacter;
             CurrentCharacter = nullptr;

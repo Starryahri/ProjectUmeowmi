@@ -72,16 +72,25 @@ void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevel
 		}
 	}
 
+	// Store the level path for loading after fade completes
+	PendingLevelPath = LevelPath;
+
 	// Use fade if requested
 	if (bUseFade)
 	{
-		// Fade out
-		PlayerController->ClientSetCameraFade(true, FColor::Black, FVector2D::ZeroVector, 0.0f, true, true);
+		// Fade out: FadeAlpha (X=start, Y=end), so 0 to 1 means transparent to opaque (black)
+		// FadeTime is the duration in seconds - using 1 second
+		PlayerController->ClientSetCameraFade(true, FColor::Black, FVector2D(0.0f, 1.0f), 1.0f, true, true);
+		
+		// Wait for fade to complete before loading the level
+		FTimerHandle FadeTimerHandle;
+		World->GetTimerManager().SetTimer(FadeTimerHandle, this, &UPUProjectUmeowmiGameInstance::LoadLevelAfterFade, 1.0f, false);
 	}
-
-	// Load the level
-	// Note: OnPostLoadMap will be called automatically when the level finishes loading
-	UGameplayStatics::OpenLevel(World, FName(*LevelPath));
+	else
+	{
+		// No fade, load immediately
+		UGameplayStatics::OpenLevel(World, FName(*LevelPath));
+	}
 }
 
 void UPUProjectUmeowmiGameInstance::OnLevelLoaded()
@@ -99,10 +108,10 @@ void UPUProjectUmeowmiGameInstance::OnLevelLoaded()
 	// Restore player state
 	RestorePlayerState();
 
-	// Fade in
+	// Fade in: FadeAlpha (X=start, Y=end), so 1 to 0 means opaque (black) to transparent
 	if (APlayerController* PlayerController = GetWorld()->GetFirstPlayerController())
 	{
-		PlayerController->ClientSetCameraFade(false, FColor::Black, FVector2D::ZeroVector, 0.5f, true, true);
+		PlayerController->ClientSetCameraFade(true, FColor::Black, FVector2D(1.0f, 0.0f), 1.5f, true, false);
 	}
 
 	// Clear transition state
@@ -220,5 +229,21 @@ void UPUProjectUmeowmiGameInstance::ClearSavedPlayerOrder()
 	SavedPlayerOrder = FPUOrderBase();
 	bHasSavedOrder = false;
 	UE_LOG(LogTemp, Log, TEXT("Cleared saved player order"));
+}
+
+void UPUProjectUmeowmiGameInstance::LoadLevelAfterFade()
+{
+	UWorld* World = GetWorld();
+	if (!World || PendingLevelPath.IsEmpty())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Cannot load level: World is null or no pending level path"));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("Fade out complete, loading level: %s"), *PendingLevelPath);
+	
+	// Load the level after fade has completed
+	// Note: OnPostLoadMap will be called automatically when the level finishes loading
+	UGameplayStatics::OpenLevel(World, FName(*PendingLevelPath));
 }
 
