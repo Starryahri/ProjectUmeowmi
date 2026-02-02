@@ -6,6 +6,7 @@
 #include "DlgSystem/DlgContext.h"
 #include "GameFramework/PlayerController.h"
 #include "UI/PUDialogueBox.h"
+#include "PUProjectUmeowmiGameInstance.h"
 
 #include "UObject/ConstructorHelpers.h"
 
@@ -26,6 +27,12 @@ AProjectUmeowmiGameMode::AProjectUmeowmiGameMode()
 void AProjectUmeowmiGameMode::StartPlay()
 {
 	Super::StartPlay();
+	
+	// Notify GameInstance that a new level has started so it can complete any pending transitions
+	if (UPUProjectUmeowmiGameInstance* PUGameInstance = GetWorld() ? Cast<UPUProjectUmeowmiGameInstance>(GetWorld()->GetGameInstance()) : nullptr)
+	{
+		PUGameInstance->OnLevelLoaded();
+	}
 	
 	// Check if we should automatically start a cutscene
 	if (bAutoStartCutscene && LevelCutsceneDialogue)
