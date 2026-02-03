@@ -4,11 +4,14 @@
 #include "Engine/GameInstance.h"
 #include "DishCustomization/PUOrderBase.h"
 #include "GameplayTagContainer.h"
+#include "UI/PUPopupData.h"
 #include "PUProjectUmeowmiGameInstance.generated.h"
 
 class AProjectUmeowmiCharacter;
 class APULevelSpawnPoint;
 class UPUPlayerSaveGame;
+class UUserWidget;
+class UPUPopupWidget;
 
 /**
  * GameInstance that persists across level transitions.
@@ -117,9 +120,18 @@ public:
 	/**
 	 * Create a new game (initializes default state)
 	 * This will clear all unlocked ingredients and start fresh
+	 * @param bClearSaveFile - If true, deletes the existing save file (default: true)
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Save/Load")
-	void CreateNewGame();
+	void CreateNewGame(bool bClearSaveFile = true);
+
+	/**
+	 * Delete the save file from disk
+	 * @param SlotName - The save slot name (defaults to "PlayerSave")
+	 * @return True if the save file was successfully deleted
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Save/Load")
+	bool DeleteSaveGame(const FString& SlotName = TEXT("PlayerSave"));
 
 	/**
 	 * Check if a save file exists
@@ -144,6 +156,66 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue State")
 	bool IsDialogueCompleted(const FName& DialogueName) const;
+
+	// Popup Manager System
+	// Delegate for popup button callbacks (declared before use)
+	DECLARE_DYNAMIC_DELEGATE_OneParam(FOnPopupClosed, FName, ButtonID);
+	
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPopupClosedEvent, FName, ButtonID);
+
+	/**
+	 * Show a popup with the given data
+	 * @param PopupData - The popup configuration data
+	 * @param OnPopupClosed - Optional callback when popup is closed (returns button ID that was pressed)
+	 * Note: Use the OnPopupClosedEvent multicast delegate for Blueprint callbacks instead
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup Manager", meta = (CallInEditor = "true"))
+	void ShowPopup(const FPopupData& PopupData);
+	
+	/**
+	 * Show a popup with the given data and callback (C++ only, use OnPopupClosedEvent for Blueprint)
+	 * @param PopupData - The popup configuration data
+	 * @param OnPopupClosed - Callback when popup is closed (returns button ID that was pressed)
+	 */
+	void ShowPopupWithCallback(const FPopupData& PopupData, FOnPopupClosed OnPopupClosed);
+
+	/**
+	 * Show an ingredient unlock popup
+	 * @param IngredientTag - The ingredient that was unlocked
+	 * @param IngredientDisplayName - Optional display name (if not provided, will try to get from data table)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup Manager")
+	void ShowIngredientUnlockPopup(const FGameplayTag& IngredientTag, const FText& IngredientDisplayName = FText::GetEmpty());
+
+	/**
+	 * Show an ingredient unlock popup for multiple ingredients
+	 * @param IngredientTags - Array of ingredients that were unlocked
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup Manager")
+	void ShowIngredientUnlockPopupMultiple(const TArray<FGameplayTag>& IngredientTags);
+
+	/**
+	 * Close the current popup (if one is showing)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup Manager")
+	void CloseCurrentPopup();
+
+	/**
+	 * Called by the popup widget when it closes (internal use)
+	 * @param ButtonID - The ID of the button that was pressed (or NAME_None if closed via other means)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup Manager")
+	void NotifyPopupClosed(FName ButtonID);
+
+	/**
+	 * Check if a popup is currently showing
+	 * @return True if a popup is active
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup Manager")
+	bool IsPopupShowing() const { return CurrentPopupWidget != nullptr; }
+	
+	UPROPERTY(BlueprintAssignable, Category = "Popup Manager|Events")
+	FOnPopupClosedEvent OnPopupClosedEvent;
 
 protected:
 	// Saved player state
@@ -176,6 +248,34 @@ protected:
 	// Save Game Reference
 	UPROPERTY()
 	UPUPlayerSaveGame* PlayerSaveGame;
+
+	// Debug/Development Settings
+	// If true, CreateNewGame() will delete existing save files (useful for testing)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save/Load|Debug")
+	bool bClearSaveOnNewGame = true;
+
+	// If true, always start with a new game (ignores existing save files) - useful for debugging
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Save/Load|Debug")
+	bool bAlwaysStartNewGame = false;
+
+	// Popup Manager
+	// Set this in DefaultEngine.ini under [/Script/ProjectUmeowmi.PUProjectUmeowmiGameInstance] as:
+	// PopupWidgetClass=/Game/Path/To/Your/WBP_Popup.WBP_Popup_C
+	// Or set it in your GameInstance Blueprint
+	UPROPERTY(Config, EditAnywhere, BlueprintReadWrite, Category = "Popup Manager")
+	TSoftClassPtr<class UPUPopupWidget> PopupWidgetClass;
+
+	UPROPERTY()
+	class UPUPopupWidget* CurrentPopupWidget;
+
+	UPROPERTY()
+	TArray<FPopupData> PopupQueue;
+
+	FOnPopupClosed CurrentPopupCallback;
+
+	// Internal popup management
+	void ProcessPopupQueue();
+	void OnPopupWidgetClosed(FName ButtonID);
 
 private:
 	// Stored level path for delayed loading after fade
