@@ -7,6 +7,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../PUProjectUmeowmiGameInstance.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -1450,6 +1451,10 @@ TArray<FPUIngredientBase> UPUDishCustomizationComponent::GetIngredientData() con
     
     if (IngredientDataTable)
     {
+        // Get the game instance to check unlocked ingredients
+        UWorld* World = GetWorld();
+        UPUProjectUmeowmiGameInstance* GameInstance = World ? Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance()) : nullptr;
+        
         //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Getting ingredient data from table: %s"), *IngredientDataTable->GetName());
         
         TArray<FName> RowNames = IngredientDataTable->GetRowNames();
@@ -1457,11 +1462,26 @@ TArray<FPUIngredientBase> UPUDishCustomizationComponent::GetIngredientData() con
         {
             if (FPUIngredientBase* Ingredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredientData")))
             {
-                IngredientData.Add(*Ingredient);
+                // Only include ingredients that are unlocked (if game instance is available)
+                // If no game instance, include all ingredients (for backwards compatibility or editor use)
+                if (GameInstance)
+                {
+                    if (GameInstance->IsIngredientUnlocked(Ingredient->IngredientTag))
+                    {
+                        IngredientData.Add(*Ingredient);
+                    }
+                }
+                else
+                {
+                    // No game instance available, include all ingredients
+                    // This can happen in editor or before game instance is initialized
+                    IngredientData.Add(*Ingredient);
+                }
             }
         }
         
-        //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Retrieved %d ingredients"), IngredientData.Num());
+        //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Retrieved %d unlocked ingredients (out of %d total)"), 
+        //    IngredientData.Num(), RowNames.Num());
     }
     else
     {

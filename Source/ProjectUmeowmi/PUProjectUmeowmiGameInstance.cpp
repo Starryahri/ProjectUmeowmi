@@ -1,15 +1,30 @@
 #include "PUProjectUmeowmiGameInstance.h"
 #include "ProjectUmeowmiCharacter.h"
 #include "LevelTransition/PULevelSpawnPoint.h"
+#include "PUPlayerSaveGame.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Misc/FileHelper.h"
+#include "HAL/PlatformFilemanager.h"
 
 UPUProjectUmeowmiGameInstance::UPUProjectUmeowmiGameInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	bHasSavedOrder = false;
 	bTransitionInProgress = false;
+	PlayerSaveGame = nullptr;
+}
+
+void UPUProjectUmeowmiGameInstance::Init()
+{
+	Super::Init();
+	
+	// Try to load existing save game, or create new one if it doesn't exist
+	if (!LoadGame())
+	{
+		CreateNewGame();
+	}
 }
 
 void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevelName, const FName& SpawnPointTag, bool bUseFade)
@@ -245,5 +260,210 @@ void UPUProjectUmeowmiGameInstance::LoadLevelAfterFade()
 	// Load the level after fade has completed
 	// Note: OnPostLoadMap will be called automatically when the level finishes loading
 	UGameplayStatics::OpenLevel(World, FName(*PendingLevelPath));
+}
+
+// Ingredient Inventory System
+bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& IngredientTag)
+{
+	if (!IngredientTag.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredient - Invalid ingredient tag provided"));
+		return false;
+	}
+
+	if (UnlockedIngredientTags.Contains(IngredientTag))
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredient - Ingredient %s is already unlocked"), *IngredientTag.ToString());
+		return true; // Already unlocked, consider it successful
+	}
+
+	UnlockedIngredientTags.Add(IngredientTag);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredient - Unlocked ingredient: %s"), *IngredientTag.ToString());
+
+	// Auto-save when an ingredient is unlocked
+	SaveGame();
+
+	return true;
+}
+
+int32 UPUProjectUmeowmiGameInstance::UnlockIngredients(const TArray<FGameplayTag>& IngredientTags)
+{
+	int32 UnlockedCount = 0;
+	int32 NewlyUnlockedCount = 0;
+
+	for (const FGameplayTag& Tag : IngredientTags)
+	{
+		if (!Tag.IsValid())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredients - Skipping invalid ingredient tag"));
+			continue;
+		}
+
+		if (UnlockedIngredientTags.Contains(Tag))
+		{
+			UnlockedCount++; // Count as successful (already unlocked)
+		}
+		else
+		{
+			UnlockedIngredientTags.Add(Tag);
+			UnlockedCount++;
+			NewlyUnlockedCount++;
+			UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredients - Unlocked ingredient: %s"), *Tag.ToString());
+		}
+	}
+
+	if (NewlyUnlockedCount > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredients - Unlocked %d new ingredients (total: %d)"), 
+			NewlyUnlockedCount, UnlockedCount);
+		
+		// Auto-save when ingredients are unlocked
+		SaveGame();
+	}
+	else if (UnlockedCount > 0)
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredients - All %d ingredients were already unlocked"), UnlockedCount);
+	}
+
+	return UnlockedCount;
+}
+
+bool UPUProjectUmeowmiGameInstance::IsIngredientUnlocked(const FGameplayTag& IngredientTag) const
+{
+	if (!IngredientTag.IsValid())
+	{
+		return false;
+	}
+
+	return UnlockedIngredientTags.Contains(IngredientTag);
+}
+
+// Save/Load System
+bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
+{
+	if (!PlayerSaveGame)
+	{
+		// Create a new save game object if we don't have one
+		PlayerSaveGame = Cast<UPUPlayerSaveGame>(UGameplayStatics::CreateSaveGameObject(UPUPlayerSaveGame::StaticClass()));
+		if (!PlayerSaveGame)
+		{
+			UE_LOG(LogTemp, Error, TEXT("UPUProjectUmeowmiGameInstance::SaveGame - Failed to create save game object"));
+			return false;
+		}
+	}
+
+	// Copy current state to save game
+	PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
+	PlayerSaveGame->CompletedDialogueNames = CompletedDialogueNames;
+
+	// Save to disk
+	if (UGameplayStatics::SaveGameToSlot(PlayerSaveGame, SlotName, 0))
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::SaveGame - Successfully saved game to slot: %s"), *SlotName);
+		return true;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("UPUProjectUmeowmiGameInstance::SaveGame - Failed to save game to slot: %s"), *SlotName);
+		return false;
+	}
+}
+
+bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
+{
+	if (!DoesSaveGameExist(SlotName))
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - No save game found in slot: %s"), *SlotName);
+		return false;
+	}
+
+	USaveGame* LoadedGame = UGameplayStatics::LoadGameFromSlot(SlotName, 0);
+	if (!LoadedGame)
+	{
+		UE_LOG(LogTemp, Error, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Failed to load game from slot: %s"), *SlotName);
+		return false;
+	}
+
+	PlayerSaveGame = Cast<UPUPlayerSaveGame>(LoadedGame);
+	if (!PlayerSaveGame)
+	{
+		UE_LOG(LogTemp, Error, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Loaded save game is not of type UPUPlayerSaveGame"));
+		return false;
+	}
+
+	// Restore state from save game
+	UnlockedIngredientTags = PlayerSaveGame->UnlockedIngredientTags;
+	CompletedDialogueNames = PlayerSaveGame->CompletedDialogueNames;
+
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Successfully loaded game from slot: %s (Unlocked ingredients: %d)"), 
+		*SlotName, UnlockedIngredientTags.Num());
+
+	return true;
+}
+
+void UPUProjectUmeowmiGameInstance::CreateNewGame()
+{
+	// Clear all unlocked ingredients and dialogue states
+	UnlockedIngredientTags.Empty();
+	CompletedDialogueNames.Empty();
+
+	// Unlock starting ingredients
+	UnlockedIngredientTags = StartingIngredientTags;
+	
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Created new game with %d starting ingredients"), 
+		StartingIngredientTags.Num());
+
+	// Create a new save game object
+	PlayerSaveGame = Cast<UPUPlayerSaveGame>(UGameplayStatics::CreateSaveGameObject(UPUPlayerSaveGame::StaticClass()));
+	if (PlayerSaveGame)
+	{
+		// Initialize with starting ingredients
+		PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
+		PlayerSaveGame->CompletedDialogueNames.Empty();
+		PlayerSaveGame->SaveVersion = 1;
+
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Save game object created"));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Failed to create save game object"));
+	}
+}
+
+bool UPUProjectUmeowmiGameInstance::DoesSaveGameExist(const FString& SlotName) const
+{
+	return UGameplayStatics::DoesSaveGameExist(SlotName, 0);
+}
+
+// Dialogue State (stubbed for future use)
+void UPUProjectUmeowmiGameInstance::MarkDialogueCompleted(const FName& DialogueName)
+{
+	if (DialogueName == NAME_None)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::MarkDialogueCompleted - Invalid dialogue name provided"));
+		return;
+	}
+
+	if (CompletedDialogueNames.Contains(DialogueName))
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::MarkDialogueCompleted - Dialogue %s is already marked as completed"), *DialogueName.ToString());
+		return;
+	}
+
+	CompletedDialogueNames.Add(DialogueName);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::MarkDialogueCompleted - Marked dialogue as completed: %s"), *DialogueName.ToString());
+
+	// Auto-save when a dialogue is completed
+	SaveGame();
+}
+
+bool UPUProjectUmeowmiGameInstance::IsDialogueCompleted(const FName& DialogueName) const
+{
+	if (DialogueName == NAME_None)
+	{
+		return false;
+	}
+
+	return CompletedDialogueNames.Contains(DialogueName);
 }
 

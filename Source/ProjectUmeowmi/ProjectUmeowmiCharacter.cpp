@@ -54,7 +54,7 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
 	// Initialize target camera rotation
-	TargetCameraRotation = FRotator(-25.0f, 45.0f, 0.0f);
+	TargetCameraRotation = FRotator(-15.0f, 45.0f, 0.0f);
 
 	// Always show mouse cursor
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
