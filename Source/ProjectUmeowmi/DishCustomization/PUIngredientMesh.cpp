@@ -2,6 +2,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "PUDishCustomizationComponent.h"
+#include "Engine/Engine.h"
 
 APUIngredientMesh::APUIngredientMesh()
 {
@@ -11,26 +12,10 @@ APUIngredientMesh::APUIngredientMesh()
     MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
     RootComponent = MeshComponent;
 
-    // Enable physics and collision for interactive ingredients
-    MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    MeshComponent->SetCollisionProfileName(TEXT("PhysicsActor"));
-    MeshComponent->SetGenerateOverlapEvents(true);
-    MeshComponent->SetSimulatePhysics(true);
-    MeshComponent->SetEnableGravity(true);
-    MeshComponent->SetMobility(EComponentMobility::Movable);
-    
-    // Add physics damping to make movement less intense
-    MeshComponent->SetLinearDamping(2.0f);      // Reduces linear velocity over time
-    MeshComponent->SetAngularDamping(5.0f);    // Reduces rotation over time
-    
-    // Reduce mass to make ingredients less bouncy
-    MeshComponent->SetMassScale(NAME_None, 0.5f);  // Reduce mass scale
-    
-    // Ensure visibility channel is blocked for mouse interaction
-    MeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-    
-    // Enable mouse interaction events
-    MeshComponent->SetNotifyRigidBodyCollision(true);
+    // DO NOT configure physics or collision during CDO construction
+    // During CDO construction, GEngine is not initialized, which causes GetSimplePhysicalMaterial to fail
+    // All physics and collision setup will be done in PostInitializeComponents() after GEngine is available
+    // This includes SetCollisionProfileName, SetCollisionEnabled, and any physics-related calls
     
     //UE_LOG(LogTemp,Display, TEXT("🖱️ Ingredient mesh created with mouse events bound"));
 
@@ -39,6 +24,38 @@ APUIngredientMesh::APUIngredientMesh()
     bIsGrabbed = false;
     OriginalPosition = FVector::ZeroVector;
     OriginalRotation = FRotator::ZeroRotator;
+}
+
+void APUIngredientMesh::PostInitializeComponents()
+{
+    Super::PostInitializeComponents();
+
+    // Apply physics settings after components are initialized and GEngine is available
+    // This ensures physics settings are applied even if they were skipped during CDO construction
+    // Double-check: ensure we're not in CDO construction AND GEngine is available AND component is not CDO
+    if (MeshComponent && !HasAnyFlags(RF_ClassDefaultObject) && !MeshComponent->HasAnyFlags(RF_ClassDefaultObject) && GEngine)
+    {
+        // Enable physics and collision for interactive ingredients
+        MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        MeshComponent->SetCollisionProfileName(TEXT("PhysicsActor"));
+        MeshComponent->SetGenerateOverlapEvents(true);
+        MeshComponent->SetSimulatePhysics(true);
+        MeshComponent->SetEnableGravity(true);
+        MeshComponent->SetMobility(EComponentMobility::Movable);
+        
+        // Add physics damping to make movement less intense
+        MeshComponent->SetLinearDamping(2.0f);
+        MeshComponent->SetAngularDamping(5.0f);
+        
+        // Reduce mass to make ingredients less bouncy
+        MeshComponent->SetMassScale(NAME_None, 0.5f);
+        
+        // Ensure visibility channel is blocked for mouse interaction
+        MeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+        
+        // Enable mouse interaction events
+        MeshComponent->SetNotifyRigidBodyCollision(true);
+    }
 }
 
 void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngredientData)

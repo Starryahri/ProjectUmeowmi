@@ -2,6 +2,7 @@
 #include "../ProjectUmeowmiCharacter.h"
 #include "GameplayTagContainer.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/Engine.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -35,7 +36,7 @@ APUCookingStation::APUCookingStation()
     if (InteractionBox)
     {
         InteractionBox->SetupAttachment(GetRootComponent());
-        InteractionBox->SetCollisionProfileName(TEXT("Trigger"));
+        // DO NOT set collision profile during CDO construction - will be set in PostInitializeComponents
         InteractionBox->SetBoxExtent(FVector(200.0f)); // Use fixed range for now
     }
 
@@ -43,6 +44,18 @@ APUCookingStation::APUCookingStation()
     if (DishCustomizationComponent)
     {
         DishCustomizationComponent->SetupAttachment(GetRootComponent());
+    }
+}
+
+void APUCookingStation::PostInitializeComponents()
+{
+    Super::PostInitializeComponents();
+
+    // Set collision profile after GEngine is initialized (safe from CDO construction)
+    // Double-check: ensure we're not in CDO construction AND GEngine is available AND component is not CDO
+    if (InteractionBox && !HasAnyFlags(RF_ClassDefaultObject) && !InteractionBox->HasAnyFlags(RF_ClassDefaultObject) && GEngine)
+    {
+        InteractionBox->SetCollisionProfileName(TEXT("Trigger"));
     }
 }
 

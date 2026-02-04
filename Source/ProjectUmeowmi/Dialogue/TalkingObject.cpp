@@ -26,7 +26,7 @@ ATalkingObject::ATalkingObject()
     InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
     InteractionSphere->SetupAttachment(RootComponent);
     InteractionSphere->SetSphereRadius(InteractionRange);
-    InteractionSphere->SetCollisionProfileName(TEXT("Trigger"));
+    // DO NOT set collision profile during CDO construction - will be set in PostInitializeComponents
     InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereBeginOverlap);
     InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereEndOverlap);
 
@@ -35,6 +35,18 @@ ATalkingObject::ATalkingObject()
     InteractionWidget->SetupAttachment(RootComponent);
     InteractionWidget->SetWidgetSpace(EWidgetSpace::Screen);
     InteractionWidget->SetVisibility(false);
+}
+
+void ATalkingObject::PostInitializeComponents()
+{
+    Super::PostInitializeComponents();
+
+    // Set collision profile after GEngine is initialized (safe from CDO construction)
+    // Double-check: ensure we're not in CDO construction AND GEngine is available AND component is not CDO
+    if (InteractionSphere && !HasAnyFlags(RF_ClassDefaultObject) && !InteractionSphere->HasAnyFlags(RF_ClassDefaultObject) && GEngine)
+    {
+        InteractionSphere->SetCollisionProfileName(TEXT("Trigger"));
+    }
 }
 
 void ATalkingObject::BeginPlay()

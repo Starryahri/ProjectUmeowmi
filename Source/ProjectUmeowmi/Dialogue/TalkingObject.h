@@ -37,6 +37,7 @@ public:
     ATalkingObject();
 
     virtual void BeginPlay() override;
+    virtual void PostInitializeComponents() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     
     // We'll keep Tick for now but mark it as virtual so we can override it in derived classes if needed

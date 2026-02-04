@@ -26,6 +26,7 @@ public:
 	UPUProjectUmeowmiGameInstance(const FObjectInitializer& ObjectInitializer);
 
 	virtual void Init() override;
+	virtual void Shutdown() override;
 
 	/**
 	 * Transition to a new level with a specific spawn point.
@@ -281,10 +282,20 @@ private:
 	// Stored level path for delayed loading after fade
 	FString PendingLevelPath;
 
+	// Delegate handle for PostLoadMapWithWorld
+	FDelegateHandle PostLoadMapDelegateHandle;
+
 	/**
 	 * Called after fade out completes to actually load the level
 	 */
 	void LoadLevelAfterFade();
+	
+	/**
+	 * Handle PostLoadMapWithWorld delegate - called when a level finishes loading
+	 * This is more reliable than GameMode::StartPlay() in packaged builds
+	 */
+	void HandlePostLoadMap(UWorld* LoadedWorld);
+
 	/**
 	 * Save the current player state before transitioning
 	 */

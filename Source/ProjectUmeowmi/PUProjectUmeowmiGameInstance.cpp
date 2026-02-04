@@ -11,10 +11,12 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Misc/FileHelper.h"
 #include "HAL/PlatformFilemanager.h"
+#include "Misc/Paths.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/DataTable.h"
 #include "UObject/StructOnScope.h"
 #include "Components/Button.h"
+#include "UObject/UObjectGlobals.h"
 
 UPUProjectUmeowmiGameInstance::UPUProjectUmeowmiGameInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -29,6 +31,10 @@ void UPUProjectUmeowmiGameInstance::Init()
 {
 	Super::Init();
 	
+	// Bind to PostLoadMapWithWorld delegate to detect when levels finish loading
+	// This is more reliable than relying on GameMode::StartPlay() in packaged builds
+	PostLoadMapDelegateHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &UPUProjectUmeowmiGameInstance::HandlePostLoadMap);
+	
 	// If debug flag is set, always start with a new game (ignores existing saves)
 	if (bAlwaysStartNewGame)
 	{
@@ -42,6 +48,18 @@ void UPUProjectUmeowmiGameInstance::Init()
 	{
 		CreateNewGame();
 	}
+}
+
+void UPUProjectUmeowmiGameInstance::Shutdown()
+{
+	// Unbind the delegate to prevent memory leaks
+	if (PostLoadMapDelegateHandle.IsValid())
+	{
+		FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapDelegateHandle);
+		PostLoadMapDelegateHandle.Reset();
+	}
+
+	Super::Shutdown();
 }
 
 void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevelName, const FName& SpawnPointTag, bool bUseFade)
@@ -81,27 +99,28 @@ void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevel
 		return;
 	}
 
-	// Build the level path - OpenLevel expects just the level name or full path
-	// If TargetLevelName already includes path, use it; otherwise construct it
+	// Build the level path - OpenLevel can accept either:
+	// 1. Just the level name (e.g., "L_Chapter0_2_LolaRoom") - preferred for packaged builds
+	// 2. Full path without extension (e.g., "/Game/LuckyFatCatDiner/Maps/L_Chapter0_2_LolaRoom")
+	// 
+	// In packaged builds, using just the level name is more reliable as the engine
+	// will find the level in the cooked content automatically.
 	FString LevelPath = TargetLevelName;
-	if (!LevelPath.StartsWith(TEXT("/Game/")))
+	
+	// If it's already a full path, try to extract just the level name
+	if (LevelPath.StartsWith(TEXT("/Game/")))
 	{
-		// Check if this is a Chapter0 map (in subdirectory)
-		FString Subdirectory = TEXT("");
-		if (TargetLevelName.StartsWith(TEXT("L_Chapter0_")))
-		{
-			Subdirectory = TEXT("Chapter0/");
-		}
-		
-		// Construct full path with subdirectory if needed
-		if (Subdirectory.IsEmpty())
-		{
-			LevelPath = FString::Printf(TEXT("/Game/LuckyFatCatDiner/Maps/%s"), *TargetLevelName);
-		}
-		else
-		{
-			LevelPath = FString::Printf(TEXT("/Game/LuckyFatCatDiner/Maps/%s%s"), *Subdirectory, *TargetLevelName);
-		}
+		// Extract just the filename from the path
+		FString Path, Filename, Extension;
+		FPaths::Split(LevelPath, Path, Filename, Extension);
+		LevelPath = Filename;
+		UE_LOG(LogTemp, Log, TEXT("TransitionToLevel: Extracted level name '%s' from path '%s'"), *LevelPath, *TargetLevelName);
+	}
+	else
+	{
+		// Remove any .umap extension if present
+		LevelPath.ReplaceInline(TEXT(".umap"), TEXT(""));
+		UE_LOG(LogTemp, Log, TEXT("TransitionToLevel: Using level name '%s'"), *LevelPath);
 	}
 
 	// Store the level path for loading after fade completes
@@ -121,7 +140,9 @@ void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevel
 	else
 	{
 		// No fade, load immediately
+		UE_LOG(LogTemp, Log, TEXT("Loading level immediately (no fade): %s"), *LevelPath);
 		UGameplayStatics::OpenLevel(World, FName(*LevelPath));
+		// Note: OpenLevel is async, success/failure will be apparent when HandlePostLoadMap is called
 	}
 }
 
@@ -275,7 +296,8 @@ void UPUProjectUmeowmiGameInstance::LoadLevelAfterFade()
 	UE_LOG(LogTemp, Log, TEXT("Fade out complete, loading level: %s"), *PendingLevelPath);
 	
 	// Load the level after fade has completed
-	// Note: OnPostLoadMap will be called automatically when the level finishes loading
+	// Note: HandlePostLoadMap will be called via delegate when the level finishes loading
+	// OpenLevel is async, so we can't check success here - HandlePostLoadMap will be called on success
 	UGameplayStatics::OpenLevel(World, FName(*PendingLevelPath));
 }
 
@@ -808,6 +830,33 @@ void UPUProjectUmeowmiGameInstance::ProcessPopupQueue()
 		FPopupData NextPopup = PopupQueue[0];
 		PopupQueue.RemoveAt(0);
 		ShowPopup(NextPopup);
+	}
+}
+
+void UPUProjectUmeowmiGameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
+{
+	// Only process if we have a transition in progress
+	if (!bTransitionInProgress)
+	{
+		return;
+	}
+
+	// Verify the loaded world is valid
+	if (!LoadedWorld)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("HandlePostLoadMap: Level loaded (World: %s), scheduling OnLevelLoaded()"), 
+		LoadedWorld ? *LoadedWorld->GetName() : TEXT("NULL"));
+
+	// Use a timer to delay OnLevelLoaded() slightly to ensure player controller and pawn are fully initialized
+	// This is especially important in packaged builds where timing can differ from the editor
+	// Use the loaded world's timer manager to ensure we're using the correct world
+	if (LoadedWorld)
+	{
+		FTimerHandle LevelLoadedTimerHandle;
+		LoadedWorld->GetTimerManager().SetTimer(LevelLoadedTimerHandle, this, &UPUProjectUmeowmiGameInstance::OnLevelLoaded, 0.1f, false);
 	}
 }
 

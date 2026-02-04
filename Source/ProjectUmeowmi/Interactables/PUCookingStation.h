@@ -22,6 +22,7 @@ public:
     virtual void EndInteraction() override;
 
 protected:
+    virtual void PostInitializeComponents() override;
     virtual void BeginPlay() override;
 
     // Cooking Station specific components
