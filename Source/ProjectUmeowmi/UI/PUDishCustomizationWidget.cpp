@@ -308,7 +308,7 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
     // Hide/remove current widget from viewport
     if (IsInViewport())
     {
-        RemoveFromViewport();
+        RemoveFromParent();
         //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Removed current widget from viewport"));
     }
 
@@ -452,7 +452,7 @@ void UPUDishCustomizationWidget::GoToNextStage()
         // Remove current widget from viewport
         if (IsInViewport())
         {
-            RemoveFromViewport();
+            RemoveFromParent();
             //UE_LOG(LogTemp,Display, TEXT("✅ PUDishCustomizationWidget::GoToNextStage - Removed widget from viewport"));
         }
         

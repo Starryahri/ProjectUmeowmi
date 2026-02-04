@@ -165,31 +165,23 @@ void UPUPopupWidget::CreateButtons()
 			continue;
 		}
 
-		// Try to get UButton from the widget (if it's a UButton or contains one)
+		// Try to get UButton from the widget (if it contains one)
 		UButton* ButtonComponent = nullptr;
 		
-		// Check if the widget itself is a UButton
-		if (UButton* DirectButton = Cast<UButton>(NewButtonWidget))
+		// Try to find a UButton component inside the widget
+		// This assumes your custom button widget has a UButton child named "Button" or similar
+		// You can customize this based on your widget structure
+		if (NewButtonWidget->WidgetTree)
 		{
-			ButtonComponent = DirectButton;
-		}
-		else
-		{
-			// Try to find a UButton component inside the widget
-			// This assumes your custom button widget has a UButton child named "Button" or similar
-			// You can customize this based on your widget structure
-			if (WidgetTree)
+			// Search for a button in the widget tree
+			TArray<UWidget*> AllWidgets;
+			NewButtonWidget->WidgetTree->GetAllWidgets(AllWidgets);
+			for (UWidget* Widget : AllWidgets)
 			{
-				// Search for a button in the widget tree
-				TArray<UWidget*> AllWidgets;
-				WidgetTree->GetAllWidgets(AllWidgets);
-				for (UWidget* Widget : AllWidgets)
+				if (UButton* FoundButton = Cast<UButton>(Widget))
 				{
-					if (UButton* FoundButton = Cast<UButton>(Widget))
-					{
-						ButtonComponent = FoundButton;
-						break;
-					}
+					ButtonComponent = FoundButton;
+					break;
 				}
 			}
 		}

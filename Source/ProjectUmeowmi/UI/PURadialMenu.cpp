@@ -13,8 +13,8 @@
 UPURadialMenu::UPURadialMenu(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
     , bIsVisible(false)
-    , ItemRadius(100.0f)
     , PreparationDataTable(nullptr)
+    , ItemRadius(100.0f)
 {
 }
 

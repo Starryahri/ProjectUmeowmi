@@ -32,8 +32,8 @@ namespace
 
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
-    , Location(EPUIngredientSlotLocation::ActiveIngredientArea)
     , bHasIngredient(false)
+    , Location(EPUIngredientSlotLocation::ActiveIngredientArea)
     , QuantityControlWidget(nullptr)
     , RadialMenuWidget(nullptr)
     , bRadialMenuVisible(false)

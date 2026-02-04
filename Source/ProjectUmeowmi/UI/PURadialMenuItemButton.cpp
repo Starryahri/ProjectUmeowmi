@@ -5,8 +5,8 @@
 
 UPURadialMenuItemButton::UPURadialMenuItemButton(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
-    , ItemIndex(-1)
     , ItemButton(nullptr)
+    , ItemIndex(-1)
 {
 }
 
