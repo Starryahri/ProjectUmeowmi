@@ -88,6 +88,47 @@ void UPUIngredientSlot::NativeConstruct()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
+    // Preload material instances to ensure they're available at runtime
+    // This fixes the issue where materials don't work on startup/builds
+    // Try to load even if IsValid() returns false (sometimes the path exists but IsValid() fails)
+    if (PreparationMaterialInstance.IsValid() || !PreparationMaterialInstance.ToSoftObjectPath().IsNull())
+    {
+        // Force load the material instance to ensure it's in memory
+        UMaterialInterface* BaseMaterial = PreparationMaterialInstance.LoadSynchronous();
+        if (BaseMaterial)
+        {
+            // Pre-create the dynamic material instance so it's ready when needed
+            if (!PreparationDynamicMaterial)
+            {
+                PreparationDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeConstruct - Failed to load PreparationMaterialInstance: %s"), 
+                *PreparationMaterialInstance.ToSoftObjectPath().ToString());
+        }
+    }
+    
+    // Also preload suspicious material instance
+    // Try to load even if IsValid() returns false (sometimes the path exists but IsValid() fails)
+    if (SuspiciousMaterialInstance.IsValid() || !SuspiciousMaterialInstance.ToSoftObjectPath().IsNull())
+    {
+        UMaterialInterface* BaseMaterial = SuspiciousMaterialInstance.LoadSynchronous();
+        if (BaseMaterial)
+        {
+            if (!SuspiciousDynamicMaterial)
+            {
+                SuspiciousDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeConstruct - Failed to load SuspiciousMaterialInstance: %s"), 
+                *SuspiciousMaterialInstance.ToSoftObjectPath().ToString());
+        }
+    }
+
     // Initialize plate background (always 100% opacity, outline hidden by default)
     UpdatePlateBackgroundOpacity();
 
@@ -517,7 +558,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         UMaterialInstanceDynamic* MaterialToUse = nullptr;
         TSoftObjectPtr<UMaterialInterface> MaterialInstanceToUse;
         
-        if (bUsePrepMaterials && bIsSuspicious && SuspiciousMaterialInstance.IsValid())
+        if (bUsePrepMaterials && bIsSuspicious && (SuspiciousMaterialInstance.IsValid() || !SuspiciousMaterialInstance.ToSoftObjectPath().IsNull()))
         {
             // Use suspicious material (takes priority)
             MaterialInstanceToUse = SuspiciousMaterialInstance;
@@ -531,6 +572,12 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                     SuspiciousDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
                     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for suspicious ingredient icon"));
                 }
+                else
+                {
+                    // Material failed to load - log warning
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - Failed to load SuspiciousMaterialInstance: %s"), 
+                        *SuspiciousMaterialInstance.ToSoftObjectPath().ToString());
+                }
             }
             MaterialToUse = SuspiciousDynamicMaterial;
             
@@ -540,7 +587,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 PreparationDynamicMaterial = nullptr;
             }
         }
-        else if (bUsePrepMaterials && bHasPreparations && PreparationMaterialInstance.IsValid())
+        else if (bUsePrepMaterials && bHasPreparations && (PreparationMaterialInstance.IsValid() || !PreparationMaterialInstance.ToSoftObjectPath().IsNull()))
         {
             // Use preparation material
             MaterialInstanceToUse = PreparationMaterialInstance;
@@ -553,6 +600,12 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 {
                     PreparationDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
                     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for preparation-tinted ingredient icon"));
+                }
+                else
+                {
+                    // Material failed to load - log warning and try to use texture fallback
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - Failed to load PreparationMaterialInstance: %s. Using texture fallback."), 
+                        *PreparationMaterialInstance.ToSoftObjectPath().ToString());
                 }
             }
             MaterialToUse = PreparationDynamicMaterial;
