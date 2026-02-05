@@ -197,6 +197,21 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     void SetDishCustomizationWidget(class UPUDishCustomizationWidget* InDishWidget);
 
+    // Controller input functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
+    void HandleControllerSelect(); // Called when A/X button is pressed on focused slot
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
+    void HandleControllerMenu(); // Called when X/Square button is pressed to open radial menu
+
+    // Navigation setup functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Navigation")
+    void SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredientSlot* DownSlot, UPUIngredientSlot* LeftSlot, UPUIngredientSlot* RightSlot);
+
+    // Manually trigger focus visual feedback (outline and hover text)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
+    void ShowFocusVisuals();
+
     // Time/Temperature slider functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
     void SetTimeValue(float NewTimeValue);
@@ -370,6 +385,19 @@ protected:
     UPROPERTY()
     TWeakObjectPtr<class UPUDishCustomizationWidget> CachedDishWidget;
 
+    // Navigation references for controller support
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationUp;
+
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationDown;
+
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationLeft;
+
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationRight;
+
     // Whether drag functionality is enabled
     // Set to true by default for testing - can be disabled in Blueprint if needed
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Drag")
@@ -429,6 +457,9 @@ protected:
     // Native focus events
     virtual void NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent) override;
     virtual void NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusEvent) override;
+
+    // Native key/button events for controller support
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Slot")

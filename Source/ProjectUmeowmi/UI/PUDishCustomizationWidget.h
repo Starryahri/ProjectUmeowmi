@@ -266,6 +266,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Preparations")
     FGameplayTagContainer GetPreparationTagsForImplement(int32 ImplementIndex) const;
 
+    // Controller navigation setup for prep stage
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetupPrepSlotNavigation();
+
+    // Set initial focus for prep stage
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetInitialFocusForPrepStage();
+
 protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")
@@ -454,6 +462,10 @@ private:
     // Internal component reference for event subscription only
     UPROPERTY()
     UPUDishCustomizationComponent* CustomizationComponent;
+
+    // Timer handle for delayed focus setting
+    UPROPERTY()
+    FTimerHandle InitialFocusTimerHandle;
 
     void SubscribeToEvents();
     void UnsubscribeFromEvents();

@@ -23,6 +23,11 @@ void UPUIngredientQuantityControl::NativeConstruct()
     
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::NativeConstruct - Widget constructed: %s"), *GetName());
     
+    // DISABLED FOR CONTROLLER NAVIGATION - Make widget non-focusable
+    // This prevents quantity controls from intercepting controller navigation
+    // The buttons inside won't be focusable since the parent widget isn't focusable
+    SetIsFocusable(false);
+    
     // Bind button events
     if (DecreaseQuantityButton)
     {
@@ -485,4 +490,12 @@ UPUIngredientDragDropOperation* UPUIngredientQuantityControl::CreateDragDropOper
     }
 
     return DragOperation;
+}
+
+// DISABLED FOR CONTROLLER NAVIGATION - Prevent quantity control from intercepting controller input
+FReply UPUIngredientQuantityControl::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    // Always return Unhandled so navigation passes through to ingredient slots
+    // This allows controller navigation to work properly without quantity controls interfering
+    return FReply::Unhandled();
 } 

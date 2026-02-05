@@ -168,6 +168,16 @@ void UPUIngredientSlot::NativeConstruct()
 
     // Initialize time/temperature sliders
     InitializeTimeTempSliders();
+
+    // Make slots focusable for controller navigation (especially important for prep stage)
+    // Prep, Pantry, and ActiveIngredientArea slots should be focusable
+    if (Location == EPUIngredientSlotLocation::Prep || 
+        Location == EPUIngredientSlotLocation::Pantry || 
+        Location == EPUIngredientSlotLocation::ActiveIngredientArea ||
+        Location == EPUIngredientSlotLocation::Prepped)
+    {
+        SetIsFocusable(true);
+    }
 }
 
 void UPUIngredientSlot::NativeDestruct()
@@ -2164,8 +2174,8 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
 {
     Super::NativeOnAddedToFocusPath(InFocusEvent);
 
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Focus added to slot: %s"),
-    //    *GetName());
+    UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Focus added to slot: %s (Location: %d)"),
+        *GetName(), (int32)Location);
 
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
@@ -2180,7 +2190,7 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
             OutlineColor.A = 1.0f;
             Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
             PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Showing outline on plate background"));
+            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Showing outline on plate background (existing outline)"));
         }
         else
         {
@@ -2189,8 +2199,12 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
             OutlineColor.A = 1.0f;
             Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
             PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Enabled outline on plate background"));
+            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Enabled outline on plate background (new outline)"));
         }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - PlateBackground is NULL! Cannot show outline."));
     }
 }
 
@@ -4240,6 +4254,190 @@ bool UPUIngredientSlot::ShouldShowSliders() const
     }
     
     return false;
+}
+
+FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    // Handle controller button presses
+    FKey Key = InKeyEvent.GetKey();
+    
+    // Log input for debugging
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Key pressed: %s (Slot: %s, Location: %d, HasFocus: %s)"), 
+        *Key.ToString(), *GetName(), (int32)Location, HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+    
+    // DISABLED FOR NOW - Focus on navigation only
+    // Gamepad A button (Xbox) / X button (PlayStation) - Select/Activate
+    //if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
+    //{
+    //    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Select button pressed, calling HandleControllerSelect"));
+    //    HandleControllerSelect();
+    //    return FReply::Handled();
+    //}
+    
+    // DISABLED FOR NOW - Focus on navigation only
+    // Gamepad X button (Xbox) / Square button (PlayStation) - Open menu
+    //if (Key == EKeys::Gamepad_FaceButton_Left)
+    //{
+    //    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Menu button pressed, calling HandleControllerMenu"));
+    //    HandleControllerMenu();
+    //    return FReply::Handled();
+    //}
+    
+    // Handle D-pad and left stick navigation
+    if (Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Gamepad_LeftStick_Up || Key == EKeys::Up)
+    {
+        if (NavigationUp.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating UP to slot: %s"), *NavigationUp->GetName());
+            NavigationUp->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - UP navigation requested but NavigationUp is invalid"));
+        }
+    }
+    else if (Key == EKeys::Gamepad_DPad_Down || Key == EKeys::Gamepad_LeftStick_Down || Key == EKeys::Down)
+    {
+        if (NavigationDown.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating DOWN to slot: %s"), *NavigationDown->GetName());
+            NavigationDown->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - DOWN navigation requested but NavigationDown is invalid"));
+        }
+    }
+    else if (Key == EKeys::Gamepad_DPad_Left || Key == EKeys::Gamepad_LeftStick_Left || Key == EKeys::Left)
+    {
+        if (NavigationLeft.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating LEFT to slot: %s"), *NavigationLeft->GetName());
+            NavigationLeft->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - LEFT navigation requested but NavigationLeft is invalid"));
+        }
+    }
+    else if (Key == EKeys::Gamepad_DPad_Right || Key == EKeys::Gamepad_LeftStick_Right || Key == EKeys::Right)
+    {
+        if (NavigationRight.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating RIGHT to slot: %s"), *NavigationRight->GetName());
+            NavigationRight->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - RIGHT navigation requested but NavigationRight is invalid"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Unhandled key: %s, passing to parent"), *Key.ToString());
+    }
+    
+    return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+void UPUIngredientSlot::HandleControllerSelect()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerSelect - Called (Slot: %s, Location: %d, Empty: %s)"), 
+        *GetName(), (int32)Location, IsEmpty() ? TEXT("YES") : TEXT("NO"));
+    
+    // For prep stage: If slot is empty, open pantry. If slot has ingredient, open radial menu
+    if (Location == EPUIngredientSlotLocation::Prep)
+    {
+        if (IsEmpty())
+        {
+            // Empty slot - trigger empty slot click (opens pantry)
+            OnEmptySlotClicked.Broadcast(this);
+        }
+        else
+        {
+            // Slot has ingredient - open radial menu for preparations
+            ShowRadialMenu(true, false);
+        }
+    }
+    else if (Location == EPUIngredientSlotLocation::Pantry)
+    {
+        // Pantry slot - select ingredient (this will be handled by the dish widget)
+        OnEmptySlotClicked.Broadcast(this);
+    }
+    else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        // Active ingredient area - open radial menu
+        if (bHasIngredient)
+        {
+            ShowRadialMenu(true, true);
+        }
+    }
+}
+
+void UPUIngredientSlot::HandleControllerMenu()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerMenu - Called (Slot: %s, Location: %d, HasIngredient: %s)"), 
+        *GetName(), (int32)Location, bHasIngredient ? TEXT("YES") : TEXT("NO"));
+    
+    // Open radial menu when X/Square is pressed
+    if (bHasIngredient || Location == EPUIngredientSlotLocation::Prep)
+    {
+        bool bIsPrepMenu = (Location == EPUIngredientSlotLocation::Prep);
+        bool bIncludeActions = (Location == EPUIngredientSlotLocation::ActiveIngredientArea);
+        ShowRadialMenu(bIsPrepMenu, bIncludeActions);
+    }
+}
+
+void UPUIngredientSlot::SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredientSlot* DownSlot, UPUIngredientSlot* LeftSlot, UPUIngredientSlot* RightSlot)
+{
+    // Store navigation references for manual navigation handling in NativeOnKeyDown
+    NavigationUp = UpSlot;
+    NavigationDown = DownSlot;
+    NavigationLeft = LeftSlot;
+    NavigationRight = RightSlot;
+    
+    // Note: We handle navigation manually in NativeOnKeyDown rather than using SetNavigationRule
+    // because SetNavigationRule requires widget names (FName) and manual navigation gives us
+    // more control over the navigation behavior.
+}
+
+void UPUIngredientSlot::ShowFocusVisuals()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - Manually showing focus visuals for slot: %s"), *GetName());
+    
+    // Show hover text (works for prep/pantry slots even when "empty")
+    UpdateHoverTextVisibility(true);
+
+    // Show outline on focus
+    if (PlateBackground)
+    {
+        FSlateBrush Brush = PlateBackground->GetBrush();
+        if (Brush.OutlineSettings.Width > 0.0f)
+        {
+            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
+            OutlineColor.A = 1.0f;
+            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+            PlateBackground->SetBrush(Brush);
+            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - Showing outline (existing outline)"));
+        }
+        else
+        {
+            Brush.OutlineSettings.Width = 2.0f;
+            FLinearColor OutlineColor = FLinearColor::White;
+            OutlineColor.A = 1.0f;
+            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
+            PlateBackground->SetBrush(Brush);
+            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - Enabled outline (new outline)"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - PlateBackground is NULL! Cannot show outline."));
+    }
 }
 
 

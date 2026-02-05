@@ -67,6 +67,9 @@ public:
 
     // Native drag events (similar to ingredient button)
     virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+    
+    // DISABLED FOR CONTROLLER NAVIGATION - Prevent quantity control from intercepting controller input
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // Enable/disable drag functionality
     UFUNCTION(BlueprintCallable, Category = "Quantity Control|Drag")

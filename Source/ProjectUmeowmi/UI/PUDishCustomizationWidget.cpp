@@ -14,6 +14,9 @@
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
 #include "Blueprint/WidgetTree.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GameFramework/PlayerController.h"
+#include "Engine/LocalPlayer.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -80,6 +83,12 @@ void UPUDishCustomizationWidget::NativeConstruct()
 void UPUDishCustomizationWidget::NativeDestruct()
 {
     // //UE_LOG(LogTemp,Display, TEXT("PUDishCustomizationWidget::NativeDestruct - Widget destructing"));
+    
+    // Clear any pending timers
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(InitialFocusTimerHandle);
+    }
     
     // Unsubscribe from events
     UnsubscribeFromEvents();
@@ -593,7 +602,7 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
 
 void UPUDishCustomizationWidget::CreateIngredientSlots()
 {
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Creating ingredient slots from available ingredients"));
+    UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateIngredientSlots - FUNCTION CALLED! Creating ingredient slots from available ingredients"));
     
     // Clear existing slots and shelving widgets
     CreatedIngredientSlots.Empty();
@@ -680,6 +689,12 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
             }
         }
     }
+    
+    // Set up navigation for prep slots (for controller support)
+    SetupPrepSlotNavigation();
+    
+    // Set initial focus for controller navigation
+    SetInitialFocusForPrepStage();
     
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlots - Created %d ingredient slots"), CreatedIngredientSlots.Num());
 }
@@ -1684,6 +1699,9 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentShelvingWidget(UPUIngredientSlo
 
 void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding)
 {
+    UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateSlots - FUNCTION CALLED! Location: %d (Prep=%d), MaxSlots: %d"), 
+        (int32)Location, (int32)EPUIngredientSlotLocation::Prep, MaxSlots);
+    
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Creating slots (Location: %d, MaxSlots: %d, UseShelving: %s, CreateEmpty: %s, EnableDrag: %s)"), 
     //    (int32)Location, MaxSlots, bUseShelvingWidgets ? TEXT("YES") : TEXT("NO"), bCreateEmptySlots ? TEXT("YES") : TEXT("NO"), bEnableDrag ? TEXT("YES") : TEXT("NO"));
     
@@ -1900,6 +1918,15 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
     
     // Mark that slots have been created
     bIngredientSlotsCreated = true;
+    
+    // Set up navigation for prep slots (for controller support)
+    // This ensures navigation works regardless of how slots are created
+    if (Location == EPUIngredientSlotLocation::Prep)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateSlots - Prep slots created! Setting up navigation..."));
+        SetupPrepSlotNavigation();
+        SetInitialFocusForPrepStage();
+    }
 }
 
 void UPUDishCustomizationWidget::CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, float FirstSlotLeftPadding)
@@ -2707,5 +2734,199 @@ void UPUDishCustomizationWidget::RemovePreppedSlot(const FIngredientInstance& In
     else
     {
         //UE_LOG(LogTemp,Display, TEXT("ℹ️ PUDishCustomizationWidget::RemovePreppedSlot - No prepped slot found for InstanceID: %d"), InstanceID);
+    }
+}
+
+void UPUDishCustomizationWidget::SetupPrepSlotNavigation()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPrepSlotNavigation - Setting up navigation for prep slots"));
+    
+    // Set up navigation grid for prep slots (for controller support)
+    // Slots are arranged in a wrap container: 2 rows of 6 slots each (12 total slots)
+    const int32 SlotsPerRow = 6;
+    
+    TArray<UPUIngredientSlot*> PrepSlots;
+    for (UPUIngredientSlot* PrepSlot : CreatedIngredientSlots)
+    {
+        if (PrepSlot && PrepSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
+        {
+            // Ensure ALL prep slots are focusable, including empty ones
+            PrepSlot->SetIsFocusable(true);
+            PrepSlots.Add(PrepSlot);
+            
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPrepSlotNavigation - Added prep slot: %s (Empty: %s)"), 
+                *PrepSlot->GetName(), PrepSlot->IsEmpty() ? TEXT("YES") : TEXT("NO"));
+        }
+    }
+    
+    if (PrepSlots.Num() == 0)
+    {
+        return;
+    }
+    
+    // Set up navigation for each slot
+    for (int32 i = 0; i < PrepSlots.Num(); ++i)
+    {
+        UPUIngredientSlot* CurrentSlot = PrepSlots[i];
+        if (!CurrentSlot)
+        {
+            continue;
+        }
+        
+        int32 Row = i / SlotsPerRow;
+        int32 Col = i % SlotsPerRow;
+        
+        // Calculate neighbor indices
+        int32 UpIndex = (Row > 0) ? (i - SlotsPerRow) : INDEX_NONE;
+        int32 DownIndex = ((Row + 1) * SlotsPerRow <= PrepSlots.Num()) ? (i + SlotsPerRow) : INDEX_NONE;
+        
+        // Left navigation: if at start of row, wrap to last slot of previous row
+        int32 LeftIndex = INDEX_NONE;
+        if (Col > 0)
+        {
+            // Not at start of row, go to previous slot in same row
+            LeftIndex = i - 1;
+        }
+        else
+        {
+            // At start of row, wrap to last slot of previous row (if it exists)
+            if (Row > 0)
+            {
+                int32 PrevRowLastIndex = (Row * SlotsPerRow) - 1;
+                if (PrevRowLastIndex >= 0 && PrevRowLastIndex < PrepSlots.Num())
+                {
+                    LeftIndex = PrevRowLastIndex;
+                }
+            }
+        }
+        
+        // Right navigation: if at end of row, wrap to first slot of next row
+        int32 RightIndex = INDEX_NONE;
+        if (Col < SlotsPerRow - 1)
+        {
+            // Not at end of row, go to next slot in same row
+            RightIndex = (i + 1 < PrepSlots.Num()) ? (i + 1) : INDEX_NONE;
+        }
+        else
+        {
+            // At end of row, wrap to first slot of next row (if it exists)
+            int32 NextRowFirstIndex = (Row + 1) * SlotsPerRow;
+            if (NextRowFirstIndex < PrepSlots.Num())
+            {
+                RightIndex = NextRowFirstIndex;
+            }
+        }
+        
+        // Get neighbor slots
+        UPUIngredientSlot* UpSlot = (UpIndex != INDEX_NONE && UpIndex >= 0 && UpIndex < PrepSlots.Num()) ? PrepSlots[UpIndex] : nullptr;
+        UPUIngredientSlot* DownSlot = (DownIndex != INDEX_NONE && DownIndex >= 0 && DownIndex < PrepSlots.Num()) ? PrepSlots[DownIndex] : nullptr;
+        UPUIngredientSlot* LeftSlot = (LeftIndex != INDEX_NONE && LeftIndex >= 0 && LeftIndex < PrepSlots.Num()) ? PrepSlots[LeftIndex] : nullptr;
+        UPUIngredientSlot* RightSlot = (RightIndex != INDEX_NONE && RightIndex >= 0 && RightIndex < PrepSlots.Num()) ? PrepSlots[RightIndex] : nullptr;
+        
+        // Set up navigation
+        CurrentSlot->SetupNavigation(UpSlot, DownSlot, LeftSlot, RightSlot);
+        
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPrepSlotNavigation - Slot %d (%s): Up=%s, Down=%s, Left=%s, Right=%s"), 
+            i, *CurrentSlot->GetName(),
+            UpSlot ? *UpSlot->GetName() : TEXT("NULL"),
+            DownSlot ? *DownSlot->GetName() : TEXT("NULL"),
+            LeftSlot ? *LeftSlot->GetName() : TEXT("NULL"),
+            RightSlot ? *RightSlot->GetName() : TEXT("NULL"));
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPrepSlotNavigation - Navigation setup complete for %d prep slots"), PrepSlots.Num());
+}
+
+void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Setting initial focus for prep stage"));
+    
+    // Ensure this widget can receive focus first
+    SetIsFocusable(true);
+    
+    // Find the first prep slot (including empty ones) and set focus to it
+    for (UPUIngredientSlot* PrepSlot : CreatedIngredientSlots)
+    {
+        if (PrepSlot && PrepSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Found prep slot: %s (Empty: %s, Focusable: %s)"), 
+                *PrepSlot->GetName(), 
+                PrepSlot->IsEmpty() ? TEXT("YES") : TEXT("NO"),
+                PrepSlot->IsFocusable() ? TEXT("YES") : TEXT("NO"));
+            
+            // Ensure the slot is focusable (should already be set in NativeConstruct, but double-check)
+            PrepSlot->SetIsFocusable(true);
+            
+            // Use a small delay to ensure the widget is fully constructed and visible
+            // This is necessary because SetKeyboardFocus might fail if called too early
+            if (UWorld* World = GetWorld())
+            {
+                // Clear any existing timer
+                World->GetTimerManager().ClearTimer(InitialFocusTimerHandle);
+                
+                // Store weak pointer to avoid issues if slot is destroyed
+                TWeakObjectPtr<UPUIngredientSlot> WeakSlot = PrepSlot;
+                
+                World->GetTimerManager().SetTimer(InitialFocusTimerHandle, [WeakSlot, this]()
+                {
+                    if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel())
+                    {
+                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
+                        
+                        // Ensure the slot is still focusable
+                        WeakSlot->SetIsFocusable(true);
+                        
+                        // Set keyboard focus - this should trigger NativeOnAddedToFocusPath which shows the outline
+                        WeakSlot->SetKeyboardFocus();
+                        
+                        // Also try setting user focus (for gamepad)
+                        if (APlayerController* PC = GetOwningPlayer())
+                        {
+                            if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+                            {
+                                FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), WeakSlot->TakeWidget(), EFocusCause::SetDirectly);
+                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Also set user focus via Slate"));
+                            }
+                        }
+                        
+                        // Manually trigger focus visuals to ensure outline is shown
+                        // This is a backup in case NativeOnAddedToFocusPath doesn't fire immediately
+                        WeakSlot->ShowFocusVisuals();
+                        
+                        // Verify focus was set
+                        if (WeakSlot->HasKeyboardFocus())
+                        {
+                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Focus successfully set! Outline should be visible now."));
+                        }
+                        else
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Focus was NOT set (widget may not be focusable or visible)"));
+                            // Try one more time after another small delay
+                            if (UWorld* RetryWorld = GetWorld())
+                            {
+                                FTimerHandle RetryTimer;
+                                RetryWorld->GetTimerManager().SetTimer(RetryTimer, [WeakSlot]()
+                                {
+                                    if (WeakSlot.IsValid())
+                                    {
+                                        WeakSlot->SetIsFocusable(true);
+                                        WeakSlot->SetKeyboardFocus();
+                                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
+                                    }
+                                }, 0.2f, false);
+                            }
+                        }
+                    }
+                }, 0.15f, false); // 0.15 second delay
+            }
+            else
+            {
+                // Fallback: try immediately if no world available
+                UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - No world available, setting focus immediately"));
+                PrepSlot->SetKeyboardFocus();
+            }
+            
+            break; // Only focus the first slot
+        }
     }
 }
