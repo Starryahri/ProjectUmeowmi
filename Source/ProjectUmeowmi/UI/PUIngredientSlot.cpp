@@ -4345,6 +4345,31 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
         return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
     }
     
+    // Handle quantity controls with left/right shoulder buttons
+    // Left bumper = decrease, Right bumper = increase
+    if (Key == EKeys::Gamepad_LeftShoulder)
+    {
+        // Only handle if slot has focus, has an ingredient, and has a quantity control
+        if (HasKeyboardFocus() && bHasIngredient && QuantityControlWidget && QuantityControlWidget->IsVisible())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Left bumper pressed, decreasing quantity"));
+            // DecreaseQuantity() handles min/max limits internally
+            QuantityControlWidget->DecreaseQuantity();
+            return FReply::Handled();
+        }
+    }
+    else if (Key == EKeys::Gamepad_RightShoulder)
+    {
+        // Only handle if slot has focus, has an ingredient, and has a quantity control
+        if (HasKeyboardFocus() && bHasIngredient && QuantityControlWidget && QuantityControlWidget->IsVisible())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Right bumper pressed, increasing quantity"));
+            // IncreaseQuantity() handles min/max limits internally
+            QuantityControlWidget->IncreaseQuantity();
+            return FReply::Handled();
+        }
+    }
+    
     // Handle D-pad and left stick navigation
     if (Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Gamepad_LeftStick_Up || Key == EKeys::Up)
     {

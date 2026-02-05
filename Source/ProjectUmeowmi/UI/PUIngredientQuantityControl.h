@@ -47,6 +47,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void SetQuantity(int32 NewQuantity);
 
+    // Increase quantity by 1
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control")
+    void IncreaseQuantity();
+
+    // Decrease quantity by 1
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control")
+    void DecreaseQuantity();
+
     // Update the quantity text display
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void UpdateQuantityText();

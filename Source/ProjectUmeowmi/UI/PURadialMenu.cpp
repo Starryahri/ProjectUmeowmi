@@ -83,13 +83,7 @@ void UPURadialMenu::SetMenuItems(const TArray<FRadialMenuItem>& InMenuItems)
 
 void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
 {
-    UE_LOG(LogTemp, Warning, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Showing menu at position (%.2f, %.2f)"), 
-        ScreenPosition.X, ScreenPosition.Y);
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, 
-            FString::Printf(TEXT("🎯 Radial Menu Opening at (%.0f, %.0f)"), ScreenPosition.X, ScreenPosition.Y));
-    }
+    // Debug logs removed - use bShowDebugText if you need to see this
 
     // Reset selected index to first item when menu opens
     SelectedMenuItemIndex = 0;
@@ -160,10 +154,17 @@ void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
     if (UWorld* World = GetWorld())
     {
         FTimerHandle FocusTimerHandle;
-        World->GetTimerManager().SetTimer(FocusTimerHandle, [this]()
+        TWeakObjectPtr<UPURadialMenu> WeakThis = this;
+        World->GetTimerManager().SetTimer(FocusTimerHandle, [WeakThis]()
         {
-            SetFocusToSelectedMenuItem();
-            UpdateSelectionIndicator();
+            if (UPURadialMenu* Menu = WeakThis.Get())
+            {
+                if (IsValid(Menu))
+                {
+                    Menu->SetFocusToSelectedMenuItem();
+                    Menu->UpdateSelectionIndicator();
+                }
+            }
         }, 0.15f, false);
     }
 }
@@ -313,7 +314,7 @@ void UPURadialMenu::UpdateMenuLayout()
         //    ContainerSize.X, ContainerSize.Y, CenterPosition.X, CenterPosition.Y);
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("🎯 UpdateMenuLayout - Creating %d menu items"), ItemCount);
+    // Debug log removed - use bShowDebugText if you need to see this
     
     // Create and position buttons for each menu item
     for (int32 i = 0; i < ItemCount; ++i)
@@ -336,14 +337,6 @@ void UPURadialMenu::UpdateMenuLayout()
         float Y = CenterPosition.Y + (ItemRadius * FMath::Sin(AngleRadians)); // Use +Sin to flip orientation
 
         // Create the button for this menu item
-        // Verify the angle matches GetMenuItemAngle
-        float VerifyAngle = GetMenuItemAngle(i);
-        if (FMath::Abs(AngleDegrees - VerifyAngle) > 0.01f)
-        {
-            UE_LOG(LogTemp, Warning, TEXT("⚠️ Angle Mismatch! Item %d - Position Angle: %.2f°, GetMenuItemAngle: %.2f°"), 
-                i, AngleDegrees, VerifyAngle);
-        }
-        
         UPURadialMenuItemButton* ItemButton = CreateMenuItemButton(MenuItems[i], AngleDegrees, i);
         if (ItemButton)
         {
@@ -355,9 +348,7 @@ void UPURadialMenu::UpdateMenuLayout()
                 ButtonSlot->SetAnchors(FAnchors(0.5f, 0.5f));
                 ButtonSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 
-                FString ItemName = MenuItems.IsValidIndex(i) ? MenuItems[i].Label.ToString() : TEXT("Unknown");
-                UE_LOG(LogTemp, Warning, TEXT("🎯 Positioned Item [%d] %s at angle %.2f° (position: %.1f, %.1f)"), 
-                    i, *ItemName, AngleDegrees, X, Y);
+                // Debug log removed - use bShowDebugText if you need to see this
             }
         }
     }
@@ -374,9 +365,12 @@ void UPURadialMenu::UpdateMenuLayout()
 
 void UPURadialMenu::ClearMenuItems()
 {
+    // Make a copy of the array to avoid iterating over it if GC happens during iteration
+    TArray<UPURadialMenuItemButton*> ButtonsToClear = MenuItemButtons;
+    
     // Unbind delegates and clear MenuItemData from all button widgets before removing them
     // This is critical to prevent GC from accessing invalid texture pointers
-    for (UPURadialMenuItemButton* Button : MenuItemButtons)
+    for (UPURadialMenuItemButton* Button : ButtonsToClear)
     {
         if (IsValid(Button))
         {
@@ -395,7 +389,7 @@ void UPURadialMenu::ClearMenuItems()
     }
     
     // Remove all button widgets from container
-    for (UPURadialMenuItemButton* Button : MenuItemButtons)
+    for (UPURadialMenuItemButton* Button : ButtonsToClear)
     {
         if (IsValid(Button) && MenuItemsContainer)
         {
@@ -502,25 +496,7 @@ void UPURadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
         return;
     }
     
-    // Debug: Log that we're in NativeTick
-    static float LastLogTime = 0.0f;
-    static bool bHasLoggedOnce = false;
-    if (!bHasLoggedOnce)
-    {
-        UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::NativeTick - FIRST TICK - Menu visible: %s, Items: %d"), 
-            bIsVisible ? TEXT("YES") : TEXT("NO"), MenuItemButtons.Num());
-        bHasLoggedOnce = true;
-    }
-    
-    if (InDeltaTime > 0.0f) // Only log occasionally to avoid spam
-    {
-        LastLogTime += InDeltaTime;
-        if (LastLogTime > 1.0f) // Log once per second
-        {
-            UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::NativeTick - Still ticking, Items: %d"), MenuItemButtons.Num());
-            LastLogTime = 0.0f;
-        }
-    }
+    // Debug logs removed - use bShowDebugText if you need to see this
     
     // Update cooldown
     if (JoystickSelectionCooldown > 0.0f)
@@ -597,16 +573,13 @@ void UPURadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
             CurrentStickX = LeftStickX;
             CurrentStickY = LeftStickY;
             
-            // Debug log (use Warning level so it's more visible in Output Log)
-            UE_LOG(LogTemp, Warning, TEXT("🎮 Joystick Input - X: %.2f, Y: %.2f, Angle: %.2f°, Magnitude: %.2f"), 
-                LeftStickX, LeftStickY, AngleDegrees, NormalizedMagnitude);
+            // Debug log removed - use bShowDebugText if you need to see this
             
             UpdateDirectionLine(AngleDegrees, NormalizedMagnitude);
             
             // Only update selection if cooldown is expired
             if (JoystickSelectionCooldown <= 0.0f)
             {
-                UE_LOG(LogTemp, Warning, TEXT("🎮 Calling SelectMenuItemByAngle with angle %.2f°"), AngleDegrees);
                 SelectMenuItemByAngle(AngleDegrees);
                 JoystickSelectionCooldown = JoystickSelectionRepeatDelay;
             }
@@ -677,13 +650,15 @@ void UPURadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 
 float UPURadialMenu::GetMenuItemAngle(int32 ItemIndex) const
 {
-    if (MenuItemButtons.Num() == 0)
+    // Cache array size to avoid accessing during GC
+    const int32 NumButtons = MenuItemButtons.Num();
+    if (NumButtons == 0)
     {
         return 0.0f;
     }
     
     // Calculate angle step between items (360 degrees / number of items)
-    float AngleStep = 360.0f / MenuItemButtons.Num();
+    float AngleStep = 360.0f / NumButtons;
     
     // Calculate angle for this item (start at -90 degrees so first item is at top)
     // Then convert to 0-360 range
@@ -698,11 +673,11 @@ float UPURadialMenu::GetMenuItemAngle(int32 ItemIndex) const
     if (bIsVisible && !LoggedItems.Contains(ItemIndex))
     {
         UE_LOG(LogTemp, Warning, TEXT("🎯 Menu Item %d - Angle: %.2f° (AngleStep: %.2f°, Total Items: %d)"), 
-            ItemIndex, AngleDegrees, AngleStep, MenuItemButtons.Num());
+            ItemIndex, AngleDegrees, AngleStep, NumButtons);
         LoggedItems.Add(ItemIndex);
         
         // Clear logged items when menu closes (reset when all items are logged)
-        if (LoggedItems.Num() >= MenuItemButtons.Num())
+        if (LoggedItems.Num() >= NumButtons)
         {
             LoggedItems.Empty();
         }
@@ -713,7 +688,11 @@ float UPURadialMenu::GetMenuItemAngle(int32 ItemIndex) const
 
 void UPURadialMenu::SelectMenuItemByAngle(float AngleDegrees)
 {
-    if (MenuItemButtons.Num() == 0 || !MenuItemsContainer)
+    // Cache array sizes to avoid accessing during potential GC
+    const int32 NumButtons = MenuItemButtons.Num();
+    const int32 NumMenuItems = MenuItems.Num();
+    
+    if (NumButtons == 0 || !MenuItemsContainer)
     {
         return;
     }
@@ -737,15 +716,16 @@ void UPURadialMenu::SelectMenuItemByAngle(float AngleDegrees)
     int32 ClosestIndex = 0;
     float SmallestAngleDiff = 360.0f;
     
-    for (int32 i = 0; i < MenuItemButtons.Num(); ++i)
+    for (int32 i = 0; i < NumButtons; ++i)
     {
-        // Skip disabled items
-        if (MenuItems.IsValidIndex(i) && !MenuItems[i].bIsEnabled)
+        // Skip disabled items - use cached size check
+        if (i >= 0 && i < NumMenuItems && !MenuItems[i].bIsEnabled)
         {
             continue;
         }
         
-        if (!IsValid(MenuItemButtons[i]))
+        // Use cached size check instead of array access
+        if (i < 0 || i >= NumButtons || !IsValid(MenuItemButtons[i]))
         {
             continue;
         }
@@ -921,13 +901,17 @@ void UPURadialMenu::SetFocusToSelectedMenuItem()
         if (UWorld* World = GetWorld())
         {
             FTimerHandle RetryTimerHandle;
-            World->GetTimerManager().SetTimer(RetryTimerHandle, [SelectedButton]()
+            TWeakObjectPtr<UPURadialMenuItemButton> WeakButton = SelectedButton;
+            World->GetTimerManager().SetTimer(RetryTimerHandle, [WeakButton]()
             {
-                if (IsValid(SelectedButton))
+                if (UPURadialMenuItemButton* Button = WeakButton.Get())
                 {
-                    SelectedButton->SetKeyboardFocus();
-                    UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::SetFocusToSelectedMenuItem - Retry: Focus set (HasFocus: %s)"), 
-                        SelectedButton->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                    if (IsValid(Button))
+                    {
+                        Button->SetKeyboardFocus();
+                        UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::SetFocusToSelectedMenuItem - Retry: Focus set (HasFocus: %s)"), 
+                            Button->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                    }
                 }
             }, 0.1f, false);
         }
@@ -1011,11 +995,16 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
     // Get the center of the widget
     FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
     
+    // Cache array sizes and indices to avoid accessing arrays during GC
+    const int32 NumButtons = MenuItemButtons.Num();
+    const int32 NumMenuItems = MenuItems.Num();
+    const int32 CachedSelectedIndex = SelectedMenuItemIndex;
+    
     // Draw debug visualization if enabled
-    if (bShowDebugRegions && bIsVisible && MenuItemButtons.Num() > 0)
+    if (bShowDebugRegions && bIsVisible && NumButtons > 0)
     {
         // Draw lines from center to each button to show regions
-        for (int32 i = 0; i < MenuItemButtons.Num(); ++i)
+        for (int32 i = 0; i < NumButtons; ++i)
         {
             float ItemAngle = GetMenuItemAngle(i);
             float AngleRadians = FMath::DegreesToRadians(ItemAngle);
@@ -1042,9 +1031,9 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
         }
         
         // Draw the selected region more prominently
-        if (MenuItemButtons.IsValidIndex(SelectedMenuItemIndex))
+        if (CachedSelectedIndex >= 0 && CachedSelectedIndex < NumButtons)
         {
-            float SelectedAngle = GetMenuItemAngle(SelectedMenuItemIndex);
+            float SelectedAngle = GetMenuItemAngle(CachedSelectedIndex);
             float AngleRadians = FMath::DegreesToRadians(SelectedAngle);
             FVector2D Direction(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians)); // Use +Sin to match flipped buttons
             FVector2D EndPoint = Center + (Direction * ItemRadius);
@@ -1069,9 +1058,10 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
         const FSlateFontInfo FontInfo = FCoreStyle::GetDefaultFontStyle("Regular", 12);
         const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
         
-        for (int32 i = 0; i < MenuItemButtons.Num(); ++i)
+        for (int32 i = 0; i < NumButtons; ++i)
         {
-            if (!MenuItemButtons.IsValidIndex(i) || !IsValid(MenuItemButtons[i]))
+            // Use cached size check instead of accessing array
+            if (i < 0 || i >= NumButtons)
             {
                 continue;
             }
@@ -1115,7 +1105,7 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
                 AngleText,
                 FontInfo,
                 ESlateDrawEffect::None,
-                i == SelectedMenuItemIndex ? FLinearColor::Yellow : FLinearColor::White // Yellow for selected, white for others
+                i == CachedSelectedIndex ? FLinearColor::Yellow : FLinearColor::White // Yellow for selected, white for others
             );
         }
     }
@@ -1157,8 +1147,8 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
         );
     }
     
-    // Draw joystick angle and direction text on screen
-    if (bIsVisible && bShouldDrawDirectionLine && CurrentDirectionLength > 0.0f)
+    // Draw joystick angle and direction text on screen (only if debug is enabled)
+    if (bShowDebugText && bIsVisible && bShouldDrawDirectionLine && CurrentDirectionLength > 0.0f)
     {
         // Get default font
         const FSlateFontInfo FontInfo = FCoreStyle::GetDefaultFontStyle("Regular", 16);
@@ -1168,22 +1158,24 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
         float DirectionX = FMath::Cos(FMath::DegreesToRadians(CurrentDirectionAngle));
         float DirectionY = FMath::Sin(FMath::DegreesToRadians(CurrentDirectionAngle));
         
-        // Get selected button info
+        // Get selected button info - use cached values to avoid accessing during GC
         FString SelectedButtonInfo = TEXT("None");
-        if (MenuItemButtons.IsValidIndex(SelectedMenuItemIndex))
+        if (CachedSelectedIndex >= 0 && CachedSelectedIndex < NumButtons)
         {
-            if (MenuItems.IsValidIndex(SelectedMenuItemIndex))
+            if (CachedSelectedIndex >= 0 && CachedSelectedIndex < NumMenuItems)
             {
+                // Cache the label string to avoid accessing struct during GC
+                FString CachedLabel = MenuItems[CachedSelectedIndex].Label.ToString();
                 SelectedButtonInfo = FString::Printf(TEXT("Button [%d]: %s (%.0f°)"), 
-                    SelectedMenuItemIndex,
-                    *MenuItems[SelectedMenuItemIndex].Label.ToString(),
-                    GetMenuItemAngle(SelectedMenuItemIndex));
+                    CachedSelectedIndex,
+                    *CachedLabel,
+                    GetMenuItemAngle(CachedSelectedIndex));
             }
             else
             {
                 SelectedButtonInfo = FString::Printf(TEXT("Button [%d] (%.0f°)"), 
-                    SelectedMenuItemIndex,
-                    GetMenuItemAngle(SelectedMenuItemIndex));
+                    CachedSelectedIndex,
+                    GetMenuItemAngle(CachedSelectedIndex));
             }
         }
         
@@ -1241,9 +1233,6 @@ void UPURadialMenu::UpdateDirectionLine(float AngleDegrees, float InputMagnitude
     {
         Invalidate(EInvalidateWidget::Paint);
     }
-    
-    UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::UpdateDirectionLine - Updated Slate line (Angle: %.2f°, Length: %.2f)"), 
-        AngleDegrees, LineLength);
     
     // If no input, hide the line
     if (InputMagnitude <= 0.0f)

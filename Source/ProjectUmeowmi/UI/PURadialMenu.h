@@ -197,7 +197,10 @@ protected:
     
     // Debug visualization
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Debug")
-    bool bShowDebugRegions = true; // Set to true to show debug visualization
+    bool bShowDebugRegions = false; // Set to true to show debug visualization (regions and angle labels)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Debug")
+    bool bShowDebugText = false; // Set to true to show debug text (stick values, angle, selected button)
 
     // Button widget class to use for menu items (can be set in Blueprint)
     // Defaults to UPURadialMenuItemButton, but can be overridden with a custom Blueprint class

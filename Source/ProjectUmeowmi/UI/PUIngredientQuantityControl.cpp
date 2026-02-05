@@ -249,33 +249,54 @@ void UPUIngredientQuantityControl::RemoveIngredientInstance()
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::RemoveIngredientInstance - Widget removed from viewport"));
 }
 
-void UPUIngredientQuantityControl::OnDecreaseQuantityClicked()
+
+void UPUIngredientQuantityControl::OnIncreaseQuantityClicked()
 {
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnDecreaseQuantityClicked - Decrease button clicked"));
+    IncreaseQuantity();
+}
+
+void UPUIngredientQuantityControl::IncreaseQuantity()
+{
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::IncreaseQuantity - Increasing quantity"));
+    
+    int32 NewQuantity = FMath::Min(IngredientInstance.Quantity + 1, IngredientInstance.IngredientData.MaxQuantity);
+    SetQuantity(NewQuantity);
+}
+
+void UPUIngredientQuantityControl::DecreaseQuantity()
+{
+    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::DecreaseQuantity - Decreasing quantity"));
     
     int32 NewQuantity = IngredientInstance.Quantity - 1;
     
-    // If quantity would go to zero or below, remove the ingredient instance
-    if (NewQuantity <= 0)
+    // Get minimum quantity from ingredient data
+    int32 MinQuantity = IngredientInstance.IngredientData.MinQuantity;
+    
+    // Clamp to minimum quantity first - don't allow going below minimum
+    NewQuantity = FMath::Max(NewQuantity, MinQuantity);
+    
+    // Only remove ingredient if quantity would go to zero or below AND minimum is zero
+    // If minimum is greater than zero, we should never remove (we already clamped above)
+    if (NewQuantity <= 0 && MinQuantity <= 0)
     {
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnDecreaseQuantityClicked - Quantity would reach zero, removing ingredient instance"));
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::DecreaseQuantity - Quantity would reach zero, removing ingredient instance"));
         RemoveIngredientInstance();
         return;
     }
     
-    // Clamp to minimum quantity from ingredient data
-    int32 MinQuantity = IngredientInstance.IngredientData.MinQuantity;
-    NewQuantity = FMath::Max(NewQuantity, MinQuantity);
+    // If we've clamped to minimum and it's the same as current, don't do anything
+    if (NewQuantity == IngredientInstance.Quantity)
+    {
+        // Already at minimum, can't decrease further
+        return;
+    }
     
     SetQuantity(NewQuantity);
 }
 
-void UPUIngredientQuantityControl::OnIncreaseQuantityClicked()
+void UPUIngredientQuantityControl::OnDecreaseQuantityClicked()
 {
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnIncreaseQuantityClicked - Increase button clicked"));
-    
-    int32 NewQuantity = FMath::Min(IngredientInstance.Quantity + 1, IngredientInstance.IngredientData.MaxQuantity);
-    SetQuantity(NewQuantity);
+    DecreaseQuantity();
 }
 
 void UPUIngredientQuantityControl::OnRemoveButtonClicked()
