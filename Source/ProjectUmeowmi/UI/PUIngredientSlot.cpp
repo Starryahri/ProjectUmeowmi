@@ -1900,6 +1900,13 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
         //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Cannot show menu on empty slot"));
         return;
     }
+    
+    // If a radial menu is already visible, don't open another one
+    if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::ShowRadialMenu - Radial menu already visible, ignoring request"));
+        return;
+    }
 
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Showing radial menu (Prep: %s, IncludeActions: %s)"),
     //    bIsPrepMenu ? TEXT("TRUE") : TEXT("FALSE"), bIncludeActions ? TEXT("TRUE") : TEXT("FALSE"));
@@ -2054,6 +2061,48 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
     }
     
     bRadialMenuVisible = true;
+    
+    // Set focus to the radial menu widget so it can receive controller input
+    if (RadialMenuWidget && IsValid(RadialMenuWidget))
+    {
+        // Use a small delay to ensure the widget is fully visible before setting focus
+        if (UWorld* World = GetWorld())
+        {
+            FTimerHandle FocusTimerHandle;
+            World->GetTimerManager().SetTimer(FocusTimerHandle, [WeakMenu = TWeakObjectPtr<UPURadialMenu>(RadialMenuWidget)]()
+            {
+                if (WeakMenu.IsValid())
+                {
+                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::ShowRadialMenu - Setting focus to radial menu: %s"), 
+                        *WeakMenu->GetName());
+                    
+                    // Make the menu widget focusable and set focus
+                    WeakMenu->SetIsFocusable(true);
+                    WeakMenu->SetKeyboardFocus();
+                    FSlateApplication::Get().SetUserFocus(0, WeakMenu->TakeWidget());
+                    
+                    // Retry if focus wasn't set
+                    if (!WeakMenu->HasKeyboardFocus())
+                    {
+                        FTimerHandle RetryTimerHandle;
+                        if (UWorld* World = WeakMenu->GetWorld())
+                        {
+                            World->GetTimerManager().SetTimer(RetryTimerHandle, [WeakMenu]()
+                            {
+                                if (WeakMenu.IsValid())
+                                {
+                                    WeakMenu->SetKeyboardFocus();
+                                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::ShowRadialMenu - Retry: Focus set to radial menu (HasFocus: %s)"), 
+                                        WeakMenu->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                }
+                            }, 0.1f, false);
+                        }
+                    }
+                }
+            }, 0.1f, false);
+        }
+    }
+    
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu shown with %d items"), MenuItems.Num());
 }
 
@@ -4265,14 +4314,20 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Key pressed: %s (Slot: %s, Location: %d, HasFocus: %s)"), 
         *Key.ToString(), *GetName(), (int32)Location, HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
     
-    // DISABLED FOR NOW - Focus on navigation only
     // Gamepad A button (Xbox) / X button (PlayStation) - Select/Activate
-    //if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
-    //{
-    //    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Select button pressed, calling HandleControllerSelect"));
-    //    HandleControllerSelect();
-    //    return FReply::Handled();
-    //}
+    if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
+    {
+        // If radial menu is visible, don't process input here - let the menu handle it
+        if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, passing input to menu"));
+            return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+        }
+        
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Select button pressed, calling HandleControllerSelect"));
+        HandleControllerSelect();
+        return FReply::Handled();
+    }
     
     // DISABLED FOR NOW - Focus on navigation only
     // Gamepad X button (Xbox) / Square button (PlayStation) - Open menu
@@ -4282,6 +4337,13 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     //    HandleControllerMenu();
     //    return FReply::Handled();
     //}
+    
+    // If radial menu is visible, block all navigation - let the menu handle input
+    if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, blocking navigation input"));
+        return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+    }
     
     // Handle D-pad and left stick navigation
     if (Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Gamepad_LeftStick_Up || Key == EKeys::Up)
@@ -4359,8 +4421,8 @@ void UPUIngredientSlot::HandleControllerSelect()
         }
         else
         {
-            // Slot has ingredient - open radial menu for preparations
-            ShowRadialMenu(true, false);
+            // Slot has ingredient - open radial menu for preparations AND actions (same as right-click)
+            ShowRadialMenu(true, true);
         }
     }
     else if (Location == EPUIngredientSlotLocation::Pantry)

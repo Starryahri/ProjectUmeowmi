@@ -9,6 +9,22 @@
 #include "Engine/DataTable.h"
 #include "Blueprint/WidgetTree.h"
 #include "PURadialMenuItemButton.h"
+#include "Input/Events.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GameFramework/PlayerController.h"
+#include "Engine/World.h"
+#include "Rendering/DrawElements.h"
+#include "Styling/SlateBrush.h"
+#include "Widgets/SWidget.h"
+#include "Widgets/DeclarativeSyntaxSupport.h"
+#include "Components/CanvasPanel.h"
+#include "Styling/CoreStyle.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Fonts/FontMeasure.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Fonts/FontMeasure.h"
+#include "Engine/Engine.h"
 
 UPURadialMenu::UPURadialMenu(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -67,9 +83,17 @@ void UPURadialMenu::SetMenuItems(const TArray<FRadialMenuItem>& InMenuItems)
 
 void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
 {
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Showing menu at position (%.2f, %.2f)"), 
-    //    ScreenPosition.X, ScreenPosition.Y);
+    UE_LOG(LogTemp, Warning, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Showing menu at position (%.2f, %.2f)"), 
+        ScreenPosition.X, ScreenPosition.Y);
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, 
+            FString::Printf(TEXT("🎯 Radial Menu Opening at (%.0f, %.0f)"), ScreenPosition.X, ScreenPosition.Y));
+    }
 
+    // Reset selected index to first item when menu opens
+    SelectedMenuItemIndex = 0;
+    
     // Set the center position
     MenuCenterPosition = ScreenPosition;
     SetMenuCenterPosition(ScreenPosition);
@@ -125,6 +149,23 @@ void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
 
     // Call Blueprint event
     OnMenuShown();
+    
+    // Reset selected index when menu opens
+    SelectedMenuItemIndex = 0;
+    
+    // Update the visual indicator
+    UpdateSelectionIndicator();
+    
+    // Set focus to the first menu item after a short delay
+    if (UWorld* World = GetWorld())
+    {
+        FTimerHandle FocusTimerHandle;
+        World->GetTimerManager().SetTimer(FocusTimerHandle, [this]()
+        {
+            SetFocusToSelectedMenuItem();
+            UpdateSelectionIndicator();
+        }, 0.15f, false);
+    }
 }
 
 void UPURadialMenu::HideMenu()
@@ -139,6 +180,20 @@ void UPURadialMenu::HideMenu()
     // Hide the menu
     SetVisibility(ESlateVisibility::Collapsed);
     bIsVisible = false;
+    
+    // Hide the selection indicator
+    if (SelectionIndicator && IsValid(SelectionIndicator))
+    {
+        SelectionIndicator->SetVisibility(ESlateVisibility::Collapsed);
+    }
+    
+    // Hide the direction line
+    bShouldDrawDirectionLine = false;
+    CurrentDirectionLength = 0.0f;
+    if (IsValid(this))
+    {
+        Invalidate(EInvalidateWidget::Paint);
+    }
 
     // Note: Don't remove from parent/viewport here - keep it in the hierarchy
     // Just hide it so it can be shown again quickly
@@ -258,18 +313,37 @@ void UPURadialMenu::UpdateMenuLayout()
         //    ContainerSize.X, ContainerSize.Y, CenterPosition.X, CenterPosition.Y);
     }
 
+    UE_LOG(LogTemp, Warning, TEXT("🎯 UpdateMenuLayout - Creating %d menu items"), ItemCount);
+    
     // Create and position buttons for each menu item
     for (int32 i = 0; i < ItemCount; ++i)
     {
         // Calculate angle for this item (start at -90 degrees so first item is at top)
+        // This gives us standard math angles: 0° = right, 90° = up, 180° = left, 270° = down
+        // Normalize to 0-360 range to match GetMenuItemAngle()
         float AngleDegrees = (-90.0f + (AngleStep * i));
+        if (AngleDegrees < 0.0f)
+        {
+            AngleDegrees += 360.0f;
+        }
         float AngleRadians = FMath::DegreesToRadians(AngleDegrees);
 
         // Calculate position using trigonometry
+        // In Unreal's UI: X increases right, Y increases down
+        // To align buttons with stick input (which uses Atan2(-Y, X)), we need to flip the Y axis
+        // Use +Sin instead of -Sin to flip 180° so buttons match stick direction
         float X = CenterPosition.X + (ItemRadius * FMath::Cos(AngleRadians));
-        float Y = CenterPosition.Y + (ItemRadius * FMath::Sin(AngleRadians));
+        float Y = CenterPosition.Y + (ItemRadius * FMath::Sin(AngleRadians)); // Use +Sin to flip orientation
 
         // Create the button for this menu item
+        // Verify the angle matches GetMenuItemAngle
+        float VerifyAngle = GetMenuItemAngle(i);
+        if (FMath::Abs(AngleDegrees - VerifyAngle) > 0.01f)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ Angle Mismatch! Item %d - Position Angle: %.2f°, GetMenuItemAngle: %.2f°"), 
+                i, AngleDegrees, VerifyAngle);
+        }
+        
         UPURadialMenuItemButton* ItemButton = CreateMenuItemButton(MenuItems[i], AngleDegrees, i);
         if (ItemButton)
         {
@@ -281,8 +355,9 @@ void UPURadialMenu::UpdateMenuLayout()
                 ButtonSlot->SetAnchors(FAnchors(0.5f, 0.5f));
                 ButtonSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 
-                //UE_LOG(LogTemp,Display, TEXT("🎯   Positioned item %d at angle %.2f° at position (%.2f, %.2f)"), 
-                //    i, AngleDegrees, X, Y);
+                FString ItemName = MenuItems.IsValidIndex(i) ? MenuItems[i].Label.ToString() : TEXT("Unknown");
+                UE_LOG(LogTemp, Warning, TEXT("🎯 Positioned Item [%d] %s at angle %.2f° (position: %.1f, %.1f)"), 
+                    i, *ItemName, AngleDegrees, X, Y);
             }
         }
     }
@@ -416,6 +491,772 @@ void UPURadialMenu::SelectMenuItemByIndex(int32 ItemIndex)
     OnMenuItemSelected.Broadcast(SelectedItem);
 }
 
+void UPURadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+    
+    // Only handle joystick input if menu is visible
+    if (!bIsVisible || MenuItemButtons.Num() == 0)
+    {
+        JoystickSelectionCooldown = 0.0f;
+        return;
+    }
+    
+    // Debug: Log that we're in NativeTick
+    static float LastLogTime = 0.0f;
+    static bool bHasLoggedOnce = false;
+    if (!bHasLoggedOnce)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::NativeTick - FIRST TICK - Menu visible: %s, Items: %d"), 
+            bIsVisible ? TEXT("YES") : TEXT("NO"), MenuItemButtons.Num());
+        bHasLoggedOnce = true;
+    }
+    
+    if (InDeltaTime > 0.0f) // Only log occasionally to avoid spam
+    {
+        LastLogTime += InDeltaTime;
+        if (LastLogTime > 1.0f) // Log once per second
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::NativeTick - Still ticking, Items: %d"), MenuItemButtons.Num());
+            LastLogTime = 0.0f;
+        }
+    }
+    
+    // Update cooldown
+    if (JoystickSelectionCooldown > 0.0f)
+    {
+        JoystickSelectionCooldown -= InDeltaTime;
+    }
+    
+    // Get player controller to read joystick input
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            // Get left stick input values
+            float LeftStickX = 0.0f;
+            float LeftStickY = 0.0f;
+            
+            // Get analog stick values
+            if (PC->InputComponent)
+            {
+                LeftStickX = PC->GetInputAnalogKeyState(EKeys::Gamepad_LeftX);
+                LeftStickY = PC->GetInputAnalogKeyState(EKeys::Gamepad_LeftY);
+                
+                // Debug: Log raw input values (only when there's significant input to avoid spam)
+                if (FMath::Abs(LeftStickX) > 0.1f || FMath::Abs(LeftStickY) > 0.1f)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("🎮 Raw Stick Input - X: %.2f, Y: %.2f"), LeftStickX, LeftStickY);
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::NativeTick - InputComponent is NULL!"));
+            }
+            
+            // Apply deadzone
+            FVector2D StickInput(LeftStickX, LeftStickY);
+            float InputMagnitude = StickInput.Size();
+            
+            if (InputMagnitude < JoystickDeadzone)
+            {
+                // Input is below deadzone, hide the direction line
+                bShouldDrawDirectionLine = false;
+                CurrentDirectionLength = 0.0f;
+                CurrentStickX = 0.0f;
+                CurrentStickY = 0.0f;
+                if (IsValid(this))
+                {
+                    Invalidate(EInvalidateWidget::Paint);
+                }
+                return;
+            }
+            
+            // Normalize input
+            StickInput.Normalize();
+            
+            // Calculate angle in degrees (0-360, where 0 is right, 90 is up, 180 is left, 270 is down)
+            // In Unreal's input: stick up = negative Y, stick right = positive X
+            // We want standard math angles: 0° = right, 90° = up, 180° = left, 270° = down
+            // Atan2(-Y, X) converts from Unreal's input (up = -Y) to standard math (up = +Y)
+            // This gives us: up stick → Atan2(1, 0) = 90°, right stick → Atan2(0, 1) = 0°
+            float AngleRadians = FMath::Atan2(-StickInput.Y, StickInput.X);
+            float AngleDegrees = FMath::RadiansToDegrees(AngleRadians);
+            
+            // Convert to 0-360 range (atan2 returns -180 to 180)
+            if (AngleDegrees < 0.0f)
+            {
+                AngleDegrees += 360.0f;
+            }
+            
+            // Update the direction line to show where the stick is pointing
+            // Use normalized magnitude (0.0 to 1.0) for line length
+            float NormalizedMagnitude = FMath::Clamp((InputMagnitude - JoystickDeadzone) / (1.0f - JoystickDeadzone), 0.0f, 1.0f);
+            
+            // Store stick values for on-screen display
+            CurrentStickX = LeftStickX;
+            CurrentStickY = LeftStickY;
+            
+            // Debug log (use Warning level so it's more visible in Output Log)
+            UE_LOG(LogTemp, Warning, TEXT("🎮 Joystick Input - X: %.2f, Y: %.2f, Angle: %.2f°, Magnitude: %.2f"), 
+                LeftStickX, LeftStickY, AngleDegrees, NormalizedMagnitude);
+            
+            UpdateDirectionLine(AngleDegrees, NormalizedMagnitude);
+            
+            // Only update selection if cooldown is expired
+            if (JoystickSelectionCooldown <= 0.0f)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("🎮 Calling SelectMenuItemByAngle with angle %.2f°"), AngleDegrees);
+                SelectMenuItemByAngle(AngleDegrees);
+                JoystickSelectionCooldown = JoystickSelectionRepeatDelay;
+            }
+        }
+        else
+        {
+            // No player controller, hide the direction line
+            bShouldDrawDirectionLine = false;
+            CurrentDirectionLength = 0.0f;
+            if (IsValid(this))
+            {
+                Invalidate(EInvalidateWidget::Paint);
+            }
+        }
+    }
+    
+    // Also handle mouse position for mouse input
+    if (bIsVisible && MenuItemButtons.Num() > 0)
+    {
+        // Get mouse position relative to the menu widget
+        FVector2D MousePosition;
+        if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+        {
+            if (PC->GetMousePosition(MousePosition.X, MousePosition.Y))
+            {
+                // Get the menu widget's screen position
+                FGeometry MenuGeometry = GetCachedGeometry();
+                FVector2D MenuScreenPosition = MenuGeometry.GetAbsolutePosition();
+                FVector2D MenuSize = MenuGeometry.GetAbsoluteSize();
+                FVector2D MenuCenter = MenuScreenPosition + (MenuSize * 0.5f);
+                
+                // Calculate direction from center to mouse
+                FVector2D Direction = MousePosition - MenuCenter;
+                float Distance = Direction.Size();
+                
+                if (Distance > 10.0f) // Only show if mouse is far enough from center
+                {
+                    Direction.Normalize();
+                    
+                    // Calculate angle (same as joystick - use -Y to convert from UI coords to math coords)
+                    float AngleRadians = FMath::Atan2(-Direction.Y, Direction.X);
+                    float AngleDegrees = FMath::RadiansToDegrees(AngleRadians);
+                    if (AngleDegrees < 0.0f)
+                    {
+                        AngleDegrees += 360.0f;
+                    }
+                    
+                    // Normalize distance to 0-1 range (capped at menu radius)
+                    float NormalizedDistance = FMath::Clamp(Distance / ItemRadius, 0.0f, 1.0f);
+                    
+                    // Update direction line
+                    UpdateDirectionLine(AngleDegrees, NormalizedDistance);
+                }
+                else
+                {
+                    // Mouse too close to center, hide line
+                    bShouldDrawDirectionLine = false;
+                    CurrentDirectionLength = 0.0f;
+                    if (IsValid(this))
+                    {
+                        Invalidate(EInvalidateWidget::Paint);
+                    }
+                }
+            }
+        }
+    }
+}
+
+float UPURadialMenu::GetMenuItemAngle(int32 ItemIndex) const
+{
+    if (MenuItemButtons.Num() == 0)
+    {
+        return 0.0f;
+    }
+    
+    // Calculate angle step between items (360 degrees / number of items)
+    float AngleStep = 360.0f / MenuItemButtons.Num();
+    
+    // Calculate angle for this item (start at -90 degrees so first item is at top)
+    // Then convert to 0-360 range
+    float AngleDegrees = (-90.0f + (AngleStep * ItemIndex));
+    if (AngleDegrees < 0.0f)
+    {
+        AngleDegrees += 360.0f;
+    }
+    
+    // Debug log (only log once per item when menu is shown, use Warning level for visibility)
+    static TSet<int32> LoggedItems;
+    if (bIsVisible && !LoggedItems.Contains(ItemIndex))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎯 Menu Item %d - Angle: %.2f° (AngleStep: %.2f°, Total Items: %d)"), 
+            ItemIndex, AngleDegrees, AngleStep, MenuItemButtons.Num());
+        LoggedItems.Add(ItemIndex);
+        
+        // Clear logged items when menu closes (reset when all items are logged)
+        if (LoggedItems.Num() >= MenuItemButtons.Num())
+        {
+            LoggedItems.Empty();
+        }
+    }
+    
+    return AngleDegrees;
+}
+
+void UPURadialMenu::SelectMenuItemByAngle(float AngleDegrees)
+{
+    if (MenuItemButtons.Num() == 0 || !MenuItemsContainer)
+    {
+        return;
+    }
+    
+    // Convert stick angle to direction vector (standard math: 0° = right, 90° = up)
+    float AngleRadians = FMath::DegreesToRadians(AngleDegrees);
+    FVector2D StickDirection(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians));
+    
+    // Get the center position of the menu (use the layout center)
+    FVector2D CenterPos = bUseCustomCenter ? LayoutCenterPosition : MenuCenterPosition;
+    
+    // If we don't have a valid center, try to get it from the container
+    if (CenterPos.IsNearlyZero())
+    {
+        FGeometry ContainerGeometry = MenuItemsContainer->GetCachedGeometry();
+        FVector2D ContainerSize = ContainerGeometry.GetLocalSize();
+        CenterPos = ContainerSize * 0.5f;
+    }
+    
+    // Find the menu item closest to the stick direction
+    int32 ClosestIndex = 0;
+    float SmallestAngleDiff = 360.0f;
+    
+    for (int32 i = 0; i < MenuItemButtons.Num(); ++i)
+    {
+        // Skip disabled items
+        if (MenuItems.IsValidIndex(i) && !MenuItems[i].bIsEnabled)
+        {
+            continue;
+        }
+        
+        if (!IsValid(MenuItemButtons[i]))
+        {
+            continue;
+        }
+        
+        // Get the actual button position from its slot
+        FVector2D ButtonPos = CenterPos; // Default to center if we can't get position
+        if (UCanvasPanelSlot* ButtonSlot = Cast<UCanvasPanelSlot>(MenuItemButtons[i]->Slot))
+        {
+            FVector2D SlotPos = ButtonSlot->GetPosition();
+            FVector2D SlotSize = ButtonSlot->GetSize();
+            // Button center position = slot position + half size
+            ButtonPos = SlotPos + (SlotSize * 0.5f);
+        }
+        
+        // Calculate direction from center to button
+        FVector2D ButtonDirection = (ButtonPos - CenterPos);
+        float ButtonDistance = ButtonDirection.Size();
+        
+        if (ButtonDistance > 0.01f) // Avoid division by zero
+        {
+            ButtonDirection.Normalize();
+            
+            // Calculate angle of button direction
+            float ButtonAngleRadians = FMath::Atan2(ButtonDirection.Y, ButtonDirection.X);
+            float ButtonAngleDegrees = FMath::RadiansToDegrees(ButtonAngleRadians);
+            if (ButtonAngleDegrees < 0.0f)
+            {
+                ButtonAngleDegrees += 360.0f;
+            }
+            
+            // Calculate the difference between joystick angle and button angle
+            // Handle wrap-around (e.g., 350° and 10° are only 20° apart)
+            float AngleDiff = FMath::Abs(AngleDegrees - ButtonAngleDegrees);
+            if (AngleDiff > 180.0f)
+            {
+                AngleDiff = 360.0f - AngleDiff;
+            }
+            
+            if (AngleDiff < SmallestAngleDiff)
+            {
+                SmallestAngleDiff = AngleDiff;
+                ClosestIndex = i;
+            }
+        }
+    }
+    
+    // Only update if the selection changed
+    if (ClosestIndex != SelectedMenuItemIndex)
+    {
+        NavigateToMenuItem(ClosestIndex);
+        UpdateSelectionIndicator();
+    }
+}
+
+FReply UPURadialMenu::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    if (!bIsVisible)
+    {
+        return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+    }
+    
+    FKey Key = InKeyEvent.GetKey();
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::NativeOnKeyDown - Key pressed: %s (Menu visible: %s, Items: %d, Selected: %d)"), 
+        *Key.ToString(), bIsVisible ? TEXT("YES") : TEXT("NO"), MenuItemButtons.Num(), SelectedMenuItemIndex);
+    
+    // Handle B button (Gamepad Face Button Right) or Escape to close menu
+    if (Key == EKeys::Gamepad_FaceButton_Right || Key == EKeys::Escape)
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::NativeOnKeyDown - Close button pressed, hiding menu"));
+        HideMenu();
+        return FReply::Handled();
+    }
+    
+    // Handle A button (Gamepad Face Button Bottom) to select current item
+    if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
+    {
+        if (MenuItemButtons.IsValidIndex(SelectedMenuItemIndex))
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::NativeOnKeyDown - Select button pressed, selecting item %d"), SelectedMenuItemIndex);
+            SelectMenuItemByIndex(SelectedMenuItemIndex);
+            return FReply::Handled();
+        }
+    }
+    
+    // Handle D-pad navigation (left stick is handled in NativeTick for directional selection)
+    bool bNavigated = false;
+    if (Key == EKeys::Gamepad_DPad_Right || Key == EKeys::Right)
+    {
+        // Navigate clockwise (next item)
+        int32 NewIndex = (SelectedMenuItemIndex + 1) % MenuItemButtons.Num();
+        NavigateToMenuItem(NewIndex);
+        bNavigated = true;
+    }
+    else if (Key == EKeys::Gamepad_DPad_Left || Key == EKeys::Left)
+    {
+        // Navigate counter-clockwise (previous item)
+        int32 NewIndex = (SelectedMenuItemIndex - 1 + MenuItemButtons.Num()) % MenuItemButtons.Num();
+        NavigateToMenuItem(NewIndex);
+        bNavigated = true;
+    }
+    
+    if (bNavigated)
+    {
+        return FReply::Handled();
+    }
+    
+    return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+void UPURadialMenu::NavigateToMenuItem(int32 NewIndex)
+{
+    if (!MenuItemButtons.IsValidIndex(NewIndex))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::NavigateToMenuItem - Invalid index: %d (Total items: %d)"), 
+            NewIndex, MenuItemButtons.Num());
+        return;
+    }
+    
+    // Skip disabled items
+    int32 StartIndex = NewIndex;
+    int32 Attempts = 0;
+    while (Attempts < MenuItemButtons.Num())
+    {
+        if (MenuItems.IsValidIndex(NewIndex) && MenuItems[NewIndex].bIsEnabled)
+        {
+            break;
+        }
+        NewIndex = (NewIndex + 1) % MenuItemButtons.Num();
+        Attempts++;
+        
+        // If we've gone full circle and all items are disabled, just use the original index
+        if (NewIndex == StartIndex)
+        {
+            break;
+        }
+    }
+    
+    SelectedMenuItemIndex = NewIndex;
+    SetFocusToSelectedMenuItem();
+    UpdateSelectionIndicator();
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::NavigateToMenuItem - Navigated to item %d: %s"), 
+        SelectedMenuItemIndex, 
+        MenuItems.IsValidIndex(SelectedMenuItemIndex) ? *MenuItems[SelectedMenuItemIndex].Label.ToString() : TEXT("INVALID"));
+}
+
+void UPURadialMenu::SetFocusToSelectedMenuItem()
+{
+    if (!MenuItemButtons.IsValidIndex(SelectedMenuItemIndex))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::SetFocusToSelectedMenuItem - Invalid selected index: %d"), SelectedMenuItemIndex);
+        return;
+    }
+    
+    UPURadialMenuItemButton* SelectedButton = MenuItemButtons[SelectedMenuItemIndex];
+    if (!SelectedButton || !IsValid(SelectedButton))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPURadialMenu::SetFocusToSelectedMenuItem - Selected button is invalid"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::SetFocusToSelectedMenuItem - Setting focus to button widget %d"), SelectedMenuItemIndex);
+    
+    // Set focus to the widget itself (not the internal button component)
+    // The widget is now focusable (set in NativeConstruct)
+    SelectedButton->SetKeyboardFocus();
+    FSlateApplication::Get().SetUserFocus(0, SelectedButton->TakeWidget());
+    
+    // Retry if focus wasn't set
+    if (!SelectedButton->HasKeyboardFocus())
+    {
+        if (UWorld* World = GetWorld())
+        {
+            FTimerHandle RetryTimerHandle;
+            World->GetTimerManager().SetTimer(RetryTimerHandle, [SelectedButton]()
+            {
+                if (IsValid(SelectedButton))
+                {
+                    SelectedButton->SetKeyboardFocus();
+                    UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::SetFocusToSelectedMenuItem - Retry: Focus set (HasFocus: %s)"), 
+                        SelectedButton->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                }
+            }, 0.1f, false);
+        }
+    }
+}
+
+void UPURadialMenu::UpdateSelectionIndicator()
+{
+    if (!SelectionIndicator || !IsValid(SelectionIndicator))
+    {
+        // Indicator not set in Blueprint, that's okay
+        return;
+    }
+    
+    if (!MenuItemButtons.IsValidIndex(SelectedMenuItemIndex))
+    {
+        // Invalid selection, hide indicator
+        SelectionIndicator->SetVisibility(ESlateVisibility::Collapsed);
+        return;
+    }
+    
+    // Show the indicator
+    SelectionIndicator->SetVisibility(ESlateVisibility::Visible);
+    
+    // Get the angle for the selected menu item
+    float ItemAngle = GetMenuItemAngle(SelectedMenuItemIndex);
+    
+    // Convert to radians for rotation
+    float AngleRadians = FMath::DegreesToRadians(ItemAngle);
+    
+    // The indicator should point in the direction of the selected item
+    // We'll rotate it to point in that direction
+    // Note: Widget rotation in Unreal is clockwise, and 0° is right, so we need to adjust
+    // Our angle: 0° is right, positive is counter-clockwise
+    // Widget rotation: 0° is right, positive is clockwise
+    // So we need to negate the angle
+    float RotationDegrees = -ItemAngle;
+    
+    // Set the rotation using render transform (works with any container type)
+    SelectionIndicator->SetRenderTransformAngle(RotationDegrees);
+    
+    // Try to position it at the center if it's in a Canvas Panel
+    if (UCanvasPanelSlot* IndicatorSlot = Cast<UCanvasPanelSlot>(SelectionIndicator->Slot))
+    {
+        // Get the center position of the menu
+        FVector2D CenterPosition = MenuCenterPosition;
+        
+        // If we have a container, use its center
+        if (MenuItemsContainer && IsValid(MenuItemsContainer))
+        {
+            FVector2D ContainerSize = MenuItemsContainer->GetDesiredSize();
+            if (ContainerSize.X > 0 && ContainerSize.Y > 0)
+            {
+                CenterPosition = ContainerSize * 0.5f;
+            }
+        }
+        
+        // Position it at the center
+        IndicatorSlot->SetPosition(CenterPosition);
+        IndicatorSlot->SetZOrder(100); // Make sure it's on top
+        
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::UpdateSelectionIndicator - Updated indicator in Canvas Panel to point at item %d (Angle: %.2f°, Rotation: %.2f°)"), 
+            SelectedMenuItemIndex, ItemAngle, RotationDegrees);
+    }
+    else
+    {
+        // If not in a canvas panel, just rotate the widget itself
+        // The position should be set in Blueprint to be at the center
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::UpdateSelectionIndicator - Updated indicator rotation (not in canvas panel, Angle: %.2f°, Rotation: %.2f°)"), 
+            ItemAngle, RotationDegrees);
+    }
+}
+
+int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry,
+                                 const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements,
+                                 int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+{
+    // Call parent paint first
+    LayerId = Super::NativePaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+    
+    // Get the center of the widget
+    FVector2D Center = AllottedGeometry.GetLocalSize() * 0.5f;
+    
+    // Draw debug visualization if enabled
+    if (bShowDebugRegions && bIsVisible && MenuItemButtons.Num() > 0)
+    {
+        // Draw lines from center to each button to show regions
+        for (int32 i = 0; i < MenuItemButtons.Num(); ++i)
+        {
+            float ItemAngle = GetMenuItemAngle(i);
+            float AngleRadians = FMath::DegreesToRadians(ItemAngle);
+            
+            // Calculate direction (same as button positioning - use +Sin to match flipped buttons)
+            FVector2D Direction(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians));
+            FVector2D EndPoint = Center + (Direction * ItemRadius);
+            
+            // Draw region line (lighter color)
+            TArray<FVector2D> RegionLinePoints;
+            RegionLinePoints.Add(Center);
+            RegionLinePoints.Add(EndPoint);
+            
+            FSlateDrawElement::MakeLines(
+                OutDrawElements,
+                LayerId + 1,
+                AllottedGeometry.ToPaintGeometry(),
+                RegionLinePoints,
+                ESlateDrawEffect::None,
+                FLinearColor(0.5f, 0.5f, 0.5f, 0.5f), // Gray, semi-transparent
+                false,
+                1.0f
+            );
+        }
+        
+        // Draw the selected region more prominently
+        if (MenuItemButtons.IsValidIndex(SelectedMenuItemIndex))
+        {
+            float SelectedAngle = GetMenuItemAngle(SelectedMenuItemIndex);
+            float AngleRadians = FMath::DegreesToRadians(SelectedAngle);
+            FVector2D Direction(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians)); // Use +Sin to match flipped buttons
+            FVector2D EndPoint = Center + (Direction * ItemRadius);
+            
+            TArray<FVector2D> SelectedLinePoints;
+            SelectedLinePoints.Add(Center);
+            SelectedLinePoints.Add(EndPoint);
+            
+            FSlateDrawElement::MakeLines(
+                OutDrawElements,
+                LayerId + 2,
+                AllottedGeometry.ToPaintGeometry(),
+                SelectedLinePoints,
+                ESlateDrawEffect::None,
+                FLinearColor::Yellow, // Yellow for selected
+                false,
+                2.0f
+            );
+        }
+        
+        // Draw angle labels for each button
+        const FSlateFontInfo FontInfo = FCoreStyle::GetDefaultFontStyle("Regular", 12);
+        const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+        
+        for (int32 i = 0; i < MenuItemButtons.Num(); ++i)
+        {
+            if (!MenuItemButtons.IsValidIndex(i) || !IsValid(MenuItemButtons[i]))
+            {
+                continue;
+            }
+            
+            float ItemAngle = GetMenuItemAngle(i);
+            float AngleRadians = FMath::DegreesToRadians(ItemAngle);
+            
+            // Calculate button position (same as how buttons are positioned)
+            // Use +Sin to match the flipped button positioning
+            FVector2D Direction(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians));
+            FVector2D ButtonPosition = Center + (Direction * ItemRadius);
+            
+            // Format text showing button index and angle
+            FString AngleText = FString::Printf(TEXT("[%d] %.0f°"), i, ItemAngle);
+            
+            // Measure text size
+            FVector2D TextSize = FontMeasure->Measure(AngleText, FontInfo);
+            
+            // Position text slightly offset from button (toward center)
+            FVector2D TextOffset = -Direction * 15.0f; // Offset 15px toward center
+            FVector2D TextPosition = ButtonPosition + TextOffset - (TextSize * 0.5f);
+            
+            // Draw text background (small semi-transparent rectangle)
+            FVector2D BackgroundSize = TextSize + FVector2D(4.0f, 4.0f);
+            FVector2D BackgroundPosition = TextPosition - FVector2D(2.0f, 2.0f);
+            
+            FSlateDrawElement::MakeBox(
+                OutDrawElements,
+                LayerId + 3,
+                AllottedGeometry.ToPaintGeometry(BackgroundSize, FSlateLayoutTransform(BackgroundPosition)),
+                FCoreStyle::Get().GetBrush("WhiteBrush"),
+                ESlateDrawEffect::None,
+                FLinearColor(0.0f, 0.0f, 0.0f, 0.6f) // Black with 60% opacity
+            );
+            
+            // Draw the text
+            FSlateDrawElement::MakeText(
+                OutDrawElements,
+                LayerId + 4,
+                AllottedGeometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(TextPosition)),
+                AngleText,
+                FontInfo,
+                ESlateDrawEffect::None,
+                i == SelectedMenuItemIndex ? FLinearColor::Yellow : FLinearColor::White // Yellow for selected, white for others
+            );
+        }
+    }
+    
+    // Draw the direction line if needed (using Slate, like radar graphs)
+    if (bShouldDrawDirectionLine && CurrentDirectionLength > 0.0f && bIsVisible)
+    {
+        // Calculate the end point of the line based on angle and length
+        // Convert angle from degrees to radians
+        // Note: 0° = right, positive = counter-clockwise (standard math convention)
+        float AngleRadians = FMath::DegreesToRadians(CurrentDirectionAngle);
+        
+        // Calculate direction vector
+        // The angle is in standard math coordinates (0° = right, 90° = up)
+        // But Unreal's UI uses: X increases right, Y increases DOWN
+        // Buttons are positioned with: Y = Center - (Radius * Sin(angle))
+        // So if angle is 90° (up), Sin(90°) = 1, so Y = Center - Radius (moves up)
+        // For the line to match, we need: when angle is 90°, line should point up
+        // Direction = (Cos, -Sin) gives: (0, -1) which is up in UI (Y decreases)
+        // But if controls are backwards, try: (Cos, Sin) without negation
+        FVector2D Direction(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians)); // Try without -Sin
+        FVector2D EndPoint = Center + (Direction * CurrentDirectionLength);
+        
+        // Draw the line using FSlateDrawElement
+        TArray<FVector2D> LinePoints;
+        LinePoints.Add(Center);
+        LinePoints.Add(EndPoint);
+        
+        // Draw the line with white color and 2px thickness
+        FSlateDrawElement::MakeLines(
+            OutDrawElements,
+            LayerId + 5, // Draw on top of debug lines and text
+            AllottedGeometry.ToPaintGeometry(),
+            LinePoints,
+            ESlateDrawEffect::None,
+            FLinearColor::White,
+            false, // bAntialias
+            2.0f   // Thickness
+        );
+    }
+    
+    // Draw joystick angle and direction text on screen
+    if (bIsVisible && bShouldDrawDirectionLine && CurrentDirectionLength > 0.0f)
+    {
+        // Get default font
+        const FSlateFontInfo FontInfo = FCoreStyle::GetDefaultFontStyle("Regular", 16);
+        const TSharedRef<FSlateFontMeasure> FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+        
+        // Format the text with raw stick values, calculated direction, and selected button
+        float DirectionX = FMath::Cos(FMath::DegreesToRadians(CurrentDirectionAngle));
+        float DirectionY = FMath::Sin(FMath::DegreesToRadians(CurrentDirectionAngle));
+        
+        // Get selected button info
+        FString SelectedButtonInfo = TEXT("None");
+        if (MenuItemButtons.IsValidIndex(SelectedMenuItemIndex))
+        {
+            if (MenuItems.IsValidIndex(SelectedMenuItemIndex))
+            {
+                SelectedButtonInfo = FString::Printf(TEXT("Button [%d]: %s (%.0f°)"), 
+                    SelectedMenuItemIndex,
+                    *MenuItems[SelectedMenuItemIndex].Label.ToString(),
+                    GetMenuItemAngle(SelectedMenuItemIndex));
+            }
+            else
+            {
+                SelectedButtonInfo = FString::Printf(TEXT("Button [%d] (%.0f°)"), 
+                    SelectedMenuItemIndex,
+                    GetMenuItemAngle(SelectedMenuItemIndex));
+            }
+        }
+        
+        FString DebugText = FString::Printf(TEXT("Stick Raw: X=%.2f, Y=%.2f\nStick Angle: %.1f°\nDirection: X=%.2f, Y=%.2f\nSelected: %s"), 
+            CurrentStickX, CurrentStickY,
+            CurrentDirectionAngle,
+            DirectionX, DirectionY,
+            *SelectedButtonInfo);
+        
+        // Calculate text position (top-left of widget, offset a bit)
+        FVector2D TextPosition(20.0f, 20.0f);
+        
+        // Measure text size
+        FVector2D TextSize = FontMeasure->Measure(DebugText, FontInfo);
+        
+        // Draw text background (semi-transparent black rectangle)
+        FVector2D BackgroundPosition = TextPosition - FVector2D(5.0f, 5.0f);
+        FVector2D BackgroundSize = FVector2D(TextSize.X + 10.0f, TextSize.Y + 10.0f);
+        FSlateDrawElement::MakeBox(
+            OutDrawElements,
+            LayerId + 6,
+            AllottedGeometry.ToPaintGeometry(BackgroundSize, FSlateLayoutTransform(BackgroundPosition)),
+            FCoreStyle::Get().GetBrush("WhiteBrush"),
+            ESlateDrawEffect::None,
+            FLinearColor(0.0f, 0.0f, 0.0f, 0.7f) // Black with 70% opacity
+        );
+        
+        // Draw the text
+        FSlateDrawElement::MakeText(
+            OutDrawElements,
+            LayerId + 7,
+            AllottedGeometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(TextPosition)),
+            DebugText,
+            FontInfo,
+            ESlateDrawEffect::None,
+            FLinearColor::White
+        );
+    }
+    
+    return LayerId;
+}
+
+void UPURadialMenu::UpdateDirectionLine(float AngleDegrees, float InputMagnitude)
+{
+    // Calculate line length based on input magnitude
+    float LineLength = ItemRadius * FMath::Clamp(InputMagnitude, 0.3f, 1.0f);
+    
+    // Update the mutable state for NativePaint
+    CurrentDirectionAngle = AngleDegrees;
+    CurrentDirectionLength = LineLength;
+    bShouldDrawDirectionLine = true;
+    
+    // Invalidate the widget to trigger a repaint
+    if (IsValid(this))
+    {
+        Invalidate(EInvalidateWidget::Paint);
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPURadialMenu::UpdateDirectionLine - Updated Slate line (Angle: %.2f°, Length: %.2f)"), 
+        AngleDegrees, LineLength);
+    
+    // If no input, hide the line
+    if (InputMagnitude <= 0.0f)
+    {
+        bShouldDrawDirectionLine = false;
+        CurrentDirectionLength = 0.0f;
+        if (IsValid(this))
+        {
+            Invalidate(EInvalidateWidget::Paint);
+        }
+    }
+}
+
 void UPURadialMenu::PreviewRadialLayout()
 {
     if (!MenuItemsContainer)
@@ -512,12 +1353,16 @@ void UPURadialMenu::PreviewRadialLayout()
         }
 
         // Calculate angle for this item (start at -90 degrees so first item is at top)
+        // This gives us standard math angles: 0° = right, 90° = up, 180° = left, 270° = down
         float AngleDegrees = (-90.0f + (AngleStep * i));
         float AngleRadians = FMath::DegreesToRadians(AngleDegrees);
 
         // Calculate position using trigonometry
+        // In Unreal's UI: X increases right, Y increases down
+        // To align buttons with stick input (which uses Atan2(-Y, X)), we need to flip the Y axis
+        // Use +Sin instead of -Sin to flip 180° so buttons match stick direction
         float X = CenterPosition.X + (ItemRadius * FMath::Cos(AngleRadians));
-        float Y = CenterPosition.Y + (ItemRadius * FMath::Sin(AngleRadians));
+        float Y = CenterPosition.Y + (ItemRadius * FMath::Sin(AngleRadians)); // Use +Sin to flip orientation
 
         // Position the widget
         if (UCanvasPanelSlot* WidgetSlot = Cast<UCanvasPanelSlot>(ChildWidget->Slot))

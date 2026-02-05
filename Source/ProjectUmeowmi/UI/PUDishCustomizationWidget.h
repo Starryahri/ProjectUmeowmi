@@ -273,6 +273,14 @@ public:
     // Set initial focus for prep stage
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
     void SetInitialFocusForPrepStage();
+    
+    // Set up navigation for pantry slots (for controller support)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetupPantrySlotNavigation();
+    
+    // Set initial focus for pantry (for controller support)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetInitialFocusForPantry();
 
 protected:
     // Current dish data

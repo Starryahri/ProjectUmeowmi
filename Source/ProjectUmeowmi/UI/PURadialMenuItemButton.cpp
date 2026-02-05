@@ -14,6 +14,9 @@ void UPURadialMenuItemButton::NativeConstruct()
 {
     Super::NativeConstruct();
 
+    // Make the widget focusable for controller navigation
+    SetIsFocusable(true);
+
     // Bind to the button's OnClicked event if button exists
     if (ItemButton)
     {

@@ -1132,6 +1132,9 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
         {
             UPUIngredientSlot* EmptySlot = PendingEmptySlot.Get();
             
+            // Store reference to the prep slot before clearing PendingEmptySlot (for focus restoration)
+            TWeakObjectPtr<UPUIngredientSlot> PrepSlotToFocus = EmptySlot;
+            
             //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantrySlotClicked - Populating empty slot: %s"), 
             //    *EmptySlot->GetName());
             
@@ -1162,14 +1165,55 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
             
             // Clear pending empty slot
             PendingEmptySlot.Reset();
+            
+            // Close the pantry
+            ClosePantry();
+            
+            // Restore focus to the prep slot after a short delay (to allow pantry close animation)
+            if (UWorld* World = GetWorld())
+            {
+                FTimerHandle FocusRestoreTimerHandle;
+                World->GetTimerManager().SetTimer(FocusRestoreTimerHandle, [PrepSlotToFocus, this]()
+                {
+                    if (PrepSlotToFocus.IsValid())
+                    {
+                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::OnPantrySlotClicked - Restoring focus to prep slot: %s"), 
+                            *PrepSlotToFocus->GetName());
+                        
+                        // Ensure slot is focusable and set focus
+                        PrepSlotToFocus->SetIsFocusable(true);
+                        PrepSlotToFocus->SetKeyboardFocus();
+                        FSlateApplication::Get().SetUserFocus(0, PrepSlotToFocus->TakeWidget());
+                        
+                        // Manually trigger visual feedback
+                        PrepSlotToFocus->ShowFocusVisuals();
+                        
+                        // Retry if focus wasn't set
+                        if (!PrepSlotToFocus->HasKeyboardFocus())
+                        {
+                            FTimerHandle RetryTimerHandle;
+                            GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [PrepSlotToFocus]()
+                            {
+                                if (PrepSlotToFocus.IsValid())
+                                {
+                                    PrepSlotToFocus->SetKeyboardFocus();
+                                    PrepSlotToFocus->ShowFocusVisuals();
+                                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::OnPantrySlotClicked - Retry: Focus restored to %s (HasFocus: %s)"), 
+                                        *PrepSlotToFocus->GetName(), PrepSlotToFocus->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                }
+                            }, 0.1f, false);
+                        }
+                    }
+                }, 0.3f, false); // Delay to allow pantry close animation
+            }
         }
         else
         {
             //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::OnPantrySlotClicked - No pending empty slot! Pantry slot clicked but no empty slot to populate."));
+            
+            // Close the pantry even if no pending slot
+            ClosePantry();
         }
-        
-        // Close the pantry
-        ClosePantry();
     }
     else
     {
@@ -2412,11 +2456,17 @@ void UPUDishCustomizationWidget::OpenPantry()
         PopulatePantrySlots();
     }
     
+    // Set up navigation for pantry slots (for controller support)
+    SetupPantrySlotNavigation();
+    
     // Set pantry open flag
     bPantryOpen = true;
     
     // Call Blueprint event to trigger UMG animation
     OnPantryOpened();
+    
+    // Set initial focus for pantry after a short delay (to allow animation to complete)
+    SetInitialFocusForPantry();
     
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OpenPantry - Pantry opened (Blueprint will handle animation)"));
 }
@@ -2835,6 +2885,168 @@ void UPUDishCustomizationWidget::SetupPrepSlotNavigation()
     }
     
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPrepSlotNavigation - Navigation setup complete for %d prep slots"), PrepSlots.Num());
+}
+
+void UPUDishCustomizationWidget::SetupPantrySlotNavigation()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - Setting up navigation for pantry slots"));
+    
+    // Set up navigation grid for pantry slots (for controller support)
+    // Pantry slots are typically in a horizontal or wrap container
+    // For now, we'll set up simple linear navigation (left/right, with wrap)
+    const int32 SlotsPerRow = 6; // Adjust based on your pantry layout
+    
+    TArray<UPUIngredientSlot*> PantrySlots;
+    for (UPUIngredientSlot* PantrySlot : CreatedPantrySlots)
+    {
+        if (PantrySlot && PantrySlot->GetLocation() == EPUIngredientSlotLocation::Pantry)
+        {
+            // Ensure ALL pantry slots are focusable
+            PantrySlot->SetIsFocusable(true);
+            PantrySlots.Add(PantrySlot);
+            
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - Added pantry slot: %s"), 
+                *PantrySlot->GetName());
+        }
+    }
+    
+    if (PantrySlots.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - No pantry slots found"));
+        return;
+    }
+    
+    // Set up navigation for each slot (simple linear navigation with wrap)
+    for (int32 i = 0; i < PantrySlots.Num(); ++i)
+    {
+        UPUIngredientSlot* CurrentSlot = PantrySlots[i];
+        if (!CurrentSlot)
+        {
+            continue;
+        }
+        
+        int32 Row = i / SlotsPerRow;
+        int32 Col = i % SlotsPerRow;
+        
+        // Calculate neighbor indices
+        int32 UpIndex = (Row > 0) ? (i - SlotsPerRow) : INDEX_NONE;
+        int32 DownIndex = ((Row + 1) * SlotsPerRow <= PantrySlots.Num()) ? (i + SlotsPerRow) : INDEX_NONE;
+        
+        // Left navigation: if at start of row, wrap to last slot of previous row
+        int32 LeftIndex = INDEX_NONE;
+        if (Col > 0)
+        {
+            // Not at start of row, go to previous slot in same row
+            LeftIndex = i - 1;
+        }
+        else
+        {
+            // At start of row, wrap to last slot of previous row (if it exists)
+            if (Row > 0)
+            {
+                int32 PrevRowLastIndex = (Row * SlotsPerRow) - 1;
+                if (PrevRowLastIndex >= 0 && PrevRowLastIndex < PantrySlots.Num())
+                {
+                    LeftIndex = PrevRowLastIndex;
+                }
+            }
+        }
+        
+        // Right navigation: if at end of row, wrap to first slot of next row
+        int32 RightIndex = INDEX_NONE;
+        if (Col < SlotsPerRow - 1)
+        {
+            // Not at end of row, go to next slot in same row
+            RightIndex = (i + 1 < PantrySlots.Num()) ? (i + 1) : INDEX_NONE;
+        }
+        else
+        {
+            // At end of row, wrap to first slot of next row (if it exists)
+            int32 NextRowFirstIndex = (Row + 1) * SlotsPerRow;
+            if (NextRowFirstIndex < PantrySlots.Num())
+            {
+                RightIndex = NextRowFirstIndex;
+            }
+        }
+        
+        // Get neighbor slots
+        UPUIngredientSlot* UpSlot = (UpIndex != INDEX_NONE && UpIndex >= 0 && UpIndex < PantrySlots.Num()) ? PantrySlots[UpIndex] : nullptr;
+        UPUIngredientSlot* DownSlot = (DownIndex != INDEX_NONE && DownIndex >= 0 && DownIndex < PantrySlots.Num()) ? PantrySlots[DownIndex] : nullptr;
+        UPUIngredientSlot* LeftSlot = (LeftIndex != INDEX_NONE && LeftIndex >= 0 && LeftIndex < PantrySlots.Num()) ? PantrySlots[LeftIndex] : nullptr;
+        UPUIngredientSlot* RightSlot = (RightIndex != INDEX_NONE && RightIndex >= 0 && RightIndex < PantrySlots.Num()) ? PantrySlots[RightIndex] : nullptr;
+        
+        // Set up navigation
+        CurrentSlot->SetupNavigation(UpSlot, DownSlot, LeftSlot, RightSlot);
+        
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - Slot %d (%s): Up=%s, Down=%s, Left=%s, Right=%s"), 
+            i, *CurrentSlot->GetName(),
+            UpSlot ? *UpSlot->GetName() : TEXT("NULL"),
+            DownSlot ? *DownSlot->GetName() : TEXT("NULL"),
+            LeftSlot ? *LeftSlot->GetName() : TEXT("NULL"),
+            RightSlot ? *RightSlot->GetName() : TEXT("NULL"));
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - Navigation setup complete for %d pantry slots"), PantrySlots.Num());
+}
+
+void UPUDishCustomizationWidget::SetInitialFocusForPantry()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Setting initial focus for pantry"));
+    
+    // Ensure this widget can receive focus first
+    SetIsFocusable(true);
+    
+    // Find the first pantry slot and set focus to it
+    for (UPUIngredientSlot* PantrySlot : CreatedPantrySlots)
+    {
+        if (PantrySlot && PantrySlot->GetLocation() == EPUIngredientSlotLocation::Pantry)
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Found pantry slot: %s (Focusable: %s)"), 
+                *PantrySlot->GetName(), PantrySlot->IsFocusable() ? TEXT("YES") : TEXT("NO"));
+            
+            // Ensure slot is focusable
+            PantrySlot->SetIsFocusable(true);
+            
+            // Use a delayed timer to set focus after the widget is fully visible
+            FTimerHandle FocusTimerHandle;
+            GetWorld()->GetTimerManager().SetTimer(FocusTimerHandle, [WeakSlot = TWeakObjectPtr<UPUIngredientSlot>(PantrySlot), this]()
+            {
+                if (WeakSlot.IsValid())
+                {
+                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Setting focus to pantry slot: %s"), 
+                        *WeakSlot->GetName());
+                    
+                    // Set focus using both methods for robustness
+                    WeakSlot->SetIsFocusable(true);
+                    WeakSlot->SetKeyboardFocus();
+                    FSlateApplication::Get().SetUserFocus(0, WeakSlot->TakeWidget());
+                    
+                    // Manually trigger visual feedback
+                    WeakSlot->ShowFocusVisuals();
+                    
+                    // Retry if focus wasn't set
+                    if (!WeakSlot->HasKeyboardFocus())
+                    {
+                        FTimerHandle RetryTimerHandle;
+                        GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [WeakSlot]()
+                        {
+                            if (WeakSlot.IsValid())
+                            {
+                                WeakSlot->SetKeyboardFocus();
+                                WeakSlot->ShowFocusVisuals();
+                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Retry: Focus set to %s (HasFocus: %s)"), 
+                                    *WeakSlot->GetName(), WeakSlot->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                            }
+                        }, 0.1f, false);
+                    }
+                }
+            }, 0.2f, false);
+            
+            return; // Only set focus to the first slot
+        }
+    }
+    
+    UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - No pantry slots found"));
 }
 
 void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
