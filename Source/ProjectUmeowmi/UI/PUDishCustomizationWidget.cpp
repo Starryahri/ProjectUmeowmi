@@ -17,6 +17,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/LocalPlayer.h"
+#include "Input/Events.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -322,12 +323,16 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
     }
 
     // Ensure target widget has the component reference
-    if (CustomizationComponent && TargetStage->GetCustomizationComponent() != CustomizationComponent)
+    if (CustomizationComponent)
     {
-        TargetStage->SetCustomizationComponent(CustomizationComponent);
-        //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Set component reference on target widget"));
+        if (TargetStage->GetCustomizationComponent() != CustomizationComponent)
+        {
+            TargetStage->SetCustomizationComponent(CustomizationComponent);
+            //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Set component reference on target widget"));
+        }
         
-        // Notify component about the active widget change
+        // Always notify component about the active widget change, even if component reference already matches
+        // This ensures CustomizationWidget is updated when navigating between stages
         CustomizationComponent->SetActiveCustomizationWidget(TargetStage);
         //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Updated component's active widget reference"));
     }
@@ -510,6 +515,8 @@ void UPUDishCustomizationWidget::GoToPreviousStage()
         //UE_LOG(LogTemp,Warning, TEXT("🚫 PUDishCustomizationWidget::GoToPreviousStage - Previous stage class is not set"));
     }
 }
+
+// Removed NativeOnKeyDown - now handled through Enhanced Input Actions in PUDishCustomizationComponent
 
 void UPUDishCustomizationWidget::SetPreviousStage(UPUDishCustomizationWidget* Stage)
 {

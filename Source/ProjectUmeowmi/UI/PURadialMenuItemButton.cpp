@@ -65,6 +65,15 @@ void UPURadialMenuItemButton::SetMenuItemData(const FRadialMenuItem& MenuItem, i
     OnMenuItemDataSet(MenuItemData, ItemIndex);
 }
 
+void UPURadialMenuItemButton::ClearMenuItemData()
+{
+    // Directly clear the data without triggering events or accessing other UObjects
+    // This is safe to call during GC
+    MenuItemData = FRadialMenuItem();
+    MenuItemData.Icon = nullptr;
+    ItemIndex = -1;
+}
+
 void UPURadialMenuItemButton::HandleButtonClicked()
 {
     if (ItemIndex >= 0)

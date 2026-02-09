@@ -255,6 +255,23 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         {
             //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No MouseClickAction set"));
         }
+
+        // Bind stage navigation actions
+        if (NextStageAction)
+        {
+            NextStageBindingHandle = EnhancedInputComponent->BindAction(NextStageAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleNextStage).GetHandle();
+        }
+
+        if (PreviousStageAction)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🔙 Binding PreviousStageAction: %s"), *PreviousStageAction->GetName());
+            PreviousStageBindingHandle = EnhancedInputComponent->BindAction(PreviousStageAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandlePreviousStage).GetHandle();
+            UE_LOG(LogTemp, Warning, TEXT("🔙 PreviousStageBindingHandle: %d"), PreviousStageBindingHandle);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("🔙 PreviousStageAction is NULL!"));
+        }
     }
     else
     {
@@ -425,6 +442,16 @@ void UPUDishCustomizationComponent::EndCustomization()
             {
                 EnhancedInputComponent->RemoveBindingByHandle(ExitActionBindingHandle);
                 //UE_LOG(LogTemp,Log, TEXT("Unbound exit action"));
+            }
+
+            if (NextStageAction)
+            {
+                EnhancedInputComponent->RemoveBindingByHandle(NextStageBindingHandle);
+            }
+
+            if (PreviousStageAction)
+            {
+                EnhancedInputComponent->RemoveBindingByHandle(PreviousStageBindingHandle);
             }
         }
 
@@ -978,6 +1005,42 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
     else
     {
         //UE_LOG(LogTemp,Display, TEXT("🔍 No hit under cursor (ignoring station)"));
+    }
+}
+
+void UPUDishCustomizationComponent::HandleNextStage()
+{
+    if (CustomizationWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            // Call the Blueprint event so animations can play first
+            DishWidget->OnControllerNextStage();
+        }
+    }
+}
+
+void UPUDishCustomizationComponent::HandlePreviousStage()
+{
+    UE_LOG(LogTemp, Warning, TEXT("🔙 HandlePreviousStage called - CustomizationWidget: %s"), 
+        CustomizationWidget ? *CustomizationWidget->GetName() : TEXT("NULL"));
+    
+    if (CustomizationWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🔙 Calling OnControllerPreviousStage on widget: %s"), *DishWidget->GetName());
+            // Call the Blueprint event so animations can play first
+            DishWidget->OnControllerPreviousStage();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("🔙 Failed to cast CustomizationWidget to UPUDishCustomizationWidget"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("🔙 CustomizationWidget is NULL!"));
     }
 }
 

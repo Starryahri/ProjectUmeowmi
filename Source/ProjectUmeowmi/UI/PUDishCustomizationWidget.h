@@ -79,6 +79,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
     void GoToPreviousStage();
 
+    // Blueprint events for controller input (allows animations to play first)
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Controller")
+    void OnControllerNextStage();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Controller")
+    void OnControllerPreviousStage();
+
     // Stage reference setters (for Blueprint)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
     void SetPreviousStage(class UPUDishCustomizationWidget* Stage);

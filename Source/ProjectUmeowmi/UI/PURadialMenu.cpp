@@ -381,10 +381,9 @@ void UPURadialMenu::ClearMenuItems()
             }
             
             // Explicitly clear the MenuItemData to null out texture pointers
-            // This prevents GC from accessing invalid pointers during button destruction
-            FRadialMenuItem EmptyMenuItem;
-            EmptyMenuItem.Icon = nullptr;
-            Button->SetMenuItemData(EmptyMenuItem, -1);
+            // Use ClearMenuItemData() instead of SetMenuItemData() to avoid triggering
+            // Blueprint events or accessing other UObjects during GC
+            Button->ClearMenuItemData();
         }
     }
     
