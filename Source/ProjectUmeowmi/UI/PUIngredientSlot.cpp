@@ -3545,16 +3545,19 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildActionMenuItems() const
     RemoveItem.Tooltip = FText::FromString(TEXT("Remove this ingredient from the dish"));
     MenuItems.Add(RemoveItem);
 
-    // Action: Clear Preparations (only if there are preparations)
-    if (IngredientInstance.Preparations.Num() > 0)
-    {
-        FRadialMenuItem ClearPrepsItem;
-        ClearPrepsItem.Label = FText::FromString(TEXT("Clear Preparations"));
-        ClearPrepsItem.ActionTag = FGameplayTag::RequestGameplayTag(FName("Action.ClearPreparations"));
-        ClearPrepsItem.bIsEnabled = true;
-        ClearPrepsItem.Tooltip = FText::FromString(TEXT("Remove all preparations from this ingredient"));
-        MenuItems.Add(ClearPrepsItem);
-    }
+    // NOTE: Clear Preparations radial button temporarily disabled.
+    // Previous behavior (for reference):
+    //
+    // // Action: Clear Preparations (only if there are preparations)
+    // if (IngredientInstance.Preparations.Num() > 0)
+    // {
+    //     FRadialMenuItem ClearPrepsItem;
+    //     ClearPrepsItem.Label = FText::FromString(TEXT("Clear Preparations"));
+    //     ClearPrepsItem.ActionTag = FGameplayTag::RequestGameplayTag(FName("Action.ClearPreparations"));
+    //     ClearPrepsItem.bIsEnabled = true;
+    //     ClearPrepsItem.Tooltip = FText::FromString(TEXT("Remove all preparations from this ingredient"));
+    //     MenuItems.Add(ClearPrepsItem);
+    // }
 
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::BuildActionMenuItems - Built %d action menu items"), MenuItems.Num());
     return MenuItems;
