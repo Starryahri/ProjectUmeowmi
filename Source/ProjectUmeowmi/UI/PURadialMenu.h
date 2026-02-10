@@ -202,6 +202,37 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Debug")
     bool bShowDebugText = false; // Set to true to show debug text (stick values, angle, selected button)
 
+    // Direction Line Styling
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "50.0"))
+    float DirectionLineThickness = 10.0f; // Thickness of the main direction line
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "50.0"))
+    float DirectionLineGlowThickness = 18.0f; // Thickness of the glow effect behind the line
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "20.0"))
+    float DirectionLineArrowheadThickness = 7.0f; // Thickness of the arrowhead lines
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "5.0", ClampMax = "50.0"))
+    float DirectionLineArrowheadLength = 20.0f; // Length of the arrowhead
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "10.0", ClampMax = "60.0"))
+    float DirectionLineArrowheadAngle = 25.0f; // Angle of the arrowhead in degrees
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "20.0"))
+    float DirectionLineCenterDotRadius = 8.0f; // Radius of the center dot
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "2", ClampMax = "20"))
+    int32 DirectionLineGradientSegments = 8; // Number of segments for gradient fade
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line")
+    FLinearColor DirectionLineBaseColor = FLinearColor(0.2f, 0.6f, 1.0f, 1.0f); // Base color of the direction line (cyan-blue)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line")
+    float DirectionLineGlowOpacity = 0.4f; // Opacity multiplier for the glow effect (0.0 to 1.0)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float DirectionLineEndFadeAmount = 0.7f; // How much the line fades at the end (0.0 = no fade, 1.0 = fully transparent at end)
+
     // Button widget class to use for menu items (can be set in Blueprint)
     // Defaults to UPURadialMenuItemButton, but can be overridden with a custom Blueprint class
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Radial Menu|Layout")
@@ -271,6 +302,7 @@ private:
     // Current direction line state (for NativePaint)
     mutable float CurrentDirectionAngle = 0.0f;
     mutable float CurrentDirectionLength = 0.0f;
+    mutable float CurrentInputMagnitude = 0.0f; // Input magnitude for color intensity
     mutable bool bShouldDrawDirectionLine = false;
     mutable float CurrentStickX = 0.0f;
     mutable float CurrentStickY = 0.0f;

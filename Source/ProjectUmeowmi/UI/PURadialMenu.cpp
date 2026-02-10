@@ -191,6 +191,7 @@ void UPURadialMenu::HideMenu()
     // Hide the direction line
     bShouldDrawDirectionLine = false;
     CurrentDirectionLength = 0.0f;
+    CurrentInputMagnitude = 0.0f;
     if (IsValid(this))
     {
         Invalidate(EInvalidateWidget::Paint);
@@ -538,6 +539,7 @@ void UPURadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
                 // Input is below deadzone, hide the direction line
                 bShouldDrawDirectionLine = false;
                 CurrentDirectionLength = 0.0f;
+                CurrentInputMagnitude = 0.0f;
                 CurrentStickX = 0.0f;
                 CurrentStickY = 0.0f;
                 if (IsValid(this))
@@ -588,60 +590,10 @@ void UPURadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
             // No player controller, hide the direction line
             bShouldDrawDirectionLine = false;
             CurrentDirectionLength = 0.0f;
+            CurrentInputMagnitude = 0.0f;
             if (IsValid(this))
             {
                 Invalidate(EInvalidateWidget::Paint);
-            }
-        }
-    }
-    
-    // Also handle mouse position for mouse input
-    if (bIsVisible && MenuItemButtons.Num() > 0)
-    {
-        // Get mouse position relative to the menu widget
-        FVector2D MousePosition;
-        if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
-        {
-            if (PC->GetMousePosition(MousePosition.X, MousePosition.Y))
-            {
-                // Get the menu widget's screen position
-                FGeometry MenuGeometry = GetCachedGeometry();
-                FVector2D MenuScreenPosition = MenuGeometry.GetAbsolutePosition();
-                FVector2D MenuSize = MenuGeometry.GetAbsoluteSize();
-                FVector2D MenuCenter = MenuScreenPosition + (MenuSize * 0.5f);
-                
-                // Calculate direction from center to mouse
-                FVector2D Direction = MousePosition - MenuCenter;
-                float Distance = Direction.Size();
-                
-                if (Distance > 10.0f) // Only show if mouse is far enough from center
-                {
-                    Direction.Normalize();
-                    
-                    // Calculate angle (same as joystick - use -Y to convert from UI coords to math coords)
-                    float AngleRadians = FMath::Atan2(-Direction.Y, Direction.X);
-                    float AngleDegrees = FMath::RadiansToDegrees(AngleRadians);
-                    if (AngleDegrees < 0.0f)
-                    {
-                        AngleDegrees += 360.0f;
-                    }
-                    
-                    // Normalize distance to 0-1 range (capped at menu radius)
-                    float NormalizedDistance = FMath::Clamp(Distance / ItemRadius, 0.0f, 1.0f);
-                    
-                    // Update direction line
-                    UpdateDirectionLine(AngleDegrees, NormalizedDistance);
-                }
-                else
-                {
-                    // Mouse too close to center, hide line
-                    bShouldDrawDirectionLine = false;
-                    CurrentDirectionLength = 0.0f;
-                    if (IsValid(this))
-                    {
-                        Invalidate(EInvalidateWidget::Paint);
-                    }
-                }
             }
         }
     }
@@ -1128,21 +1080,139 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
         FVector2D Direction(FMath::Cos(AngleRadians), FMath::Sin(AngleRadians)); // Try without -Sin
         FVector2D EndPoint = Center + (Direction * CurrentDirectionLength);
         
-        // Draw the line using FSlateDrawElement
-        TArray<FVector2D> LinePoints;
-        LinePoints.Add(Center);
-        LinePoints.Add(EndPoint);
+        // Calculate color intensity based on input magnitude (0.3 to 1.0 range)
+        // Map to 0.5 to 1.0 for alpha, and use brighter colors for stronger input
+        float Intensity = FMath::Clamp(CurrentInputMagnitude, 0.3f, 1.0f);
+        float NormalizedIntensity = (Intensity - 0.3f) / 0.7f; // Normalize to 0-1
         
-        // Draw the line with white color and 2px thickness
+        // Base color: use exposed property, but adjust brightness based on input intensity
+        FLinearColor BaseColor = DirectionLineBaseColor;
+        // Make color brighter with input intensity
+        BaseColor.R = FMath::Clamp(BaseColor.R * (0.5f + NormalizedIntensity * 0.5f), 0.0f, 1.0f);
+        BaseColor.G = FMath::Clamp(BaseColor.G * (0.5f + NormalizedIntensity * 0.5f), 0.0f, 1.0f);
+        BaseColor.B = FMath::Clamp(BaseColor.B * (0.5f + NormalizedIntensity * 0.5f), 0.0f, 1.0f);
+        BaseColor.A = 1.0f; // Full opacity for main line
+        
+        // Glow color (softer, more transparent)
+        FLinearColor GlowColor = FLinearColor(
+            BaseColor.R * 0.7f,
+            BaseColor.G * 0.7f,
+            BaseColor.B * 0.7f,
+            DirectionLineGlowOpacity * NormalizedIntensity // Glow opacity based on intensity
+        );
+        
+        // Draw glow/shadow effect (thicker, semi-transparent line behind)
+        TArray<FVector2D> GlowLinePoints;
+        GlowLinePoints.Add(Center);
+        GlowLinePoints.Add(EndPoint);
+        
         FSlateDrawElement::MakeLines(
             OutDrawElements,
-            LayerId + 5, // Draw on top of debug lines and text
+            LayerId + 4, // Draw behind main line
             AllottedGeometry.ToPaintGeometry(),
-            LinePoints,
+            GlowLinePoints,
             ESlateDrawEffect::None,
-            FLinearColor::White,
-            false, // bAntialias
-            2.0f   // Thickness
+            GlowColor,
+            true,  // bAntialias for smooth glow
+            DirectionLineGlowThickness   // Use exposed property
+        );
+        
+        // Draw gradient line using multiple segments for smooth fade
+        // Create segments from center to end with decreasing opacity
+        const int32 GradientSegments = DirectionLineGradientSegments;
+        for (int32 i = 0; i < GradientSegments; ++i)
+        {
+            float SegmentStart = (float)i / GradientSegments;
+            float SegmentEnd = (float)(i + 1) / GradientSegments;
+            
+            // Calculate opacity: full at center, fade based on DirectionLineEndFadeAmount
+            float StartOpacity = 1.0f - (SegmentStart * DirectionLineEndFadeAmount);
+            float EndOpacity = 1.0f - (SegmentEnd * DirectionLineEndFadeAmount);
+            
+            FVector2D SegmentStartPoint = Center + (Direction * CurrentDirectionLength * SegmentStart);
+            FVector2D SegmentEndPoint = Center + (Direction * CurrentDirectionLength * SegmentEnd);
+            
+            TArray<FVector2D> SegmentPoints;
+            SegmentPoints.Add(SegmentStartPoint);
+            SegmentPoints.Add(SegmentEndPoint);
+            
+            FLinearColor SegmentColor = BaseColor;
+            SegmentColor.A = StartOpacity * NormalizedIntensity; // Apply intensity to opacity
+            
+            FSlateDrawElement::MakeLines(
+                OutDrawElements,
+                LayerId + 5, // Draw on top of glow
+                AllottedGeometry.ToPaintGeometry(),
+                SegmentPoints,
+                ESlateDrawEffect::None,
+                SegmentColor,
+                true, // bAntialias for smooth lines
+                DirectionLineThickness  // Use exposed property
+            );
+        }
+        
+        // Draw arrowhead at the end
+        const float ArrowheadLength = DirectionLineArrowheadLength; // Use exposed property
+        const float ArrowheadAngle = FMath::DegreesToRadians(DirectionLineArrowheadAngle); // Use exposed property
+        
+        // Calculate arrowhead points (two lines forming a V at the end)
+        FVector2D ArrowBase = EndPoint - (Direction * ArrowheadLength * 0.3f); // Slightly back from tip
+        
+        // Perpendicular direction for arrowhead spread
+        FVector2D Perpendicular(-Direction.Y, Direction.X);
+        
+        // Arrowhead tip points
+        FVector2D ArrowLeft = EndPoint - (Direction * ArrowheadLength * FMath::Cos(ArrowheadAngle)) 
+                              + (Perpendicular * ArrowheadLength * FMath::Sin(ArrowheadAngle));
+        FVector2D ArrowRight = EndPoint - (Direction * ArrowheadLength * FMath::Cos(ArrowheadAngle))
+                               - (Perpendicular * ArrowheadLength * FMath::Sin(ArrowheadAngle));
+        
+        // Draw arrowhead lines (bright, full opacity)
+        TArray<FVector2D> ArrowLeftLine;
+        ArrowLeftLine.Add(EndPoint);
+        ArrowLeftLine.Add(ArrowLeft);
+        
+        TArray<FVector2D> ArrowRightLine;
+        ArrowRightLine.Add(EndPoint);
+        ArrowRightLine.Add(ArrowRight);
+        
+        FLinearColor ArrowColor = BaseColor;
+        ArrowColor.A = 1.0f; // Full opacity for arrowhead
+        
+        FSlateDrawElement::MakeLines(
+            OutDrawElements,
+            LayerId + 6, // Draw on top of main line
+            AllottedGeometry.ToPaintGeometry(),
+            ArrowLeftLine,
+            ESlateDrawEffect::None,
+            ArrowColor,
+            true, // bAntialias
+            DirectionLineArrowheadThickness   // Use exposed property
+        );
+        
+        FSlateDrawElement::MakeLines(
+            OutDrawElements,
+            LayerId + 6,
+            AllottedGeometry.ToPaintGeometry(),
+            ArrowRightLine,
+            ESlateDrawEffect::None,
+            ArrowColor,
+            true, // bAntialias
+            DirectionLineArrowheadThickness   // Use exposed property
+        );
+        
+        // Draw a bright dot at the center for emphasis
+        const float CenterDotRadius = DirectionLineCenterDotRadius; // Use exposed property
+        FSlateDrawElement::MakeBox(
+            OutDrawElements,
+            LayerId + 7, // Draw on top of everything
+            AllottedGeometry.ToPaintGeometry(
+                FVector2D(CenterDotRadius * 2.0f, CenterDotRadius * 2.0f),
+                FSlateLayoutTransform(Center - FVector2D(CenterDotRadius, CenterDotRadius))
+            ),
+            FCoreStyle::Get().GetBrush("WhiteBrush"),
+            ESlateDrawEffect::None,
+            BaseColor // Use same color as line
         );
     }
     
@@ -1225,6 +1295,7 @@ void UPURadialMenu::UpdateDirectionLine(float AngleDegrees, float InputMagnitude
     // Update the mutable state for NativePaint
     CurrentDirectionAngle = AngleDegrees;
     CurrentDirectionLength = LineLength;
+    CurrentInputMagnitude = InputMagnitude; // Store for color intensity
     bShouldDrawDirectionLine = true;
     
     // Invalidate the widget to trigger a repaint
@@ -1238,6 +1309,7 @@ void UPURadialMenu::UpdateDirectionLine(float AngleDegrees, float InputMagnitude
     {
         bShouldDrawDirectionLine = false;
         CurrentDirectionLength = 0.0f;
+        CurrentInputMagnitude = 0.0f;
         if (IsValid(this))
         {
             Invalidate(EInvalidateWidget::Paint);
