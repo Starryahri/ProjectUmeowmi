@@ -1,4 +1,5 @@
 #include "PUIngredientSlot.h"
+#include "Animation/WidgetAnimation.h"
 #include "Components/Image.h"
 #include "Components/Button.h"
 #include "Components/PanelWidget.h"
@@ -86,6 +87,12 @@ void UPUIngredientSlot::NativeConstruct()
     if (HoverText)
     {
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    // Hide IngredientSelect by default (shown on hover/focus)
+    if (IngredientSelect)
+    {
+        IngredientSelect->SetVisibility(ESlateVisibility::Collapsed);
     }
 
     // Preload material instances to ensure they're available at runtime
@@ -2166,30 +2173,8 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    // Show outline on hover by setting outline alpha to visible
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        if (Brush.OutlineSettings.Width > 0.0f)
-        {
-            // Enable outline by making it visible
-            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Showing outline on plate background"));
-        }
-        else
-        {
-            // If no outline settings, set outline width and color
-            Brush.OutlineSettings.Width = 2.0f;
-            FLinearColor OutlineColor = FLinearColor::White;
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Enabled outline on plate background"));
-        }
-    }
+    bIsHovered = true;
+    UpdateIngredientSelectVisibility(true);
 }
 
 void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
@@ -2205,56 +2190,18 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
         UpdateHoverTextVisibility(false);
     }
 
-    // Hide outline on hover leave, but keep it visible if selected
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-        // Keep outline visible if slot is selected, otherwise hide it
-        OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
-        Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-        PlateBackground->SetBrush(Brush);
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Outline alpha set to: %.2f (Selected: %s)"), 
-        //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
-    }
+    bIsHovered = false;
+    UpdateIngredientSelectVisibility(HasKeyboardFocus());
 }
 
 void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent)
 {
     Super::NativeOnAddedToFocusPath(InFocusEvent);
 
-    UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Focus added to slot: %s (Location: %d)"),
-        *GetName(), (int32)Location);
-
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    // Show outline on focus
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        if (Brush.OutlineSettings.Width > 0.0f)
-        {
-            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Showing outline on plate background (existing outline)"));
-        }
-        else
-        {
-            Brush.OutlineSettings.Width = 2.0f;
-            FLinearColor OutlineColor = FLinearColor::White;
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Enabled outline on plate background (new outline)"));
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - PlateBackground is NULL! Cannot show outline."));
-    }
+    UpdateIngredientSelectVisibility(true);
 }
 
 void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusEvent)
@@ -2267,18 +2214,7 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
     // Hide hover text
     UpdateHoverTextVisibility(false);
 
-    // Hide outline on focus removal, but keep it visible if selected
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-        // Keep outline visible if slot is selected, otherwise hide it
-        OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
-        Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-        PlateBackground->SetBrush(Brush);
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Outline alpha set to: %.2f (Selected: %s)"), 
-        //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
-    }
+    UpdateIngredientSelectVisibility(bIsHovered);
 }
 
 FText UPUIngredientSlot::GetIngredientDisplayText() const
@@ -2406,27 +2342,32 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
     }
 }
 
+void UPUIngredientSlot::UpdateIngredientSelectVisibility(bool bShow)
+{
+    if (!IngredientSelect)
+    {
+        return;
+    }
+    if (bShow)
+    {
+        IngredientSelect->SetVisibility(ESlateVisibility::Visible);
+        if (IngredientSelectAnim)
+        {
+            PlayAnimation(IngredientSelectAnim, 0.0f, 1, EUMGSequencePlayMode::Forward, 5.0f, false);
+        }
+    }
+    else
+    {
+        IngredientSelect->SetVisibility(ESlateVisibility::Collapsed);
+    }
+}
+
 void UPUIngredientSlot::SetSelected(bool bSelected)
 {
     if (bIsSelected != bSelected)
     {
         bIsSelected = bSelected;
         UpdatePlateBackgroundOpacity();
-        
-        // Update outline visibility based on selection state
-        if (PlateBackground)
-        {
-            FSlateBrush Brush = PlateBackground->GetBrush();
-            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-            // Show outline if selected, hide if not selected
-            OutlineColor.A = bSelected ? 1.0f : 0.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Outline alpha set to: %.2f (Selected: %s)"), 
-            //    OutlineColor.A, bSelected ? TEXT("TRUE") : TEXT("FALSE"));
-        }
-        
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Selection changed to: %s"), bSelected ? TEXT("TRUE") : TEXT("FALSE"));
     }
 }
 
@@ -2438,20 +2379,16 @@ void UPUIngredientSlot::UpdatePlateBackgroundOpacity()
     }
 
     // Always keep plate background at 100% opacity
-    // Selection and hover states are now handled by outline instead
     FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
     CurrentColor.A = 1.0f;
     PlateBackground->SetColorAndOpacity(CurrentColor);
     
-    // Set outline visibility based on selection state (shown if selected, hidden if not)
+    // Outline disabled - IngredientSelect image used for hover/focus instead
     FSlateBrush Brush = PlateBackground->GetBrush();
     FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-    OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
+    OutlineColor.A = 0.0f;
     Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
     PlateBackground->SetBrush(Brush);
-    
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePlateBackgroundOpacity - Set opacity to: 1.0 (always 100%%), outline alpha: %.2f (Selected: %s)"), 
-    //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
 TArray<FPUIngredientBase> UPUIngredientSlot::GetIngredientData() const
@@ -4497,37 +4434,10 @@ void UPUIngredientSlot::SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredient
 
 void UPUIngredientSlot::ShowFocusVisuals()
 {
-    UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - Manually showing focus visuals for slot: %s"), *GetName());
-    
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    // Show outline on focus
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        if (Brush.OutlineSettings.Width > 0.0f)
-        {
-            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - Showing outline (existing outline)"));
-        }
-        else
-        {
-            Brush.OutlineSettings.Width = 2.0f;
-            FLinearColor OutlineColor = FLinearColor::White;
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            UE_LOG(LogTemp, Log, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - Enabled outline (new outline)"));
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("🎯 UPUIngredientSlot::ShowFocusVisuals - PlateBackground is NULL! Cannot show outline."));
-    }
+    UpdateIngredientSelectVisibility(true);
 }
 
 

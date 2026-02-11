@@ -14,6 +14,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "Rendering/DrawElements.h"
+#include "Rendering/RenderingCommon.h"
 #include "Styling/SlateBrush.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -1091,7 +1092,7 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
         BaseColor.R = FMath::Clamp(BaseColor.R * (0.5f + NormalizedIntensity * 0.5f), 0.0f, 1.0f);
         BaseColor.G = FMath::Clamp(BaseColor.G * (0.5f + NormalizedIntensity * 0.5f), 0.0f, 1.0f);
         BaseColor.B = FMath::Clamp(BaseColor.B * (0.5f + NormalizedIntensity * 0.5f), 0.0f, 1.0f);
-        BaseColor.A = 1.0f; // Full opacity for main line
+        // BaseColor.A is preserved from DirectionLineBaseColor so you can control opacity
         
         // Glow color (softer, more transparent)
         FLinearColor GlowColor = FLinearColor(
@@ -1101,105 +1102,161 @@ int32 UPURadialMenu::NativePaint(const FPaintArgs& Args, const FGeometry& Allott
             DirectionLineGlowOpacity * NormalizedIntensity // Glow opacity based on intensity
         );
         
-        // Draw glow/shadow effect (thicker, semi-transparent line behind)
-        TArray<FVector2D> GlowLinePoints;
-        GlowLinePoints.Add(Center);
-        GlowLinePoints.Add(EndPoint);
+        // Perpendicular direction (for diamond wings and arrowhead)
+        FVector2D Perpendicular(-Direction.Y, Direction.X);
         
-        FSlateDrawElement::MakeLines(
-            OutDrawElements,
-            LayerId + 4, // Draw behind main line
-            AllottedGeometry.ToPaintGeometry(),
-            GlowLinePoints,
-            ESlateDrawEffect::None,
-            GlowColor,
-            true,  // bAntialias for smooth glow
-            DirectionLineGlowThickness   // Use exposed property
-        );
-        
-        // Draw gradient line using multiple segments for smooth fade
-        // Create segments from center to end with decreasing opacity
-        const int32 GradientSegments = DirectionLineGradientSegments;
-        for (int32 i = 0; i < GradientSegments; ++i)
+        if (DirectionLineStyle == EDirectionLineStyle::Diamond)
         {
-            float SegmentStart = (float)i / GradientSegments;
-            float SegmentEnd = (float)(i + 1) / GradientSegments;
+            // Diamond style: kite shape (Tip at EndPoint, Base at Center, wings at midpoint)
+            // Same shape as before, but FILLED using custom verts
+            const float HalfWidth = DiamondWidth * 0.5f * NormalizedIntensity;
+            FVector2D MidPoint = Center + (Direction * CurrentDirectionLength * 0.5f);
+            FVector2D DiamondLeft = MidPoint + (Perpendicular * HalfWidth);
+            FVector2D DiamondRight = MidPoint - (Perpendicular * HalfWidth);
             
-            // Calculate opacity: full at center, fade based on DirectionLineEndFadeAmount
-            float StartOpacity = 1.0f - (SegmentStart * DirectionLineEndFadeAmount);
-            float EndOpacity = 1.0f - (SegmentEnd * DirectionLineEndFadeAmount);
+            // Diamond vertices: Tip (0), Right (1), Base (2), Left (3)
+            TArray<FVector2D> DiamondPoints;
+            DiamondPoints.Add(EndPoint);   // 0 Tip
+            DiamondPoints.Add(DiamondRight); // 1
+            DiamondPoints.Add(Center);     // 2 Base
+            DiamondPoints.Add(DiamondLeft); // 3
             
-            FVector2D SegmentStartPoint = Center + (Direction * CurrentDirectionLength * SegmentStart);
-            FVector2D SegmentEndPoint = Center + (Direction * CurrentDirectionLength * SegmentEnd);
+            const FSlateResourceHandle ResourceHandle = FSlateApplication::Get().GetRenderer()->GetResourceHandle(*FCoreStyle::Get().GetBrush("WhiteBrush"));
             
-            TArray<FVector2D> SegmentPoints;
-            SegmentPoints.Add(SegmentStartPoint);
-            SegmentPoints.Add(SegmentEndPoint);
+            // Build vertices for filled quad (2 triangles: 0-1-2 and 0-2-3)
+            TArray<FSlateVertex> DiamondVerts;
+            DiamondVerts.SetNum(4);
+            for (int32 i = 0; i < 4; ++i)
+            {
+                DiamondVerts[i].Position = FVector2f(AllottedGeometry.LocalToAbsolute(DiamondPoints[i]));
+                DiamondVerts[i].Color = BaseColor.ToFColor(false);
+                DiamondVerts[i].TexCoords[0] = 0.5f;
+                DiamondVerts[i].TexCoords[1] = 0.5f;
+                DiamondVerts[i].TexCoords[2] = 1.0f;
+                DiamondVerts[i].TexCoords[3] = 1.0f;
+            }
             
-            FLinearColor SegmentColor = BaseColor;
-            SegmentColor.A = StartOpacity * NormalizedIntensity; // Apply intensity to opacity
+            TArray<SlateIndex> DiamondIndices = { 0, 1, 2, 0, 2, 3 };
+            
+            // Glow: slightly expanded diamond behind (scale points outward from center)
+            TArray<FSlateVertex> GlowVerts;
+            GlowVerts.SetNum(4);
+            const float GlowExpand = DirectionLineGlowThickness * 0.5f;
+            for (int32 i = 0; i < 4; ++i)
+            {
+                FVector2D GlowPoint;
+                if (i == 2) // Base at center - expand backward
+                {
+                    GlowPoint = Center - (Direction * GlowExpand);
+                }
+                else
+                {
+                    FVector2D ToPoint = DiamondPoints[i] - Center;
+                    ToPoint.Normalize();
+                    GlowPoint = DiamondPoints[i] + (ToPoint * GlowExpand);
+                }
+                GlowVerts[i].Position = FVector2f(AllottedGeometry.LocalToAbsolute(GlowPoint));
+                GlowVerts[i].Color = GlowColor.ToFColor(false);
+                GlowVerts[i].TexCoords[0] = 0.5f;
+                GlowVerts[i].TexCoords[1] = 0.5f;
+                GlowVerts[i].TexCoords[2] = 1.0f;
+                GlowVerts[i].TexCoords[3] = 1.0f;
+            }
+            
+            FSlateDrawElement::MakeCustomVerts(OutDrawElements, LayerId + 4, ResourceHandle, GlowVerts, DiamondIndices, nullptr, 0, 0);
+            FSlateDrawElement::MakeCustomVerts(OutDrawElements, LayerId + 5, ResourceHandle, DiamondVerts, DiamondIndices, nullptr, 0, 0);
+        }
+        else // EDirectionLineStyle::Line
+        {
+            // Draw glow/shadow effect (thicker, semi-transparent line behind)
+            TArray<FVector2D> GlowLinePoints;
+            GlowLinePoints.Add(Center);
+            GlowLinePoints.Add(EndPoint);
             
             FSlateDrawElement::MakeLines(
                 OutDrawElements,
-                LayerId + 5, // Draw on top of glow
+                LayerId + 4, // Draw behind main line
                 AllottedGeometry.ToPaintGeometry(),
-                SegmentPoints,
+                GlowLinePoints,
                 ESlateDrawEffect::None,
-                SegmentColor,
-                true, // bAntialias for smooth lines
-                DirectionLineThickness  // Use exposed property
+                GlowColor,
+                true,  // bAntialias for smooth glow
+                DirectionLineGlowThickness   // Use exposed property
+            );
+            
+            // Draw gradient line using multiple segments for smooth fade
+            const int32 GradientSegments = DirectionLineGradientSegments;
+            for (int32 i = 0; i < GradientSegments; ++i)
+            {
+                float SegmentStart = (float)i / GradientSegments;
+                float SegmentEnd = (float)(i + 1) / GradientSegments;
+                
+                float StartOpacity = 1.0f - (SegmentStart * DirectionLineEndFadeAmount);
+                
+                FVector2D SegmentStartPoint = Center + (Direction * CurrentDirectionLength * SegmentStart);
+                FVector2D SegmentEndPoint = Center + (Direction * CurrentDirectionLength * SegmentEnd);
+                
+                TArray<FVector2D> SegmentPoints;
+                SegmentPoints.Add(SegmentStartPoint);
+                SegmentPoints.Add(SegmentEndPoint);
+                
+                FLinearColor SegmentColor = BaseColor;
+                SegmentColor.A = StartOpacity * NormalizedIntensity;
+                
+                FSlateDrawElement::MakeLines(
+                    OutDrawElements,
+                    LayerId + 5,
+                    AllottedGeometry.ToPaintGeometry(),
+                    SegmentPoints,
+                    ESlateDrawEffect::None,
+                    SegmentColor,
+                    true,
+                    DirectionLineThickness
+                );
+            }
+            
+            // Draw arrowhead at the end
+            const float ArrowheadLength = DirectionLineArrowheadLength;
+            const float ArrowheadAngle = FMath::DegreesToRadians(DirectionLineArrowheadAngle);
+            
+            FVector2D ArrowLeft = EndPoint - (Direction * ArrowheadLength * FMath::Cos(ArrowheadAngle)) 
+                                  + (Perpendicular * ArrowheadLength * FMath::Sin(ArrowheadAngle));
+            FVector2D ArrowRight = EndPoint - (Direction * ArrowheadLength * FMath::Cos(ArrowheadAngle))
+                                   - (Perpendicular * ArrowheadLength * FMath::Sin(ArrowheadAngle));
+            
+            TArray<FVector2D> ArrowLeftLine;
+            ArrowLeftLine.Add(EndPoint);
+            ArrowLeftLine.Add(ArrowLeft);
+            
+            TArray<FVector2D> ArrowRightLine;
+            ArrowRightLine.Add(EndPoint);
+            ArrowRightLine.Add(ArrowRight);
+            
+            FLinearColor ArrowColor = BaseColor;
+            ArrowColor.A = 1.0f;
+            
+            FSlateDrawElement::MakeLines(
+                OutDrawElements,
+                LayerId + 6,
+                AllottedGeometry.ToPaintGeometry(),
+                ArrowLeftLine,
+                ESlateDrawEffect::None,
+                ArrowColor,
+                true,
+                DirectionLineArrowheadThickness
+            );
+            
+            FSlateDrawElement::MakeLines(
+                OutDrawElements,
+                LayerId + 6,
+                AllottedGeometry.ToPaintGeometry(),
+                ArrowRightLine,
+                ESlateDrawEffect::None,
+                ArrowColor,
+                true,
+                DirectionLineArrowheadThickness
             );
         }
-        
-        // Draw arrowhead at the end
-        const float ArrowheadLength = DirectionLineArrowheadLength; // Use exposed property
-        const float ArrowheadAngle = FMath::DegreesToRadians(DirectionLineArrowheadAngle); // Use exposed property
-        
-        // Calculate arrowhead points (two lines forming a V at the end)
-        FVector2D ArrowBase = EndPoint - (Direction * ArrowheadLength * 0.3f); // Slightly back from tip
-        
-        // Perpendicular direction for arrowhead spread
-        FVector2D Perpendicular(-Direction.Y, Direction.X);
-        
-        // Arrowhead tip points
-        FVector2D ArrowLeft = EndPoint - (Direction * ArrowheadLength * FMath::Cos(ArrowheadAngle)) 
-                              + (Perpendicular * ArrowheadLength * FMath::Sin(ArrowheadAngle));
-        FVector2D ArrowRight = EndPoint - (Direction * ArrowheadLength * FMath::Cos(ArrowheadAngle))
-                               - (Perpendicular * ArrowheadLength * FMath::Sin(ArrowheadAngle));
-        
-        // Draw arrowhead lines (bright, full opacity)
-        TArray<FVector2D> ArrowLeftLine;
-        ArrowLeftLine.Add(EndPoint);
-        ArrowLeftLine.Add(ArrowLeft);
-        
-        TArray<FVector2D> ArrowRightLine;
-        ArrowRightLine.Add(EndPoint);
-        ArrowRightLine.Add(ArrowRight);
-        
-        FLinearColor ArrowColor = BaseColor;
-        ArrowColor.A = 1.0f; // Full opacity for arrowhead
-        
-        FSlateDrawElement::MakeLines(
-            OutDrawElements,
-            LayerId + 6, // Draw on top of main line
-            AllottedGeometry.ToPaintGeometry(),
-            ArrowLeftLine,
-            ESlateDrawEffect::None,
-            ArrowColor,
-            true, // bAntialias
-            DirectionLineArrowheadThickness   // Use exposed property
-        );
-        
-        FSlateDrawElement::MakeLines(
-            OutDrawElements,
-            LayerId + 6,
-            AllottedGeometry.ToPaintGeometry(),
-            ArrowRightLine,
-            ESlateDrawEffect::None,
-            ArrowColor,
-            true, // bAntialias
-            DirectionLineArrowheadThickness   // Use exposed property
-        );
         
         // Draw a bright dot at the center for emphasis
         const float CenterDotRadius = DirectionLineCenterDotRadius; // Use exposed property

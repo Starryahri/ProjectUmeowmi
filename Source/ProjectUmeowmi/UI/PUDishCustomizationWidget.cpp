@@ -154,6 +154,14 @@ void UPUDishCustomizationWidget::OnInitialDishDataReceived(const FPUDishBase& In
         }
     }
     
+    // Cooking stage: set up controller navigation and focus on first slot (same pattern as prep stage)
+    if (StageType == EDishCustomizationStageType::Cooking && CreatedPreppedSlots.Num() > 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎯 PUDishCustomizationWidget::OnInitialDishDataReceived - Cooking stage: setting up navigation and focus on first slot"));
+        SetupCookingSlotNavigation();
+        SetInitialFocusForCookingStage();
+    }
+    
     // Also populate prep slots with existing ingredients (so they appear in prep area too)
     if (bPU_LogDishDataReceiveDebug)
     {
@@ -1978,6 +1986,12 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
         SetupPrepSlotNavigation();
         SetInitialFocusForPrepStage();
     }
+    else if (Location == EPUIngredientSlotLocation::Prepped || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Cooking stage slots created! Setting up navigation and focus..."));
+        SetupCookingSlotNavigation();
+        SetInitialFocusForCookingStage();
+    }
 }
 
 void UPUDishCustomizationWidget::CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, float FirstSlotLeftPadding)
@@ -3054,6 +3068,142 @@ void UPUDishCustomizationWidget::SetInitialFocusForPantry()
     }
     
     UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - No pantry slots found"));
+}
+
+void UPUDishCustomizationWidget::SetupCookingSlotNavigation()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - Setting up navigation for cooking stage slots"));
+    
+    // Cooking stage slots: same as prep stage - either from CreateSlots (CreatedIngredientSlots with Prepped/ActiveIngredientArea)
+    // or from CreateOrUpdatePreppedSlot (CreatedPreppedSlots)
+    TArray<UPUIngredientSlot*> CookingSlots;
+    for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
+    {
+        if (IngredientSlot && (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prepped || 
+                              IngredientSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea))
+        {
+            IngredientSlot->SetIsFocusable(true);
+            CookingSlots.Add(IngredientSlot);
+        }
+    }
+    if (CookingSlots.Num() == 0)
+    {
+        for (UPUIngredientSlot* IngredientSlot : CreatedPreppedSlots)
+        {
+            if (IngredientSlot)
+            {
+                IngredientSlot->SetIsFocusable(true);
+                CookingSlots.Add(IngredientSlot);
+            }
+        }
+    }
+    
+    if (CookingSlots.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - No cooking stage slots found"));
+        return;
+    }
+    
+    // Linear navigation for slots in scrollbox: Up = previous, Down = next
+    for (int32 i = 0; i < CookingSlots.Num(); ++i)
+    {
+        UPUIngredientSlot* CurrentSlot = CookingSlots[i];
+        if (!CurrentSlot) continue;
+        
+        UPUIngredientSlot* UpSlot = (i > 0) ? CookingSlots[i - 1] : nullptr;
+        UPUIngredientSlot* DownSlot = (i < CookingSlots.Num() - 1) ? CookingSlots[i + 1] : nullptr;
+        
+        CurrentSlot->SetupNavigation(UpSlot, DownSlot, nullptr, nullptr);
+        
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - Slot %d (%s): Up=%s, Down=%s"), 
+            i, *CurrentSlot->GetName(),
+            UpSlot ? *UpSlot->GetName() : TEXT("NULL"),
+            DownSlot ? *DownSlot->GetName() : TEXT("NULL"));
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - Navigation setup complete for %d cooking slots"), CookingSlots.Num());
+}
+
+void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Setting initial focus for cooking stage"));
+    
+    SetIsFocusable(true);
+    
+    // Find first cooking slot - check CreatedIngredientSlots (Prepped/ActiveIngredientArea) first, then CreatedPreppedSlots
+    UPUIngredientSlot* FirstSlot = nullptr;
+    for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
+    {
+        if (IngredientSlot && (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prepped || 
+                              IngredientSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea))
+        {
+            FirstSlot = IngredientSlot;
+            break;
+        }
+    }
+    if (!FirstSlot && CreatedPreppedSlots.Num() > 0)
+    {
+        FirstSlot = CreatedPreppedSlots[0];
+    }
+    
+    if (!FirstSlot)
+    if (!FirstSlot)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - No cooking stage slots found"));
+        return;
+    }
+    
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Found cooking slot: %s (Focusable: %s)"), 
+        *FirstSlot->GetName(), FirstSlot->IsFocusable() ? TEXT("YES") : TEXT("NO"));
+    
+    FirstSlot->SetIsFocusable(true);
+    
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(InitialFocusTimerHandle);
+        TWeakObjectPtr<UPUIngredientSlot> WeakSlot = FirstSlot;
+        
+        World->GetTimerManager().SetTimer(InitialFocusTimerHandle, [WeakSlot, this]()
+        {
+            if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel())
+            {
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
+                
+                WeakSlot->SetIsFocusable(true);
+                WeakSlot->SetKeyboardFocus();
+                
+                if (APlayerController* PC = GetOwningPlayer())
+                {
+                    if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+                    {
+                        FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), WeakSlot->TakeWidget(), EFocusCause::SetDirectly);
+                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Set user focus via Slate"));
+                    }
+                }
+                
+                WeakSlot->ShowFocusVisuals();
+                
+                if (!WeakSlot->HasKeyboardFocus() && GetWorld())
+                {
+                    FTimerHandle RetryTimer;
+                    GetWorld()->GetTimerManager().SetTimer(RetryTimer, [WeakSlot]()
+                    {
+                        if (WeakSlot.IsValid())
+                        {
+                            WeakSlot->SetIsFocusable(true);
+                            WeakSlot->SetKeyboardFocus();
+                            WeakSlot->ShowFocusVisuals();
+                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
+                        }
+                    }, 0.2f, false);
+                }
+            }
+                }, 0.3f, false); // Slightly longer than prep (0.15f) to allow cooking stage entrance animations
+    }
+    else
+    {
+        FirstSlot->SetKeyboardFocus();
+    }
 }
 
 void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()

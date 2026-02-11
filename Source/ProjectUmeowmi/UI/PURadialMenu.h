@@ -61,6 +61,14 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRadialMenuItemSelected, const FRa
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRadialMenuClosed);
 
+/** Style for the direction indicator in the radial menu */
+UENUM(BlueprintType)
+enum class EDirectionLineStyle : uint8
+{
+    Line        UMETA(DisplayName = "Line with Arrowhead"),
+    Diamond     UMETA(DisplayName = "Diamond Pointer")
+};
+
 /**
  * Radial menu widget for displaying circular menu options
  * Used for ingredient slot preparation and action menus
@@ -203,6 +211,9 @@ protected:
     bool bShowDebugText = false; // Set to true to show debug text (stick values, angle, selected button)
 
     // Direction Line Styling
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line")
+    EDirectionLineStyle DirectionLineStyle = EDirectionLineStyle::Diamond; // Line + arrowhead, or diamond pointer
+    
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "50.0"))
     float DirectionLineThickness = 10.0f; // Thickness of the main direction line
     
@@ -232,6 +243,13 @@ protected:
     
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "0.0", ClampMax = "1.0"))
     float DirectionLineEndFadeAmount = 0.7f; // How much the line fades at the end (0.0 = no fade, 1.0 = fully transparent at end)
+    
+    // Diamond style only - length and width of the diamond pointer
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line|Diamond", meta = (ClampMin = "20.0", ClampMax = "150.0"))
+    float DiamondLength = 80.0f; // Length from tip to base (along direction)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line|Diamond", meta = (ClampMin = "10.0", ClampMax = "80.0"))
+    float DiamondWidth = 32.0f;  // Width at the diamond's widest point (perpendicular)
 
     // Button widget class to use for menu items (can be set in Blueprint)
     // Defaults to UPURadialMenuItemButton, but can be overridden with a custom Blueprint class

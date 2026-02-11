@@ -289,6 +289,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
     void SetInitialFocusForPantry();
 
+    // Set up navigation for cooking stage slots (for controller support; slots in scrollbox use linear navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetupCookingSlotNavigation();
+
+    // Set initial focus for cooking stage (first ingredient slot)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetInitialFocusForCookingStage();
+
 protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")

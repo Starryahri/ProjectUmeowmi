@@ -111,4 +111,3 @@ bool APULevelTransition::OnDialogueEvent_Implementation(UDlgContext* Context, FN
 	// Let base class handle other events (like GenerateOrder, etc.)
 	return Super::OnDialogueEvent_Implementation(Context, EventName);
 }
-

@@ -1483,6 +1483,9 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
             // Broadcast initial dish data to the new widget
             BroadcastInitialDishData(DishData);
             
+            // Set as active widget so stage navigation (X/B) and input routing work correctly
+            SetActiveCustomizationWidget(CookingWidget);
+            
             // Note: The new cooking stage widget should handle initialization in its Blueprint
             // or override OnInitialDishDataReceived to set up ingredient slots, etc.
             // The old InitializeCookingStage method is no longer used - initialization happens

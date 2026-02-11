@@ -11,6 +11,7 @@
 class UButton;
 class UTextBlock;
 class UImage;
+class UWidgetAnimation;
 class UPUIngredientQuantityControl;
 class USlider;
 class UMaterialInstanceDynamic;
@@ -179,6 +180,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UImage* GetPlateBackground() const { return PlateBackground; }
 
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
+    UImage* GetIngredientSelect() const { return IngredientSelect; }
+
     // Radial menu functions (stubbed for now)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
     void ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions = false);
@@ -296,6 +300,14 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UImage* PlateBackground;
 
+    // Optional selection/hover indicator image (shown on hover or focus - use when PlateBackground is hidden e.g. Prepped/ActiveIngredientArea)
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* IngredientSelect;
+
+    // Animation played when IngredientSelect is shown (fade-in + rotation). Name in Blueprint must match "IngredientSelectAnim"
+    UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
+    UWidgetAnimation* IngredientSelectAnim;
+
     // Prep bowl images (for Prepped location slots)
     UPROPERTY(meta = (BindWidget))
     UImage* PrepBowlFront;
@@ -403,6 +415,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Drag")
     bool bDragEnabled = true;
 
+    // Track hover state for IngredientSelect visibility (hide on mouse leave only if not focused)
+    bool bIsHovered = false;
+
     // Time/Temperature slider properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Time/Temp")
     bool bShowTimeTempSliders = true;
@@ -506,6 +521,9 @@ private:
 
     // Update hover text visibility
     void UpdateHoverTextVisibility(bool bShow);
+
+    // Update IngredientSelect image visibility (shown on hover or focus)
+    void UpdateIngredientSelectVisibility(bool bShow);
 
     // Update plate background opacity based on selection state
     void UpdatePlateBackgroundOpacity();
