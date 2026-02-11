@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Styling/SlateTypes.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUIngredientDragDropOperation.h"
@@ -42,6 +43,7 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     // Set the ingredient instance for this slot (use ClearSlot() to empty)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
@@ -446,6 +448,12 @@ protected:
     UPROPERTY(meta = (BindWidget))
     USlider* TemperatureSlider;
 
+    // Cached slider styles for focus-as-hover (restore when losing focus)
+    FSliderStyle CachedTimeSliderStyle;
+    FSliderStyle CachedTemperatureSliderStyle;
+    bool bTimeSliderShowingHoverStyle = false;
+    bool bTemperatureSliderShowingHoverStyle = false;
+
     // Time/Temperature label text (optional - shows current state)
     UPROPERTY(meta = (BindWidget))
     UTextBlock* TimeLabelText;
@@ -539,6 +547,7 @@ private:
     void UpdateTimeLabelText();
     void UpdateTemperatureLabelText();
     bool ShouldShowSliders() const;
+    void UpdateSliderFocusVisuals();
     
     // Recalculate aspects from base + time/temp + quantity
     void RecalculateAspectsFromBase();

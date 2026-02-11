@@ -254,6 +254,12 @@ void UPUIngredientSlot::NativeDestruct()
     Super::NativeDestruct();
 }
 
+void UPUIngredientSlot::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+    UpdateSliderFocusVisuals();
+}
+
 void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngredientInstance)
 {
     // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetIngredientInstance - Setting ingredient instance (Slot: %s)"), *GetName());
@@ -3914,6 +3920,15 @@ void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* I
 
 void UPUIngredientSlot::InitializeTimeTempSliders()
 {
+    // Cache original styles for focus-as-hover (restore when losing focus)
+    if (TimeSlider)
+    {
+        CachedTimeSliderStyle = TimeSlider->GetWidgetStyle();
+    }
+    if (TemperatureSlider)
+    {
+        CachedTemperatureSliderStyle = TemperatureSlider->GetWidgetStyle();
+    }
     // Set up time slider
     if (TimeSlider)
     {
@@ -3927,7 +3942,9 @@ void UPUIngredientSlot::InitializeTimeTempSliders()
             TimeSlider->OnValueChanged.AddDynamic(this, &UPUIngredientSlot::OnTimeSliderValueChanged);
         }
         
-        TimeSlider->SetStepSize(0.0f); // Continuous (no steps)
+        TimeSlider->SetStepSize(0.25f); // Controller D-pad step size
+        TimeSlider->RequiresControllerLock = false; // Allow D-pad to work immediately when focused (no A-button lock needed)
+        TimeSlider->SynchronizeProperties(); // Push to underlying Slate widget
     }
     
     // Set up temperature slider
@@ -3943,13 +3960,72 @@ void UPUIngredientSlot::InitializeTimeTempSliders()
             TemperatureSlider->OnValueChanged.AddDynamic(this, &UPUIngredientSlot::OnTemperatureSliderValueChanged);
         }
         
-        TemperatureSlider->SetStepSize(0.0f); // Continuous (no steps)
+        TemperatureSlider->SetStepSize(0.25f); // Controller D-pad step size
+        TemperatureSlider->RequiresControllerLock = false; // Allow D-pad to work immediately when focused (no A-button lock needed)
+        TemperatureSlider->SynchronizeProperties(); // Push to underlying Slate widget
     }
     
     // Update visibility and labels
     UpdateSliderVisibility();
     UpdateTimeLabelText();
     UpdateTemperatureLabelText();
+}
+
+void UPUIngredientSlot::UpdateSliderFocusVisuals()
+{
+    if (!ShouldShowSliders()) return;
+
+    // Time slider: show hover style when focused
+    if (TimeSlider && TimeSlider->IsVisible())
+    {
+        bool bHasFocus = TimeSlider->HasKeyboardFocus();
+        if (bHasFocus && !bTimeSliderShowingHoverStyle)
+        {
+            FSliderStyle HoverStyle = CachedTimeSliderStyle;
+            HoverStyle.SetNormalThumbImage(CachedTimeSliderStyle.HoveredThumbImage);
+            TimeSlider->SetWidgetStyle(HoverStyle);
+            bTimeSliderShowingHoverStyle = true;
+        }
+        else if (!bHasFocus && bTimeSliderShowingHoverStyle)
+        {
+            TimeSlider->SetWidgetStyle(CachedTimeSliderStyle);
+            bTimeSliderShowingHoverStyle = false;
+        }
+    }
+    else if (bTimeSliderShowingHoverStyle)
+    {
+        if (TimeSlider)
+        {
+            TimeSlider->SetWidgetStyle(CachedTimeSliderStyle);
+        }
+        bTimeSliderShowingHoverStyle = false;
+    }
+
+    // Temperature slider: show hover style when focused
+    if (TemperatureSlider && TemperatureSlider->IsVisible())
+    {
+        bool bHasFocus = TemperatureSlider->HasKeyboardFocus();
+        if (bHasFocus && !bTemperatureSliderShowingHoverStyle)
+        {
+            FSliderStyle HoverStyle = CachedTemperatureSliderStyle;
+            HoverStyle.SetNormalThumbImage(CachedTemperatureSliderStyle.HoveredThumbImage);
+            TemperatureSlider->SetWidgetStyle(HoverStyle);
+            bTemperatureSliderShowingHoverStyle = true;
+        }
+        else if (!bHasFocus && bTemperatureSliderShowingHoverStyle)
+        {
+            TemperatureSlider->SetWidgetStyle(CachedTemperatureSliderStyle);
+            bTemperatureSliderShowingHoverStyle = false;
+        }
+    }
+    else if (bTemperatureSliderShowingHoverStyle)
+    {
+        if (TemperatureSlider)
+        {
+            TemperatureSlider->SetWidgetStyle(CachedTemperatureSliderStyle);
+        }
+        bTemperatureSliderShowingHoverStyle = false;
+    }
 }
 
 void UPUIngredientSlot::RecalculateAspectsFromBase()
