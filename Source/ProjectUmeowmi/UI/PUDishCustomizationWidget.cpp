@@ -3074,6 +3074,21 @@ void UPUDishCustomizationWidget::SetupCookingSlotNavigation()
 {
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - Setting up navigation for cooking stage slots"));
     
+    // Enable scroll-into-view when focus changes so slots come into view when navigating in the scrollbox
+    auto EnableScrollWhenFocusChangesForContainer = [this](UPanelWidget* Container)
+    {
+        if (!Container) return;
+        for (UWidget* Ancestor = Container; Ancestor; Ancestor = Ancestor->GetParent())
+        {
+            if (UScrollBox* ScrollBox = Cast<UScrollBox>(Ancestor))
+            {
+                ScrollBox->SetScrollWhenFocusChanges(EScrollWhenFocusChanges::AnimatedScroll);
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - Enabled ScrollWhenFocusChanges on ScrollBox: %s"), *ScrollBox->GetName());
+                break;
+            }
+        }
+    };
+    
     // Cooking stage slots: same as prep stage - either from CreateSlots (CreatedIngredientSlots with Prepped/ActiveIngredientArea)
     // or from CreateOrUpdatePreppedSlot (CreatedPreppedSlots)
     TArray<UPUIngredientSlot*> CookingSlots;
@@ -3102,6 +3117,16 @@ void UPUDishCustomizationWidget::SetupCookingSlotNavigation()
     {
         UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - No cooking stage slots found"));
         return;
+    }
+    
+    // Enable scroll-into-view when navigating: find ScrollBox ancestor of the slot container
+    if (PreppedIngredientContainer.IsValid())
+    {
+        EnableScrollWhenFocusChangesForContainer(PreppedIngredientContainer.Get());
+    }
+    else if (CookingSlots.Num() > 0 && CookingSlots[0])
+    {
+        EnableScrollWhenFocusChangesForContainer(CookingSlots[0]->GetParent());
     }
     
     // Linear navigation for slots in scrollbox: Up = previous, Down = next
