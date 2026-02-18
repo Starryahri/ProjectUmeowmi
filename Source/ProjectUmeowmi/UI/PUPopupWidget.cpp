@@ -5,6 +5,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/VerticalBox.h"
 #include "Components/Border.h"
+#include "Components/PanelWidget.h"
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
@@ -202,34 +203,101 @@ void UPUPopupWidget::CreateButtons()
 		}
 
 		// Try to set button text/data via Blueprint function
-		// Look for a function called "SetButtonData" or "SetButtonText" in the widget
+		bool bLabelSet = false;
 		FName SetButtonDataFunctionName = TEXT("SetButtonData");
 		UFunction* SetButtonDataFunction = NewButtonWidget->GetClass()->FindFunctionByName(SetButtonDataFunctionName);
 		if (SetButtonDataFunction)
 		{
-			// Create a struct on scope to pass FPopupButtonData
 			FStructOnScope StructOnScope(FPopupButtonData::StaticStruct());
 			FPopupButtonData* ButtonDataCopy = (FPopupButtonData*)StructOnScope.GetStructMemory();
 			*ButtonDataCopy = ButtonData;
-			
 			NewButtonWidget->ProcessEvent(SetButtonDataFunction, StructOnScope.GetStructMemory());
+			bLabelSet = true;
 		}
 		else
 		{
-			// Fallback: try SetButtonText function
 			FName SetButtonTextFunctionName = TEXT("SetButtonText");
 			UFunction* SetButtonTextFunction = NewButtonWidget->GetClass()->FindFunctionByName(SetButtonTextFunctionName);
 			if (SetButtonTextFunction)
 			{
-				// Call with FText parameter
 				FText ButtonLabel = ButtonData.ButtonLabel;
 				NewButtonWidget->ProcessEvent(SetButtonTextFunction, &ButtonLabel);
+				bLabelSet = true;
 			}
-			else if (ButtonComponent)
+		}
+
+		// Fallback: find TextBlock and set text directly
+		auto TrySetTextBlock = [&](UTextBlock* TextBlock) -> bool
+		{
+			if (TextBlock)
 			{
-				// Last resort: set tooltip
-				ButtonComponent->SetToolTipText(ButtonData.ButtonLabel);
+				TextBlock->SetText(ButtonData.ButtonLabel);
+				return true;
 			}
+			return false;
+		};
+
+		if (!bLabelSet && NewButtonWidget->WidgetTree)
+		{
+			// 1. If ButtonLabelWidgetName is set, find that specific widget
+			if (ButtonLabelWidgetName != NAME_None)
+			{
+				if (UWidget* NamedWidget = NewButtonWidget->WidgetTree->FindWidget(ButtonLabelWidgetName))
+				{
+					bLabelSet = TrySetTextBlock(Cast<UTextBlock>(NamedWidget));
+				}
+			}
+
+			// 2. Try Button's direct content (common: Button contains TextBlock as child)
+			if (!bLabelSet && ButtonComponent)
+			{
+				if (UPanelWidget* ButtonPanel = Cast<UPanelWidget>(ButtonComponent))
+				{
+					if (ButtonPanel->GetChildrenCount() > 0)
+					{
+						UWidget* ButtonContent = ButtonPanel->GetChildAt(0);
+						bLabelSet = TrySetTextBlock(Cast<UTextBlock>(ButtonContent));
+					}
+				}
+			}
+
+			// 3. Try common TextBlock names
+			if (!bLabelSet)
+			{
+				static const FName CommonNames[] = { TEXT("ButtonLabel"), TEXT("ButtonText"), TEXT("LabelText"), TEXT("TextBlock"), TEXT("Label") };
+				for (const FName& Name : CommonNames)
+				{
+					if (UWidget* NamedWidget = NewButtonWidget->WidgetTree->FindWidget(Name))
+					{
+						if (UTextBlock* TextBlock = Cast<UTextBlock>(NamedWidget))
+						{
+							bLabelSet = TrySetTextBlock(TextBlock);
+							break;
+						}
+					}
+				}
+			}
+
+			// 4. Fall back to first TextBlock in widget tree
+			if (!bLabelSet)
+			{
+				TArray<UWidget*> AllWidgets;
+				NewButtonWidget->WidgetTree->GetAllWidgets(AllWidgets);
+				for (UWidget* Widget : AllWidgets)
+				{
+					if (UTextBlock* TextBlock = Cast<UTextBlock>(Widget))
+					{
+						bLabelSet = TrySetTextBlock(TextBlock);
+						break;
+					}
+				}
+			}
+		}
+
+		if (!bLabelSet && ButtonComponent)
+		{
+			ButtonComponent->SetToolTipText(ButtonData.ButtonLabel);
+			UE_LOG(LogTemp, Warning, TEXT("UPUPopupWidget::CreateButtons - Could not find TextBlock for button label '%s'. Set ButtonLabelWidgetName on WBP_Popup to your TextBlock's name."), *ButtonData.ButtonLabel.ToString());
 		}
 
 		// Add to container

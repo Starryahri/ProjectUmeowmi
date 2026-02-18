@@ -174,10 +174,13 @@ public:
 	void ShowPopup(const FPopupData& PopupData);
 	
 	/**
-	 * Show a popup with the given data and callback (C++ only, use OnPopupClosedEvent for Blueprint)
+	 * Show a popup with the given data and callback.
+	 * From Blueprint: Use the OnPopupClosed pin - create a Custom Event with a ButtonID (Name) parameter and connect it.
+	 * The callback fires when the popup closes, with the ButtonID of the button that was pressed (e.g. "YES", "NO", "BACK", "NEXT").
 	 * @param PopupData - The popup configuration data
 	 * @param OnPopupClosed - Callback when popup is closed (returns button ID that was pressed)
 	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup Manager", meta = (DisplayName = "Show Popup With Callback"))
 	void ShowPopupWithCallback(const FPopupData& PopupData, FOnPopupClosed OnPopupClosed);
 
 	/**
@@ -215,7 +218,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Popup Manager")
 	bool IsPopupShowing() const { return CurrentPopupWidget != nullptr; }
 	
-	UPROPERTY(BlueprintAssignable, Category = "Popup Manager|Events")
+	/** Broadcast when any popup closes. Bind to this (e.g. from Event Construct) to react to popup button presses. Passes the ButtonID (e.g. "BACK", "NEXT"). */
+	UPROPERTY(BlueprintAssignable, Category = "Popup Manager|Events", meta = (DisplayName = "On Popup Closed"))
 	FOnPopupClosedEvent OnPopupClosedEvent;
 
 protected:

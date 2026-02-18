@@ -75,6 +75,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Popup|Settings")
 	TSubclassOf<UUserWidget> ButtonWidgetClass;
 
+	// Optional: Name of the TextBlock in the button widget that displays the label.
+	// If your button shows "OK" instead of the ButtonLabel, set this to your TextBlock's name (e.g. "ButtonText", "LabelText").
+	// Leave empty to auto-detect (searches Button content first, then any TextBlock).
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Popup|Settings", meta = (DisplayName = "Button Label TextBlock Name"))
+	FName ButtonLabelWidgetName;
+
 	// Current popup data
 	UPROPERTY(BlueprintReadOnly, Category = "Popup")
 	FPopupData CurrentPopupData;
