@@ -16,7 +16,7 @@ APULevelSpawnPoint::APULevelSpawnPoint()
 	// Create visual mesh (cylinder for visibility in editor)
 	VisualMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("VisualMesh"));
 	VisualMesh->SetupAttachment(RootComponent);
-	VisualMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// DO NOT set collision during CDO construction - will be set in PostInitializeComponents
 	VisualMesh->SetHiddenInGame(true); // Only visible in editor
 
 	// Try to set a default mesh (cylinder)

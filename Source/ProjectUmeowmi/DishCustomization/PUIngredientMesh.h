@@ -18,6 +18,9 @@ class PROJECTUMEOWMI_API APUIngredientMesh : public AActor
 public:
     APUIngredientMesh();
 
+    // Called after components are initialized
+    virtual void PostInitializeComponents() override;
+
     // Setup the mesh with ingredient data
     UFUNCTION(BlueprintCallable, Category = "Ingredient")
     void InitializeWithIngredient(const FPUIngredientBase& IngredientData);

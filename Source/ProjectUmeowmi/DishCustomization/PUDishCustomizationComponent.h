@@ -192,6 +192,13 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     class UInputAction* MouseClickAction;
 
+    // Stage navigation input actions
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputAction* NextStageAction;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputAction* PreviousStageAction;
+
     // Input Mapping Context for customization mode
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     class UInputMappingContext* CustomizationMappingContext;
@@ -312,6 +319,8 @@ protected:
     uint32 ExitActionBindingHandle;
     uint32 ControllerMouseBindingHandle;
     uint32 MouseClickBindingHandle;
+    uint32 NextStageBindingHandle;
+    uint32 PreviousStageBindingHandle;
 
     // Mouse interaction state
     bool bIsDragging = false;
@@ -375,6 +384,8 @@ private:
     void HandleControllerMouse(const FInputActionValue& Value);
     void HandleMouseClick(const FInputActionValue& Value);
     void HandleMouseRelease(const FInputActionValue& Value);
+    void HandleNextStage();
+    void HandlePreviousStage();
     void UpdateMouseDrag();
 
     // Camera handling

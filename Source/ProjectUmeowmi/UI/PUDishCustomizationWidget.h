@@ -79,6 +79,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
     void GoToPreviousStage();
 
+    // Blueprint events for controller input (allows animations to play first)
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Controller")
+    void OnControllerNextStage();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Controller")
+    void OnControllerPreviousStage();
+
     // Stage reference setters (for Blueprint)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
     void SetPreviousStage(class UPUDishCustomizationWidget* Stage);
@@ -265,6 +272,30 @@ public:
     // Implement Preparation Tags (simplified - no carousel dependency)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Preparations")
     FGameplayTagContainer GetPreparationTagsForImplement(int32 ImplementIndex) const;
+
+    // Controller navigation setup for prep stage
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetupPrepSlotNavigation();
+
+    // Set initial focus for prep stage
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetInitialFocusForPrepStage();
+    
+    // Set up navigation for pantry slots (for controller support)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetupPantrySlotNavigation();
+    
+    // Set initial focus for pantry (for controller support)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetInitialFocusForPantry();
+
+    // Set up navigation for cooking stage slots (for controller support; slots in scrollbox use linear navigation)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetupCookingSlotNavigation();
+
+    // Set initial focus for cooking stage (first ingredient slot)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetInitialFocusForCookingStage();
 
 protected:
     // Current dish data
@@ -454,6 +485,10 @@ private:
     // Internal component reference for event subscription only
     UPROPERTY()
     UPUDishCustomizationComponent* CustomizationComponent;
+
+    // Timer handle for delayed focus setting
+    UPROPERTY()
+    FTimerHandle InitialFocusTimerHandle;
 
     void SubscribeToEvents();
     void UnsubscribeFromEvents();

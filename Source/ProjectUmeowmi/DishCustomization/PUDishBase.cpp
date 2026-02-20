@@ -17,8 +17,8 @@ std::atomic<int32> FPUDishBase::GlobalInstanceCounter(0);
 FPUDishBase::FPUDishBase()
     : DishName(NAME_None)
     , DisplayName(FText::GetEmpty())
-    , CustomName(FText::GetEmpty())
     , IngredientDataTable(nullptr)
+    , CustomName(FText::GetEmpty())
 {
 }
 

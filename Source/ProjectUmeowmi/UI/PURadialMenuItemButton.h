@@ -34,6 +34,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Radial Menu Item Button")
     void SetMenuItemData(const FRadialMenuItem& MenuItem, int32 InItemIndex);
 
+    // Clear the menu item data (safe to call during GC)
+    void ClearMenuItemData();
+
     // Get the item index
     UFUNCTION(BlueprintCallable, Category = "Radial Menu Item Button")
     int32 GetItemIndex() const { return ItemIndex; }

@@ -35,9 +35,10 @@ void UPUDialogueOption::Update_Implementation(UDlgContext* ActiveContext)
 	if (IsValid(ActiveContext) && ActiveContext->IsValidOptionIndex(OptionIndex))
 	{
 		SetVisibility(ESlateVisibility::Visible);
+		// Hide the option text - button will be used as "Next" button instead
 		if (OptionText)
 		{
-			OptionText->SetText(ActiveContext->GetOptionText(OptionIndex));
+			OptionText->SetVisibility(ESlateVisibility::Collapsed);
 		}
 		//UE_LOG(LogTemp,Log, TEXT("PUDialogueOption::Update - Updated option %d with text: %s"), 
 		//	OptionIndex, *ActiveContext->GetOptionText(OptionIndex).ToString());

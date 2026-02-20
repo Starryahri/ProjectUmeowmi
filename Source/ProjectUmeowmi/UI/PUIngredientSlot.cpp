@@ -1,4 +1,5 @@
 #include "PUIngredientSlot.h"
+#include "Animation/WidgetAnimation.h"
 #include "Components/Image.h"
 #include "Components/Button.h"
 #include "Components/PanelWidget.h"
@@ -32,8 +33,8 @@ namespace
 
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
-    , Location(EPUIngredientSlotLocation::ActiveIngredientArea)
     , bHasIngredient(false)
+    , Location(EPUIngredientSlotLocation::ActiveIngredientArea)
     , QuantityControlWidget(nullptr)
     , RadialMenuWidget(nullptr)
     , bRadialMenuVisible(false)
@@ -88,6 +89,53 @@ void UPUIngredientSlot::NativeConstruct()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
+    // Hide IngredientSelect by default (shown on hover/focus)
+    if (IngredientSelect)
+    {
+        IngredientSelect->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    // Preload material instances to ensure they're available at runtime
+    // This fixes the issue where materials don't work on startup/builds
+    // Try to load even if IsValid() returns false (sometimes the path exists but IsValid() fails)
+    if (PreparationMaterialInstance.IsValid() || !PreparationMaterialInstance.ToSoftObjectPath().IsNull())
+    {
+        // Force load the material instance to ensure it's in memory
+        UMaterialInterface* BaseMaterial = PreparationMaterialInstance.LoadSynchronous();
+        if (BaseMaterial)
+        {
+            // Pre-create the dynamic material instance so it's ready when needed
+            if (!PreparationDynamicMaterial)
+            {
+                PreparationDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeConstruct - Failed to load PreparationMaterialInstance: %s"), 
+                *PreparationMaterialInstance.ToSoftObjectPath().ToString());
+        }
+    }
+    
+    // Also preload suspicious material instance
+    // Try to load even if IsValid() returns false (sometimes the path exists but IsValid() fails)
+    if (SuspiciousMaterialInstance.IsValid() || !SuspiciousMaterialInstance.ToSoftObjectPath().IsNull())
+    {
+        UMaterialInterface* BaseMaterial = SuspiciousMaterialInstance.LoadSynchronous();
+        if (BaseMaterial)
+        {
+            if (!SuspiciousDynamicMaterial)
+            {
+                SuspiciousDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::NativeConstruct - Failed to load SuspiciousMaterialInstance: %s"), 
+                *SuspiciousMaterialInstance.ToSoftObjectPath().ToString());
+        }
+    }
+
     // Initialize plate background (always 100% opacity, outline hidden by default)
     UpdatePlateBackgroundOpacity();
 
@@ -127,6 +175,16 @@ void UPUIngredientSlot::NativeConstruct()
 
     // Initialize time/temperature sliders
     InitializeTimeTempSliders();
+
+    // Make slots focusable for controller navigation (especially important for prep stage)
+    // Prep, Pantry, and ActiveIngredientArea slots should be focusable
+    if (Location == EPUIngredientSlotLocation::Prep || 
+        Location == EPUIngredientSlotLocation::Pantry || 
+        Location == EPUIngredientSlotLocation::ActiveIngredientArea ||
+        Location == EPUIngredientSlotLocation::Prepped)
+    {
+        SetIsFocusable(true);
+    }
 }
 
 void UPUIngredientSlot::NativeDestruct()
@@ -194,6 +252,12 @@ void UPUIngredientSlot::NativeDestruct()
     SuspiciousDynamicMaterial = nullptr;
 
     Super::NativeDestruct();
+}
+
+void UPUIngredientSlot::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+    UpdateSliderFocusVisuals();
 }
 
 void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngredientInstance)
@@ -517,7 +581,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         UMaterialInstanceDynamic* MaterialToUse = nullptr;
         TSoftObjectPtr<UMaterialInterface> MaterialInstanceToUse;
         
-        if (bUsePrepMaterials && bIsSuspicious && SuspiciousMaterialInstance.IsValid())
+        if (bUsePrepMaterials && bIsSuspicious && (SuspiciousMaterialInstance.IsValid() || !SuspiciousMaterialInstance.ToSoftObjectPath().IsNull()))
         {
             // Use suspicious material (takes priority)
             MaterialInstanceToUse = SuspiciousMaterialInstance;
@@ -531,6 +595,12 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                     SuspiciousDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
                     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for suspicious ingredient icon"));
                 }
+                else
+                {
+                    // Material failed to load - log warning
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - Failed to load SuspiciousMaterialInstance: %s"), 
+                        *SuspiciousMaterialInstance.ToSoftObjectPath().ToString());
+                }
             }
             MaterialToUse = SuspiciousDynamicMaterial;
             
@@ -540,7 +610,7 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 PreparationDynamicMaterial = nullptr;
             }
         }
-        else if (bUsePrepMaterials && bHasPreparations && PreparationMaterialInstance.IsValid())
+        else if (bUsePrepMaterials && bHasPreparations && (PreparationMaterialInstance.IsValid() || !PreparationMaterialInstance.ToSoftObjectPath().IsNull()))
         {
             // Use preparation material
             MaterialInstanceToUse = PreparationMaterialInstance;
@@ -553,6 +623,12 @@ void UPUIngredientSlot::UpdateIngredientIcon()
                 {
                     PreparationDynamicMaterial = UMaterialInstanceDynamic::Create(BaseMaterial, this);
                     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Created dynamic material instance for preparation-tinted ingredient icon"));
+                }
+                else
+                {
+                    // Material failed to load - log warning and try to use texture fallback
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ UPUIngredientSlot::UpdateIngredientIcon - Failed to load PreparationMaterialInstance: %s. Using texture fallback."), 
+                        *PreparationMaterialInstance.ToSoftObjectPath().ToString());
                 }
             }
             MaterialToUse = PreparationDynamicMaterial;
@@ -1837,6 +1913,13 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
         //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ShowRadialMenu - Cannot show menu on empty slot"));
         return;
     }
+    
+    // If a radial menu is already visible, don't open another one
+    if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::ShowRadialMenu - Radial menu already visible, ignoring request"));
+        return;
+    }
 
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Showing radial menu (Prep: %s, IncludeActions: %s)"),
     //    bIsPrepMenu ? TEXT("TRUE") : TEXT("FALSE"), bIncludeActions ? TEXT("TRUE") : TEXT("FALSE"));
@@ -1991,6 +2074,48 @@ void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
     }
     
     bRadialMenuVisible = true;
+    
+    // Set focus to the radial menu widget so it can receive controller input
+    if (RadialMenuWidget && IsValid(RadialMenuWidget))
+    {
+        // Use a small delay to ensure the widget is fully visible before setting focus
+        if (UWorld* World = GetWorld())
+        {
+            FTimerHandle FocusTimerHandle;
+            World->GetTimerManager().SetTimer(FocusTimerHandle, [WeakMenu = TWeakObjectPtr<UPURadialMenu>(RadialMenuWidget)]()
+            {
+                if (WeakMenu.IsValid())
+                {
+                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::ShowRadialMenu - Setting focus to radial menu: %s"), 
+                        *WeakMenu->GetName());
+                    
+                    // Make the menu widget focusable and set focus
+                    WeakMenu->SetIsFocusable(true);
+                    WeakMenu->SetKeyboardFocus();
+                    FSlateApplication::Get().SetUserFocus(0, WeakMenu->TakeWidget());
+                    
+                    // Retry if focus wasn't set
+                    if (!WeakMenu->HasKeyboardFocus())
+                    {
+                        FTimerHandle RetryTimerHandle;
+                        if (UWorld* World = WeakMenu->GetWorld())
+                        {
+                            World->GetTimerManager().SetTimer(RetryTimerHandle, [WeakMenu]()
+                            {
+                                if (WeakMenu.IsValid())
+                                {
+                                    WeakMenu->SetKeyboardFocus();
+                                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::ShowRadialMenu - Retry: Focus set to radial menu (HasFocus: %s)"), 
+                                        WeakMenu->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                }
+                            }, 0.1f, false);
+                        }
+                    }
+                }
+            }, 0.1f, false);
+        }
+    }
+    
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Radial menu shown with %d items"), MenuItems.Num());
 }
 
@@ -2054,30 +2179,8 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    // Show outline on hover by setting outline alpha to visible
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        if (Brush.OutlineSettings.Width > 0.0f)
-        {
-            // Enable outline by making it visible
-            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Showing outline on plate background"));
-        }
-        else
-        {
-            // If no outline settings, set outline width and color
-            Brush.OutlineSettings.Width = 2.0f;
-            FLinearColor OutlineColor = FLinearColor::White;
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Enabled outline on plate background"));
-        }
-    }
+    bIsHovered = true;
+    UpdateIngredientSelectVisibility(true);
 }
 
 void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
@@ -2093,52 +2196,18 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
         UpdateHoverTextVisibility(false);
     }
 
-    // Hide outline on hover leave, but keep it visible if selected
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-        // Keep outline visible if slot is selected, otherwise hide it
-        OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
-        Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-        PlateBackground->SetBrush(Brush);
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseLeave - Outline alpha set to: %.2f (Selected: %s)"), 
-        //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
-    }
+    bIsHovered = false;
+    UpdateIngredientSelectVisibility(HasKeyboardFocus());
 }
 
 void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent)
 {
     Super::NativeOnAddedToFocusPath(InFocusEvent);
 
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Focus added to slot: %s"),
-    //    *GetName());
-
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    // Show outline on focus
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        if (Brush.OutlineSettings.Width > 0.0f)
-        {
-            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Showing outline on plate background"));
-        }
-        else
-        {
-            Brush.OutlineSettings.Width = 2.0f;
-            FLinearColor OutlineColor = FLinearColor::White;
-            OutlineColor.A = 1.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnAddedToFocusPath - Enabled outline on plate background"));
-        }
-    }
+    UpdateIngredientSelectVisibility(true);
 }
 
 void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusEvent)
@@ -2151,18 +2220,7 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
     // Hide hover text
     UpdateHoverTextVisibility(false);
 
-    // Hide outline on focus removal, but keep it visible if selected
-    if (PlateBackground)
-    {
-        FSlateBrush Brush = PlateBackground->GetBrush();
-        FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-        // Keep outline visible if slot is selected, otherwise hide it
-        OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
-        Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-        PlateBackground->SetBrush(Brush);
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Outline alpha set to: %.2f (Selected: %s)"), 
-        //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
-    }
+    UpdateIngredientSelectVisibility(bIsHovered);
 }
 
 FText UPUIngredientSlot::GetIngredientDisplayText() const
@@ -2290,27 +2348,32 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
     }
 }
 
+void UPUIngredientSlot::UpdateIngredientSelectVisibility(bool bShow)
+{
+    if (!IngredientSelect)
+    {
+        return;
+    }
+    if (bShow)
+    {
+        IngredientSelect->SetVisibility(ESlateVisibility::Visible);
+        if (IngredientSelectAnim)
+        {
+            PlayAnimation(IngredientSelectAnim, 0.0f, 1, EUMGSequencePlayMode::Forward, 5.0f, false);
+        }
+    }
+    else
+    {
+        IngredientSelect->SetVisibility(ESlateVisibility::Collapsed);
+    }
+}
+
 void UPUIngredientSlot::SetSelected(bool bSelected)
 {
     if (bIsSelected != bSelected)
     {
         bIsSelected = bSelected;
         UpdatePlateBackgroundOpacity();
-        
-        // Update outline visibility based on selection state
-        if (PlateBackground)
-        {
-            FSlateBrush Brush = PlateBackground->GetBrush();
-            FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-            // Show outline if selected, hide if not selected
-            OutlineColor.A = bSelected ? 1.0f : 0.0f;
-            Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
-            PlateBackground->SetBrush(Brush);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Outline alpha set to: %.2f (Selected: %s)"), 
-            //    OutlineColor.A, bSelected ? TEXT("TRUE") : TEXT("FALSE"));
-        }
-        
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetSelected - Selection changed to: %s"), bSelected ? TEXT("TRUE") : TEXT("FALSE"));
     }
 }
 
@@ -2322,20 +2385,16 @@ void UPUIngredientSlot::UpdatePlateBackgroundOpacity()
     }
 
     // Always keep plate background at 100% opacity
-    // Selection and hover states are now handled by outline instead
     FLinearColor CurrentColor = PlateBackground->GetColorAndOpacity();
     CurrentColor.A = 1.0f;
     PlateBackground->SetColorAndOpacity(CurrentColor);
     
-    // Set outline visibility based on selection state (shown if selected, hidden if not)
+    // Outline disabled - IngredientSelect image used for hover/focus instead
     FSlateBrush Brush = PlateBackground->GetBrush();
     FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
-    OutlineColor.A = bIsSelected ? 1.0f : 0.0f;
+    OutlineColor.A = 0.0f;
     Brush.OutlineSettings.Color = FSlateColor(OutlineColor);
     PlateBackground->SetBrush(Brush);
-    
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePlateBackgroundOpacity - Set opacity to: 1.0 (always 100%%), outline alpha: %.2f (Selected: %s)"), 
-    //    OutlineColor.A, bIsSelected ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
 TArray<FPUIngredientBase> UPUIngredientSlot::GetIngredientData() const
@@ -3429,16 +3488,19 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildActionMenuItems() const
     RemoveItem.Tooltip = FText::FromString(TEXT("Remove this ingredient from the dish"));
     MenuItems.Add(RemoveItem);
 
-    // Action: Clear Preparations (only if there are preparations)
-    if (IngredientInstance.Preparations.Num() > 0)
-    {
-        FRadialMenuItem ClearPrepsItem;
-        ClearPrepsItem.Label = FText::FromString(TEXT("Clear Preparations"));
-        ClearPrepsItem.ActionTag = FGameplayTag::RequestGameplayTag(FName("Action.ClearPreparations"));
-        ClearPrepsItem.bIsEnabled = true;
-        ClearPrepsItem.Tooltip = FText::FromString(TEXT("Remove all preparations from this ingredient"));
-        MenuItems.Add(ClearPrepsItem);
-    }
+    // NOTE: Clear Preparations radial button temporarily disabled.
+    // Previous behavior (for reference):
+    //
+    // // Action: Clear Preparations (only if there are preparations)
+    // if (IngredientInstance.Preparations.Num() > 0)
+    // {
+    //     FRadialMenuItem ClearPrepsItem;
+    //     ClearPrepsItem.Label = FText::FromString(TEXT("Clear Preparations"));
+    //     ClearPrepsItem.ActionTag = FGameplayTag::RequestGameplayTag(FName("Action.ClearPreparations"));
+    //     ClearPrepsItem.bIsEnabled = true;
+    //     ClearPrepsItem.Tooltip = FText::FromString(TEXT("Remove all preparations from this ingredient"));
+    //     MenuItems.Add(ClearPrepsItem);
+    // }
 
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::BuildActionMenuItems - Built %d action menu items"), MenuItems.Num());
     return MenuItems;
@@ -3858,6 +3920,15 @@ void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* I
 
 void UPUIngredientSlot::InitializeTimeTempSliders()
 {
+    // Cache original styles for focus-as-hover (restore when losing focus)
+    if (TimeSlider)
+    {
+        CachedTimeSliderStyle = TimeSlider->GetWidgetStyle();
+    }
+    if (TemperatureSlider)
+    {
+        CachedTemperatureSliderStyle = TemperatureSlider->GetWidgetStyle();
+    }
     // Set up time slider
     if (TimeSlider)
     {
@@ -3871,7 +3942,9 @@ void UPUIngredientSlot::InitializeTimeTempSliders()
             TimeSlider->OnValueChanged.AddDynamic(this, &UPUIngredientSlot::OnTimeSliderValueChanged);
         }
         
-        TimeSlider->SetStepSize(0.0f); // Continuous (no steps)
+        TimeSlider->SetStepSize(0.25f); // Controller D-pad step size
+        TimeSlider->RequiresControllerLock = false; // Allow D-pad to work immediately when focused (no A-button lock needed)
+        TimeSlider->SynchronizeProperties(); // Push to underlying Slate widget
     }
     
     // Set up temperature slider
@@ -3887,13 +3960,72 @@ void UPUIngredientSlot::InitializeTimeTempSliders()
             TemperatureSlider->OnValueChanged.AddDynamic(this, &UPUIngredientSlot::OnTemperatureSliderValueChanged);
         }
         
-        TemperatureSlider->SetStepSize(0.0f); // Continuous (no steps)
+        TemperatureSlider->SetStepSize(0.25f); // Controller D-pad step size
+        TemperatureSlider->RequiresControllerLock = false; // Allow D-pad to work immediately when focused (no A-button lock needed)
+        TemperatureSlider->SynchronizeProperties(); // Push to underlying Slate widget
     }
     
     // Update visibility and labels
     UpdateSliderVisibility();
     UpdateTimeLabelText();
     UpdateTemperatureLabelText();
+}
+
+void UPUIngredientSlot::UpdateSliderFocusVisuals()
+{
+    if (!ShouldShowSliders()) return;
+
+    // Time slider: show hover style when focused
+    if (TimeSlider && TimeSlider->IsVisible())
+    {
+        bool bHasFocus = TimeSlider->HasKeyboardFocus();
+        if (bHasFocus && !bTimeSliderShowingHoverStyle)
+        {
+            FSliderStyle HoverStyle = CachedTimeSliderStyle;
+            HoverStyle.SetNormalThumbImage(CachedTimeSliderStyle.HoveredThumbImage);
+            TimeSlider->SetWidgetStyle(HoverStyle);
+            bTimeSliderShowingHoverStyle = true;
+        }
+        else if (!bHasFocus && bTimeSliderShowingHoverStyle)
+        {
+            TimeSlider->SetWidgetStyle(CachedTimeSliderStyle);
+            bTimeSliderShowingHoverStyle = false;
+        }
+    }
+    else if (bTimeSliderShowingHoverStyle)
+    {
+        if (TimeSlider)
+        {
+            TimeSlider->SetWidgetStyle(CachedTimeSliderStyle);
+        }
+        bTimeSliderShowingHoverStyle = false;
+    }
+
+    // Temperature slider: show hover style when focused
+    if (TemperatureSlider && TemperatureSlider->IsVisible())
+    {
+        bool bHasFocus = TemperatureSlider->HasKeyboardFocus();
+        if (bHasFocus && !bTemperatureSliderShowingHoverStyle)
+        {
+            FSliderStyle HoverStyle = CachedTemperatureSliderStyle;
+            HoverStyle.SetNormalThumbImage(CachedTemperatureSliderStyle.HoveredThumbImage);
+            TemperatureSlider->SetWidgetStyle(HoverStyle);
+            bTemperatureSliderShowingHoverStyle = true;
+        }
+        else if (!bHasFocus && bTemperatureSliderShowingHoverStyle)
+        {
+            TemperatureSlider->SetWidgetStyle(CachedTemperatureSliderStyle);
+            bTemperatureSliderShowingHoverStyle = false;
+        }
+    }
+    else if (bTemperatureSliderShowingHoverStyle)
+    {
+        if (TemperatureSlider)
+        {
+            TemperatureSlider->SetWidgetStyle(CachedTemperatureSliderStyle);
+        }
+        bTemperatureSliderShowingHoverStyle = false;
+    }
 }
 
 void UPUIngredientSlot::RecalculateAspectsFromBase()
@@ -4187,6 +4319,201 @@ bool UPUIngredientSlot::ShouldShowSliders() const
     }
     
     return false;
+}
+
+FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    // Handle controller button presses
+    FKey Key = InKeyEvent.GetKey();
+    
+    // Log input for debugging
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Key pressed: %s (Slot: %s, Location: %d, HasFocus: %s)"), 
+        *Key.ToString(), *GetName(), (int32)Location, HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+    
+    // Gamepad A button (Xbox) / X button (PlayStation) - Select/Activate
+    if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
+    {
+        // If radial menu is visible, don't process input here - let the menu handle it
+        if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, passing input to menu"));
+            return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+        }
+        
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Select button pressed, calling HandleControllerSelect"));
+        HandleControllerSelect();
+        return FReply::Handled();
+    }
+    
+    // DISABLED FOR NOW - Focus on navigation only
+    // Gamepad X button (Xbox) / Square button (PlayStation) - Open menu
+    //if (Key == EKeys::Gamepad_FaceButton_Left)
+    //{
+    //    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Menu button pressed, calling HandleControllerMenu"));
+    //    HandleControllerMenu();
+    //    return FReply::Handled();
+    //}
+    
+    // If radial menu is visible, block all navigation - let the menu handle input
+    if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, blocking navigation input"));
+        return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+    }
+    
+    // Handle quantity controls with left/right shoulder buttons
+    // Left bumper = decrease, Right bumper = increase
+    if (Key == EKeys::Gamepad_LeftShoulder)
+    {
+        // Only handle if slot has focus, has an ingredient, and has a quantity control
+        if (HasKeyboardFocus() && bHasIngredient && QuantityControlWidget && QuantityControlWidget->IsVisible())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Left bumper pressed, decreasing quantity"));
+            // DecreaseQuantity() handles min/max limits internally
+            QuantityControlWidget->DecreaseQuantity();
+            return FReply::Handled();
+        }
+    }
+    else if (Key == EKeys::Gamepad_RightShoulder)
+    {
+        // Only handle if slot has focus, has an ingredient, and has a quantity control
+        if (HasKeyboardFocus() && bHasIngredient && QuantityControlWidget && QuantityControlWidget->IsVisible())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Right bumper pressed, increasing quantity"));
+            // IncreaseQuantity() handles min/max limits internally
+            QuantityControlWidget->IncreaseQuantity();
+            return FReply::Handled();
+        }
+    }
+    
+    // Handle D-pad and left stick navigation
+    if (Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Gamepad_LeftStick_Up || Key == EKeys::Up)
+    {
+        if (NavigationUp.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating UP to slot: %s"), *NavigationUp->GetName());
+            NavigationUp->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - UP navigation requested but NavigationUp is invalid"));
+        }
+    }
+    else if (Key == EKeys::Gamepad_DPad_Down || Key == EKeys::Gamepad_LeftStick_Down || Key == EKeys::Down)
+    {
+        if (NavigationDown.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating DOWN to slot: %s"), *NavigationDown->GetName());
+            NavigationDown->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - DOWN navigation requested but NavigationDown is invalid"));
+        }
+    }
+    else if (Key == EKeys::Gamepad_DPad_Left || Key == EKeys::Gamepad_LeftStick_Left || Key == EKeys::Left)
+    {
+        if (NavigationLeft.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating LEFT to slot: %s"), *NavigationLeft->GetName());
+            NavigationLeft->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - LEFT navigation requested but NavigationLeft is invalid"));
+        }
+    }
+    else if (Key == EKeys::Gamepad_DPad_Right || Key == EKeys::Gamepad_LeftStick_Right || Key == EKeys::Right)
+    {
+        if (NavigationRight.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating RIGHT to slot: %s"), *NavigationRight->GetName());
+            NavigationRight->SetKeyboardFocus();
+            return FReply::Handled();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - RIGHT navigation requested but NavigationRight is invalid"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Verbose, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Unhandled key: %s, passing to parent"), *Key.ToString());
+    }
+    
+    return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+void UPUIngredientSlot::HandleControllerSelect()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerSelect - Called (Slot: %s, Location: %d, Empty: %s)"), 
+        *GetName(), (int32)Location, IsEmpty() ? TEXT("YES") : TEXT("NO"));
+    
+    // For prep stage: If slot is empty, open pantry. If slot has ingredient, open radial menu
+    if (Location == EPUIngredientSlotLocation::Prep)
+    {
+        if (IsEmpty())
+        {
+            // Empty slot - trigger empty slot click (opens pantry)
+            OnEmptySlotClicked.Broadcast(this);
+        }
+        else
+        {
+            // Slot has ingredient - open radial menu for preparations AND actions (same as right-click)
+            ShowRadialMenu(true, true);
+        }
+    }
+    else if (Location == EPUIngredientSlotLocation::Pantry)
+    {
+        // Pantry slot - select ingredient (this will be handled by the dish widget)
+        OnEmptySlotClicked.Broadcast(this);
+    }
+    else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        // Active ingredient area - open radial menu
+        if (bHasIngredient)
+        {
+            ShowRadialMenu(true, true);
+        }
+    }
+}
+
+void UPUIngredientSlot::HandleControllerMenu()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerMenu - Called (Slot: %s, Location: %d, HasIngredient: %s)"), 
+        *GetName(), (int32)Location, bHasIngredient ? TEXT("YES") : TEXT("NO"));
+    
+    // Open radial menu when X/Square is pressed
+    if (bHasIngredient || Location == EPUIngredientSlotLocation::Prep)
+    {
+        bool bIsPrepMenu = (Location == EPUIngredientSlotLocation::Prep);
+        bool bIncludeActions = (Location == EPUIngredientSlotLocation::ActiveIngredientArea);
+        ShowRadialMenu(bIsPrepMenu, bIncludeActions);
+    }
+}
+
+void UPUIngredientSlot::SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredientSlot* DownSlot, UPUIngredientSlot* LeftSlot, UPUIngredientSlot* RightSlot)
+{
+    // Store navigation references for manual navigation handling in NativeOnKeyDown
+    NavigationUp = UpSlot;
+    NavigationDown = DownSlot;
+    NavigationLeft = LeftSlot;
+    NavigationRight = RightSlot;
+    
+    // Note: We handle navigation manually in NativeOnKeyDown rather than using SetNavigationRule
+    // because SetNavigationRule requires widget names (FName) and manual navigation gives us
+    // more control over the navigation behavior.
+}
+
+void UPUIngredientSlot::ShowFocusVisuals()
+{
+    // Show hover text (works for prep/pantry slots even when "empty")
+    UpdateHoverTextVisibility(true);
+
+    UpdateIngredientSelectVisibility(true);
 }
 
 

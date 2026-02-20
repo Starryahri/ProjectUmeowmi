@@ -61,6 +61,14 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRadialMenuItemSelected, const FRa
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRadialMenuClosed);
 
+/** Style for the direction indicator in the radial menu */
+UENUM(BlueprintType)
+enum class EDirectionLineStyle : uint8
+{
+    Line        UMETA(DisplayName = "Line with Arrowhead"),
+    Diamond     UMETA(DisplayName = "Diamond Pointer")
+};
+
 /**
  * Radial menu widget for displaying circular menu options
  * Used for ingredient slot preparation and action menus
@@ -75,6 +83,8 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // Set the menu items to display
     UFUNCTION(BlueprintCallable, Category = "Radial Menu")
@@ -186,6 +196,60 @@ protected:
     // Container widget for menu items (should be a Canvas Panel in Blueprint)
     UPROPERTY(meta = (BindWidget))
     UCanvasPanel* MenuItemsContainer;
+    
+    // Visual indicator (arrow/line) that points to selected menu item (optional, can be set in Blueprint)
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* SelectionIndicator;
+    
+    // Note: Direction line is now drawn using Slate's NativePaint (no Image widget needed)
+    
+    // Debug visualization
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Debug")
+    bool bShowDebugRegions = false; // Set to true to show debug visualization (regions and angle labels)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Debug")
+    bool bShowDebugText = false; // Set to true to show debug text (stick values, angle, selected button)
+
+    // Direction Line Styling
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line")
+    EDirectionLineStyle DirectionLineStyle = EDirectionLineStyle::Diamond; // Line + arrowhead, or diamond pointer
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "50.0"))
+    float DirectionLineThickness = 10.0f; // Thickness of the main direction line
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "50.0"))
+    float DirectionLineGlowThickness = 18.0f; // Thickness of the glow effect behind the line
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "20.0"))
+    float DirectionLineArrowheadThickness = 7.0f; // Thickness of the arrowhead lines
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "5.0", ClampMax = "50.0"))
+    float DirectionLineArrowheadLength = 20.0f; // Length of the arrowhead
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "10.0", ClampMax = "60.0"))
+    float DirectionLineArrowheadAngle = 25.0f; // Angle of the arrowhead in degrees
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "1.0", ClampMax = "20.0"))
+    float DirectionLineCenterDotRadius = 8.0f; // Radius of the center dot
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "2", ClampMax = "20"))
+    int32 DirectionLineGradientSegments = 8; // Number of segments for gradient fade
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line")
+    FLinearColor DirectionLineBaseColor = FLinearColor(0.2f, 0.6f, 1.0f, 1.0f); // Base color of the direction line (cyan-blue)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line")
+    float DirectionLineGlowOpacity = 0.4f; // Opacity multiplier for the glow effect (0.0 to 1.0)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float DirectionLineEndFadeAmount = 0.7f; // How much the line fades at the end (0.0 = no fade, 1.0 = fully transparent at end)
+    
+    // Diamond style only - length and width of the diamond pointer
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line|Diamond", meta = (ClampMin = "20.0", ClampMax = "150.0"))
+    float DiamondLength = 80.0f; // Length from tip to base (along direction)
+    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radial Menu|Direction Line|Diamond", meta = (ClampMin = "10.0", ClampMax = "80.0"))
+    float DiamondWidth = 32.0f;  // Width at the diamond's widest point (perpendicular)
 
     // Button widget class to use for menu items (can be set in Blueprint)
     // Defaults to UPURadialMenuItemButton, but can be overridden with a custom Blueprint class
@@ -221,6 +285,45 @@ private:
     // Array to store created button widgets
     UPROPERTY()
     TArray<class UPURadialMenuItemButton*> MenuItemButtons;
+    
+    // Currently selected menu item index (for controller navigation)
+    int32 SelectedMenuItemIndex = 0;
+    
+    // Navigate to next/previous menu item
+    void NavigateToMenuItem(int32 NewIndex);
+    
+    // Set focus to currently selected menu item
+    void SetFocusToSelectedMenuItem();
+    
+    // Joystick-based selection state
+    float JoystickDeadzone = 0.3f; // Deadzone to prevent drift
+    float JoystickSelectionCooldown = 0.0f; // Cooldown to prevent rapid switching
+    const float JoystickSelectionRepeatDelay = 0.1f; // Delay between selection changes
+    
+    // Select menu item based on joystick direction (angle in degrees)
+    void SelectMenuItemByAngle(float AngleDegrees);
+    
+    // Get the angle for a menu item index (based on its position in the circle)
+    float GetMenuItemAngle(int32 ItemIndex) const;
+    
+    // Update the visual indicator to point to the selected menu item
+    void UpdateSelectionIndicator();
+    
+    // Update the direction line to point from center to stick/mouse direction
+    void UpdateDirectionLine(float AngleDegrees, float InputMagnitude);
+    
+    // Custom paint to draw the direction line using Slate (like radar graphs)
+    virtual int32 NativePaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, 
+                             const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, 
+                             int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
+    
+    // Current direction line state (for NativePaint)
+    mutable float CurrentDirectionAngle = 0.0f;
+    mutable float CurrentDirectionLength = 0.0f;
+    mutable float CurrentInputMagnitude = 0.0f; // Input magnitude for color intensity
+    mutable bool bShouldDrawDirectionLine = false;
+    mutable float CurrentStickX = 0.0f;
+    mutable float CurrentStickY = 0.0f;
 
 };
 

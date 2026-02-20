@@ -47,6 +47,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void SetQuantity(int32 NewQuantity);
 
+    // Increase quantity by 1
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control")
+    void IncreaseQuantity();
+
+    // Decrease quantity by 1
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control")
+    void DecreaseQuantity();
+
     // Update the quantity text display
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void UpdateQuantityText();
@@ -67,6 +75,9 @@ public:
 
     // Native drag events (similar to ingredient button)
     virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+    
+    // DISABLED FOR CONTROLLER NAVIGATION - Prevent quantity control from intercepting controller input
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // Enable/disable drag functionality
     UFUNCTION(BlueprintCallable, Category = "Quantity Control|Drag")

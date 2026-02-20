@@ -5,14 +5,17 @@
 
 UPURadialMenuItemButton::UPURadialMenuItemButton(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
-    , ItemIndex(-1)
     , ItemButton(nullptr)
+    , ItemIndex(-1)
 {
 }
 
 void UPURadialMenuItemButton::NativeConstruct()
 {
     Super::NativeConstruct();
+
+    // Make the widget focusable for controller navigation
+    SetIsFocusable(true);
 
     // Bind to the button's OnClicked event if button exists
     if (ItemButton)
@@ -60,6 +63,15 @@ void UPURadialMenuItemButton::SetMenuItemData(const FRadialMenuItem& MenuItem, i
 
     // Call Blueprint event
     OnMenuItemDataSet(MenuItemData, ItemIndex);
+}
+
+void UPURadialMenuItemButton::ClearMenuItemData()
+{
+    // Directly clear the data without triggering events or accessing other UObjects
+    // This is safe to call during GC
+    MenuItemData = FRadialMenuItem();
+    MenuItemData.Icon = nullptr;
+    ItemIndex = -1;
 }
 
 void UPURadialMenuItemButton::HandleButtonClicked()

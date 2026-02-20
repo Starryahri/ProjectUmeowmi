@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Styling/SlateTypes.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "PUIngredientQuantityControl.h"
 #include "PUIngredientDragDropOperation.h"
@@ -11,6 +12,7 @@
 class UButton;
 class UTextBlock;
 class UImage;
+class UWidgetAnimation;
 class UPUIngredientQuantityControl;
 class USlider;
 class UMaterialInstanceDynamic;
@@ -41,6 +43,7 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     // Set the ingredient instance for this slot (use ClearSlot() to empty)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
@@ -179,6 +182,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UImage* GetPlateBackground() const { return PlateBackground; }
 
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
+    UImage* GetIngredientSelect() const { return IngredientSelect; }
+
     // Radial menu functions (stubbed for now)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
     void ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions = false);
@@ -196,6 +202,21 @@ public:
     // Set the dish customization widget reference (called when slot is created)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     void SetDishCustomizationWidget(class UPUDishCustomizationWidget* InDishWidget);
+
+    // Controller input functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
+    void HandleControllerSelect(); // Called when A/X button is pressed on focused slot
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
+    void HandleControllerMenu(); // Called when X/Square button is pressed to open radial menu
+
+    // Navigation setup functions
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Navigation")
+    void SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredientSlot* DownSlot, UPUIngredientSlot* LeftSlot, UPUIngredientSlot* RightSlot);
+
+    // Manually trigger focus visual feedback (outline and hover text)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
+    void ShowFocusVisuals();
 
     // Time/Temperature slider functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
@@ -280,6 +301,14 @@ protected:
     // Plate background image (always at 100% opacity, outline shown on hover)
     UPROPERTY(meta = (BindWidget))
     UImage* PlateBackground;
+
+    // Optional selection/hover indicator image (shown on hover or focus - use when PlateBackground is hidden e.g. Prepped/ActiveIngredientArea)
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* IngredientSelect;
+
+    // Animation played when IngredientSelect is shown (fade-in + rotation). Name in Blueprint must match "IngredientSelectAnim"
+    UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
+    UWidgetAnimation* IngredientSelectAnim;
 
     // Prep bowl images (for Prepped location slots)
     UPROPERTY(meta = (BindWidget))
@@ -370,10 +399,26 @@ protected:
     UPROPERTY()
     TWeakObjectPtr<class UPUDishCustomizationWidget> CachedDishWidget;
 
+    // Navigation references for controller support
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationUp;
+
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationDown;
+
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationLeft;
+
+    UPROPERTY()
+    TWeakObjectPtr<UPUIngredientSlot> NavigationRight;
+
     // Whether drag functionality is enabled
     // Set to true by default for testing - can be disabled in Blueprint if needed
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Drag")
     bool bDragEnabled = true;
+
+    // Track hover state for IngredientSelect visibility (hide on mouse leave only if not focused)
+    bool bIsHovered = false;
 
     // Time/Temperature slider properties
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Time/Temp")
@@ -403,6 +448,12 @@ protected:
     UPROPERTY(meta = (BindWidget))
     USlider* TemperatureSlider;
 
+    // Cached slider styles for focus-as-hover (restore when losing focus)
+    FSliderStyle CachedTimeSliderStyle;
+    FSliderStyle CachedTemperatureSliderStyle;
+    bool bTimeSliderShowingHoverStyle = false;
+    bool bTemperatureSliderShowingHoverStyle = false;
+
     // Time/Temperature label text (optional - shows current state)
     UPROPERTY(meta = (BindWidget))
     UTextBlock* TimeLabelText;
@@ -429,6 +480,9 @@ protected:
     // Native focus events
     virtual void NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent) override;
     virtual void NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusEvent) override;
+
+    // Native key/button events for controller support
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // Blueprint events that can be overridden
     UFUNCTION(BlueprintImplementableEvent, Category = "Ingredient Slot")
@@ -476,6 +530,9 @@ private:
     // Update hover text visibility
     void UpdateHoverTextVisibility(bool bShow);
 
+    // Update IngredientSelect image visibility (shown on hover or focus)
+    void UpdateIngredientSelectVisibility(bool bShow);
+
     // Update plate background opacity based on selection state
     void UpdatePlateBackgroundOpacity();
 
@@ -490,6 +547,7 @@ private:
     void UpdateTimeLabelText();
     void UpdateTemperatureLabelText();
     bool ShouldShowSliders() const;
+    void UpdateSliderFocusVisuals();
     
     // Recalculate aspects from base + time/temp + quantity
     void RecalculateAspectsFromBase();

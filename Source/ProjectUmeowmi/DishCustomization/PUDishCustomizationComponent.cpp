@@ -7,6 +7,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../PUProjectUmeowmiGameInstance.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -254,6 +255,23 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         {
             //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No MouseClickAction set"));
         }
+
+        // Bind stage navigation actions
+        if (NextStageAction)
+        {
+            NextStageBindingHandle = EnhancedInputComponent->BindAction(NextStageAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleNextStage).GetHandle();
+        }
+
+        if (PreviousStageAction)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🔙 Binding PreviousStageAction: %s"), *PreviousStageAction->GetName());
+            PreviousStageBindingHandle = EnhancedInputComponent->BindAction(PreviousStageAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandlePreviousStage).GetHandle();
+            UE_LOG(LogTemp, Warning, TEXT("🔙 PreviousStageBindingHandle: %d"), PreviousStageBindingHandle);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("🔙 PreviousStageAction is NULL!"));
+        }
     }
     else
     {
@@ -424,6 +442,16 @@ void UPUDishCustomizationComponent::EndCustomization()
             {
                 EnhancedInputComponent->RemoveBindingByHandle(ExitActionBindingHandle);
                 //UE_LOG(LogTemp,Log, TEXT("Unbound exit action"));
+            }
+
+            if (NextStageAction)
+            {
+                EnhancedInputComponent->RemoveBindingByHandle(NextStageBindingHandle);
+            }
+
+            if (PreviousStageAction)
+            {
+                EnhancedInputComponent->RemoveBindingByHandle(PreviousStageBindingHandle);
             }
         }
 
@@ -980,6 +1008,42 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
     }
 }
 
+void UPUDishCustomizationComponent::HandleNextStage()
+{
+    if (CustomizationWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            // Call the Blueprint event so animations can play first
+            DishWidget->OnControllerNextStage();
+        }
+    }
+}
+
+void UPUDishCustomizationComponent::HandlePreviousStage()
+{
+    UE_LOG(LogTemp, Warning, TEXT("🔙 HandlePreviousStage called - CustomizationWidget: %s"), 
+        CustomizationWidget ? *CustomizationWidget->GetName() : TEXT("NULL"));
+    
+    if (CustomizationWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("🔙 Calling OnControllerPreviousStage on widget: %s"), *DishWidget->GetName());
+            // Call the Blueprint event so animations can play first
+            DishWidget->OnControllerPreviousStage();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("🔙 Failed to cast CustomizationWidget to UPUDishCustomizationWidget"));
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("🔙 CustomizationWidget is NULL!"));
+    }
+}
+
 void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& Value)
 {
     //UE_LOG(LogTemp,Display, TEXT("🔍 [DRAG] Mouse release event received - Value: %s"), *Value.ToString());
@@ -1419,6 +1483,9 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
             // Broadcast initial dish data to the new widget
             BroadcastInitialDishData(DishData);
             
+            // Set as active widget so stage navigation (X/B) and input routing work correctly
+            SetActiveCustomizationWidget(CookingWidget);
+            
             // Note: The new cooking stage widget should handle initialization in its Blueprint
             // or override OnInitialDishDataReceived to set up ingredient slots, etc.
             // The old InitializeCookingStage method is no longer used - initialization happens
@@ -1450,6 +1517,10 @@ TArray<FPUIngredientBase> UPUDishCustomizationComponent::GetIngredientData() con
     
     if (IngredientDataTable)
     {
+        // Get the game instance to check unlocked ingredients
+        UWorld* World = GetWorld();
+        UPUProjectUmeowmiGameInstance* GameInstance = World ? Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance()) : nullptr;
+        
         //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Getting ingredient data from table: %s"), *IngredientDataTable->GetName());
         
         TArray<FName> RowNames = IngredientDataTable->GetRowNames();
@@ -1457,11 +1528,26 @@ TArray<FPUIngredientBase> UPUDishCustomizationComponent::GetIngredientData() con
         {
             if (FPUIngredientBase* Ingredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredientData")))
             {
-                IngredientData.Add(*Ingredient);
+                // Only include ingredients that are unlocked (if game instance is available)
+                // If no game instance, include all ingredients (for backwards compatibility or editor use)
+                if (GameInstance)
+                {
+                    if (GameInstance->IsIngredientUnlocked(Ingredient->IngredientTag))
+                    {
+                        IngredientData.Add(*Ingredient);
+                    }
+                }
+                else
+                {
+                    // No game instance available, include all ingredients
+                    // This can happen in editor or before game instance is initialized
+                    IngredientData.Add(*Ingredient);
+                }
             }
         }
         
-        //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Retrieved %d ingredients"), IngredientData.Num());
+        //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::GetIngredientData - Retrieved %d unlocked ingredients (out of %d total)"), 
+        //    IngredientData.Num(), RowNames.Num());
     }
     else
     {
