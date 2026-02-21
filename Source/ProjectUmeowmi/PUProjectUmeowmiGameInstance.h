@@ -101,6 +101,54 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory")
 	TSet<FGameplayTag> GetUnlockedIngredients() const { return UnlockedIngredientTags; }
 
+	// Recipe/Dish Journal System
+	/**
+	 * Unlock a dish/recipe (adds it to the journal)
+	 * @param DishTag - The gameplay tag of the dish to unlock
+	 * @return True if the dish was successfully unlocked (or was already unlocked)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	bool UnlockDish(const FGameplayTag& DishTag);
+
+	/**
+	 * Unlock multiple dishes at once
+	 * @param DishTags - Array of gameplay tags to unlock
+	 * @return Number of dishes successfully unlocked
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	int32 UnlockDishes(const TArray<FGameplayTag>& DishTags);
+
+	/**
+	 * Check if a dish is unlocked
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	bool IsDishUnlocked(const FGameplayTag& DishTag) const;
+
+	/**
+	 * Get all unlocked dish tags
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	TSet<FGameplayTag> GetUnlockedDishes() const { return UnlockedDishTags; }
+
+	/**
+	 * Set the dish the player is currently working on (e.g. during customization).
+	 * When opening the journal recipe section during customization, this dish is shown first.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	void SetCurrentDishTag(const FGameplayTag& DishTag);
+
+	/**
+	 * Get the dish the player is currently working on (may be invalid)
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	FGameplayTag GetCurrentDishTag() const { return CurrentDishTag; }
+
+	/**
+	 * Clear the current dish (e.g. when exiting customization)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	void ClearCurrentDishTag();
+
 	// Save/Load System
 	/**
 	 * Save the current game state to disk
@@ -245,6 +293,25 @@ protected:
 	// Can be configured in Blueprint or via code
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Inventory")
 	TSet<FGameplayTag> StartingIngredientTags;
+
+	// Recipe Journal - unlocked dishes
+	UPROPERTY(BlueprintReadOnly, Category = "Recipe Journal")
+	TSet<FGameplayTag> UnlockedDishTags;
+
+	// Dish the player is currently working on (during customization). Shown first when opening journal.
+	UPROPERTY(BlueprintReadWrite, Category = "Recipe Journal")
+	FGameplayTag CurrentDishTag;
+
+	// Starting dishes unlocked when creating a new game (e.g. your two initial recipes)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
+	TSet<FGameplayTag> StartingDishTags;
+
+	// Data tables for journal dish lookup (set in Game Instance Blueprint - same as cooking station)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
+	TObjectPtr<class UDataTable> DishDataTable;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
+	TObjectPtr<class UDataTable> IngredientDataTable;
 
 	// Dialogue State (stubbed for future use)
 	UPROPERTY(BlueprintReadOnly, Category = "Dialogue State")

@@ -21,6 +21,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	TSet<FGameplayTag> UnlockedIngredientTags;
 
+	// Unlocked recipes/dishes (stored as gameplay tags)
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	TSet<FGameplayTag> UnlockedDishTags;
+
 	// Completed dialogue names (stubbed for future use)
 	// Stores dialogue asset names that have been completed
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")

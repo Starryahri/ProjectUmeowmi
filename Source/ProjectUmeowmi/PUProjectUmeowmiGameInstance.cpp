@@ -400,6 +400,55 @@ bool UPUProjectUmeowmiGameInstance::IsIngredientUnlocked(const FGameplayTag& Ing
 	return UnlockedIngredientTags.Contains(IngredientTag);
 }
 
+// Recipe Journal System
+bool UPUProjectUmeowmiGameInstance::UnlockDish(const FGameplayTag& DishTag)
+{
+	if (!DishTag.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::UnlockDish - Invalid dish tag provided"));
+		return false;
+	}
+
+	if (UnlockedDishTags.Contains(DishTag))
+	{
+		return true;
+	}
+
+	UnlockedDishTags.Add(DishTag);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockDish - Unlocked dish: %s"), *DishTag.ToString());
+	SaveGame();
+	return true;
+}
+
+int32 UPUProjectUmeowmiGameInstance::UnlockDishes(const TArray<FGameplayTag>& DishTags)
+{
+	int32 Count = 0;
+	for (const FGameplayTag& Tag : DishTags)
+	{
+		if (Tag.IsValid() && UnlockDish(Tag))
+		{
+			Count++;
+		}
+	}
+	return Count;
+}
+
+bool UPUProjectUmeowmiGameInstance::IsDishUnlocked(const FGameplayTag& DishTag) const
+{
+	if (!DishTag.IsValid()) return false;
+	return UnlockedDishTags.Contains(DishTag);
+}
+
+void UPUProjectUmeowmiGameInstance::SetCurrentDishTag(const FGameplayTag& DishTag)
+{
+	CurrentDishTag = DishTag;
+}
+
+void UPUProjectUmeowmiGameInstance::ClearCurrentDishTag()
+{
+	CurrentDishTag = FGameplayTag();
+}
+
 // Save/Load System
 bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 {
@@ -416,6 +465,7 @@ bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 
 	// Copy current state to save game
 	PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
+	PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 	PlayerSaveGame->CompletedDialogueNames = CompletedDialogueNames;
 
 	// Save to disk
@@ -455,10 +505,18 @@ bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
 
 	// Restore state from save game
 	UnlockedIngredientTags = PlayerSaveGame->UnlockedIngredientTags;
+	UnlockedDishTags = PlayerSaveGame->UnlockedDishTags;
 	CompletedDialogueNames = PlayerSaveGame->CompletedDialogueNames;
 
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Successfully loaded game from slot: %s (Unlocked ingredients: %d)"), 
-		*SlotName, UnlockedIngredientTags.Num());
+	// Migration: old saves may not have UnlockedDishTags; initialize from StartingDishTags if empty
+	if (UnlockedDishTags.Num() == 0 && StartingDishTags.Num() > 0)
+	{
+		UnlockedDishTags = StartingDishTags;
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Migrated %d starting dishes to unlocked"), StartingDishTags.Num());
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Successfully loaded game from slot: %s (Unlocked ingredients: %d, dishes: %d)"), 
+		*SlotName, UnlockedIngredientTags.Num(), UnlockedDishTags.Num());
 
 	return true;
 }
@@ -481,25 +539,28 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Keeping existing save file"));
 	}
 
-	// Clear all unlocked ingredients and dialogue states FIRST
+	// Clear all unlocked ingredients, dishes, and dialogue states FIRST
 	UnlockedIngredientTags.Empty();
+	UnlockedDishTags.Empty();
+	CurrentDishTag = FGameplayTag();
 	CompletedDialogueNames.Empty();
 	
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Cleared all unlocked ingredients (was %d, now %d)"), 
-		UnlockedIngredientTags.Num(), 0);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Cleared all unlocked ingredients and dishes"));
 
-	// Unlock starting ingredients
+	// Unlock starting ingredients and dishes
 	UnlockedIngredientTags = StartingIngredientTags;
+	UnlockedDishTags = StartingDishTags;
 	
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Created new game with %d starting ingredients"), 
-		StartingIngredientTags.Num());
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Created new game with %d starting ingredients, %d starting dishes"), 
+		StartingIngredientTags.Num(), StartingDishTags.Num());
 
 	// Create a new save game object
 	PlayerSaveGame = Cast<UPUPlayerSaveGame>(UGameplayStatics::CreateSaveGameObject(UPUPlayerSaveGame::StaticClass()));
 	if (PlayerSaveGame)
 	{
-		// Initialize with starting ingredients
+		// Initialize with starting ingredients and dishes
 		PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
+		PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 		PlayerSaveGame->CompletedDialogueNames.Empty();
 		PlayerSaveGame->SaveVersion = 1;
 

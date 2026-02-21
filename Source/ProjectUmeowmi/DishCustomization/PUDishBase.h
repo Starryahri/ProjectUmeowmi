@@ -85,9 +85,17 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
     FText DisplayName;
 
+    /** Recipe description shown in the journal (e.g. narrative or cooking notes) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
+    FText Description;
+
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
     TSoftObjectPtr<UTexture2D> PreviewTexture;
+
+    /** Texture shown in the journal recipe book (e.g. dish illustration on the right page) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
+    TSoftObjectPtr<UTexture2D> JournalTexture;
 
     // Data Tables
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Data")

@@ -807,6 +807,10 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             
             AProjectUmeowmiCharacter* TempCharacter = CurrentCharacter;
             CurrentCharacter = nullptr;
+            if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+            {
+                GI->ClearCurrentDishTag();
+            }
             OnCustomizationEnded.Broadcast();
             //UE_LOG(LogTemp,Log, TEXT("Customization fully ended"));
         }
@@ -1362,6 +1366,12 @@ void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& Initia
     
     // Set the initial dish data
     UpdateCurrentDishData(InitialDishData);
+
+    // Notify Game Instance so journal recipe section shows this dish when opened during customization
+    if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+    {
+        GI->SetCurrentDishTag(InitialDishData.DishTag);
+    }
     
     //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Initial dish data set successfully"));
 }
