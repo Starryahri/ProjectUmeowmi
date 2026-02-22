@@ -114,6 +114,24 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
     {
         UpdateMouseDrag();
     }
+    else if (CurrentCharacter && CanSpawnIngredientsIn3D())
+    {
+        // Fallback: poll for mouse clicks in Tick (widget may block Enhanced Input)
+        APlayerController* PC = Cast<APlayerController>(CurrentCharacter->GetController());
+        if (PC)
+        {
+            bool bMouseDown = PC->IsInputKeyDown(EKeys::LeftMouseButton);
+            if (bMouseDown && !bWasMouseDown)
+            {
+                HandleMouseClick(FInputActionValue());
+            }
+            else if (!bMouseDown && bWasMouseDown && !bIsDragging)
+            {
+                HandleMouseRelease(FInputActionValue());
+            }
+            bWasMouseDown = bMouseDown;
+        }
+    }
 }
 
 void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter* Character)
@@ -892,12 +910,8 @@ void UPUDishCustomizationComponent::HandleControllerMouse(const FInputActionValu
 
 void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Value)
 {
-    //UE_LOG(LogTemp,Display, TEXT("🔍 Mouse click event received - Value: %s"), *Value.ToString());
-    
-    if (!CurrentCharacter || !bPlatingMode)
+    if (!CurrentCharacter || bIsDragging)
     {
-        //UE_LOG(LogTemp,Display, TEXT("🔍 Mouse click - Character: %s, Plating mode: %s"), 
-        //    CurrentCharacter ? TEXT("Valid") : TEXT("NULL"), bPlatingMode ? TEXT("True") : TEXT("False"));
         return;
     }
 
@@ -1078,9 +1092,8 @@ void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& 
 
 void UPUDishCustomizationComponent::StartDraggingIngredient(APUIngredientMesh* Ingredient)
 {
-    if (!Ingredient || !bPlatingMode)
+    if (!Ingredient)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - Invalid ingredient or not in plating mode"));
         return;
     }
     
@@ -1746,11 +1759,7 @@ FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
         return FVector::ZeroVector;
     }
 
-    FVector StationLocation = OwnerActor->GetActorLocation();
-    FBox StationBoundsBox = OwnerActor->GetComponentsBoundingBox();
-    FVector StationBounds = StationBoundsBox.GetSize();
-
-    // Try to find DishContainer mesh component for more accurate height
+    // Use DishContainer mesh component so we spawn directly above the bowl, not the station center (which may be over platform/collision)
     TArray<UStaticMeshComponent*> MeshComponents;
     OwnerActor->GetComponents<UStaticMeshComponent>(MeshComponents);
     for (UStaticMeshComponent* MeshComp : MeshComponents)
@@ -1758,16 +1767,19 @@ FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
         if (MeshComp && MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
         {
             FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
-            float SurfaceHeight = DishBounds.Origin.Z + (DishBounds.BoxExtent.Z * 0.5f);
-            // Spawn above center of pan, with offset for ingredients to fall in
-            return FVector(StationBoundsBox.GetCenter().X, StationBoundsBox.GetCenter().Y, SurfaceHeight + 30.0f);
+            // Spawn above center of dish container; use dish bounds for X,Y,Z so we're not over platform/rim
+            float SurfaceHeight = DishBounds.Origin.Z + DishBounds.BoxExtent.Z;  // Top of bowl
+            float SpawnHeight = SurfaceHeight + IngredientSpawnHeightOffset;
+            return FVector(DishBounds.Origin.X, DishBounds.Origin.Y, SpawnHeight);
         }
     }
 
-    // Fallback: use station bounds center + half height + offset
+    // Fallback: use station bounds
+    FBox StationBoundsBox = OwnerActor->GetComponentsBoundingBox();
     FVector Center = StationBoundsBox.GetCenter();
-    float SurfaceHeight = Center.Z + (StationBounds.Z * 0.5f);
-    return FVector(Center.X, Center.Y, SurfaceHeight + 30.0f);
+    FVector Extent = StationBoundsBox.GetExtent();
+    float SurfaceHeight = Center.Z + Extent.Z;
+    return FVector(Center.X, Center.Y, SurfaceHeight + IngredientSpawnHeightOffset);
 }
 
 void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& DishData)

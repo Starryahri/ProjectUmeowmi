@@ -300,6 +300,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
     FVector IngredientMeshScale = FVector(1.0f, 1.0f, 1.0f);
 
+    // Height above dish container to spawn ingredients (avoids collision with rim/platform)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating", meta = (ClampMin = "10.0", UIMin = "10.0"))
+    float IngredientSpawnHeightOffset = 30.0f;
+
     // Blueprint class for spawned 3D ingredient meshes (set DefaultMaterial, HoverMaterial, GrabbedMaterial here)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
     TSubclassOf<class APUIngredientMesh> IngredientMeshClass;
@@ -336,6 +340,7 @@ protected:
 
     // Mouse interaction state
     bool bIsDragging = false;
+    bool bWasMouseDown = false;  // For Tick-based click fallback when widget blocks Enhanced Input
     class APUIngredientMesh* CurrentlyDraggedIngredient = nullptr;
     FVector DragStartPosition;
     FVector DragStartMousePosition;
