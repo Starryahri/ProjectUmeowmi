@@ -89,11 +89,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void SpawnIngredientIn3DByInstanceID(int32 InstanceID, const FVector& WorldPosition);
 
+    // Get spawn position above the cooking station/pan (for reliable ingredient placement)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    FVector GetSpawnPositionAboveStation() const;
+
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void SetPlatingMode(bool bInPlatingMode);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     bool IsPlatingMode() const;
+
+    // True when 3D ingredient spawning is allowed (both cooking and plating stages)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    bool CanSpawnIngredientsIn3D() const;
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void TransitionToPlatingStage(const FPUDishBase& DishData);
@@ -291,6 +299,10 @@ public:
     // Ingredient mesh scale for plating stage
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
     FVector IngredientMeshScale = FVector(1.0f, 1.0f, 1.0f);
+
+    // Blueprint class for spawned 3D ingredient meshes (set DefaultMaterial, HoverMaterial, GrabbedMaterial here)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
+    TSubclassOf<class APUIngredientMesh> IngredientMeshClass;
 
     // Original dish container mesh (stored when customization starts)
     UPROPERTY()

@@ -2936,276 +2936,10 @@ FString UPUIngredientSlot::GetPreparationIconText() const
 
 void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPosition)
 {
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - START - Ingredient %s at screen position (%.2f,%.2f)"), 
-    //    *IngredientInstance.IngredientData.DisplayName.ToString(), ScreenPosition.X, ScreenPosition.Y);
-
-    // Convert screen position to world position using raycast
-    APlayerController* PlayerController = GetOwningPlayer();
-    if (!PlayerController)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [SPAWN] UPUIngredientSlot::SpawnIngredientAtPosition - No player controller"));
-        return;
-    }
-
-    // Get viewport size
-    int32 ViewportSizeX, ViewportSizeY;
-    PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
-    
-    // Get camera location and rotation
-    FVector CameraLocation;
-    FRotator CameraRotation;
-    PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
-    
-    // CRITICAL FIX: Get the ACTUAL cursor position in viewport space at spawn time
-    // The passed ScreenPosition might be in widget space or cached from when drag started
-    // When the window moves/resizes, cached positions become incorrect
-    // Best approach: Get the current mouse position directly from the viewport
-    FVector2D MousePosition;
-    
-    // Try to get the actual mouse position from the player controller first
-    float MouseX, MouseY;
-    bool bGotMousePos = PlayerController->GetMousePosition(MouseX, MouseY);
-    
-    if (bGotMousePos && MouseX >= 0 && MouseY >= 0 && MouseX <= ViewportSizeX && MouseY <= ViewportSizeY)
-    {
-        // Use the actual mouse position (viewport space)
-        MousePosition = FVector2D(MouseX, MouseY);
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Using actual mouse position from player controller: (%.0f,%.0f)"), 
-        //    MousePosition.X, MousePosition.Y);
-    }
-    else
-    {
-        // Fallback: Convert widget coordinates to viewport coordinates
-        // The passed ScreenPosition is likely in widget-local space
-        MousePosition = ScreenPosition;
-        
-        // If this is a widget, try to convert widget space to viewport space
-        if (UUserWidget* ThisWidget = Cast<UUserWidget>(this))
-        {
-            if (TSharedPtr<SWidget> SlateWidget = ThisWidget->GetCachedWidget())
-            {
-                // Get the widget's cached geometry (in viewport space)
-                FGeometry WidgetGeometry = SlateWidget->GetCachedGeometry();
-                
-                // Get the widget's absolute position in viewport space
-                FVector2D WidgetAbsolutePosition = WidgetGeometry.GetAbsolutePosition();
-                
-                // The passed ScreenPosition might be:
-                // 1. Widget-local coordinates (relative to widget's top-left)
-                // 2. Already in viewport space
-                // Try both: if adding widget position gives reasonable result, use it
-                FVector2D ConvertedPosition = WidgetAbsolutePosition + ScreenPosition;
-                
-                // Check if converted position is more reasonable (within viewport)
-                if (ConvertedPosition.X >= 0 && ConvertedPosition.Y >= 0 && 
-                    ConvertedPosition.X <= ViewportSizeX && ConvertedPosition.Y <= ViewportSizeY)
-                {
-                    MousePosition = ConvertedPosition;
-                    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Converted widget space (%.0f,%.0f) + widget pos (%.0f,%.0f) = viewport (%.0f,%.0f)"), 
-                    //    ScreenPosition.X, ScreenPosition.Y, 
-                    //    WidgetAbsolutePosition.X, WidgetAbsolutePosition.Y,
-                    //    MousePosition.X, MousePosition.Y);
-                }
-                else
-                {
-                    // Passed position might already be in viewport space
-                    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Using passed position as-is (%.0f,%.0f) - assuming viewport space"), 
-                    //    MousePosition.X, MousePosition.Y);
-                }
-            }
-            else
-            {
-                //UE_LOG(LogTemp,Warning, TEXT("⚠️ [SPAWN] Could not get cached widget, using passed position as-is"));
-            }
-        }
-    }
-    
-    // Validate the position is within reasonable bounds
-    if (MousePosition.X < -1000 || MousePosition.X > ViewportSizeX + 1000 || 
-        MousePosition.Y < -1000 || MousePosition.Y > ViewportSizeY + 1000)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [SPAWN] Position (%.2f,%.2f) seems far outside viewport bounds (%dx%d)"), 
-        //    MousePosition.X, MousePosition.Y, ViewportSizeX, ViewportSizeY);
-    }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ [SPAWN] Viewport: %dx%d, Final position: (%.0f,%.0f)"), 
-    //    ViewportSizeX, ViewportSizeY, MousePosition.X, MousePosition.Y);
-    
-    // Find the dish customization station in the world
+    // Find the dish customization component (attached to cooking station)
     TArray<AActor*> FoundActors;
     UGameplayStatics::GetAllActorsOfClass(GetWorld(), AActor::StaticClass(), FoundActors);
-    
-    AActor* DishStation = nullptr;
-    for (AActor* Actor : FoundActors)
-    {
-        if (Actor && (Actor->GetName().Contains(TEXT("CookingStation")) || Actor->GetName().Contains(TEXT("DishCustomization"))))
-        {
-            DishStation = Actor;
-            break;
-        }
-    }
-    
-    // Declare spawn position at function level
-    FVector SpawnPosition;
-    
-    if (DishStation)
-    {
-        //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Found dish customization station: %s"), *DishStation->GetName());
-        
-        // Convert screen position to world space ray
-        // Use the actual mouse position for accurate deprojection
-        FVector WorldLocation;
-        FVector WorldDirection;
-        
-        // Deproject the screen position to world space
-        // Note: DeprojectScreenPositionToWorld expects viewport coordinates (0,0 at top-left, increasing right and down)
-        bool bDeprojectSuccess = PlayerController->DeprojectScreenPositionToWorld(MousePosition.X, MousePosition.Y, WorldLocation, WorldDirection);
-        
-        if (bDeprojectSuccess)
-        {
-            //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Deprojected screen (%.0f,%.0f) to world ray: Start (%.2f,%.2f,%.2f), Direction (%.2f,%.2f,%.2f)"), 
-            //    MousePosition.X, MousePosition.Y, WorldLocation.X, WorldLocation.Y, WorldLocation.Z, 
-            //    WorldDirection.X, WorldDirection.Y, WorldDirection.Z);
-            
-            // Try to do a line trace to find the bowl/station surface
-            // Use multi-trace to find all hits and prioritize the bowl mesh
-            TArray<FHitResult> HitResults;
-            FCollisionQueryParams QueryParams;
-            QueryParams.bTraceComplex = true; // Use complex collision for more accurate hits
-            
-            // Trace from camera through the screen position
-            FVector TraceStart = WorldLocation;
-            FVector TraceEnd = WorldLocation + (WorldDirection * 10000.0f); // Long trace distance
-            
-            bool bHit = GetWorld()->LineTraceMultiByChannel(HitResults, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
-            
-            //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Line trace from (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f) found %d hits"), 
-            //    TraceStart.X, TraceStart.Y, TraceStart.Z, TraceEnd.X, TraceEnd.Y, TraceEnd.Z, HitResults.Num());
-            
-            if (bHit && HitResults.Num() > 0)
-            {
-                // Look for the bowl mesh component first, then use the first hit
-                FHitResult BestHit;
-                bool bFoundBowl = false;
-                
-                for (const FHitResult& Hit : HitResults)
-                {
-                    if (Hit.bBlockingHit)
-                    {
-                        // Check if this hit is on a bowl mesh component
-                        if (Hit.Component.IsValid())
-                        {
-                            FString ComponentName = Hit.Component->GetName();
-                            if (ComponentName.Contains(TEXT("Bowl"), ESearchCase::IgnoreCase))
-                            {
-                                BestHit = Hit;
-                                bFoundBowl = true;
-                                //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Found bowl mesh component: %s"), *ComponentName);
-                                break;
-                            }
-                        }
-                        
-                        // If we haven't found a bowl yet, use the first valid hit
-                        if (!bFoundBowl && !BestHit.bBlockingHit)
-                        {
-                            BestHit = Hit;
-                        }
-                    }
-                }
-                
-                if (BestHit.bBlockingHit)
-                {
-                    // Found a surface - use the hit location directly
-                    SpawnPosition = BestHit.Location;
-                    //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Line trace hit surface: %s (Component: %s) at (%.2f,%.2f,%.2f)"), 
-                    //    BestHit.GetActor() ? *BestHit.GetActor()->GetName() : TEXT("NULL"),
-                    //    BestHit.Component.IsValid() ? *BestHit.Component->GetName() : TEXT("NULL"),
-                    //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
-                    
-                    // Log the screen-to-world conversion for debugging
-                    FVector2D ScreenPos = FVector2D(MousePosition.X, MousePosition.Y);
-                    //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Screen (%.0f,%.0f) -> World (%.2f,%.2f,%.2f) via trace"), 
-                    //    ScreenPos.X, ScreenPos.Y, SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
-                }
-                else
-                {
-                    bHit = false; // No valid hit found
-                }
-            }
-            
-            if (!bHit)
-            {
-                // No hit - calculate intersection with station surface plane (fallback)
-                FVector StationLocation = DishStation->GetActorLocation();
-                FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
-                
-                // Calculate where the mouse ray intersects the station surface
-                // Use the top of the bowl/station as the surface height
-                // Try to find the actual bowl mesh component for more accurate height
-                float StationHeight = StationLocation.Z + (StationBounds.Z * 0.5f); // Use middle-top of bounds for bowl surface
-                
-                // Try to find a bowl mesh component for more accurate surface height
-                TArray<UStaticMeshComponent*> MeshComponents;
-                DishStation->GetComponents<UStaticMeshComponent>(MeshComponents);
-                for (UStaticMeshComponent* MeshComp : MeshComponents)
-                {
-                    if (MeshComp && MeshComp->GetName().Contains(TEXT("Bowl"), ESearchCase::IgnoreCase))
-                    {
-                        FBoxSphereBounds BowlBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
-                        StationHeight = BowlBounds.Origin.Z + (BowlBounds.BoxExtent.Z * 0.5f);
-                        //UE_LOG(LogTemp,Display, TEXT("🔍 [SPAWN] Found bowl mesh component, using height: %.2f"), StationHeight);
-                        break;
-                    }
-                }
-                
-                // Calculate intersection point with the horizontal plane
-                if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
-                {
-                    float T = (StationHeight - WorldLocation.Z) / WorldDirection.Z;
-                    if (T > 0.0f) // Only if ray is going downward or forward
-                    {
-                        SpawnPosition = WorldLocation + (WorldDirection * T);
-                        //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Calculated intersection with station surface plane at: (%.2f,%.2f,%.2f)"), 
-                        //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
-                    }
-                    else
-                    {
-                        // Ray is going away from the surface, use station center as fallback
-                        SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
-                        //UE_LOG(LogTemp,Warning, TEXT("⚠️ Ray going away from surface, using station center: (%.2f,%.2f,%.2f)"), 
-                        //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
-                    }
-                }
-                else
-                {
-                    // Ray is parallel to the surface, use station center
-                    SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
-                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ Ray parallel to surface, using station center: (%.2f,%.2f,%.2f)"), 
-                    //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
-                }
-            }
-        }
-        else
-        {
-            // Failed to deproject - use station location as fallback
-            FVector StationLocation = DishStation->GetActorLocation();
-            FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
-            SpawnPosition = StationLocation + FVector(0, 0, StationBounds.Z * 0.5f);
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ Failed to deproject screen position, using station center: (%.2f,%.2f,%.2f)"), 
-            //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
-        }
-    }
-    else
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ No dish customization station found! Spawning at default position."));
-        
-        // Fallback: spawn near the player
-        SpawnPosition = CameraLocation + (CameraRotation.Vector() * 300.0f);
-        //UE_LOG(LogTemp,Display, TEXT("🔍 DEBUG: Fallback spawn position: (%.2f,%.2f,%.2f)"), 
-        //    SpawnPosition.X, SpawnPosition.Y, SpawnPosition.Z);
-    }
-    
-    // Find the dish customization component and spawn the ingredient
+
     UPUDishCustomizationComponent* DishComponent = nullptr;
     for (AActor* Actor : FoundActors)
     {
@@ -3214,27 +2948,25 @@ void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPositio
             DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
             if (DishComponent)
             {
-                // Check if we're in plating mode before spawning
-                if (!DishComponent->IsPlatingMode())
-                {
-                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Not in plating mode, aborting spawn"));
-                    return;
-                }
-                
-                //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - Calling SpawnIngredientIn3DByInstanceID on customization component"));
-                DishComponent->SpawnIngredientIn3DByInstanceID(IngredientInstance.InstanceID, SpawnPosition);
-                //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUIngredientSlot::SpawnIngredientAtPosition - SpawnIngredientIn3DByInstanceID call completed"));
                 break;
             }
         }
     }
-    
-    // If we didn't find a component or weren't in plating mode, return early
+
     if (!DishComponent)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::SpawnIngredientAtPosition - Could not find dish customization component"));
         return;
     }
+
+    // Check if 3D spawning is allowed (cooking or plating stage)
+    if (!DishComponent->CanSpawnIngredientsIn3D())
+    {
+        return;
+    }
+
+    // Spawn directly above the cooking station/pan - no mouse/camera deprojection
+    FVector SpawnPosition = DishComponent->GetSpawnPositionAboveStation();
+    DishComponent->SpawnIngredientIn3DByInstanceID(IngredientInstance.InstanceID, SpawnPosition);
     
     // NOTE: Do NOT decrease quantity here - UpdateIngredientSlotQuantity() will be called
     // by SpawnIngredientIn3DByInstanceID, which will call DecreaseQuantity() to keep

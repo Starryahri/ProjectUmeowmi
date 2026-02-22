@@ -151,6 +151,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UMaterialInterface> MaterialInstance;
 
+    // Material for cut surfaces (caps) when chopped/minced; separate from MaterialInstance so caps don't interfere
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    TSoftObjectPtr<UMaterialInterface> CapMaterialInstance;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UStaticMesh> IngredientMesh;
 

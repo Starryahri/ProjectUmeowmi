@@ -1,8 +1,15 @@
 #include "PUIngredientMesh.h"
 #include "Components/StaticMeshComponent.h"
+#include "ProceduralMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "KismetProceduralMeshLibrary.h"
 #include "PUDishCustomizationComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshActor.h"
+#include "PhysicsEngine/BodySetup.h"
+#include "Materials/Material.h"
+#include "MaterialDomain.h"
 
 APUIngredientMesh::APUIngredientMesh()
 {
@@ -30,31 +37,15 @@ void APUIngredientMesh::PostInitializeComponents()
 {
     Super::PostInitializeComponents();
 
-    // Apply physics settings after components are initialized and GEngine is available
-    // This ensures physics settings are applied even if they were skipped during CDO construction
-    // Double-check: ensure we're not in CDO construction AND GEngine is available AND component is not CDO
+    // Do NOT enable physics here - MeshComponent has no mesh yet, which can cause
+    // "Collision Enabled is incompatible" when collision defaults to NoCollision.
+    // Physics is enabled in InitializeWithIngredient (non-chopped) or never (chopped).
     if (MeshComponent && !HasAnyFlags(RF_ClassDefaultObject) && !MeshComponent->HasAnyFlags(RF_ClassDefaultObject) && GEngine)
     {
-        // Enable physics and collision for interactive ingredients
-        MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-        MeshComponent->SetCollisionProfileName(TEXT("PhysicsActor"));
-        MeshComponent->SetGenerateOverlapEvents(true);
-        MeshComponent->SetSimulatePhysics(true);
-        MeshComponent->SetEnableGravity(true);
         MeshComponent->SetMobility(EComponentMobility::Movable);
-        
-        // Add physics damping to make movement less intense
-        MeshComponent->SetLinearDamping(2.0f);
-        MeshComponent->SetAngularDamping(5.0f);
-        
-        // Reduce mass to make ingredients less bouncy
-        MeshComponent->SetMassScale(NAME_None, 0.5f);
-        
-        // Ensure visibility channel is blocked for mouse interaction
-        MeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-        
-        // Enable mouse interaction events
-        MeshComponent->SetNotifyRigidBodyCollision(true);
+        MeshComponent->SetCollisionProfileName(TEXT("PhysicsActor"));
+        MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);  // No mesh yet; InitializeWithIngredient will enable
+        MeshComponent->SetSimulatePhysics(false);
     }
 }
 
@@ -69,10 +60,11 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
         {
             MeshComponent->SetStaticMesh(LoadedMesh);
             
-            // Ensure physics is enabled after setting the mesh
+            // Enable physics and collision (PostInitializeComponents leaves them off until mesh is set)
+            MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
             MeshComponent->SetSimulatePhysics(true);
             MeshComponent->SetEnableGravity(true);
-            MeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            MeshComponent->SetGenerateOverlapEvents(true);
             
             // Re-apply physics damping and mass settings
             MeshComponent->SetLinearDamping(2.0f);
@@ -81,6 +73,7 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
             
             // Re-apply visibility channel collision response for mouse interaction
             MeshComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+            MeshComponent->SetNotifyRigidBodyCollision(true);
         }
     }
 
@@ -102,6 +95,297 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
     OriginalRotation = GetActorRotation();
 }
 
+void APUIngredientMesh::InitializeWithIngredientInstance(const FIngredientInstance& IngredientInstance)
+{
+    IngredientData = IngredientInstance.IngredientData;
+
+    // Check if ingredient has Chop or Mince preparation (both get sliced mesh)
+    static const FGameplayTag PrepChopTag = FGameplayTag::RequestGameplayTag(FName("Prep.Chop"));
+    static const FGameplayTag PrepMinceTag = FGameplayTag::RequestGameplayTag(FName("Prep.Mince"));
+
+    const bool bHasChopPrep = IngredientInstance.IngredientData.ActivePreparations.HasTag(PrepChopTag) ||
+                              IngredientInstance.IngredientData.ActivePreparations.HasTag(PrepMinceTag) ||
+                              IngredientInstance.Preparations.HasTag(PrepChopTag) ||
+                              IngredientInstance.Preparations.HasTag(PrepMinceTag);
+    const bool bIsMinced = IngredientInstance.IngredientData.ActivePreparations.HasTag(PrepMinceTag) ||
+                          IngredientInstance.Preparations.HasTag(PrepMinceTag);
+
+    if (bHasChopPrep && IngredientData.IngredientMesh.IsValid())
+    {
+        UStaticMesh* SourceMesh = IngredientData.IngredientMesh.LoadSynchronous();
+        if (SourceMesh && GetWorld())
+        {
+            bIsChopped = true;
+            MeshComponent->SetVisibility(false);
+            MeshComponent->SetSimulatePhysics(false);  // Must disable before NoCollision to avoid invalid state
+            MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+            // Get material for exterior (resolve with fallbacks)
+            UMaterialInterface* IngredientMaterial = nullptr;
+            if (IngredientData.MaterialInstance.IsValid())
+            {
+                IngredientMaterial = IngredientData.MaterialInstance.LoadSynchronous();
+            }
+            if (!IngredientMaterial && DefaultMaterial)
+            {
+                IngredientMaterial = DefaultMaterial;
+            }
+            if (!IngredientMaterial && SourceMesh)
+            {
+                IngredientMaterial = SourceMesh->GetMaterial(0);
+            }
+            if (!IngredientMaterial)
+            {
+                IngredientMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
+            }
+
+            // Get material for cut surfaces (caps); separate so it doesn't interfere with MaterialInstance
+            UMaterialInterface* CapMaterial = nullptr;
+            if (IngredientData.CapMaterialInstance.IsValid())
+            {
+                CapMaterial = IngredientData.CapMaterialInstance.LoadSynchronous();
+            }
+            if (!CapMaterial)
+            {
+                CapMaterial = IngredientMaterial;  // Fallback to exterior material
+            }
+
+            // Create temporary StaticMeshComponent for copying
+            AStaticMeshActor* TempActor = GetWorld()->SpawnActor<AStaticMeshActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+            if (TempActor)
+            {
+                UStaticMeshComponent* TempComp = TempActor->GetStaticMeshComponent();
+                TempComp->SetMobility(EComponentMobility::Movable);  // Required before SetStaticMesh
+                TempComp->SetStaticMesh(SourceMesh);
+                if (IngredientMaterial)
+                {
+                    TempComp->SetMaterial(0, IngredientMaterial);
+                }
+
+                // Create first procedural mesh and copy from static mesh
+                UProceduralMeshComponent* FirstProcMesh = NewObject<UProceduralMeshComponent>(this);
+                FirstProcMesh->bUseComplexAsSimpleCollision = false;  // Must set BEFORE RegisterComponent
+                FirstProcMesh->SetupAttachment(RootComponent);
+                FirstProcMesh->RegisterComponent();
+
+                // Note: For cooked builds, enable "Allow CPU Access" on the source Static Mesh asset
+                // (Details panel when mesh is selected) to avoid GetSectionFromStaticMesh warnings.
+                UKismetProceduralMeshLibrary::CopyProceduralMeshFromStaticMeshComponent(TempComp, 0, FirstProcMesh, false);
+                TempActor->Destroy();
+
+                // Compute bounds from sections (Bounds may be stale before first render)
+                FBox MeshBounds(ForceInit);
+                for (int32 SecIdx = 0; SecIdx < FirstProcMesh->GetNumSections(); ++SecIdx)
+                {
+                    if (const FProcMeshSection* Sec = FirstProcMesh->GetProcMeshSection(SecIdx))
+                    {
+                        MeshBounds += Sec->SectionLocalBox;
+                    }
+                }
+                if (!MeshBounds.IsValid)
+                {
+                    bIsChopped = false;
+                }
+                else
+                {
+
+                // Add simple box collision (slice requires source collision; ComplexAsSimple is incompatible with physics)
+                FVector Min = MeshBounds.Min, Max = MeshBounds.Max;
+                TArray<FVector> BoxVerts = {
+                    FVector(Min.X, Min.Y, Min.Z), FVector(Max.X, Min.Y, Min.Z), FVector(Max.X, Max.Y, Min.Z), FVector(Min.X, Max.Y, Min.Z),
+                    FVector(Min.X, Min.Y, Max.Z), FVector(Max.X, Min.Y, Max.Z), FVector(Max.X, Max.Y, Max.Z), FVector(Min.X, Max.Y, Max.Z)
+                };
+                FirstProcMesh->AddCollisionConvexMesh(BoxVerts);
+
+                // Slice into 4 pieces (2 perpendicular plane cuts through mesh center)
+                // Use bounds extents to pick axes: slice perpendicular to the two largest dimensions
+                // so the plane always intersects the mesh (avoids BoxCompare==1 where slice is skipped)
+                FVector LocalCenter = MeshBounds.GetCenter();
+                FVector Extent = MeshBounds.GetExtent();
+                FVector WorldCenter = FirstProcMesh->GetComponentToWorld().TransformPosition(LocalCenter);
+                FTransform CompToWorld = FirstProcMesh->GetComponentToWorld();
+                // Pick axes by extent: largest = axis 0, second = axis 1, smallest = axis 2 (for mince)
+                int32 Axis0 = 0, Axis1 = 1, Axis2 = 2;
+                if (Extent.Y >= Extent.X && Extent.Y >= Extent.Z) { Axis0 = 1; Axis1 = (Extent.X >= Extent.Z) ? 0 : 2; }
+                else if (Extent.Z >= Extent.X && Extent.Z >= Extent.Y) { Axis0 = 2; Axis1 = (Extent.X >= Extent.Y) ? 0 : 1; }
+                else { Axis0 = 0; Axis1 = (Extent.Y >= Extent.Z) ? 1 : 2; }
+                for (int32 i = 0; i < 3; ++i) { if (i != Axis0 && i != Axis1) { Axis2 = i; break; } }
+                FVector LocalNorm0(0,0,0); LocalNorm0[Axis0] = 1.f;
+                FVector LocalNorm1(0,0,0); LocalNorm1[Axis1] = 1.f;
+                FVector LocalNorm2(0,0,0); LocalNorm2[Axis2] = 1.f;
+                FVector WorldNormalX = CompToWorld.TransformVectorNoScale(LocalNorm0);
+                FVector WorldNormalY = CompToWorld.TransformVectorNoScale(LocalNorm1);
+                FVector WorldNormalZ = CompToWorld.TransformVectorNoScale(LocalNorm2);
+
+                // First slice - through center, perpendicular to largest extent axis
+                UProceduralMeshComponent* OtherHalf1 = nullptr;
+                UKismetProceduralMeshLibrary::SliceProceduralMesh(
+                    FirstProcMesh,
+                    WorldCenter,
+                    WorldNormalX,
+                    true,
+                    OtherHalf1,
+                    EProcMeshSliceCapOption::CreateNewSectionForCap,
+                    CapMaterial
+                );
+
+                if (OtherHalf1)
+                {
+                    OtherHalf1->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+                }
+
+                // Second slice on first half - through center, perpendicular to Y
+                UProceduralMeshComponent* OtherHalf2 = nullptr;
+                UKismetProceduralMeshLibrary::SliceProceduralMesh(
+                    FirstProcMesh,
+                    WorldCenter,
+                    WorldNormalY,
+                    true,
+                    OtherHalf2,
+                    EProcMeshSliceCapOption::CreateNewSectionForCap,
+                    CapMaterial
+                );
+
+                if (OtherHalf2)
+                {
+                    OtherHalf2->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+                }
+
+                // Second slice on first other half (same plane through world center)
+                UProceduralMeshComponent* OtherHalf3 = nullptr;
+                if (OtherHalf1)
+                {
+                    UKismetProceduralMeshLibrary::SliceProceduralMesh(
+                        OtherHalf1,
+                        WorldCenter,
+                        WorldNormalY,
+                        true,
+                        OtherHalf3,
+                        EProcMeshSliceCapOption::CreateNewSectionForCap,
+                        CapMaterial
+                    );
+                    if (OtherHalf3)
+                    {
+                        OtherHalf3->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+                    }
+                }
+
+                // Mince: third slice (perpendicular to Z) on all 4 pieces -> 8 pieces total
+                TArray<UProceduralMeshComponent*> AllPieces;
+                AllPieces.Add(FirstProcMesh);
+                if (OtherHalf1) AllPieces.Add(OtherHalf1);
+                if (OtherHalf2) AllPieces.Add(OtherHalf2);
+                if (OtherHalf3) AllPieces.Add(OtherHalf3);
+
+                if (bIsMinced)
+                {
+                    TArray<UProceduralMeshComponent*> NewPieces;
+                    for (UProceduralMeshComponent* Piece : AllPieces)
+                    {
+                        if (Piece)
+                        {
+                            UProceduralMeshComponent* OtherHalf = nullptr;
+                            UKismetProceduralMeshLibrary::SliceProceduralMesh(
+                                Piece,
+                                WorldCenter,
+                                WorldNormalZ,
+                                true,
+                                OtherHalf,
+                                EProcMeshSliceCapOption::CreateNewSectionForCap,
+                                CapMaterial
+                            );
+                            if (OtherHalf)
+                            {
+                                OtherHalf->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+                                NewPieces.Add(OtherHalf);
+                            }
+                        }
+                    }
+                    for (UProceduralMeshComponent* P : NewPieces)
+                    {
+                        AllPieces.Add(P);
+                    }
+                }
+
+                // Collect all pieces
+                ChoppedMeshPieces = MoveTemp(AllPieces);
+
+                // Apply physics, collision, and materials to all pieces
+                for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+                {
+                    if (ProcMesh)
+                    {
+                        ProcMesh->bUseComplexAsSimpleCollision = false;
+                        if (UBodySetup* BodySetup = ProcMesh->GetBodySetup())
+                        {
+                            BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseDefault;
+                            BodySetup->InvalidatePhysicsData();
+                        }
+                        ProcMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                        ProcMesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+                        ProcMesh->SetSimulatePhysics(true);
+                        ProcMesh->SetEnableGravity(true);
+                        ProcMesh->SetLinearDamping(2.0f);
+                        ProcMesh->SetAngularDamping(5.0f);
+                        ProcMesh->SetMassScale(NAME_None, 0.15f);
+                        ProcMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+                        ProcMesh->RecreatePhysicsState();
+                        // Force exterior material onto non-cap sections; caps already have CapMaterial from SliceProceduralMesh
+                        for (int32 SecIdx = 0; SecIdx < ProcMesh->GetNumSections(); ++SecIdx)
+                        {
+                            UMaterialInterface* CurrentMat = ProcMesh->GetMaterial(SecIdx);
+                            if (CurrentMat != CapMaterial)
+                            {
+                                ProcMesh->SetMaterial(SecIdx, IngredientMaterial);
+                            }
+                        }
+                        ProcMesh->SetVisibility(true);
+                        ProcMesh->MarkRenderStateDirty();
+                    }
+                }
+                }  // else MeshBounds.IsValid
+            }
+            else
+            {
+                bIsChopped = false;
+            }
+        }
+        else
+        {
+            bIsChopped = false;
+        }
+    }
+
+    if (!bIsChopped)
+    {
+        InitializeWithIngredient(IngredientInstance.IngredientData);
+        return;
+    }
+
+    OriginalPosition = GetActorLocation();
+    OriginalRotation = GetActorRotation();
+}
+
+void APUIngredientMesh::SetIngredientScale(const FVector& Scale)
+{
+    if (bIsChopped)
+    {
+        // Chopped/minced: actor scale doesn't propagate to proc mesh pieces; set scale on each piece directly
+        for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+        {
+            if (ProcMesh)
+            {
+                ProcMesh->SetRelativeScale3D(Scale);
+                ProcMesh->RecreatePhysicsState();  // Collision must update for new scale
+            }
+        }
+    }
+    else
+    {
+        SetActorScale3D(Scale);
+    }
+}
+
 void APUIngredientMesh::OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent)
 {
     //UE_LOG(LogTemp,Display, TEXT("🖱️ Hover BEGIN called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 
@@ -115,7 +399,23 @@ void APUIngredientMesh::OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent)
         // Apply hover material
         if (HoverMaterial)
         {
-            MeshComponent->SetMaterial(0, HoverMaterial);
+            if (bIsChopped)
+            {
+                for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+                {
+                    if (ProcMesh)
+                    {
+                        for (int32 i = 0; i < ProcMesh->GetNumMaterials(); ++i)
+                        {
+                            ProcMesh->SetMaterial(i, HoverMaterial);
+                        }
+                    }
+                }
+            }
+            else if (MeshComponent)
+            {
+                MeshComponent->SetMaterial(0, HoverMaterial);
+            }
         }
         // Lift the ingredient slightly
         FVector NewLocation = GetActorLocation();
@@ -135,16 +435,34 @@ void APUIngredientMesh::OnMouseHoverEnd(UPrimitiveComponent* TouchedComponent)
         //UE_LOG(LogTemp,Display, TEXT("🖱️ Hover END processed on ingredient: %s"), *GetName());
         
         // Restore original material
+        UMaterialInterface* RestoreMaterial = nullptr;
         if (IngredientData.MaterialInstance.IsValid())
         {
-            if (UMaterialInterface* LoadedMaterial = IngredientData.MaterialInstance.LoadSynchronous())
-            {
-                MeshComponent->SetMaterial(0, LoadedMaterial);
-            }
+            RestoreMaterial = IngredientData.MaterialInstance.LoadSynchronous();
         }
-        else if (DefaultMaterial)
+        if (!RestoreMaterial && DefaultMaterial)
         {
-            MeshComponent->SetMaterial(0, DefaultMaterial);
+            RestoreMaterial = DefaultMaterial;
+        }
+        if (RestoreMaterial)
+        {
+            if (bIsChopped)
+            {
+                for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+                {
+                    if (ProcMesh)
+                    {
+                        for (int32 i = 0; i < ProcMesh->GetNumMaterials(); ++i)
+                        {
+                            ProcMesh->SetMaterial(i, RestoreMaterial);
+                        }
+                    }
+                }
+            }
+            else if (MeshComponent)
+            {
+                MeshComponent->SetMaterial(0, RestoreMaterial);
+            }
         }
         // Return to original height smoothly
         FVector NewLocation = GetActorLocation();
@@ -170,22 +488,47 @@ void APUIngredientMesh::OnMouseGrab()
         OriginalPosition = CurrentPos;
         
         // Disable physics while dragging to prevent interference
-        if (MeshComponent)
+        if (bIsChopped)
+        {
+            for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+            {
+                if (ProcMesh)
+                {
+                    ProcMesh->SetSimulatePhysics(false);
+                    ProcMesh->SetEnableGravity(false);
+                    ProcMesh->SetVisibility(true);
+                    ProcMesh->SetHiddenInGame(false);
+                }
+            }
+        }
+        else if (MeshComponent)
         {
             MeshComponent->SetSimulatePhysics(false);
             MeshComponent->SetEnableGravity(false);
-            
-            // Ensure the mesh is still visible
             MeshComponent->SetVisibility(true);
             MeshComponent->SetHiddenInGame(false);
-            
-            //UE_LOG(LogTemp,Display, TEXT("🖱️ [GRAB] Disabled physics, ensured visibility for %s"), *GetName());
         }
         
         // Apply grabbed material
-        if (GrabbedMaterial && MeshComponent)
+        if (GrabbedMaterial)
         {
-            MeshComponent->SetMaterial(0, GrabbedMaterial);
+            if (bIsChopped)
+            {
+                for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+                {
+                    if (ProcMesh)
+                    {
+                        for (int32 i = 0; i < ProcMesh->GetNumMaterials(); ++i)
+                        {
+                            ProcMesh->SetMaterial(i, GrabbedMaterial);
+                        }
+                    }
+                }
+            }
+            else if (MeshComponent)
+            {
+                MeshComponent->SetMaterial(0, GrabbedMaterial);
+            }
         }
         
         // Verify position after changes
@@ -205,24 +548,56 @@ void APUIngredientMesh::OnMouseRelease()
         bIsGrabbed = false;
         
         // Re-enable physics after dragging with gentle release
-        MeshComponent->SetSimulatePhysics(true);
-        MeshComponent->SetEnableGravity(true);
-        
-        // Apply gentle physics settings for smoother release
-        MeshComponent->SetLinearDamping(3.0f);      // Higher damping for release
-        MeshComponent->SetAngularDamping(8.0f);    // Higher angular damping for release
-        
-        // Restore original material
-        if (IngredientData.MaterialInstance.IsValid())
+        if (bIsChopped)
         {
-            if (UMaterialInterface* LoadedMaterial = IngredientData.MaterialInstance.LoadSynchronous())
+            for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
             {
-                MeshComponent->SetMaterial(0, LoadedMaterial);
+                if (ProcMesh)
+                {
+                    ProcMesh->SetSimulatePhysics(true);
+                    ProcMesh->SetEnableGravity(true);
+                    ProcMesh->SetLinearDamping(3.0f);
+                    ProcMesh->SetAngularDamping(8.0f);
+                }
             }
         }
-        else if (DefaultMaterial)
+        else if (MeshComponent)
         {
-            MeshComponent->SetMaterial(0, DefaultMaterial);
+            MeshComponent->SetSimulatePhysics(true);
+            MeshComponent->SetEnableGravity(true);
+            MeshComponent->SetLinearDamping(3.0f);
+            MeshComponent->SetAngularDamping(8.0f);
+        }
+        
+        // Restore original material
+        UMaterialInterface* RestoreMaterial = nullptr;
+        if (IngredientData.MaterialInstance.IsValid())
+        {
+            RestoreMaterial = IngredientData.MaterialInstance.LoadSynchronous();
+        }
+        if (!RestoreMaterial && DefaultMaterial)
+        {
+            RestoreMaterial = DefaultMaterial;
+        }
+        if (RestoreMaterial)
+        {
+            if (bIsChopped)
+            {
+                for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+                {
+                    if (ProcMesh)
+                    {
+                        for (int32 i = 0; i < ProcMesh->GetNumMaterials(); ++i)
+                        {
+                            ProcMesh->SetMaterial(i, RestoreMaterial);
+                        }
+                    }
+                }
+            }
+            else if (MeshComponent)
+            {
+                MeshComponent->SetMaterial(0, RestoreMaterial);
+            }
         }
         
         // Update original position and rotation
@@ -286,7 +661,18 @@ void APUIngredientMesh::UpdatePosition(const FVector& NewPosition)
     {
         // Ensure the actor is still visible
         SetActorHiddenInGame(false);
-        if (MeshComponent)
+        if (bIsChopped)
+        {
+            for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+            {
+                if (ProcMesh)
+                {
+                    ProcMesh->SetVisibility(true);
+                    ProcMesh->SetHiddenInGame(false);
+                }
+            }
+        }
+        else if (MeshComponent)
         {
             MeshComponent->SetVisibility(true);
             MeshComponent->SetHiddenInGame(false);

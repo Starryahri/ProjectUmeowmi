@@ -1600,9 +1600,9 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - START - Ingredient %s at position (%.2f,%.2f,%.2f)"), 
     //    *IngredientTag.ToString(), WorldPosition.X, WorldPosition.Y, WorldPosition.Z);
 
-    if (!bPlatingMode)
+    if (!CanSpawnIngredientsIn3D())
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Not in plating mode"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Cannot spawn (not in cooking or plating stage)"));
         return;
     }
 
@@ -1658,9 +1658,9 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID(int32 Instan
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - START - InstanceID %d at position (%.2f,%.2f,%.2f)"), 
     //    InstanceID, WorldPosition.X, WorldPosition.Y, WorldPosition.Z);
 
-    if (!bPlatingMode)
+    if (!CanSpawnIngredientsIn3D())
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Not in plating mode"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Cannot spawn (not in cooking or plating stage)"));
         return;
     }
 
@@ -1721,6 +1721,53 @@ void UPUDishCustomizationComponent::SetPlatingMode(bool bInPlatingMode)
 bool UPUDishCustomizationComponent::IsPlatingMode() const
 {
     return bPlatingMode;
+}
+
+bool UPUDishCustomizationComponent::CanSpawnIngredientsIn3D() const
+{
+    // Allow spawning in both plating and cooking stages
+    if (bPlatingMode)
+    {
+        return true;
+    }
+    // Check if we're in cooking stage (active widget has Cooking stage type)
+    if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        return DishWidget->GetStageType() == EDishCustomizationStageType::Cooking;
+    }
+    return false;
+}
+
+FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
+{
+    AActor* OwnerActor = GetOwner();
+    if (!OwnerActor)
+    {
+        return FVector::ZeroVector;
+    }
+
+    FVector StationLocation = OwnerActor->GetActorLocation();
+    FBox StationBoundsBox = OwnerActor->GetComponentsBoundingBox();
+    FVector StationBounds = StationBoundsBox.GetSize();
+
+    // Try to find DishContainer mesh component for more accurate height
+    TArray<UStaticMeshComponent*> MeshComponents;
+    OwnerActor->GetComponents<UStaticMeshComponent>(MeshComponents);
+    for (UStaticMeshComponent* MeshComp : MeshComponents)
+    {
+        if (MeshComp && MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
+        {
+            FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
+            float SurfaceHeight = DishBounds.Origin.Z + (DishBounds.BoxExtent.Z * 0.5f);
+            // Spawn above center of pan, with offset for ingredients to fall in
+            return FVector(StationBoundsBox.GetCenter().X, StationBoundsBox.GetCenter().Y, SurfaceHeight + 30.0f);
+        }
+    }
+
+    // Fallback: use station bounds center + half height + offset
+    FVector Center = StationBoundsBox.GetCenter();
+    float SurfaceHeight = Center.Z + (StationBounds.Z * 0.5f);
+    return FVector(Center.X, Center.Y, SurfaceHeight + 30.0f);
 }
 
 void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& DishData)
@@ -1911,30 +1958,45 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
 
     // Use the WorldPosition that was already converted from screen coordinates
     // Add an offset above the surface to ensure ingredients are visible and clickable
-    // Since ingredients have physics, they'll settle naturally on the surface
-    FVector SpawnPosition = WorldPosition + FVector(0, 0, 20); // Offset above the surface for visibility and clickability
+    // Scale the offset so larger ingredients spawn higher; smaller ones lower
+    FVector InstanceScale = (IngredientInstance.PlatingScale.SizeSquared() > KINDA_SMALL_NUMBER)
+        ? IngredientInstance.PlatingScale : FVector::OneVector;
+    FVector EffectiveScale = IngredientMeshScale * InstanceScale;
+    float ScaleFactor = FMath::Max(EffectiveScale.GetMax(), 0.01f);  // Avoid zero
+    FVector SpawnPosition = WorldPosition + FVector(0, 0, 20 * ScaleFactor);
 
     // Spawn the interactive ingredient mesh actor
     FActorSpawnParameters SpawnParams;
     SpawnParams.Owner = OwnerActor;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-    APUIngredientMesh* SpawnedIngredient = World->SpawnActor<APUIngredientMesh>(APUIngredientMesh::StaticClass(), SpawnPosition, FRotator::ZeroRotator, SpawnParams);
+    UClass* MeshClass = IngredientMeshClass ? IngredientMeshClass.Get() : APUIngredientMesh::StaticClass();
+    APUIngredientMesh* SpawnedIngredient = World->SpawnActor<APUIngredientMesh>(MeshClass, SpawnPosition, FRotator::ZeroRotator, SpawnParams);
     
     if (SpawnedIngredient)
     {
-        // Initialize the ingredient with its data
-        SpawnedIngredient->InitializeWithIngredient(IngredientInstance.IngredientData);
+        // Initialize with full instance data (handles chopped preparation via procedural mesh slicing)
+        SpawnedIngredient->InitializeWithIngredientInstance(IngredientInstance);
         
-        // Set the mesh manually if needed
-        UStaticMeshComponent* MeshComponent = SpawnedIngredient->FindComponentByClass<UStaticMeshComponent>();
-        if (MeshComponent && IngredientMesh)
+        // Set mesh for non-chopped case (InitializeWithIngredientInstance handles chopped)
+        if (!SpawnedIngredient->IsChopped())
         {
-            MeshComponent->SetStaticMesh(IngredientMesh);
+            UStaticMeshComponent* MeshComp = SpawnedIngredient->FindComponentByClass<UStaticMeshComponent>();
+            if (MeshComp && IngredientMesh)
+            {
+                MeshComp->SetMobility(EComponentMobility::Movable);
+                MeshComp->SetStaticMesh(IngredientMesh);
+                // Re-apply collision/physics after SetStaticMesh (mesh asset can override to incompatible state)
+                MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                MeshComp->SetCollisionProfileName(TEXT("PhysicsActor"));
+                MeshComp->SetSimulatePhysics(true);
+                MeshComp->SetGenerateOverlapEvents(true);
+                MeshComp->SetNotifyRigidBodyCollision(true);
+            }
         }
         
-        // Scale the ingredient using the configurable scale
-        SpawnedIngredient->SetActorScale3D(IngredientMeshScale);
+        // Scale the ingredient; for chopped/minced, must set scale on proc mesh pieces directly (actor scale doesn't propagate)
+        SpawnedIngredient->SetIngredientScale(EffectiveScale);
         
         // Track the spawned mesh for cleanup
         SpawnedIngredientMeshes.Add(SpawnedIngredient);

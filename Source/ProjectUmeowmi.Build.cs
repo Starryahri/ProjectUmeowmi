@@ -19,7 +19,8 @@ public class ProjectUmeowmi : ModuleRules
 			"RadarChart",
 			"GameplayTags",
 			"Slate",
-			"SlateCore"
+			"SlateCore",
+			"ProceduralMeshComponent"
 		});
         PrivateDependencyModuleNames.AddRange(new string[] { "DlgSystem" });
     }
