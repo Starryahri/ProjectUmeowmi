@@ -23,6 +23,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "PUIngredientMesh.h"
 #include "Camera/CameraActor.h"
+#include "Framework/Application/SlateApplication.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -149,6 +150,7 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
 
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
     CurrentCharacter = Character;
+    bWasMouseDown = false;  // Reset for clean state when entering customization
 
     // Hide HUD while customizing (WBP_HUD).
     SetHUDVisible(false);
@@ -273,6 +275,9 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         {
             //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No MouseClickAction set"));
         }
+
+        // Slate pre-input listener: fires BEFORE widgets consume the click (bypasses widget blocking)
+        PreInputMouseDownHandle = FSlateApplication::Get().OnApplicationMousePreInputButtonDownListener().AddUObject(this, &UPUDishCustomizationComponent::OnPreInputMouseButtonDown);
 
         // Bind stage navigation actions
         if (NextStageAction)
@@ -439,6 +444,8 @@ void UPUDishCustomizationComponent::EndCustomization()
         EndPlatingStage();
     }
 
+    bWasMouseDown = false;  // Reset for clean state when exiting
+
     // Get the player controller
     APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
     if (PlayerController)
@@ -448,6 +455,13 @@ void UPUDishCustomizationComponent::EndCustomization()
         PlayerController->bEnableClickEvents = true;
         PlayerController->CurrentMouseCursor = EMouseCursor::Default;
 
+        // Unregister Slate pre-input listener (must remove before component becomes invalid)
+        if (PreInputMouseDownHandle.IsValid())
+        {
+            FSlateApplication::Get().OnApplicationMousePreInputButtonDownListener().Remove(PreInputMouseDownHandle);
+            PreInputMouseDownHandle.Reset();
+        }
+
         // Unbind the controller mouse action first
         if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerController->InputComponent))
         {
@@ -455,6 +469,10 @@ void UPUDishCustomizationComponent::EndCustomization()
             {
                 EnhancedInputComponent->RemoveBindingByHandle(ControllerMouseBindingHandle);
                 //UE_LOG(LogTemp,Log, TEXT("Unbound controller mouse action"));
+            }
+            if (MouseClickAction)
+            {
+                EnhancedInputComponent->RemoveBindingByHandle(MouseClickBindingHandle);
             }
             if (ExitCustomizationAction)
             {
@@ -906,6 +924,16 @@ void UPUDishCustomizationComponent::HandleControllerMouse(const FInputActionValu
     float VerifyX, VerifyY;
     PlayerController->GetMousePosition(VerifyX, VerifyY);
     //UE_LOG(LogTemp,Log, TEXT("HandleControllerMouse - Verified mouse position: X=%.2f, Y=%.2f"), VerifyX, VerifyY);
+}
+
+void UPUDishCustomizationComponent::OnPreInputMouseButtonDown(const FPointerEvent& MouseEvent)
+{
+    // Fires BEFORE Slate widgets consume the click - bypasses widget blocking
+    if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !CanSpawnIngredientsIn3D() || !CurrentCharacter)
+    {
+        return;
+    }
+    HandleMouseClick(FInputActionValue());
 }
 
 void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Value)

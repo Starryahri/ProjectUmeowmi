@@ -335,6 +335,7 @@ protected:
     uint32 ExitActionBindingHandle;
     uint32 ControllerMouseBindingHandle;
     uint32 MouseClickBindingHandle;
+    FDelegateHandle PreInputMouseDownHandle;  // Slate pre-input listener (bypasses widget consumption)
     uint32 NextStageBindingHandle;
     uint32 PreviousStageBindingHandle;
 
@@ -399,6 +400,7 @@ private:
     // Input handling
     void HandleExitInput();
     void HandleControllerMouse(const FInputActionValue& Value);
+    void OnPreInputMouseButtonDown(const struct FPointerEvent& MouseEvent);  // Slate pre-input (before widgets consume)
     void HandleMouseClick(const FInputActionValue& Value);
     void HandleMouseRelease(const FInputActionValue& Value);
     void HandleNextStage();

@@ -5,7 +5,9 @@
 #include "DishCustomization/PUIngredientBase.h"
 #include "DishCustomization/PUDishBlueprintLibrary.h"
 #include "UI/PUPopupWidget.h"
+#include "DishCustomization/PUDishCustomizationComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "EngineUtils.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Framework/Application/SlateApplication.h"
@@ -847,22 +849,39 @@ void UPUProjectUmeowmiGameInstance::NotifyPopupClosed(FName ButtonID)
 
 void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 {
-	// Restore input if it was blocked (for modal popups)
+	// Restore input after popup closes - must use GameAndUI with DoNotLock (FInputModeGameOnly
+	// would switch to LockOnCapture/CapturePermanently and break mouse in customization).
 	UWorld* World = GetWorld();
 	if (World)
 	{
 		APlayerController* PlayerController = World->GetFirstPlayerController();
 		if (PlayerController)
 		{
-			// Restore input (safe to call even if not blocked)
-			PlayerController->SetIgnoreMoveInput(false);
-			PlayerController->SetIgnoreLookInput(false);
-			
-			// Restore game input mode
-			FInputModeGameOnly InputMode;
+			// Check if we're in dish customization (cooking/plating) - if so, keep move/look blocked
+			bool bInCustomization = false;
+			for (TActorIterator<AActor> It(World); It; ++It)
+			{
+				if (UPUDishCustomizationComponent* DishComp = It->FindComponentByClass<UPUDishCustomizationComponent>())
+				{
+					if (DishComp->IsCustomizing())
+					{
+						bInCustomization = true;
+						break;
+					}
+				}
+			}
+
+			PlayerController->SetIgnoreMoveInput(bInCustomization);
+			PlayerController->SetIgnoreLookInput(bInCustomization);
+
+			// GameAndUI + DoNotLock: allows free mouse for UI and 3D ingredient interaction
+			FInputModeGameAndUI InputMode;
+			InputMode.SetWidgetToFocus(nullptr);
+			InputMode.SetHideCursorDuringCapture(false);
+			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 			PlayerController->SetInputMode(InputMode);
-			// Note: Don't force mouse cursor off - let the game decide
-			
+			PlayerController->bShowMouseCursor = true;
+
 			UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed - Input restored"));
 		}
 	}
