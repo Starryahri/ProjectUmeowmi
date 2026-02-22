@@ -77,8 +77,8 @@ void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngr
         }
     }
 
-    // Set the material
-    if (IngredientData.MaterialInstance.IsValid())
+    // Set the material (use ToSoftObjectPath().IsNull() fallback - soft ptrs may not be valid until loaded)
+    if (IngredientData.MaterialInstance.IsValid() || !IngredientData.MaterialInstance.ToSoftObjectPath().IsNull())
     {
         if (UMaterialInterface* LoadedMaterial = IngredientData.MaterialInstance.LoadSynchronous())
         {
@@ -122,7 +122,7 @@ void APUIngredientMesh::InitializeWithIngredientInstance(const FIngredientInstan
 
             // Get material for exterior (resolve with fallbacks)
             UMaterialInterface* IngredientMaterial = nullptr;
-            if (IngredientData.MaterialInstance.IsValid())
+            if (IngredientData.MaterialInstance.IsValid() || !IngredientData.MaterialInstance.ToSoftObjectPath().IsNull())
             {
                 IngredientMaterial = IngredientData.MaterialInstance.LoadSynchronous();
             }
@@ -139,9 +139,9 @@ void APUIngredientMesh::InitializeWithIngredientInstance(const FIngredientInstan
                 IngredientMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
             }
 
-            // Get material for cut surfaces (caps); separate so it doesn't interfere with MaterialInstance
+            // Get material for cut surfaces (caps); use ToSoftObjectPath().IsNull() fallback - soft ptrs may not be valid until loaded (same as prepped UI)
             UMaterialInterface* CapMaterial = nullptr;
-            if (IngredientData.CapMaterialInstance.IsValid())
+            if (IngredientData.CapMaterialInstance.IsValid() || !IngredientData.CapMaterialInstance.ToSoftObjectPath().IsNull())
             {
                 CapMaterial = IngredientData.CapMaterialInstance.LoadSynchronous();
             }
@@ -436,7 +436,7 @@ void APUIngredientMesh::OnMouseHoverEnd(UPrimitiveComponent* TouchedComponent)
         
         // Restore original material
         UMaterialInterface* RestoreMaterial = nullptr;
-        if (IngredientData.MaterialInstance.IsValid())
+        if (IngredientData.MaterialInstance.IsValid() || !IngredientData.MaterialInstance.ToSoftObjectPath().IsNull())
         {
             RestoreMaterial = IngredientData.MaterialInstance.LoadSynchronous();
         }
@@ -571,7 +571,7 @@ void APUIngredientMesh::OnMouseRelease()
         
         // Restore original material
         UMaterialInterface* RestoreMaterial = nullptr;
-        if (IngredientData.MaterialInstance.IsValid())
+        if (IngredientData.MaterialInstance.IsValid() || !IngredientData.MaterialInstance.ToSoftObjectPath().IsNull())
         {
             RestoreMaterial = IngredientData.MaterialInstance.LoadSynchronous();
         }

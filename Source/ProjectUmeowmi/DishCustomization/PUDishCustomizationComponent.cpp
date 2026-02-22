@@ -1822,6 +1822,21 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     
     // Update the current dish data
     CurrentDishData = DishData;
+
+    // Preload cap and material instances for procedural mesh ingredients (same pattern as prepped UI)
+    // Ensures they're in memory before spawning - fixes materials not loading on game restart
+    for (const FIngredientInstance& Instance : CurrentDishData.IngredientInstances)
+    {
+        const FPUIngredientBase& Ing = Instance.IngredientData;
+        if (Ing.CapMaterialInstance.IsValid() || !Ing.CapMaterialInstance.ToSoftObjectPath().IsNull())
+        {
+            Ing.CapMaterialInstance.LoadSynchronous();
+        }
+        if (Ing.MaterialInstance.IsValid() || !Ing.MaterialInstance.ToSoftObjectPath().IsNull())
+        {
+            Ing.MaterialInstance.LoadSynchronous();
+        }
+    }
     
     // Switch to plating widget class if available
     if (PlatingWidgetClass)
