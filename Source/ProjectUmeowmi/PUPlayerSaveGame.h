@@ -30,6 +30,11 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	TSet<FName> CompletedDialogueNames;
 
+	// Unlocked level transition IDs (LockID set on APULevelTransition actors)
+	// When a transition has a LockID, it's locked until UnlockLevelTransition is called
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	TSet<FName> UnlockedLevelTransitionIDs;
+
 	// Save version for future migration support
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	int32 SaveVersion = 1;

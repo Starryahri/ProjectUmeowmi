@@ -151,8 +151,7 @@ void ATalkingObject::StartInteraction()
     if (CanInteract())
     {
         //UE_LOG(LogTemp,Log, TEXT("TalkingObject::StartInteraction - Starting interaction"));
-        bIsInteracting = true;
-        StartRandomDialogue();
+        StartDialogueAndSetInteracting(GetRandomDialogue());
     }
     else
     {
@@ -190,6 +189,15 @@ void ATalkingObject::StartRandomDialogue()
 {
     if (UDlgDialogue* Dialogue = GetRandomDialogue())
     {
+        StartSpecificDialogue(Dialogue);
+    }
+}
+
+void ATalkingObject::StartDialogueAndSetInteracting(UDlgDialogue* Dialogue)
+{
+    if (Dialogue)
+    {
+        bIsInteracting = true;
         StartSpecificDialogue(Dialogue);
     }
 }

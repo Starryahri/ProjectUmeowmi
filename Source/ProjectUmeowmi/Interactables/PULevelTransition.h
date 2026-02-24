@@ -4,6 +4,8 @@
 #include "../Dialogue/TalkingObject.h"
 #include "PULevelTransition.generated.h"
 
+class UDlgDialogue;
+
 UCLASS()
 class PROJECTUMEOWMI_API APULevelTransition : public ATalkingObject
 {
@@ -28,6 +30,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level Transition")
 	FString TargetLevelName;
 
+	// Lock ID - if set, this transition is locked until UnlockLevelTransition(LockID) is called on the GameInstance.
+	// Leave as None for transitions that are always available.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level Transition")
+	FName LockID;
+
+	// Dialogue to show when the transition is locked. When the player interacts with a locked transition, this dialogue starts instead.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level Transition")
+	TObjectPtr<UDlgDialogue> LockedDialogue;
+
 	// The spawn point tag/ID in the target level
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Level Transition")
 	FName TargetSpawnPointTag;
@@ -44,6 +55,10 @@ protected:
 	UFUNCTION()
 	void OnTransitionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	/** Returns true if this transition is unlocked (no LockID, or LockID is in GameInstance's unlocked set) */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
+	bool IsUnlocked() const;
 
 private:
 	// Helper to perform the actual transition

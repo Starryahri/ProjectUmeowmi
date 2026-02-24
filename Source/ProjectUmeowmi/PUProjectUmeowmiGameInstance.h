@@ -206,6 +206,30 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue State")
 	bool IsDialogueCompleted(const FName& DialogueName) const;
 
+	// Level Transition Lock System
+	/**
+	 * Unlock a level transition by its LockID.
+	 * Can be called from anywhere (dialogue, Blueprint, C++).
+	 * @param LockID - The LockID set on the APULevelTransition actor
+	 * @return True if the transition was unlocked (or was already unlocked)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Level Transition")
+	bool UnlockLevelTransition(const FName& LockID);
+
+	/**
+	 * Check if a level transition is unlocked
+	 * @param LockID - The LockID set on the APULevelTransition actor
+	 * @return True if the transition is unlocked (or LockID is NAME_None)
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
+	bool IsLevelTransitionUnlocked(const FName& LockID) const;
+
+	/**
+	 * Get all unlocked level transition IDs
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
+	TSet<FName> GetUnlockedLevelTransitions() const { return UnlockedLevelTransitionIDs; }
+
 	// Popup Manager System
 	// Delegate for popup button callbacks (declared before use)
 	DECLARE_DYNAMIC_DELEGATE_OneParam(FOnPopupClosed, FName, ButtonID);
@@ -316,6 +340,10 @@ protected:
 	// Dialogue State (stubbed for future use)
 	UPROPERTY(BlueprintReadOnly, Category = "Dialogue State")
 	TSet<FName> CompletedDialogueNames;
+
+	// Level Transition Lock System - IDs that have been unlocked (persisted to save)
+	UPROPERTY(BlueprintReadOnly, Category = "Level Transition")
+	TSet<FName> UnlockedLevelTransitionIDs;
 
 	// Save Game Reference
 	UPROPERTY()

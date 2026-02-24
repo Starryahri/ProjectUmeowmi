@@ -469,6 +469,7 @@ bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 	PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
 	PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 	PlayerSaveGame->CompletedDialogueNames = CompletedDialogueNames;
+	PlayerSaveGame->UnlockedLevelTransitionIDs = UnlockedLevelTransitionIDs;
 
 	// Save to disk
 	if (UGameplayStatics::SaveGameToSlot(PlayerSaveGame, SlotName, 0))
@@ -509,6 +510,7 @@ bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
 	UnlockedIngredientTags = PlayerSaveGame->UnlockedIngredientTags;
 	UnlockedDishTags = PlayerSaveGame->UnlockedDishTags;
 	CompletedDialogueNames = PlayerSaveGame->CompletedDialogueNames;
+	UnlockedLevelTransitionIDs = PlayerSaveGame->UnlockedLevelTransitionIDs;
 
 	// Migration: old saves may not have UnlockedDishTags; initialize from StartingDishTags if empty
 	if (UnlockedDishTags.Num() == 0 && StartingDishTags.Num() > 0)
@@ -541,11 +543,12 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Keeping existing save file"));
 	}
 
-	// Clear all unlocked ingredients, dishes, and dialogue states FIRST
+	// Clear all unlocked ingredients, dishes, dialogue states, and level transitions FIRST
 	UnlockedIngredientTags.Empty();
 	UnlockedDishTags.Empty();
 	CurrentDishTag = FGameplayTag();
 	CompletedDialogueNames.Empty();
+	UnlockedLevelTransitionIDs.Empty();
 	
 	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Cleared all unlocked ingredients and dishes"));
 
@@ -564,6 +567,7 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
 		PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 		PlayerSaveGame->CompletedDialogueNames.Empty();
+		PlayerSaveGame->UnlockedLevelTransitionIDs.Empty();
 		PlayerSaveGame->SaveVersion = 1;
 
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Save game object created"));
@@ -634,6 +638,39 @@ bool UPUProjectUmeowmiGameInstance::IsDialogueCompleted(const FName& DialogueNam
 	}
 
 	return CompletedDialogueNames.Contains(DialogueName);
+}
+
+// Level Transition Lock System
+bool UPUProjectUmeowmiGameInstance::UnlockLevelTransition(const FName& LockID)
+{
+	if (LockID == NAME_None)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::UnlockLevelTransition - Invalid LockID (NAME_None)"));
+		return false;
+	}
+
+	if (UnlockedLevelTransitionIDs.Contains(LockID))
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockLevelTransition - Level transition %s is already unlocked"), *LockID.ToString());
+		return true;
+	}
+
+	UnlockedLevelTransitionIDs.Add(LockID);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockLevelTransition - Unlocked level transition: %s"), *LockID.ToString());
+
+	SaveGame();
+	return true;
+}
+
+bool UPUProjectUmeowmiGameInstance::IsLevelTransitionUnlocked(const FName& LockID) const
+{
+	// No LockID means always unlocked
+	if (LockID == NAME_None)
+	{
+		return true;
+	}
+
+	return UnlockedLevelTransitionIDs.Contains(LockID);
 }
 
 // Popup Manager System
