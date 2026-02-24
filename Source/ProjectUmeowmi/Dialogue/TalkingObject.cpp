@@ -30,9 +30,9 @@ ATalkingObject::ATalkingObject()
     InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereBeginOverlap);
     InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereEndOverlap);
 
-    // Create and setup the widget component
+    // Create and setup the widget component (attached to sphere so it follows the interaction range position)
     InteractionWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidget"));
-    InteractionWidget->SetupAttachment(RootComponent);
+    InteractionWidget->SetupAttachment(InteractionSphere);
     InteractionWidget->SetWidgetSpace(EWidgetSpace::Screen);
     InteractionWidget->SetVisibility(false);
 }
@@ -40,6 +40,9 @@ ATalkingObject::ATalkingObject()
 void ATalkingObject::PostInitializeComponents()
 {
     Super::PostInitializeComponents();
+
+    // Sync sphere radius to InteractionRange (derived class constructors have run, Blueprint defaults applied for instances)
+    SyncInteractionSphereToRange();
 
     // Set collision profile after GEngine is initialized (safe from CDO construction)
     // Double-check: ensure we're not in CDO construction AND GEngine is available AND component is not CDO
@@ -49,9 +52,25 @@ void ATalkingObject::PostInitializeComponents()
     }
 }
 
+#if WITH_EDITOR
+void ATalkingObject::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    const FName PropertyName = PropertyChangedEvent.GetPropertyName();
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(ATalkingObject, InteractionRange))
+    {
+        SyncInteractionSphereToRange();
+    }
+}
+#endif
+
 void ATalkingObject::BeginPlay()
 {
     Super::BeginPlay();
+
+    // Sync sphere radius and widget position to InteractionRange (handles Blueprint overrides and derived class values)
+    SyncInteractionSphereToRange();
 
     // Create the widget instance
     if (InteractionWidgetClass)
@@ -465,6 +484,14 @@ void ATalkingObject::ToggleDebugVisualization()
 }
 
 // Helper methods
+void ATalkingObject::SyncInteractionSphereToRange()
+{
+    if (InteractionSphere)
+    {
+        InteractionSphere->SetSphereRadius(InteractionRange);
+    }
+}
+
 void ATalkingObject::UpdateInteractionWidget()
 {
     if (!InteractionWidget)
@@ -531,22 +558,23 @@ void ATalkingObject::ResetUsedDialogues()
 
 void ATalkingObject::DrawDebugRange() const
 {
-    if (!bShowDebugRange)
+    if (!bShowDebugRange || !InteractionSphere)
     {
         return;
     }
 
-    const FVector Location = GetActorLocation();
+    const FVector Location = InteractionSphere->GetComponentLocation();
+    const float Radius = InteractionSphere->GetScaledSphereRadius();
     const FColor DebugColor = FColor::Green;
     const float LifeTime = -1.0f;
     const uint8 DepthPriority = 0;
     const float Thickness = 2.0f;
 
-    // Draw the interaction range sphere
+    // Draw the interaction range sphere (uses actual sphere position and radius)
     DrawDebugSphere(
         GetWorld(),
         Location,
-        InteractionRange,
+        Radius,
         32, // Number of segments
         DebugColor,
         false,

@@ -39,6 +39,9 @@ public:
     virtual void BeginPlay() override;
     virtual void PostInitializeComponents() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
     
     // We'll keep Tick for now but mark it as virtual so we can override it in derived classes if needed
     virtual void Tick(float DeltaTime) override;
@@ -159,6 +162,8 @@ private:
 
     // Helper methods
     void UpdateInteractionWidget();
+    /** Syncs the interaction sphere radius and widget attachment to match InteractionRange. Call when InteractionRange may have changed. */
+    void SyncInteractionSphereToRange();
     UDlgDialogue* GetRandomDialogue() const;
     void ResetUsedDialogues();
     void DrawDebugRange() const;

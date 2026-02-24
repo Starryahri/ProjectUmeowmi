@@ -10,15 +10,9 @@ APULevelTransition::APULevelTransition()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// Configure talking-object defaults
+	// Configure talking-object defaults (sphere radius synced by base TalkingObject::SyncInteractionSphereToRange)
 	ObjectType = ETalkingObjectType::System;
 	InteractionRange = 250.0f;
-
-	// Make sure the interaction sphere uses our range
-	if (InteractionSphere)
-	{
-		InteractionSphere->SetSphereRadius(InteractionRange);
-	}
 
 	// Default values
 	bAutoTrigger = false;
