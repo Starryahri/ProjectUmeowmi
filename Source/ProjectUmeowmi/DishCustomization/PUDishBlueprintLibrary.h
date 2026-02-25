@@ -149,4 +149,19 @@ public:
     // Removes "Ingredient." prefix, converts to lowercase, and removes all periods
     // Example: "Ingredient.Noodle.Bihon" -> "noodlebihon"
     static FName GetIngredientRowNameFromTag(const FGameplayTag& IngredientTag);
+
+    /**
+     * Get the loaded journal texture for a dish. Use this instead of Dish.JournalTexture directly,
+     * since JournalTexture is a TSoftObjectPtr and must be explicitly loaded (unlike prep stage
+     * icons which use direct UTexture2D* references). Call this when displaying the recipe
+     * illustration in the journal - no need to open the texture in the editor first.
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Visual", meta = (DisplayName = "Get Loaded Journal Texture"))
+    static UTexture2D* GetLoadedJournalTexture(const FPUDishBase& Dish);
+
+    /**
+     * Get the loaded preview texture for a dish. Same as GetLoadedJournalTexture but for PreviewTexture.
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Visual", meta = (DisplayName = "Get Loaded Preview Texture"))
+    static UTexture2D* GetLoadedPreviewTexture(const FPUDishBase& Dish);
 }; 

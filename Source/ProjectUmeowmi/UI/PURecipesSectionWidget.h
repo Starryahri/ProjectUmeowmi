@@ -7,6 +7,7 @@
 #include "PURecipesSectionWidget.generated.h"
 
 class UVerticalBox;
+class UImage;
 class UPURecipeIngredientEntryWidget;
 struct FPUDishBase;
 
@@ -33,4 +34,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Journal|Recipes")
 	void PopulateIngredientsList(UVerticalBox* Container, const FPUDishBase& DishData,
 		TSubclassOf<UPURecipeIngredientEntryWidget> EntryWidgetClass = nullptr);
+
+	/**
+	 * Set the recipe illustration image from dish data. Use this instead of binding directly to
+	 * DishData.JournalTexture - the journal texture is a soft reference and must be loaded
+	 * explicitly (like prep stage does with LoadSynchronous for materials). This ensures the
+	 * texture displays correctly without having to open it in the editor first.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Journal|Recipes")
+	void SetRecipeIllustration(UImage* Image, const FPUDishBase& DishData);
 };

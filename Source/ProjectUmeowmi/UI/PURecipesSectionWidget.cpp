@@ -3,7 +3,9 @@
 #include "PURecipesSectionWidget.h"
 #include "PURecipeIngredientEntryWidget.h"
 #include "../DishCustomization/PUDishBase.h"
+#include "../DishCustomization/PUDishBlueprintLibrary.h"
 #include "Components/VerticalBox.h"
+#include "Components/Image.h"
 #include "Blueprint/UserWidget.h"
 
 UPURecipesSectionWidget::UPURecipesSectionWidget(const FObjectInitializer& ObjectInitializer)
@@ -39,5 +41,16 @@ void UPURecipesSectionWidget::PopulateIngredientsList(UVerticalBox* Container, c
 			Entry->SetData(DisplayName, false);
 			Container->AddChild(Entry);
 		}
+	}
+}
+
+void UPURecipesSectionWidget::SetRecipeIllustration(UImage* Image, const FPUDishBase& DishData)
+{
+	if (!Image) return;
+
+	UTexture2D* LoadedTexture = UPUDishBlueprintLibrary::GetLoadedJournalTexture(DishData);
+	if (LoadedTexture)
+	{
+		Image->SetBrushFromTexture(LoadedTexture);
 	}
 }

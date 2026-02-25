@@ -3,6 +3,7 @@
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
 #include "../UI/PUDishCustomizationWidget.h"
+#include "Engine/Texture2D.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid startup/on-screen spam).
 namespace
@@ -744,4 +745,16 @@ void UPUDishBlueprintLibrary::ClearIngredientPlating(FPUDishBase& Dish, int32 In
 bool UPUDishBlueprintLibrary::GetIngredientPlating(const FPUDishBase& Dish, int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale)
 {
     return Dish.GetIngredientPlating(InstanceID, OutPosition, OutRotation, OutScale);
+}
+
+UTexture2D* UPUDishBlueprintLibrary::GetLoadedJournalTexture(const FPUDishBase& Dish)
+{
+    if (Dish.JournalTexture.IsNull()) return nullptr;
+    return Dish.JournalTexture.LoadSynchronous();
+}
+
+UTexture2D* UPUDishBlueprintLibrary::GetLoadedPreviewTexture(const FPUDishBase& Dish)
+{
+    if (Dish.PreviewTexture.IsNull()) return nullptr;
+    return Dish.PreviewTexture.LoadSynchronous();
 } 
