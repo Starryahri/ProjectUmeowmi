@@ -1,5 +1,6 @@
 #include "PUDialogueBox.h"
 #include "PUDialogueOption.h"
+#include "../PUProjectUmeowmiGameInstance.h"
 #include "DlgSystem/DlgContext.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/TextBlock.h"
@@ -11,6 +12,7 @@
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
 #include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 #include "Engine/GameViewportClient.h"
 #include "Camera/CameraComponent.h"
 #include "Materials/MaterialInterface.h"
@@ -68,14 +70,16 @@ void UPUDialogueBox::NativeConstruct()
 
 void UPUDialogueBox::NativeDestruct()
 {
-    // Clear any active vignette animation timer
+    // Clear any active timers
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(VignetteAnimationTimer);
+        World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
     }
 
     // Stop animating
     bVignetteAnimating = false;
+    bTypewriterActive = false;
 
     // Clean up dynamic material reference
     VignetteDynamicMaterial = nullptr;
@@ -212,6 +216,13 @@ void UPUDialogueBox::Close_Implementation()
 {
     //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Close_Implementation called"));
     //UE_LOG(LogTemp,Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
+
+    // Stop typewriter if active
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+    }
+    bTypewriterActive = false;
     
     // Clear the context reference to prevent dangling references
     CurrentContext = nullptr;
@@ -327,7 +338,36 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
         }
         if (IsValid(DialogueText))
         {
-            DialogueText->SetText(NodeText);
+            UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
+            const bool bUseTypewriter = GI ? GI->GetDialogueTypewriterEnabled() : true;
+
+            if (bUseTypewriter)
+            {
+                // Cancel any existing typewriter
+                if (UWorld* World = GetWorld())
+                {
+                    World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+                }
+                bTypewriterActive = false;
+
+                FullDialogueText = NodeText.ToString();
+                TypewriterCurrentIndex = 0;
+
+                if (FullDialogueText.Len() > 0)
+                {
+                    DialogueText->SetText(FText::FromString(FString()));
+                    bTypewriterActive = true;
+                    AdvanceTypewriter();
+                }
+                else
+                {
+                    DialogueText->SetText(NodeText);
+                }
+            }
+            else
+            {
+                DialogueText->SetText(NodeText);
+            }
         }
         if (IsValid(ParticipantImage))
         {
@@ -405,6 +445,106 @@ UCameraComponent* UPUDialogueBox::GetPlayerCamera() const
         }
     }
     return nullptr;
+}
+
+void UPUDialogueBox::AdvanceTypewriter()
+{
+    if (!IsValid(DialogueText) || !bTypewriterActive)
+    {
+        return;
+    }
+
+    TypewriterCurrentIndex++;
+
+    if (TypewriterCurrentIndex <= FullDialogueText.Len())
+    {
+        FString VisibleText = FullDialogueText.Left(TypewriterCurrentIndex);
+        DialogueText->SetText(FText::FromString(VisibleText));
+
+        // Play typewriter sound if configured, with random pitch variation
+        if (UWorld* World = GetWorld())
+        {
+            if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+            {
+                if (USoundBase* TypewriterSound = GI->GetDialogueTypewriterSound())
+                {
+                    const float PitchVariation = GI->GetDialogueTypewriterPitchVariation();
+                    const float PitchMultiplier = FMath::RandRange(1.0f - PitchVariation, 1.0f + PitchVariation);
+                    UGameplayStatics::PlaySound2D(World, TypewriterSound, 1.0f, PitchMultiplier);
+                }
+            }
+        }
+
+        if (TypewriterCurrentIndex < FullDialogueText.Len())
+        {
+            float CharDelay = 0.02f;
+            if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+            {
+                CharDelay = GI->GetDialogueTypewriterCharacterDelay();
+            }
+
+            if (UWorld* World = GetWorld())
+            {
+                World->GetTimerManager().SetTimer(
+                    TypewriterTimerHandle,
+                    this,
+                    &UPUDialogueBox::AdvanceTypewriter,
+                    CharDelay,
+                    false
+                );
+            }
+        }
+        else
+        {
+            bTypewriterActive = false;
+        }
+    }
+    else
+    {
+        bTypewriterActive = false;
+    }
+}
+
+void UPUDialogueBox::CompleteTypewriter()
+{
+    if (!bTypewriterActive)
+    {
+        return;
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+    }
+
+    bTypewriterActive = false;
+    TypewriterCurrentIndex = FullDialogueText.Len();
+
+    if (IsValid(DialogueText))
+    {
+        DialogueText->SetText(FText::FromString(FullDialogueText));
+    }
+}
+
+void UPUDialogueBox::AdvanceDialogue()
+{
+    if (!IsValid(DialogueOptions) || DialogueOptions->GetChildrenCount() == 0)
+    {
+        return;
+    }
+
+    // Find the first visible option and trigger it (same as clicking the Next button)
+    for (int32 i = 0; i < DialogueOptions->GetChildrenCount(); i++)
+    {
+        if (UPUDialogueOption* Option = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(i)))
+        {
+            if (Option->GetVisibility() == ESlateVisibility::Visible)
+            {
+                Option->SelectOption();
+                return;
+            }
+        }
+    }
 }
 
 void UPUDialogueBox::InitializeVignetteMaterial()

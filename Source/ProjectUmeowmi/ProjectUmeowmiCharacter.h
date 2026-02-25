@@ -17,6 +17,7 @@ class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
 class UPUDialogueBox;
+class UPUJournalWidget;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -51,6 +52,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** Interact Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* InteractAction;
+
+	/** Open/Toggle Journal Input Action (Start button, I key) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* OpenJournalAction;
 
 	//Todo: Add input for cancel action
 	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
@@ -170,6 +175,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
 	UPUDialogueBox* DialogueBox;
 
+	/** Reference to the journal widget (assign in Blueprint if journal is in HUD). If unset, we search for it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Journal", meta = (AllowPrivateAccess = "true"))
+	UPUJournalWidget* JournalWidget;
+
 	/** Current interactable object that can be interacted with */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Interactable", meta = (AllowPrivateAccess = "true"))
 	TScriptInterface<IPUInteractableInterface> CurrentInteractable;
@@ -187,6 +196,7 @@ public:
 	void ToggleGridMovement(const FInputActionValue& Value);
 	void ZoomCamera(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
+	void ToggleJournal(const FInputActionValue& Value);
 	
 	/** Initialize camera position based on the starting index */
 	void InitializeCameraPosition();
@@ -214,6 +224,7 @@ public:
 	FORCEINLINE UInputAction* GetMoveAction() const { return MoveAction; }
 	FORCEINLINE UInputAction* GetLookAction() const { return LookAction; }
 	FORCEINLINE UInputAction* GetInteractAction() const { return InteractAction; }
+	FORCEINLINE UInputAction* GetOpenJournalAction() const { return OpenJournalAction; }
 	FORCEINLINE UInputAction* GetToggleGridMovementAction() const { return ToggleGridMovementAction; }
 	FORCEINLINE UInputMappingContext* GetDefaultMappingContext() const { return DefaultMappingContext; }
 	

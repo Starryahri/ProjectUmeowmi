@@ -12,6 +12,7 @@ class APULevelSpawnPoint;
 class UPUPlayerSaveGame;
 class UUserWidget;
 class UPUPopupWidget;
+class USoundBase;
 
 /**
  * GameInstance that persists across level transitions.
@@ -206,6 +207,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue State")
 	bool IsDialogueCompleted(const FName& DialogueName) const;
 
+	// Dialogue Typewriter Settings (global, persisted to save)
+	/** Whether dialogue text uses typewriter effect (character-by-character reveal) */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	bool GetDialogueTypewriterEnabled() const { return bUseDialogueTypewriterEffect; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterEnabled(bool bEnabled);
+
+	/** Delay between characters in seconds (e.g. 0.02 = fast, 0.05 = medium) */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	float GetDialogueTypewriterCharacterDelay() const { return DialogueTypewriterCharacterDelay; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterSpeed(float CharacterDelaySeconds);
+
+	/** If true, clicking "Next" while typing instantly completes the text */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	bool GetDialogueTypewriterSkipOnInput() const { return bDialogueTypewriterSkipOnInput; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterSkipOnInput(bool bSkipOnInput);
+
+	/** Sound to play for each character during typewriter effect. Leave empty for no sound. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	USoundBase* GetDialogueTypewriterSound() const { return DialogueTypewriterSound; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterSound(USoundBase* Sound);
+
+	/** Pitch variation range (0.1 = ±10%). Getter for typewriter pitch variation. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	float GetDialogueTypewriterPitchVariation() const { return DialogueTypewriterPitchVariation; }
+
 	// Level Transition Lock System
 	/**
 	 * Unlock a level transition by its LockID.
@@ -340,6 +374,24 @@ protected:
 	// Dialogue State (stubbed for future use)
 	UPROPERTY(BlueprintReadOnly, Category = "Dialogue State")
 	TSet<FName> CompletedDialogueNames;
+
+	// Dialogue Typewriter Settings (global, persisted to save)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	bool bUseDialogueTypewriterEffect = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	float DialogueTypewriterCharacterDelay = 0.02f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	bool bDialogueTypewriterSkipOnInput = true;
+
+	/** Sound to play for each character during typewriter effect. Set in Game Instance Blueprint. Defaults to none. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue Settings")
+	TObjectPtr<USoundBase> DialogueTypewriterSound = nullptr;
+
+	/** Pitch variation range (e.g. 0.1 = ±10%). Pitch randomly varies between (1 - Value) and (1 + Value) per character. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float DialogueTypewriterPitchVariation = 0.1f;
 
 	// Level Transition Lock System - IDs that have been unlocked (persisted to save)
 	UPROPERTY(BlueprintReadOnly, Category = "Level Transition")

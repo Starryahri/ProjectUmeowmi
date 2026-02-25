@@ -19,6 +19,7 @@
 #include "UObject/StructOnScope.h"
 #include "Components/Button.h"
 #include "UObject/UObjectGlobals.h"
+#include "Sound/SoundBase.h"
 
 UPUProjectUmeowmiGameInstance::UPUProjectUmeowmiGameInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -470,6 +471,9 @@ bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 	PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 	PlayerSaveGame->CompletedDialogueNames = CompletedDialogueNames;
 	PlayerSaveGame->UnlockedLevelTransitionIDs = UnlockedLevelTransitionIDs;
+	PlayerSaveGame->bUseDialogueTypewriterEffect = bUseDialogueTypewriterEffect;
+	PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
+	PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
 
 	// Save to disk
 	if (UGameplayStatics::SaveGameToSlot(PlayerSaveGame, SlotName, 0))
@@ -511,6 +515,9 @@ bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
 	UnlockedDishTags = PlayerSaveGame->UnlockedDishTags;
 	CompletedDialogueNames = PlayerSaveGame->CompletedDialogueNames;
 	UnlockedLevelTransitionIDs = PlayerSaveGame->UnlockedLevelTransitionIDs;
+	bUseDialogueTypewriterEffect = PlayerSaveGame->bUseDialogueTypewriterEffect;
+	DialogueTypewriterCharacterDelay = PlayerSaveGame->DialogueTypewriterCharacterDelay;
+	bDialogueTypewriterSkipOnInput = PlayerSaveGame->bDialogueTypewriterSkipOnInput;
 
 	// Migration: old saves may not have UnlockedDishTags; initialize from StartingDishTags if empty
 	if (UnlockedDishTags.Num() == 0 && StartingDishTags.Num() > 0)
@@ -568,6 +575,9 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 		PlayerSaveGame->CompletedDialogueNames.Empty();
 		PlayerSaveGame->UnlockedLevelTransitionIDs.Empty();
+		PlayerSaveGame->bUseDialogueTypewriterEffect = bUseDialogueTypewriterEffect;
+		PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
+		PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
 		PlayerSaveGame->SaveVersion = 1;
 
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Save game object created"));
@@ -638,6 +648,29 @@ bool UPUProjectUmeowmiGameInstance::IsDialogueCompleted(const FName& DialogueNam
 	}
 
 	return CompletedDialogueNames.Contains(DialogueName);
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterEnabled(bool bEnabled)
+{
+	bUseDialogueTypewriterEffect = bEnabled;
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSpeed(float CharacterDelaySeconds)
+{
+	DialogueTypewriterCharacterDelay = FMath::Max(0.001f, CharacterDelaySeconds);
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSkipOnInput(bool bSkipOnInput)
+{
+	bDialogueTypewriterSkipOnInput = bSkipOnInput;
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSound(USoundBase* Sound)
+{
+	DialogueTypewriterSound = Sound;
 }
 
 // Level Transition Lock System

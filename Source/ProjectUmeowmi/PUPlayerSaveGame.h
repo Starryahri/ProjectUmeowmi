@@ -35,6 +35,19 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	TSet<FName> UnlockedLevelTransitionIDs;
 
+	// Dialogue typewriter effect settings (global, persisted)
+	/** Whether dialogue text uses typewriter effect (character-by-character reveal) */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	bool bUseDialogueTypewriterEffect = true;
+
+	/** Delay between characters in seconds (e.g. 0.02 = fast, 0.05 = medium). Only used when typewriter is enabled. */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	float DialogueTypewriterCharacterDelay = 0.02f;
+
+	/** If true, clicking "Next" while typing instantly completes the text */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	bool bDialogueTypewriterSkipOnInput = true;
+
 	// Save version for future migration support
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	int32 SaveVersion = 1;

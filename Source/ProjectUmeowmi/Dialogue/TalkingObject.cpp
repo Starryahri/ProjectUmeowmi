@@ -191,15 +191,19 @@ void ATalkingObject::EndInteraction()
         CurrentDialogueContext = nullptr;
     }
 
-    // Get the player character and clear the talking object reference
-    if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn()))
+    // Only unregister if the player has left the interaction sphere.
+    // If they're still in range, keep them registered so they can interact again without having to leave and re-enter.
+    if (!bPlayerInRange)
     {
-        //UE_LOG(LogTemp,Log, TEXT("TalkingObject::EndInteraction - Unregistering talking object from character"));
-        Character->UnregisterTalkingObject(this);
+        if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn()))
+        {
+            Character->UnregisterTalkingObject(this);
+        }
     }
     else
     {
-        //UE_LOG(LogTemp,Warning, TEXT("TalkingObject::EndInteraction - Failed to get character reference"));
+        // Player still in range - update widget so interact prompt shows again
+        UpdateInteractionWidget();
     }
 }
 

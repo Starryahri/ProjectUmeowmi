@@ -74,6 +74,18 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Vignette|Debug")
     void DebugVignetteMaterial() const;
 
+    /** Check if typewriter effect is currently animating */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue")
+    bool IsTypewriterActive() const { return bTypewriterActive; }
+
+    /** Instantly complete the typewriter effect (show full text). Called when player skips. */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    void CompleteTypewriter();
+
+    /** Advance dialogue (skip typewriter or go to next line). Call when player presses Interact during dialogue. */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    void AdvanceDialogue();
+
     // Implementation functions
     virtual void Open_Implementation(UDlgContext* ActiveContext);
     virtual void Close_Implementation();
@@ -129,6 +141,15 @@ private:
 
     /** Whether vignette animation is currently active */
     bool bVignetteAnimating = false;
+
+    /** Typewriter effect state */
+    FString FullDialogueText;
+    int32 TypewriterCurrentIndex = 0;
+    FTimerHandle TypewriterTimerHandle;
+    bool bTypewriterActive = false;
+
+    /** Advance typewriter by one character (called by timer) */
+    void AdvanceTypewriter();
 
     /** Initialize the vignette material */
     void InitializeVignetteMaterial();

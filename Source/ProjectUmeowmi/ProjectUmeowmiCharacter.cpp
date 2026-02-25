@@ -12,6 +12,9 @@
 #include "InputActionValue.h"
 #include "Dialogue/TalkingObject.h"
 #include "DishCustomization/PUDishCustomizationComponent.h"
+#include "UI/PUDialogueBox.h"
+#include "UI/PUJournalWidget.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 
 #include "Interfaces/PUInteractableInterface.h"
 
@@ -140,6 +143,12 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 		// Interact with talking objects
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Interact);
+
+		// Open/toggle journal (Start button, I key)
+		if (OpenJournalAction)
+		{
+			EnhancedInputComponent->BindAction(OpenJournalAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::ToggleJournal);
+		}
 	}
 	else
 	{
@@ -382,11 +391,50 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 	FollowCamera->OrthoWidth = NewOrthoWidth;
 }
 
+void AProjectUmeowmiCharacter::ToggleJournal(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		// Fallback: search for journal widget in the world (e.g. if it's a child of HUD)
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), /*bTopLevelOnly=*/ false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+
+	if (Journal)
+	{
+		const bool bIsVisible = Journal->GetVisibility() == ESlateVisibility::Visible;
+		if (bIsVisible)
+		{
+			Journal->CloseJournal();
+		}
+		else
+		{
+			Journal->OpenJournal();
+		}
+	}
+}
+
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
 	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::Interact - CurrentTalkingObject: %s, CurrentInteractable: %s"), 
 	//	CurrentTalkingObject ? *CurrentTalkingObject->GetName() : TEXT("NULL"),
 	//	CurrentInteractable ? TEXT("Valid") : TEXT("NULL"));
+
+	// When in dialogue, Interact advances the dialogue (skip typewriter or next line)
+	if (CurrentTalkingObject && DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+	{
+		DialogueBox->AdvanceDialogue();
+		return;
+	}
 		
 	if (CurrentTalkingObject)
 	{
@@ -761,6 +809,12 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing dialogue box reference"));
 		DialogueBox = nullptr;
+	}
+
+	// Clear journal widget reference
+	if (JournalWidget)
+	{
+		JournalWidget = nullptr;
 	}
 	
 	Super::EndPlay(EndPlayReason);

@@ -5,6 +5,7 @@
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
 #include "PUDialogueBox.h"
+#include "../PUProjectUmeowmiGameInstance.h"
 
 void UPUDialogueOption::NativeConstruct()
 {
@@ -64,6 +65,25 @@ void UPUDialogueOption::SelectOption()
 	{
 		//UE_LOG(LogTemp,Warning, TEXT("PUDialogueOption::SelectOption - Invalid option index %d"), OptionIndex);
 		return;
+	}
+
+	// If typewriter is active, handle skip-on-input: complete text but do NOT advance yet
+	if (IsValid(ParentDialogueBox) && ParentDialogueBox->IsTypewriterActive())
+	{
+		UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
+		const bool bSkipOnInput = GI ? GI->GetDialogueTypewriterSkipOnInput() : true;
+
+		if (bSkipOnInput)
+		{
+			ParentDialogueBox->CompleteTypewriter();
+			// Don't advance - user must press again to continue to next line
+			return;
+		}
+		else
+		{
+			// Skip-on-input disabled: ignore click while typing
+			return;
+		}
 	}
 
 	// Select the option and move to the next node
