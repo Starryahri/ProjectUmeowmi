@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Components/WidgetComponent.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "TalkingObjectWidget.h"
 #include "TalkingObject.generated.h"
@@ -117,6 +118,18 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
     TSubclassOf<UTalkingObjectWidget> InteractionWidgetClass;
 
+    /** Space in which the interaction widget is rendered. World space scales with orthographic zoom when bScaleWidgetWithOrthoZoom is true. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
+    EWidgetSpace InteractionWidgetSpace = EWidgetSpace::Screen;
+
+    /** When true and using an orthographic camera, scale the interaction widget with zoom (OrthoWidth). Fixes world-space widgets not scaling when zooming. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
+    bool bScaleWidgetWithOrthoZoom = true;
+
+    /** Reference orthographic width at which the widget displays at its base size. Used when bScaleWidgetWithOrthoZoom is true. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "bScaleWidgetWithOrthoZoom"))
+    float ReferenceOrthoWidth = 1000.0f;
+
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
     FName ParticipantName;
 
@@ -160,10 +173,15 @@ private:
     
     bool bPlayerInRange = false;
 
+    /** Cached base DrawSize for ortho scaling. Stored when widget is first shown. */
+    FVector2D CachedBaseDrawSize = FVector2D(500.0f, 500.0f);
+
     // Helper methods
     void UpdateInteractionWidget();
     /** Syncs the interaction sphere radius and widget attachment to match InteractionRange. Call when InteractionRange may have changed. */
     void SyncInteractionSphereToRange();
+    /** Updates the interaction widget's scale/DrawSize based on orthographic camera zoom when bScaleWidgetWithOrthoZoom is true. */
+    void UpdateOrthoWidgetScale();
     UDlgDialogue* GetRandomDialogue() const;
     void ResetUsedDialogues();
     void DrawDebugRange() const;

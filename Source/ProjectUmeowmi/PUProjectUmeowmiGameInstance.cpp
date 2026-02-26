@@ -272,6 +272,17 @@ void UPUProjectUmeowmiGameInstance::PositionPlayerAtSpawnPoint(const FName& Spaw
 			PlayerController->GetPawn()->SetActorLocationAndRotation(SpawnLocation, SpawnRotation);
 			UE_LOG(LogTemp, Log, TEXT("Positioned player at spawn point: %s (Location: %s)"), 
 				*TargetSpawnPoint->GetSpawnPointTag().ToString(), *SpawnLocation.ToString());
+
+			// Apply camera position index from spawn point so the isometric camera faces the correct angle
+			if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PlayerController->GetPawn()))
+			{
+				int32 CameraIndex = TargetSpawnPoint->GetCameraPositionIndex();
+				int32 NumPositions = FMath::Max(1, Character->GetNumberOfCameraPositions());
+				CameraIndex = FMath::Clamp(CameraIndex, 0, NumPositions - 1);
+				Character->SetCameraPositionIndex(CameraIndex);
+				Character->InitializeCameraPositionFromBlueprint();
+				UE_LOG(LogTemp, Log, TEXT("Set camera position index to %d for spawn point: %s"), CameraIndex, *TargetSpawnPoint->GetSpawnPointTag().ToString());
+			}
 		}
 	}
 	else

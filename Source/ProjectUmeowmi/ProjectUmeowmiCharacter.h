@@ -218,6 +218,7 @@ public:
 	FORCEINLINE UInputAction* GetRotateCameraAction() const { return RotateCameraAction; }
 	FORCEINLINE void SetCameraOffset(float NewOffset) { CameraOffset = NewOffset; }
 	FORCEINLINE void SetCameraPositionIndex(int32 NewIndex) { CameraPositionIndex = NewIndex; }
+	FORCEINLINE int32 GetNumberOfCameraPositions() const { return NumberOfCameraPositions; }
 	
 	// Input action getters
 	FORCEINLINE UInputAction* GetZoomAction() const { return ZoomAction; }

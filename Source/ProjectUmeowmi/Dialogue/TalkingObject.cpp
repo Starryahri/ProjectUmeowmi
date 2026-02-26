@@ -1,6 +1,7 @@
 #include "TalkingObject.h"
 #include "Components/WidgetComponent.h"
 #include "Components/SphereComponent.h"
+#include "Camera/CameraComponent.h"
 #include "DlgSystem/DlgManager.h"
 #include "DlgSystem/DlgContext.h"
 #include "DlgSystem/DlgDialogue.h"
@@ -33,7 +34,7 @@ ATalkingObject::ATalkingObject()
     // Create and setup the widget component (attached to sphere so it follows the interaction range position)
     InteractionWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidget"));
     InteractionWidget->SetupAttachment(InteractionSphere);
-    InteractionWidget->SetWidgetSpace(EWidgetSpace::Screen);
+    InteractionWidget->SetWidgetSpace(InteractionWidgetSpace);
     InteractionWidget->SetVisibility(false);
 }
 
@@ -72,10 +73,26 @@ void ATalkingObject::BeginPlay()
     // Sync sphere radius and widget position to InteractionRange (handles Blueprint overrides and derived class values)
     SyncInteractionSphereToRange();
 
+    // Apply widget space (Screen or World) - World space allows scaling with orthographic zoom
+    if (InteractionWidget)
+    {
+        InteractionWidget->SetWidgetSpace(InteractionWidgetSpace);
+    }
+
     // Create the widget instance
     if (InteractionWidgetClass)
     {
         InteractionWidget->SetWidgetClass(InteractionWidgetClass);
+    }
+
+    // Cache base DrawSize for ortho scaling (used when bScaleWidgetWithOrthoZoom is true)
+    if (InteractionWidget)
+    {
+        CachedBaseDrawSize = InteractionWidget->GetDrawSize();
+        if (CachedBaseDrawSize.X <= 0 || CachedBaseDrawSize.Y <= 0)
+        {
+            CachedBaseDrawSize = FVector2D(500.0f, 500.0f);
+        }
     }
     
     // Enable tick if debug visualization is enabled
@@ -89,10 +106,13 @@ void ATalkingObject::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
 
-    // Only draw debug visualization if enabled
     if (bShowDebugRange)
     {
         DrawDebugRange();
+    }
+    if (bScaleWidgetWithOrthoZoom && InteractionWidget && InteractionWidget->IsVisible())
+    {
+        UpdateOrthoWidgetScale();
     }
 }
 
@@ -266,34 +286,28 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
 
     // Create participants array with proper validation
     TArray<UObject*> Participants;
-    
-    // Add the talking object itself (validate first)
-    if (IsValid(this))
+
+    if (ObjectType == ETalkingObjectType::Prop)
     {
-        Participants.Add(this);
-        //UE_LOG(LogTemp,Display, TEXT("TalkingObject::StartSpecificDialogue - Added talking object as participant: %s"), *GetName());
+        // Props are monologues - participants come from AllowedParticipantNames (typically just the player)
     }
     else
     {
-        //UE_LOG(LogTemp,Error, TEXT("TalkingObject::StartSpecificDialogue - Talking object is not valid!"));
-        return;
-    }
-
-    // For NPCs, add the player character (Bao)
-    if (ObjectType == ETalkingObjectType::NPC)
-    {
-        // Add the player character (validate first)
-        if (IsValid(PlayerCharacter))
+        // Add the talking object itself (NPC or System)
+        if (IsValid(this))
         {
-            Participants.Add(PlayerCharacter);
-            //UE_LOG(LogTemp,Display, TEXT("TalkingObject::StartSpecificDialogue - Added player character as participant"));
+            Participants.Add(this);
         }
         else
         {
-            //UE_LOG(LogTemp,Warning, TEXT("TalkingObject::StartSpecificDialogue - Player character is not valid, skipping"));
+            return;
         }
+    }
 
-        // Get all other NPCs with dialogue participant interface
+    // For NPCs and Props, add participants from the level when in AllowedParticipantNames
+    if (ObjectType == ETalkingObjectType::NPC || ObjectType == ETalkingObjectType::Prop)
+    {
+        // Get all objects with dialogue participant interface
         TArray<UObject*> AllParticipants = UDlgManager::GetObjectsWithDialogueParticipantInterface(this);
         //UE_LOG(LogTemp,Display, TEXT("TalkingObject::StartSpecificDialogue - Found %d total participants in level"), AllParticipants.Num());
 
@@ -317,7 +331,7 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
                 }
             }
 
-            if (Participant != this && Participant != PlayerCharacter) // Skip self and player since we already added them
+            if (Participant != this) // Skip self (already added); player and others added via AllowedParticipantNames
             {
                 // Get the participant name with safety check
                 FName FoundParticipantName = NAME_None;
@@ -331,10 +345,32 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
                     continue;
                 }
                 
+                // Skip participants with None/empty name (avoids DlgSystem warnings)
+                if (FoundParticipantName.IsNone())
+                {
+                    continue;
+                }
+
                 // Check if this participant is in our allowed list
                 if (AllowedParticipantNames.Num() == 0 || AllowedParticipantNames.Contains(FoundParticipantName))
                 {
-                    Participants.Add(Participant);
+                    // Skip if we already have a participant with this name (avoids DlgSystem duplicate warning)
+                    bool bAlreadyAdded = false;
+                    for (UObject* Existing : Participants)
+                    {
+                        if (IsValid(Existing) && Existing->GetClass()->ImplementsInterface(UDlgDialogueParticipant::StaticClass()))
+                        {
+                            if (IDlgDialogueParticipant::Execute_GetParticipantName(Existing) == FoundParticipantName)
+                            {
+                                bAlreadyAdded = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!bAlreadyAdded)
+                    {
+                        Participants.Add(Participant);
+                    }
                     //UE_LOG(LogTemp,Display, TEXT("TalkingObject::StartSpecificDialogue - Added allowed participant: %s (Name: %s)"), 
                     //    *Participant->GetName(), 
                     //    *FoundParticipantName.ToString());
@@ -513,6 +549,53 @@ void ATalkingObject::UpdateInteractionWidget()
             Widget->SetInteractionKey(InteractionKey.ToString());
         }
     }
+
+    // Enable tick when widget is visible and we need ortho scaling
+    PrimaryActorTick.bCanEverTick = bShowDebugRange || (bCanInteractNow && bScaleWidgetWithOrthoZoom);
+}
+
+void ATalkingObject::UpdateOrthoWidgetScale()
+{
+    if (!InteractionWidget || !GetWorld())
+    {
+        return;
+    }
+
+    APlayerController* PC = GetWorld()->GetFirstPlayerController();
+    if (!PC || !PC->GetPawn())
+    {
+        return;
+    }
+
+    UCameraComponent* Camera = PC->GetPawn()->FindComponentByClass<UCameraComponent>();
+    if (!Camera || Camera->ProjectionMode != ECameraProjectionMode::Orthographic)
+    {
+        return;
+    }
+
+    const float CurrentOrthoWidth = Camera->OrthoWidth;
+    if (CurrentOrthoWidth <= 0.0f)
+    {
+        return;
+    }
+
+    // Scale DrawSize so widget appears larger when zoomed in (small OrthoWidth) and smaller when zoomed out
+    const float ScaleFactor = ReferenceOrthoWidth / CurrentOrthoWidth;
+    const float ClampedScale = FMath::Clamp(ScaleFactor, 0.1f, 10.0f);
+    const FVector2D NewDrawSize(
+        FMath::RoundToFloat(CachedBaseDrawSize.X * ClampedScale),
+        FMath::RoundToFloat(CachedBaseDrawSize.Y * ClampedScale)
+    );
+
+    // Clamp to valid render target dimensions
+    const int32 MinSize = 16;
+    const int32 MaxSize = 4096;
+    const FVector2D ClampedDrawSize(
+        FMath::Clamp(static_cast<int32>(NewDrawSize.X), MinSize, MaxSize),
+        FMath::Clamp(static_cast<int32>(NewDrawSize.Y), MinSize, MaxSize)
+    );
+
+    InteractionWidget->SetDrawSize(ClampedDrawSize);
 }
 
 bool ATalkingObject::IsPlayerInRange() const
