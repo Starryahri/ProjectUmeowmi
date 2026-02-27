@@ -155,6 +155,10 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
     bool bShowDebugRange = false;
 
+    /** When true, logs the active participants for this interactable (filtered by AllowedParticipantNames) when entering the sphere and when dialogue starts. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
+    bool bShowDebugParticipants = false;
+
     // Dialogue context
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
@@ -185,4 +189,6 @@ private:
     UDlgDialogue* GetRandomDialogue() const;
     void ResetUsedDialogues();
     void DrawDebugRange() const;
+    /** Builds the filtered participant list for this interactable (same logic used when starting dialogue). */
+    TArray<UObject*> BuildActiveParticipantsList() const;
 }; 
