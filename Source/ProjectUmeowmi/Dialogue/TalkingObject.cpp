@@ -31,9 +31,9 @@ ATalkingObject::ATalkingObject()
     InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereBeginOverlap);
     InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereEndOverlap);
 
-    // Create and setup the widget component (attached to sphere so it follows the interaction range position)
+    // Create and setup the widget component (attached to root so widget and sphere can be positioned independently)
     InteractionWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidget"));
-    InteractionWidget->SetupAttachment(InteractionSphere);
+    InteractionWidget->SetupAttachment(RootComponent);
     InteractionWidget->SetWidgetSpace(InteractionWidgetSpace);
     InteractionWidget->SetVisibility(false);
 }
