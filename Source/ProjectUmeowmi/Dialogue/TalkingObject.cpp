@@ -333,8 +333,8 @@ void ATalkingObject::EndInteraction()
     bIsLerpingToFacePlayer = false;
     bIsLerpingPlayerToFaceNPC = false;
 
-    // For NPCs: lerp back to original rotation (driven by player's TickFacePlayerLerp)
-    if (ObjectType == ETalkingObjectType::NPC && GetRootComponent())
+    // For NPCs: lerp back to original rotation (only if we rotated them during dialogue)
+    if (ObjectType == ETalkingObjectType::NPC && bRotateNPCToFacePlayer && GetRootComponent())
     {
         TargetNPCRotation = OriginalNPCRotation;
         bIsLerpingBackToOriginal = true;
@@ -431,31 +431,43 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
         const FVector PlayerLoc = PlayerCharacter->GetActorLocation();
 
         // NPC faces player (lerped via timer)
-        if (GetRootComponent())
+        if (bRotateNPCToFacePlayer && GetRootComponent())
         {
             FVector DirToPlayer = PlayerLoc - NPCLoc;
             DirToPlayer.Z = 0.0f;
             if (DirToPlayer.Normalize())
             {
-                OriginalNPCRotation = GetRootComponent()->GetComponentRotation();
-                TargetNPCRotation = FRotator(0.0f, DirToPlayer.Rotation().Yaw + NPCFacingYawOffset, 0.0f);
+                const FRotator CurrentRot = GetRootComponent()->GetComponentRotation();
+                const float TargetYaw = bRotateNPCAroundYaw ? (DirToPlayer.Rotation().Yaw + NPCFacingYawOffset) : CurrentRot.Yaw;
+                const float TargetPitch = bRotateNPCAroundPitch ? 0.0f : CurrentRot.Pitch;
+                const float TargetRoll = bRotateNPCAroundRoll ? 0.0f : CurrentRot.Roll;
+
+                OriginalNPCRotation = CurrentRot;
+                TargetNPCRotation = FRotator(TargetPitch, TargetYaw, TargetRoll);
                 bIsLerpingToFacePlayer = true;
                 if (bShowDebugFacePlayerLerp)
                 {
-                    const float CurrentYaw = GetRootComponent()->GetComponentRotation().Yaw;
                     UE_LOG(LogTemp, Warning, TEXT("[FacePlayerLerp] %s START CurrentYaw=%.1f TargetYaw=%.1f"),
-                        *GetName(), CurrentYaw, TargetNPCRotation.Yaw);
+                        *GetName(), CurrentRot.Yaw, TargetNPCRotation.Yaw);
                 }
             }
         }
 
         // Player faces NPC: lerp the whole character (driven by TickFacePlayerLerp)
-        FVector DirToNPC = NPCLoc - PlayerLoc;
-        DirToNPC.Z = 0.0f;
-        if (DirToNPC.Normalize())
+        if (bRotatePlayerToFaceNPC)
         {
-            TargetPlayerRotation = FRotator(0.0f, DirToNPC.Rotation().Yaw + PlayerFacingYawOffset, 0.0f);
-            bIsLerpingPlayerToFaceNPC = true;
+            FVector DirToNPC = NPCLoc - PlayerLoc;
+            DirToNPC.Z = 0.0f;
+            if (DirToNPC.Normalize())
+            {
+                const FRotator CurrentRot = PlayerCharacter->GetActorRotation();
+                const float TargetYaw = bRotatePlayerAroundYaw ? (DirToNPC.Rotation().Yaw + PlayerFacingYawOffset) : CurrentRot.Yaw;
+                const float TargetPitch = bRotatePlayerAroundPitch ? 0.0f : CurrentRot.Pitch;
+                const float TargetRoll = bRotatePlayerAroundRoll ? 0.0f : CurrentRot.Roll;
+
+                TargetPlayerRotation = FRotator(TargetPitch, TargetYaw, TargetRoll);
+                bIsLerpingPlayerToFaceNPC = true;
+            }
         }
     }
 

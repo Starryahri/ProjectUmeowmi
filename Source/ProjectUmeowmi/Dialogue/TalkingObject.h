@@ -171,9 +171,41 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::Door"))
     bool bIsDoorOpen = false;
 
+    /** For NPC type: Master toggle to rotate NPC to face the player when dialogue starts. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
+    bool bRotateNPCToFacePlayer = true;
+
+    /** For NPC type: Rotate around Yaw (horizontal) to face the player. Disable to preserve current yaw. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC && bRotateNPCToFacePlayer"))
+    bool bRotateNPCAroundYaw = true;
+
+    /** For NPC type: Apply pitch rotation (0 = upright). Disable to preserve current pitch (e.g. lying down). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC && bRotateNPCToFacePlayer"))
+    bool bRotateNPCAroundPitch = false;
+
+    /** For NPC type: Apply roll rotation (0 = upright). Disable to preserve current roll (e.g. lying down). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC && bRotateNPCToFacePlayer"))
+    bool bRotateNPCAroundRoll = false;
+
     /** For NPC type: Yaw offset (degrees) when facing the player. Use if mesh forward differs from Unreal's +X (e.g. -90 if mesh faces +Y). */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
     float NPCFacingYawOffset = -90.0f;
+
+    /** For NPC type: Master toggle to rotate player to face the NPC when dialogue starts. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
+    bool bRotatePlayerToFaceNPC = true;
+
+    /** For NPC type: Rotate player around Yaw to face the NPC. Disable to preserve current yaw. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC && bRotatePlayerToFaceNPC"))
+    bool bRotatePlayerAroundYaw = true;
+
+    /** For NPC type: Apply pitch to player. Disable to preserve current pitch. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC && bRotatePlayerToFaceNPC"))
+    bool bRotatePlayerAroundPitch = false;
+
+    /** For NPC type: Apply roll to player. Disable to preserve current roll. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC && bRotatePlayerToFaceNPC"))
+    bool bRotatePlayerAroundRoll = false;
 
     /** For NPC type: Yaw offset (degrees) for player when facing the NPC. Tweak if player mesh forward differs. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
