@@ -286,6 +286,17 @@ void AProjectUmeowmiCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (CurrentTalkingObject)
+	{
+		CurrentTalkingObject->TickFacePlayerLerp(DeltaTime);
+	}
+	else
+	{
+		// Debug: uncomment to verify player Tick runs when no talking object
+		// static int32 FrameCount = 0;
+		// if (++FrameCount % 300 == 0) UE_LOG(LogTemp, Log, TEXT("[FacePlayerLerp] Player Tick, no CurrentTalkingObject"));
+	}
+
 	// Smoothly interpolate the camera rotation
 	FRotator CurrentRotation = CameraBoom->GetRelativeRotation();
 	FRotator NewRotation = FMath::RInterpTo(CurrentRotation, TargetCameraRotation, DeltaTime, CameraTransitionSpeed);

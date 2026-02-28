@@ -2,6 +2,8 @@
 #include "Components/WidgetComponent.h"
 #include "Components/SphereComponent.h"
 #include "Camera/CameraComponent.h"
+#include "ActorSequenceComponent.h"
+#include "ActorSequencePlayer.h"
 #include "DlgSystem/DlgManager.h"
 #include "DlgSystem/DlgContext.h"
 #include "DlgSystem/DlgDialogue.h"
@@ -116,6 +118,87 @@ void ATalkingObject::Tick(float DeltaTime)
     }
 }
 
+void ATalkingObject::TickFacePlayerLerp(float DeltaTime)
+{
+    // Player lerp to face NPC (runs first so both can lerp in same frame)
+    if (bIsLerpingPlayerToFaceNPC)
+    {
+        APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+        ACharacter* PlayerCharacter = PC && PC->GetPawn() ? Cast<ACharacter>(PC->GetPawn()) : nullptr;
+        if (PlayerCharacter)
+        {
+            const float InterpSpeed = FMath::Max(1.0f, NPCFacingRotationSpeed) / 45.0f;
+            const FRotator CurrentRot = PlayerCharacter->GetActorRotation();
+            const FRotator NewRot = FMath::RInterpTo(CurrentRot, TargetPlayerRotation, DeltaTime, InterpSpeed);
+            PlayerCharacter->SetActorRotation(NewRot);
+
+            const float YawTolerance = 1.0f;
+            if (FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentRot.Yaw, TargetPlayerRotation.Yaw)) < YawTolerance)
+            {
+                PlayerCharacter->SetActorRotation(TargetPlayerRotation);
+                bIsLerpingPlayerToFaceNPC = false;
+            }
+        }
+        else
+        {
+            bIsLerpingPlayerToFaceNPC = false;
+        }
+    }
+
+    // Lerp back to original (player-driven, so it always runs)
+    if (bIsLerpingBackToOriginal && GetRootComponent())
+    {
+        const float InterpSpeed = FMath::Max(1.0f, NPCFacingRotationSpeed) / 45.0f;
+        const FRotator CurrentRot = GetRootComponent()->GetComponentRotation();
+        const FRotator NewRot = FMath::RInterpTo(CurrentRot, TargetNPCRotation, DeltaTime, InterpSpeed);
+        GetRootComponent()->SetWorldRotation(NewRot);
+
+        const float YawTolerance = 1.0f;
+        if (FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentRot.Yaw, TargetNPCRotation.Yaw)) < YawTolerance)
+        {
+            GetRootComponent()->SetWorldRotation(TargetNPCRotation);
+            bIsLerpingBackToOriginal = false;
+            if (bShowDebugFacePlayerLerp)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[FacePlayerLerp] %s LERP BACK DONE"), *GetName());
+            }
+            if (!bPlayerInRange)
+            {
+                if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn()))
+                {
+                    Character->UnregisterTalkingObject(this);
+                }
+            }
+        }
+        return;
+    }
+
+    if (!bIsLerpingToFacePlayer || !GetRootComponent()) return;
+
+    const float InterpSpeed = FMath::Max(1.0f, NPCFacingRotationSpeed) / 45.0f;
+    const FRotator CurrentRot = GetRootComponent()->GetComponentRotation();
+    const FRotator NewRot = FMath::RInterpTo(CurrentRot, TargetNPCRotation, DeltaTime, InterpSpeed);
+    GetRootComponent()->SetWorldRotation(NewRot);
+
+    if (bShowDebugFacePlayerLerp && (++FacePlayerLerpTickCount % 10 == 1))
+    {
+        const float DeltaYaw = FMath::FindDeltaAngleDegrees(CurrentRot.Yaw, TargetNPCRotation.Yaw);
+        UE_LOG(LogTemp, Warning, TEXT("[FacePlayerLerp] %s TICK #%d CurrentYaw=%.1f TargetYaw=%.1f DeltaYaw=%.1f DeltaTime=%.3f"),
+            *GetName(), FacePlayerLerpTickCount, CurrentRot.Yaw, TargetNPCRotation.Yaw, DeltaYaw, DeltaTime);
+    }
+
+    const float YawTolerance = 1.0f;
+    if (FMath::Abs(FMath::FindDeltaAngleDegrees(CurrentRot.Yaw, TargetNPCRotation.Yaw)) < YawTolerance)
+    {
+        GetRootComponent()->SetWorldRotation(TargetNPCRotation);
+        bIsLerpingToFacePlayer = false;
+        if (bShowDebugFacePlayerLerp)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[FacePlayerLerp] %s DONE"), *GetName());
+        }
+    }
+}
+
 bool ATalkingObject::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
 {
     UE_LOG(LogTemp, Display, TEXT("=== TalkingObject::CheckCondition CALLED ==="));
@@ -182,28 +265,85 @@ bool ATalkingObject::CanInteract() const
 {
     UE_LOG(LogTemp, Display, TEXT("TalkingObject::CanInteract - %s: bPlayerInRange=%d, bIsInteracting=%d, AvailableDialogues=%d"),
         *GetName(), bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
+    // Doors can interact without dialogues (they play DoorAction sequence)
+    if (ObjectType == ETalkingObjectType::Door)
+    {
+        return bPlayerInRange && !bIsInteracting;
+    }
     return bPlayerInRange && !bIsInteracting && AvailableDialogues.Num() > 0;
 }
 
 void ATalkingObject::StartInteraction()
 {
-    if (CanInteract())
-    {
-        UE_LOG(LogTemp, Log, TEXT("TalkingObject::StartInteraction - Starting interaction"));
-        StartDialogueAndSetInteracting(GetRandomDialogue());
-    }
-    else
+    if (!CanInteract())
     {
         UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartInteraction - Cannot start interaction! bPlayerInRange: %d, bIsInteracting: %d, AvailableDialogues.Num(): %d"),
             bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
+        return;
     }
+
+    // Door type: find DoorAction component and toggle open/close
+    if (ObjectType == ETalkingObjectType::Door)
+    {
+        TArray<UActorSequenceComponent*> SeqComps;
+        GetComponents<UActorSequenceComponent>(SeqComps);
+        UActorSequenceComponent* DoorActionComp = nullptr;
+        for (UActorSequenceComponent* Comp : SeqComps)
+        {
+            if (Comp && Comp->GetFName() == FName(TEXT("DoorAction")))
+            {
+                DoorActionComp = Comp;
+                break;
+            }
+        }
+        if (DoorActionComp)
+        {
+            bIsInteracting = true;
+            if (UActorSequencePlayer* Player = DoorActionComp->GetSequencePlayer())
+            {
+                if (bIsDoorOpen)
+                {
+                    Player->PlayReverse();
+                    bIsDoorOpen = false;
+                }
+                else
+                {
+                    DoorActionComp->PlaySequence();
+                    bIsDoorOpen = true;
+                }
+            }
+            bIsInteracting = false; // Door interaction is instant (sequence plays), no dialogue to wait for
+            UpdateInteractionWidget();
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartInteraction - Door '%s' has no ActorSequenceComponent named 'DoorAction'"), *GetName());
+        }
+        return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("TalkingObject::StartInteraction - Starting interaction"));
+    StartDialogueAndSetInteracting(GetRandomDialogue());
 }
 
 void ATalkingObject::EndInteraction()
 {
     UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndInteraction - Ending interaction for %s"), *GetName());
     bIsInteracting = false;
-    
+    bIsLerpingToFacePlayer = false;
+    bIsLerpingPlayerToFaceNPC = false;
+
+    // For NPCs: lerp back to original rotation (driven by player's TickFacePlayerLerp)
+    if (ObjectType == ETalkingObjectType::NPC && GetRootComponent())
+    {
+        TargetNPCRotation = OriginalNPCRotation;
+        bIsLerpingBackToOriginal = true;
+        if (bShowDebugFacePlayerLerp)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[FacePlayerLerp] %s LERP BACK START TargetYaw=%.1f"), *GetName(), OriginalNPCRotation.Yaw);
+        }
+    }
+
     // Properly clear the dialogue context to prevent dangling references
     if (CurrentDialogueContext)
     {
@@ -212,8 +352,8 @@ void ATalkingObject::EndInteraction()
     }
 
     // Only unregister if the player has left the interaction sphere.
-    // If they're still in range, keep them registered so they can interact again without having to leave and re-enter.
-    if (!bPlayerInRange)
+    // If we're lerping back, keep registered so player can drive the lerp; unregister when lerp completes.
+    if (!bPlayerInRange && !bIsLerpingBackToOriginal)
     {
         if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn()))
         {
@@ -282,6 +422,41 @@ void ATalkingObject::StartSpecificDialogue(UDlgDialogue* Dialogue)
     {
         UE_LOG(LogTemp, Error, TEXT("TalkingObject::StartSpecificDialogue - Failed to get player character!"));
         return;
+    }
+
+    // For NPCs: rotate both to face each other
+    if (ObjectType == ETalkingObjectType::NPC)
+    {
+        const FVector NPCLoc = GetActorLocation();
+        const FVector PlayerLoc = PlayerCharacter->GetActorLocation();
+
+        // NPC faces player (lerped via timer)
+        if (GetRootComponent())
+        {
+            FVector DirToPlayer = PlayerLoc - NPCLoc;
+            DirToPlayer.Z = 0.0f;
+            if (DirToPlayer.Normalize())
+            {
+                OriginalNPCRotation = GetRootComponent()->GetComponentRotation();
+                TargetNPCRotation = FRotator(0.0f, DirToPlayer.Rotation().Yaw + NPCFacingYawOffset, 0.0f);
+                bIsLerpingToFacePlayer = true;
+                if (bShowDebugFacePlayerLerp)
+                {
+                    const float CurrentYaw = GetRootComponent()->GetComponentRotation().Yaw;
+                    UE_LOG(LogTemp, Warning, TEXT("[FacePlayerLerp] %s START CurrentYaw=%.1f TargetYaw=%.1f"),
+                        *GetName(), CurrentYaw, TargetNPCRotation.Yaw);
+                }
+            }
+        }
+
+        // Player faces NPC: lerp the whole character (driven by TickFacePlayerLerp)
+        FVector DirToNPC = NPCLoc - PlayerLoc;
+        DirToNPC.Z = 0.0f;
+        if (DirToNPC.Normalize())
+        {
+            TargetPlayerRotation = FRotator(0.0f, DirToNPC.Rotation().Yaw + PlayerFacingYawOffset, 0.0f);
+            bIsLerpingPlayerToFaceNPC = true;
+        }
     }
 
     // Build participants using the same filtered list as debug (AllowedParticipantNames, ObjectType)
@@ -425,8 +600,9 @@ void ATalkingObject::OnInteractionSphereEndOverlap(UPrimitiveComponent* Overlapp
         UpdateInteractionWidget();
         OnPlayerExitedInteractionSphere.Broadcast(this);
 
-        // If we're not currently interacting, unregister from the character
-        if (!bIsInteracting)
+        // If we're not currently interacting and not lerping back, unregister from the character
+        // (Keep registered during lerp-back so player can drive it)
+        if (!bIsInteracting && !bIsLerpingBackToOriginal)
         {
             if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PlayerCharacter))
             {
@@ -665,7 +841,9 @@ TArray<UObject*> ATalkingObject::BuildActiveParticipantsList() const
 void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     UE_LOG(LogTemp, Log, TEXT("TalkingObject::EndPlay - Cleaning up talking object: %s"), *GetName());
-    
+    bIsLerpingToFacePlayer = false;
+    bIsLerpingBackToOriginal = false;
+
     // Clear dialogue context to prevent dangling references
     if (CurrentDialogueContext)
     {

@@ -23,7 +23,8 @@ enum class ETalkingObjectType : uint8
 {
     NPC UMETA(DisplayName = "NPC"),
     Prop UMETA(DisplayName = "Prop"),
-    System UMETA(DisplayName = "System")
+    System UMETA(DisplayName = "System"),
+    Door UMETA(DisplayName = "Door")
 };
 
 /**
@@ -101,6 +102,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Talking Object|Info")
     ETalkingObjectType GetTalkingObjectType() const { return ObjectType; }
 
+    /** Call from player Tick to drive NPC face-player lerp. Only does work when NPC is lerping. */
+    void TickFacePlayerLerp(float DeltaTime);
+
 protected:
     // Configurable properties
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
@@ -159,6 +163,26 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
     bool bShowDebugParticipants = false;
 
+    /** When true, logs NPC face-player lerp start, tick progress, and completion. Set true on NPC to debug. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
+    bool bShowDebugFacePlayerLerp = true;
+
+    /** For Door type: whether the door is currently open. Toggled on each interaction. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::Door"))
+    bool bIsDoorOpen = false;
+
+    /** For NPC type: Yaw offset (degrees) when facing the player. Use if mesh forward differs from Unreal's +X (e.g. -90 if mesh faces +Y). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
+    float NPCFacingYawOffset = -90.0f;
+
+    /** For NPC type: Yaw offset (degrees) for player when facing the NPC. Tweak if player mesh forward differs. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
+    float PlayerFacingYawOffset = -90.0f;
+
+    /** For NPC type: Rotation speed (degrees/sec) when lerping to face the player. Higher = faster. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
+    float NPCFacingRotationSpeed = 360.0f;
+
     // Dialogue context
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
@@ -179,6 +203,15 @@ private:
 
     /** Cached base DrawSize for ortho scaling. Stored when widget is first shown. */
     FVector2D CachedBaseDrawSize = FVector2D(500.0f, 500.0f);
+
+    bool bIsLerpingToFacePlayer = false;
+    bool bIsLerpingBackToOriginal = false;
+    FRotator TargetNPCRotation;
+    FRotator OriginalNPCRotation;
+    int32 FacePlayerLerpTickCount = 0;
+
+    bool bIsLerpingPlayerToFaceNPC = false;
+    FRotator TargetPlayerRotation;
 
     // Helper methods
     void UpdateInteractionWidget();

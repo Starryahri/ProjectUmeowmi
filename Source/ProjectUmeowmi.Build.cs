@@ -20,7 +20,9 @@ public class ProjectUmeowmi : ModuleRules
 			"GameplayTags",
 			"Slate",
 			"SlateCore",
-			"ProceduralMeshComponent"
+			"ProceduralMeshComponent",
+		"ActorSequence",
+		"MovieScene"
 		});
         PrivateDependencyModuleNames.AddRange(new string[] { "DlgSystem" });
     }
