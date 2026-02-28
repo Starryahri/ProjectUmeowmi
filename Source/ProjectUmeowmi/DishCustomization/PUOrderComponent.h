@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
+#include "GameplayTagContainer.h"
 #include "PUOrderBase.h"
 #include "PUOrderComponent.generated.h"
 
@@ -16,14 +17,19 @@ class PROJECTUMEOWMI_API UPUOrderComponent : public USceneComponent
 {
     GENERATED_BODY()
 
-public:    
+public:
     UPUOrderComponent();
 
     virtual void BeginPlay() override;
 
     // Order Management
+    /** Generate a new order (dish from AvailableDishTags pool or fallback). */
     UFUNCTION(BlueprintCallable, Category = "Order System")
     void GenerateNewOrder();
+
+    /** Generate a new order for a specific dish tag. Use invalid tag to use pool/random instead. */
+    UFUNCTION(BlueprintCallable, Category = "Order System", meta = (DisplayName = "Generate New Order With Dish"))
+    void GenerateNewOrderWithDish(FGameplayTag DishTag);
 
     UFUNCTION(BlueprintCallable, Category = "Order System")
     void ClearCurrentOrder();
@@ -50,17 +56,19 @@ public:
     FOnOrderCompleted OnOrderCompleted;
 
     // Order Generation Settings
+    /** Pool of dish tags to choose from when generating orders (random pick if no override tag). */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation", meta = (Categories = "Dish"))
+    TArray<FGameplayTag> AvailableDishTags;
+
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation")
     int32 DefaultMinIngredients = 3;
 
+    /** One or more aspect requirements (flavor and/or texture). e.g. Salt, Sweet, Umami (flavor), Crispy (texture). */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation")
-    FName DefaultTargetFlavor = FName(TEXT("Saltiness"));
+    TArray<FOrderAspectRequirement> DefaultTargetAspects;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation")
-    float DefaultMinFlavorValue = 5.0f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation")
-    FText DefaultOrderDescription = FText::FromString(TEXT("Make me congee with {0} ingredients. Make it {1}."));
+    FText DefaultOrderDescription = FText::FromString(TEXT("Make me something with {0} ingredients. I want it {1}."));
 
     // Data tables for generating orders
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Order System|Generation")
@@ -73,13 +81,12 @@ public:
     UDataTable* PreparationDataTable;
 
 protected:
-    // Current order data
     UPROPERTY(BlueprintReadOnly, Category = "Order System")
     FPUOrderBase CurrentOrder;
 
     UPROPERTY(BlueprintReadOnly, Category = "Order System")
     bool bHasActiveOrder = false;
 
-    // Order generation
-    void GenerateSimpleOrder();
+    /** OptionalDishTag: if valid, use it; else pick from AvailableDishTags; else fallback to GetRandomDishTag / Congee. */
+    void GenerateSimpleOrder(FGameplayTag OptionalDishTag);
 }; 

@@ -4,69 +4,61 @@
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
 {
-    constexpr bool bPU_LogOrderDishDebug = false;
+    constexpr bool bPU_LogOrderDishDebug = true; // Set to true to see order generation in Output Log
 }
 
 FPUOrderBase::FPUOrderBase()
     : OrderID(NAME_None)
     , OrderDescription(FText::GetEmpty())
     , MinIngredientCount(3)
-    , TargetFlavorProperty(FName(TEXT("Salt")))
-    , MinFlavorValue(5.0f)
     , OrderDialogueText(FText::GetEmpty())
 {
 }
 
 bool FPUOrderBase::ValidateDish(const FPUDishBase& Dish) const
 {
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::ValidateDish - Starting validation for order: %s"), *OrderID.ToString());
-    
-    // Check ingredient count - sum up all quantities, not just unique types
     int32 CurrentIngredientCount = Dish.GetTotalIngredientQuantity();
-    bool bIngredientCountValid = CurrentIngredientCount >= MinIngredientCount;
-    
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::ValidateDish - Ingredient count: %d/%d (Required: %d) - Valid: %s"), 
-    //    CurrentIngredientCount, MinIngredientCount, MinIngredientCount, bIngredientCountValid ? TEXT("YES") : TEXT("NO"));
-    
-    // Check flavor requirement
-    float CurrentFlavorValue = Dish.GetTotalFlavorAspect(TargetFlavorProperty);
-    bool bFlavorValid = CurrentFlavorValue >= MinFlavorValue;
-    
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::ValidateDish - Flavor %s: %.2f/%.2f (Required: %.2f) - Valid: %s"), 
-    //    *TargetFlavorProperty.ToString(), CurrentFlavorValue, MinFlavorValue, MinFlavorValue, bFlavorValid ? TEXT("YES") : TEXT("NO"));
-    
-    bool bOverallValid = bIngredientCountValid && bFlavorValid;
-    
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::ValidateDish - Overall validation result: %s"), bOverallValid ? TEXT("PASS") : TEXT("FAIL"));
-    
-    return bOverallValid;
+    if (CurrentIngredientCount < MinIngredientCount)
+    {
+        return false;
+    }
+
+    for (const FOrderAspectRequirement& Req : TargetAspects)
+    {
+        float CurrentValue = (Req.AspectType == EOrderAspectType::Flavor)
+            ? Dish.GetTotalFlavorAspect(Req.AspectName)
+            : Dish.GetTotalTextureAspect(Req.AspectName);
+        if (CurrentValue < Req.MinValue)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 float FPUOrderBase::GetSatisfactionScore(const FPUDishBase& Dish) const
 {
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::GetSatisfactionScore - Calculating satisfaction for order: %s"), *OrderID.ToString());
-    
-    float Score = 0.0f;
-    
-    // Ingredient count satisfaction (50% of score) - sum up all quantities
-    int32 CurrentIngredientCount = Dish.GetTotalIngredientQuantity();
-    float IngredientScore = FMath::Clamp(static_cast<float>(CurrentIngredientCount) / static_cast<float>(MinIngredientCount), 0.0f, 1.0f);
-    Score += IngredientScore * 0.5f;
-    
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::GetSatisfactionScore - Ingredient score: %.2f (Count: %d/%d)"), 
-    //    IngredientScore, CurrentIngredientCount, MinIngredientCount);
-    
-    // Flavor satisfaction (50% of score)
-    float CurrentFlavor = Dish.GetTotalFlavorAspect(TargetFlavorProperty);
-    float FlavorScore = FMath::Clamp(CurrentFlavor / MinFlavorValue, 0.0f, 1.0f);
-    Score += FlavorScore * 0.5f;
-    
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::GetSatisfactionScore - Flavor score: %.2f (Value: %.2f/%.2f)"), 
-    //    FlavorScore, CurrentFlavor, MinFlavorValue);
-    
-    //UE_LOG(LogTemp,Log, TEXT("FPUOrderBase::GetSatisfactionScore - Final satisfaction score: %.2f"), Score);
-    
-    return Score;
+    float IngredientScore = 0.5f;
+    {
+        int32 CurrentIngredientCount = Dish.GetTotalIngredientQuantity();
+        IngredientScore = FMath::Clamp(static_cast<float>(CurrentIngredientCount) / static_cast<float>(FMath::Max(1, MinIngredientCount)), 0.0f, 1.0f) * 0.5f;
+    }
+
+    float AspectScore = 0.5f;
+    if (TargetAspects.Num() > 0)
+    {
+        float Sum = 0.0f;
+        for (const FOrderAspectRequirement& Req : TargetAspects)
+        {
+            float CurrentValue = (Req.AspectType == EOrderAspectType::Flavor)
+                ? Dish.GetTotalFlavorAspect(Req.AspectName)
+                : Dish.GetTotalTextureAspect(Req.AspectName);
+            Sum += FMath::Clamp(CurrentValue / FMath::Max(0.01f, Req.MinValue), 0.0f, 1.0f);
+        }
+        AspectScore = (Sum / static_cast<float>(TargetAspects.Num())) * 0.5f;
+    }
+
+    return IngredientScore + AspectScore;
 }
 
 void FPUOrderBase::LogOrderDetails() const
@@ -76,14 +68,17 @@ void FPUOrderBase::LogOrderDetails() const
         return;
     }
 
-    //UE_LOG(LogTemp,Display, TEXT("=== ORDER DETAILS ==="));
-    //UE_LOG(LogTemp,Display, TEXT("Order ID: %s"), *OrderID.ToString());
-    //UE_LOG(LogTemp,Display, TEXT("Description: %s"), *OrderDescription.ToString());
-    //UE_LOG(LogTemp,Display, TEXT("Min Ingredients: %d"), MinIngredientCount);
-    //UE_LOG(LogTemp,Display, TEXT("Target Flavor: %s"), *TargetFlavorProperty.ToString());
-    //UE_LOG(LogTemp,Display, TEXT("Min Flavor Value: %.2f"), MinFlavorValue);
-    //UE_LOG(LogTemp,Display, TEXT("Dialogue Text: %s"), *OrderDialogueText.ToString());
-    //UE_LOG(LogTemp,Display, TEXT("==================="));
+    UE_LOG(LogTemp, Display, TEXT("=== ORDER DETAILS ==="));
+    UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *OrderID.ToString());
+    UE_LOG(LogTemp, Display, TEXT("Description: %s"), *OrderDescription.ToString());
+    UE_LOG(LogTemp, Display, TEXT("Min Ingredients: %d"), MinIngredientCount);
+    UE_LOG(LogTemp, Display, TEXT("Base Dish: %s (Tag: %s)"), *BaseDish.DisplayName.ToString(), *BaseDish.DishTag.ToString());
+    for (const FOrderAspectRequirement& Req : TargetAspects)
+    {
+        UE_LOG(LogTemp, Display, TEXT("  Target %s %s: min %.2f"), Req.AspectType == EOrderAspectType::Flavor ? TEXT("Flavor") : TEXT("Texture"), *Req.AspectName.ToString(), Req.MinValue);
+    }
+    UE_LOG(LogTemp, Display, TEXT("Dialogue Text: %s"), *OrderDialogueText.ToString());
+    UE_LOG(LogTemp, Display, TEXT("==================="));
 }
 
 void FPUOrderBase::LogValidationResults(const FPUDishBase& Dish) const
@@ -101,7 +96,9 @@ void FPUOrderBase::LogValidationResults(const FPUDishBase& Dish) const
     // Log dish details - calculate total ingredient count
     int32 TotalIngredientCount = Dish.GetTotalIngredientQuantity();
     //UE_LOG(LogTemp,Display, TEXT("Dish Ingredients: %d (Total Quantity: %d)"), Dish.IngredientInstances.Num(), TotalIngredientCount);
-    //UE_LOG(LogTemp,Display, TEXT("Dish Flavor %s: %.2f"), *TargetFlavorProperty.ToString(), Dish.GetTotalFlavorAspect(TargetFlavorProperty));
+    //for (const FOrderAspectRequirement& Req : TargetAspects)
+    //    UE_LOG(LogTemp,Display, TEXT("Dish %s %s: %.2f"), Req.AspectType == EOrderAspectType::Flavor ? TEXT("Flavor") : TEXT("Texture"), *Req.AspectName.ToString(),
+    //        Req.AspectType == EOrderAspectType::Flavor ? Dish.GetTotalFlavorAspect(Req.AspectName) : Dish.GetTotalTextureAspect(Req.AspectName));
     
     // Log validation results
     bool bValid = ValidateDish(Dish);
@@ -155,11 +152,13 @@ void FPUOrderBase::LogCompletionDetails() const
         }
     }
     
-    // Log final flavor values
-    if (!TargetFlavorProperty.IsNone())
+    // Log final aspect values
+    for (const FOrderAspectRequirement& Req : TargetAspects)
     {
-        float FinalFlavorValue = CompletedDish.GetTotalFlavorAspect(TargetFlavorProperty);
-        //UE_LOG(LogTemp,Display, TEXT("Final %s Value: %.2f"), *TargetFlavorProperty.ToString(), FinalFlavorValue);
+        float Val = (Req.AspectType == EOrderAspectType::Flavor)
+            ? CompletedDish.GetTotalFlavorAspect(Req.AspectName)
+            : CompletedDish.GetTotalTextureAspect(Req.AspectName);
+        //UE_LOG(LogTemp,Display, TEXT("Final %s %s: %.2f"), Req.AspectType == EOrderAspectType::Flavor ? TEXT("Flavor") : TEXT("Texture"), *Req.AspectName.ToString(), Val);
     }
     
     //UE_LOG(LogTemp,Display, TEXT("==============================="));

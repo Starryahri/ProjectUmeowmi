@@ -327,6 +327,10 @@ protected:
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;
 
+    /** Used during camera transition out of customization so we can clear CurrentCharacter (and thus IsCustomizing()) immediately while the transition still has a character reference. */
+    UPROPERTY()
+    TWeakObjectPtr<AProjectUmeowmiCharacter> CameraTransitionCharacter;
+
     // Input context management
     UPROPERTY()
     UInputMappingContext* OriginalMappingContext;
@@ -367,6 +371,9 @@ protected:
 private:
 	// Hide/show HUD widgets when entering/exiting customization.
 	void SetHUDVisible(bool bShouldBeVisible);
+
+	/** Unlock any ingredients in the dish that aren't already in the pantry (so they appear when customization starts). */
+	void EnsureDishIngredientsInPantry(const FPUDishBase& Dish);
 
     // Spawn visual 3D mesh for ingredient
     void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);

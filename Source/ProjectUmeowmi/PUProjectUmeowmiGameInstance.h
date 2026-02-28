@@ -74,18 +74,20 @@ public:
 	/**
 	 * Unlock an ingredient (adds it to the unlocked set)
 	 * @param IngredientTag - The gameplay tag of the ingredient to unlock
+	 * @param bSilent - If true, do not show the unlock popup (e.g. when adding dish ingredients to pantry)
 	 * @return True if the ingredient was successfully unlocked (or was already unlocked)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory")
-	bool UnlockIngredient(const FGameplayTag& IngredientTag);
+	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory", meta = (AdvancedDisplay = "1"))
+	bool UnlockIngredient(const FGameplayTag& IngredientTag, bool bSilent = false);
 
 	/**
 	 * Unlock multiple ingredients at once
 	 * @param IngredientTags - Array of gameplay tags to unlock
+	 * @param bSilent - If true, do not show the unlock popup (e.g. when adding dish ingredients to pantry)
 	 * @return Number of ingredients successfully unlocked (including ones that were already unlocked)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory")
-	int32 UnlockIngredients(const TArray<FGameplayTag>& IngredientTags);
+	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory", meta = (AdvancedDisplay = "1"))
+	int32 UnlockIngredients(const TArray<FGameplayTag>& IngredientTags, bool bSilent = false);
 
 	/**
 	 * Check if an ingredient is unlocked

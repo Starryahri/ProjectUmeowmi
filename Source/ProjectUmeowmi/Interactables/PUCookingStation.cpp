@@ -285,74 +285,20 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
         //    IngredientCount, Order.MinIngredientCount);
     }
     
-    // Check flavor value if there's a target flavor
-    bool bMeetsFlavorRequirement = true;
-    if (!Order.TargetFlavorProperty.IsNone())
+    // Check all target aspects (flavor and texture)
+    bool bMeetsAspectRequirements = true;
+    for (const FOrderAspectRequirement& Req : Order.TargetAspects)
     {
-        if (bPU_LogCookingStationDishDebug)
+        float CurrentValue = (Req.AspectType == EOrderAspectType::Flavor)
+            ? Dish.GetTotalFlavorAspect(Req.AspectName)
+            : Dish.GetTotalTextureAspect(Req.AspectName);
+        if (CurrentValue < Req.MinValue)
         {
-            //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Looking for flavor property: %s"), *Order.TargetFlavorProperty.ToString());
-            //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish has %d ingredients"), Dish.IngredientInstances.Num());
-        }
-        
-        // Debug each ingredient's flavor contribution
-        for (int32 i = 0; i < Dish.IngredientInstances.Num(); ++i)
-        {
-            const FIngredientInstance& Instance = Dish.IngredientInstances[i];
-            FPUIngredientBase Ingredient;
-            if (Dish.GetIngredientForInstance(i, Ingredient))
-            {
-                float IngredientFlavor = Ingredient.GetFlavorAspect(Order.TargetFlavorProperty);
-                if (bPU_LogCookingStationDishDebug)
-                {
-                    //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %d (%s) has flavor value: %.2f"), 
-                    //    i, *Instance.IngredientData.IngredientTag.ToString(), IngredientFlavor);
-                }
-                
-                // Log preparations for this instance
-                if (Instance.IngredientData.ActivePreparations.Num() > 0)
-                {
-                    TArray<FGameplayTag> PreparationTags;
-                    Instance.IngredientData.ActivePreparations.GetGameplayTagArray(PreparationTags);
-                    FString PrepString = TEXT("Preparations: ");
-                    for (const FGameplayTag& PrepTag : PreparationTags)
-                    {
-                        PrepString += PrepTag.ToString() + TEXT(", ");
-                    }
-                    if (bPU_LogCookingStationDishDebug)
-                    {
-                        //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - %s"), *PrepString);
-                    }
-                }
-                else
-                {
-                    if (bPU_LogCookingStationDishDebug)
-                    {
-                        //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - No preparations applied"));
-                    }
-                }
-                
-                // Debug the ingredient's aspects
-                if (bPU_LogCookingStationDishDebug)
-                {
-                    //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Ingredient %s flavor aspects: Umami=%.2f, Sweet=%.2f, Salt=%.2f, Sour=%.2f, Bitter=%.2f, Spicy=%.2f"), 
-                    //    *Instance.IngredientData.IngredientTag.ToString(), 
-                    //    Ingredient.FlavorAspects.Umami, Ingredient.FlavorAspects.Sweet, Ingredient.FlavorAspects.Salt,
-                    //    Ingredient.FlavorAspects.Sour, Ingredient.FlavorAspects.Bitter, Ingredient.FlavorAspects.Spicy);
-                }
-            }
-        }
-        
-        float FlavorValue = Dish.GetTotalFlavorAspect(Order.TargetFlavorProperty);
-        bMeetsFlavorRequirement = FlavorValue >= Order.MinFlavorValue;
-        
-        if (bPU_LogCookingStationDishDebug)
-        {
-            //UE_LOG(LogTemp,Display, TEXT("CookingStation::ValidateDishAgainstOrder - Dish flavor value: %.2f, minimum required: %.2f"), 
-            //    FlavorValue, Order.MinFlavorValue);
+            bMeetsAspectRequirements = false;
+            break;
         }
     }
-    
+
     // Calculate satisfaction score
     OutSatisfactionScore = CalculateSatisfactionScore(Dish, Order);
     
@@ -370,23 +316,7 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
 
 float APUCookingStation::CalculateSatisfactionScore(const FPUDishBase& Dish, const FPUOrderBase& Order) const
 {
-    // Calculate satisfaction score (weighted average of ingredient count and flavor value)
-    float IngredientScore = FMath::Min(1.0f, (float)Dish.IngredientInstances.Num() / (float)Order.MinIngredientCount);
-    float FlavorScore = 1.0f; // Default to perfect if no flavor requirement
-    
-    if (!Order.TargetFlavorProperty.IsNone())
-    {
-        float FlavorValue = Dish.GetTotalFlavorAspect(Order.TargetFlavorProperty);
-        FlavorScore = FMath::Min(1.0f, FlavorValue / Order.MinFlavorValue);
-    }
-    
-    // Weighted average: 60% ingredients, 40% flavor
-    float SatisfactionScore = (IngredientScore * 0.6f) + (FlavorScore * 0.4f);
-    
-    //UE_LOG(LogTemp,Display, TEXT("CookingStation::CalculateSatisfactionScore - Ingredient Score: %.2f, Flavor Score: %.2f, Final Score: %.2f"), 
-    //    IngredientScore, FlavorScore, SatisfactionScore);
-    
-    return SatisfactionScore;
+    return Order.GetSatisfactionScore(Dish);
 }
 
 

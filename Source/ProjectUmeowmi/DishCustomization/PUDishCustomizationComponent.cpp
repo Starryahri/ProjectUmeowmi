@@ -99,7 +99,7 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    if (bIsTransitioningCamera && CurrentCharacter)
+    if (bIsTransitioningCamera && (CurrentCharacter || CameraTransitionCharacter.Get()))
     {
         UpdateCameraTransition(DeltaTime);
     }
@@ -149,6 +149,7 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     StoreOriginalDishContainerMesh();
 
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
+    CameraTransitionCharacter = nullptr;
     CurrentCharacter = Character;
     bWasMouseDown = false;  // Reset for clean state when entering customization
 
@@ -388,15 +389,23 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
 
 void UPUDishCustomizationComponent::EndCustomization()
 {
+    UWorld* World = GetWorld();
+    APlayerController* WorldPC = World ? World->GetFirstPlayerController() : nullptr;
+
     if (!CurrentCharacter)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("No current character in EndCustomization"));
+        // Still restore movement so player can move (e.g. component ref mismatch or already cleared)
+        if (WorldPC)
+        {
+            WorldPC->SetIgnoreMoveInput(false);
+            WorldPC->SetIgnoreLookInput(false);
+            UWidgetBlueprintLibrary::SetFocusToGameViewport();
+        }
         return;
     }
 
     // Set HUD to HitTestInvisible when exiting customization (non-visible but non-hit testable)
     // This prevents the HUD from being visible but also prevents it from blocking input
-    UWorld* World = GetWorld();
     if (World)
     {
         TArray<UUserWidget*> FoundWidgets;
@@ -462,8 +471,8 @@ void UPUDishCustomizationComponent::EndCustomization()
             PreInputMouseDownHandle.Reset();
         }
 
-        // Unbind the controller mouse action first
-        if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerController->InputComponent))
+        // Unbind the controller mouse action first (use Cast so we still restore move/look if this fails)
+        if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
         {
             if (ControllerMouseAction)
             {
@@ -509,17 +518,20 @@ void UPUDishCustomizationComponent::EndCustomization()
             }
         }
 
-        // Re-enable movement and hide mouse cursor
+        // Re-enable movement and look
         PlayerController->SetIgnoreMoveInput(false);
         PlayerController->SetIgnoreLookInput(false);
         PlayerController->bShowMouseCursor = true;
 
-        // Set input mode back to game and UI to keep mouse visible
+        // Set input mode back to game and UI (mouse visible, no specific widget focus)
         FInputModeGameAndUI InputMode;
         InputMode.SetWidgetToFocus(nullptr);
         InputMode.SetHideCursorDuringCapture(false);
         InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
         PlayerController->SetInputMode(InputMode);
+
+        // Return focus to the game viewport so controller/gamepad works again (was stuck after closing customization UI)
+        UWidgetBlueprintLibrary::SetFocusToGameViewport();
     }
 
     // Clean up the customization widget
@@ -543,6 +555,21 @@ void UPUDishCustomizationComponent::EndCustomization()
     
     // Start camera transition back to original view
     StartCameraTransition(false);
+
+    // Store character for the outgoing camera transition, then clear CurrentCharacter so IsCustomizing()
+    // returns false immediately. Otherwise other systems (e.g. GameInstance OnPopupWidgetClosed when a
+    // popup closes) see IsCustomizing() true and re-apply ignore move/look, taking control away again.
+    // UpdateCameraTransition uses CameraTransitionCharacter when CurrentCharacter is null.
+    CameraTransitionCharacter = CurrentCharacter;
+    CurrentCharacter = nullptr;
+
+    // Always re-enable movement on the world's player controller so keyboard/joystick move works no matter what.
+    if (WorldPC)
+    {
+        WorldPC->SetIgnoreMoveInput(false);
+        WorldPC->SetIgnoreLookInput(false);
+        UWidgetBlueprintLibrary::SetFocusToGameViewport();
+    }
 }
 
 void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
@@ -740,13 +767,14 @@ void UPUDishCustomizationComponent::SwitchToCharacterCamera()
 
 void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
 {
-    if (!CurrentCharacter)
+    AProjectUmeowmiCharacter* Char = CurrentCharacter ? CurrentCharacter : CameraTransitionCharacter.Get();
+    if (!Char)
     {
         return;
     }
 
-    USpringArmComponent* CameraBoom = CurrentCharacter->GetCameraBoom();
-    UCameraComponent* FollowCamera = CurrentCharacter->GetFollowCamera();
+    USpringArmComponent* CameraBoom = Char->GetCameraBoom();
+    UCameraComponent* FollowCamera = Char->GetFollowCamera();
     if (!CameraBoom || !FollowCamera)
     {
         return;
@@ -757,8 +785,8 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     float CurrentPitch = CameraBoom->GetRelativeRotation().Pitch;
     float CurrentYaw = CameraBoom->GetRelativeRotation().Yaw;
     float CurrentOrthoWidth = FollowCamera->OrthoWidth;
-    float CurrentCameraOffset = CurrentCharacter->GetCameraOffset();
-    int32 CurrentCameraPositionIndex = CurrentCharacter->GetCameraPositionIndex();
+    float CurrentCameraOffset = Char->GetCameraOffset();
+    int32 CurrentCameraPositionIndex = Char->GetCameraPositionIndex();
 
     // Interpolate values
     float NewDistance = FMath::FInterpTo(CurrentDistance, TargetCameraDistance, DeltaTime, CameraTransitionSpeed);
@@ -771,8 +799,8 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     CameraBoom->TargetArmLength = NewDistance;
     CameraBoom->SetRelativeRotation(FRotator(NewPitch, NewYaw, 0.0f));
     FollowCamera->OrthoWidth = NewOrthoWidth;
-    CurrentCharacter->SetCameraOffset(NewCameraOffset);
-    CurrentCharacter->SetCameraPositionIndex(TargetCameraPositionIndex);
+    Char->SetCameraOffset(NewCameraOffset);
+    Char->SetCameraPositionIndex(TargetCameraPositionIndex);
 
     // Check if we've reached the target
     if (FMath::IsNearlyEqual(NewDistance, TargetCameraDistance, 1.0f) &&
@@ -784,7 +812,7 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
         bIsTransitioningCamera = false;
 
         // If we're exiting customization (returning to original camera settings), re-enable collision detection
-        if (TargetOrthoWidth == OriginalOrthoWidth && CurrentCharacter)
+        if (TargetOrthoWidth == OriginalOrthoWidth && Char)
         {
             if (CameraBoom)
             {
@@ -841,14 +869,21 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
                 }
             }
             
-            AProjectUmeowmiCharacter* TempCharacter = CurrentCharacter;
+            CameraTransitionCharacter = nullptr;
             CurrentCharacter = nullptr;
             if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
             {
                 GI->ClearCurrentDishTag();
             }
             OnCustomizationEnded.Broadcast();
-            //UE_LOG(LogTemp,Log, TEXT("Customization fully ended"));
+
+            // Force restore move/look and focus when transition fully ends (belt-and-suspenders so player can always move)
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                PC->SetIgnoreMoveInput(false);
+                PC->SetIgnoreLookInput(false);
+                UWidgetBlueprintLibrary::SetFocusToGameViewport();
+            }
         }
     }
 }
@@ -1404,6 +1439,8 @@ void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& Initia
 {
     //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Setting initial dish data: %s with %d ingredients"), 
     //    *InitialDishData.DisplayName.ToString(), InitialDishData.IngredientInstances.Num());
+
+    EnsureDishIngredientsInPantry(InitialDishData);
     
     // Set the initial dish data
     UpdateCurrentDishData(InitialDishData);
@@ -1434,9 +1471,32 @@ void UPUDishCustomizationComponent::BroadcastInitialDishData(const FPUDishBase& 
 {
     //UE_LOG(LogTemp,Display, TEXT("📡 UPUDishCustomizationComponent::BroadcastInitialDishData - Broadcasting initial dish data: %s"), 
     //    *InitialDishData.DisplayName.ToString());
+
+    EnsureDishIngredientsInPantry(InitialDishData);
     
     CurrentDishData = InitialDishData;
     OnInitialDishDataReceived.Broadcast(InitialDishData);
+}
+
+void UPUDishCustomizationComponent::EnsureDishIngredientsInPantry(const FPUDishBase& Dish)
+{
+    UWorld* World = GetWorld();
+    UPUProjectUmeowmiGameInstance* GI = World ? World->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
+    if (!GI) return;
+
+    TArray<FGameplayTag> TagsToUnlock;
+    for (const FIngredientInstance& Instance : Dish.IngredientInstances)
+    {
+        FGameplayTag Tag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        if (Tag.IsValid() && !GI->IsIngredientUnlocked(Tag))
+        {
+            TagsToUnlock.AddUnique(Tag);
+        }
+    }
+    if (TagsToUnlock.Num() > 0)
+    {
+        GI->UnlockIngredients(TagsToUnlock, true); // silent: add to pantry without popup
+    }
 }
 
 void UPUDishCustomizationComponent::StartPlanningMode()

@@ -316,7 +316,7 @@ void UPUProjectUmeowmiGameInstance::LoadLevelAfterFade()
 }
 
 // Ingredient Inventory System
-bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& IngredientTag)
+bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& IngredientTag, bool bSilent)
 {
 	if (!IngredientTag.IsValid())
 	{
@@ -333,8 +333,10 @@ bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& Ingredi
 	UnlockedIngredientTags.Add(IngredientTag);
 	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredient - Unlocked ingredient: %s"), *IngredientTag.ToString());
 
-	// Show unlock popup
-	ShowIngredientUnlockPopup(IngredientTag);
+	if (!bSilent)
+	{
+		ShowIngredientUnlockPopup(IngredientTag);
+	}
 
 	// Auto-save when an ingredient is unlocked
 	SaveGame();
@@ -342,7 +344,7 @@ bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& Ingredi
 	return true;
 }
 
-int32 UPUProjectUmeowmiGameInstance::UnlockIngredients(const TArray<FGameplayTag>& IngredientTags)
+int32 UPUProjectUmeowmiGameInstance::UnlockIngredients(const TArray<FGameplayTag>& IngredientTags, bool bSilent)
 {
 	int32 UnlockedCount = 0;
 	int32 NewlyUnlockedCount = 0;
@@ -372,25 +374,27 @@ int32 UPUProjectUmeowmiGameInstance::UnlockIngredients(const TArray<FGameplayTag
 	{
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredients - Unlocked %d new ingredients (total: %d)"), 
 			NewlyUnlockedCount, UnlockedCount);
-		
-		// Collect newly unlocked ingredient tags
-		TArray<FGameplayTag> NewlyUnlockedTags;
-		for (const FGameplayTag& Tag : IngredientTags)
-		{
-			if (Tag.IsValid() && UnlockedIngredientTags.Contains(Tag))
-			{
-				NewlyUnlockedTags.Add(Tag);
-			}
-		}
 
-		// Show unlock popup for newly unlocked ingredients
-		if (NewlyUnlockedTags.Num() == 1)
+		if (!bSilent)
 		{
-			ShowIngredientUnlockPopup(NewlyUnlockedTags[0]);
-		}
-		else if (NewlyUnlockedTags.Num() > 1)
-		{
-			ShowIngredientUnlockPopupMultiple(NewlyUnlockedTags);
+			// Collect newly unlocked ingredient tags for popup
+			TArray<FGameplayTag> NewlyUnlockedTags;
+			for (const FGameplayTag& Tag : IngredientTags)
+			{
+				if (Tag.IsValid() && UnlockedIngredientTags.Contains(Tag))
+				{
+					NewlyUnlockedTags.Add(Tag);
+				}
+			}
+
+			if (NewlyUnlockedTags.Num() == 1)
+			{
+				ShowIngredientUnlockPopup(NewlyUnlockedTags[0]);
+			}
+			else if (NewlyUnlockedTags.Num() > 1)
+			{
+				ShowIngredientUnlockPopupMultiple(NewlyUnlockedTags);
+			}
 		}
 		
 		// Auto-save when ingredients are unlocked

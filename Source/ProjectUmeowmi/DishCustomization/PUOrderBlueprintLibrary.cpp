@@ -25,20 +25,14 @@ void UPUOrderBlueprintLibrary::LogValidationResults(const FPUOrderBase& Order, c
     Order.LogValidationResults(Dish);
 }
 
-FPUOrderBase UPUOrderBlueprintLibrary::CreateSimpleOrder(FName OrderID, FText Description, int32 MinIngredients, FName TargetFlavor, float MinFlavorValue, FText DialogueText)
+FPUOrderBase UPUOrderBlueprintLibrary::CreateSimpleOrder(FName OrderID, FText Description, int32 MinIngredients, const TArray<FOrderAspectRequirement>& TargetAspects, FText DialogueText)
 {
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderBlueprintLibrary::CreateSimpleOrder - Creating order: %s"), *OrderID.ToString());
-    
     FPUOrderBase NewOrder;
     NewOrder.OrderID = OrderID;
     NewOrder.OrderDescription = Description;
     NewOrder.MinIngredientCount = MinIngredients;
-    NewOrder.TargetFlavorProperty = TargetFlavor;
-    NewOrder.MinFlavorValue = MinFlavorValue;
+    NewOrder.TargetAspects = TargetAspects;
     NewOrder.OrderDialogueText = DialogueText;
-    
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderBlueprintLibrary::CreateSimpleOrder - Order created successfully"));
-    
     return NewOrder;
 }
 

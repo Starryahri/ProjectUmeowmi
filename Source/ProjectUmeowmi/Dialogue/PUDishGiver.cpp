@@ -121,13 +121,32 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
         return;
     }
     
-    // Pass the order to the player character
     PlayerChar->SetCurrentOrder(Order);
-    
-    // Set dialogue variables using helper function
     SetDialogueVariablesFromOrder(Order);
-    
-    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order passed to player character: %s"), *Order.OrderID.ToString());
+}
+
+void APUDishGiver::GenerateAndGiveOrderToPlayerWithDish(FGameplayTag DishTag)
+{
+    if (!IsValid(OrderComponent)) return;
+
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+        }
+    }
+    if (!IsValid(PlayerChar) || PlayerChar->HasCurrentOrder()) return;
+
+    OrderComponent->GenerateNewOrderWithDish(DishTag);
+    if (!OrderComponent->HasActiveOrder()) return;
+
+    const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
+    if (!Order.OrderID.IsValid()) return;
+
+    PlayerChar->SetCurrentOrder(Order);
+    SetDialogueVariablesFromOrder(Order);
 }
 
 FText APUDishGiver::GetOrderDialogueText() const
@@ -453,20 +472,22 @@ void APUDishGiver::ExecuteDelayedOrderClearing()
 
 void APUDishGiver::SetDialogueVariablesFromOrder(const FPUOrderBase& Order)
 {
-    // Set dialogue-accessible class variables from order data
     bHasOrderReady = true;
     OrderDescription = Order.OrderDescription;
     MinIngredientCount = Order.MinIngredientCount;
-    TargetFlavorProperty = FText::FromString(Order.TargetFlavorProperty.ToString());
-    MinFlavorValue = Order.MinFlavorValue;
     OrderDialogueText = Order.OrderDialogueText;
-    
-    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::SetDialogueVariablesFromOrder - Dialogue variables set: Ready=%s, Desc=%s, MinIng=%d, Flavor=%s, MinVal=%.1f"), 
-        //bHasOrderReady ? TEXT("TRUE") : TEXT("FALSE"), 
-        //*OrderDescription.ToString(), 
-        //MinIngredientCount, 
-        //*TargetFlavorProperty.ToString(), 
-        //MinFlavorValue);
+    // First aspect for backward-compat dialogue vars (TargetFlavorProperty / MinFlavorValue)
+    if (Order.TargetAspects.Num() > 0)
+    {
+        const FOrderAspectRequirement& First = Order.TargetAspects[0];
+        TargetFlavorProperty = FText::FromString(First.AspectName.ToString());
+        MinFlavorValue = First.MinValue;
+    }
+    else
+    {
+        TargetFlavorProperty = FText::FromString(TEXT(""));
+        MinFlavorValue = 0.0f;
+    }
 }
 
 void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
@@ -480,11 +501,23 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
     CompletedDishSatisfaction = CompletedOrder.FinalSatisfactionScore;
     CompletedDishIngredientCount = CompletedDish.IngredientInstances.Num();
     
-    // Flavor analysis
-    float FinalFlavorValue = CompletedDish.GetTotalFlavorAspect(CompletedOrder.TargetFlavorProperty);
-    CompletedDishFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), FinalFlavorValue));
-    CompletedDishTargetFlavor = FText::FromString(CompletedOrder.TargetFlavorProperty.ToString());
-    CompletedDishMinFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), CompletedOrder.MinFlavorValue));
+    // First target aspect for dialogue (flavor/texture value and requirement)
+    if (CompletedOrder.TargetAspects.Num() > 0)
+    {
+        const FOrderAspectRequirement& First = CompletedOrder.TargetAspects[0];
+        float Val = (First.AspectType == EOrderAspectType::Flavor)
+            ? CompletedDish.GetTotalFlavorAspect(First.AspectName)
+            : CompletedDish.GetTotalTextureAspect(First.AspectName);
+        CompletedDishFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), Val));
+        CompletedDishTargetFlavor = FText::FromString(First.AspectName.ToString());
+        CompletedDishMinFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), First.MinValue));
+    }
+    else
+    {
+        CompletedDishFlavorValue = FText::FromString(TEXT("0"));
+        CompletedDishTargetFlavor = FText::FromString(TEXT(""));
+        CompletedDishMinFlavorValue = FText::FromString(TEXT("0"));
+    }
     
     // Find most used ingredient
     TMap<FGameplayTag, int32> IngredientQuantities;

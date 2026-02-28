@@ -480,21 +480,28 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
         return false;
     }
 
-    // Get the dish name from the tag (everything after the last period) and convert to lowercase
+    // Get the dish row name from the tag: strip "Dish." prefix, lowercase, remove all periods.
+    // Example: "Dish.Cookies.EggYolk" -> "cookieseggyolk" (same convention as GetIngredientRowNameFromTag)
     FString FullTag = DishTag.ToString();
-    int32 LastPeriodIndex;
     FName RowName = NAME_None;
-    if (FullTag.FindLastChar('.', LastPeriodIndex))
+    if (FullTag.StartsWith(TEXT("Dish.")))
     {
-        FString DishName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-        RowName = FName(*DishName);
-        
-        if (bPU_LogDishTagSpam)
-        {
-            //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"),
-            //    *DishTag.ToString(), *RowName.ToString());
-        }
-        
+        FullTag = FullTag.RightChop(5); // Remove "Dish." (5 characters)
+    }
+    FullTag = FullTag.ToLower();
+    FullTag.ReplaceInline(TEXT("."), TEXT(""));
+    if (!FullTag.IsEmpty())
+    {
+        RowName = FName(*FullTag);
+    }
+    if (RowName != NAME_None && bPU_LogDishTagSpam)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"),
+        //    *DishTag.ToString(), *RowName.ToString());
+    }
+
+    if (RowName != NAME_None)
+    {
         if (FPUDishBase* FoundDish = DishDataTable->FindRow<FPUDishBase>(RowName, TEXT("GetDishFromDataTable")))
         {
             OutDish = *FoundDish;
@@ -644,15 +651,15 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
         }
         else
         {
-            //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s (RowName: %s)"), 
+            //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s (RowName: %s)"),
             //    *DishTag.ToString(), *RowName.ToString());
         }
     }
     else
     {
-        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Invalid dish tag format: %s"), *DishTag.ToString());
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Invalid or empty dish tag (expected e.g. Dish.Cookies.EggYolk -> row cookieseggyolk): %s"), *DishTag.ToString());
     }
-    
+
     return false;
 }
 
