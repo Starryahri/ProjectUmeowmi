@@ -11,6 +11,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
+#include "ProjectUmeowmi/Interactables/PUCookingStation.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "Engine/GameViewportClient.h"
@@ -400,8 +401,18 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 {
                     if (ATalkingObject* TalkingObject = ProjectCharacter->GetCurrentTalkingObject())
                     {
-                        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Ending interaction with talking object"));
-                        TalkingObject->EndInteraction();
+                        // For cooking stations, closing dialogue should NOT end the active
+                        // dish customization flow. Use the station's dialogue-only end.
+                        if (APUCookingStation* CookingStation = Cast<APUCookingStation>(TalkingObject))
+                        {
+                            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Ending dialogue only for cooking station"));
+                            CookingStation->EndDialogueOnly();
+                        }
+                        else
+                        {
+                            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Ending interaction with talking object"));
+                            TalkingObject->EndInteraction();
+                        }
                     }
                 }
             }

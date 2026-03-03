@@ -21,6 +21,11 @@ public:
     virtual void StartInteraction() override;
     virtual void EndInteraction() override;
 
+    // End only the dialogue/interaction state from ATalkingObject without
+    // shutting down the dish customization flow. Used by the dialogue UI
+    // when a conversation ends but the player should remain in customization.
+    void EndDialogueOnly();
+
 protected:
     virtual void PostInitializeComponents() override;
     virtual void BeginPlay() override;
@@ -42,6 +47,14 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
     FText StationDescription;
 
+    // Behavior when the player has an active order
+    // If true (default), interacting with the station while holding an order
+    // will immediately start dish customization and bypass dialogue.
+    // If false, interaction will go through the normal TalkingObject dialogue flow,
+    // and dish customization must be started explicitly (e.g. via Blueprint or dialogue event).
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cooking Station|Orders")
+    bool bStartCustomizationImmediatelyWhenHasOrder = true;
+
     // Data tables for dish customization (same as order component)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
     UDataTable* DishDataTable;
@@ -57,6 +70,12 @@ protected:
     // Helper functions
     UFUNCTION()
     void OnCustomizationEnded();
+
+    // Explicitly start dish customization using the player's current order.
+    // Useful when you want dialogue (or Blueprint logic) to decide whether and when
+    // to enter customization instead of always auto-starting.
+    UFUNCTION(BlueprintCallable, Category = "Cooking Station|Orders")
+    void StartCustomizationFromCurrentOrder();
 
     // Cooking Station specific dialogue methods
     UFUNCTION(BlueprintCallable, Category = "Cooking Station|Dialogue")

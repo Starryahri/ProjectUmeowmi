@@ -82,6 +82,78 @@ void APUCookingStation::BeginPlay()
     }
 }
 
+void APUCookingStation::StartCustomizationFromCurrentOrder()
+{
+    // Get the player character
+    AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(GetWorld()->GetFirstPlayerController()->GetPawn());
+    if (!Character || !IsValid(DishCustomizationComponent))
+    {
+        return;
+    }
+
+    // Don't try to start if we're already in customization mode
+    if (DishCustomizationComponent->IsCustomizing())
+    {
+        return;
+    }
+
+    // Require an active order
+    if (!Character->HasCurrentOrder())
+    {
+        return;
+    }
+
+    const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
+    if (bPU_LogCookingStationDishDebug)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartCustomizationFromCurrentOrder - Player has active order: %s"),
+        //    *CurrentOrder.OrderID.ToString());
+    }
+
+    // Use event-driven data passing
+    if (CurrentOrder.BaseDish.DishTag.IsValid())
+    {
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartCustomizationFromCurrentOrder - Broadcasting initial dish data from order: %s"),
+            //    *CurrentOrder.BaseDish.DisplayName.ToString());
+        }
+
+        // Broadcast initial dish data into the customization pipeline
+        DishCustomizationComponent->BroadcastInitialDishData(CurrentOrder.BaseDish);
+    }
+    else
+    {
+        //UE_LOG(LogTemp,Warning, TEXT("CookingStation::StartCustomizationFromCurrentOrder - Order has no base dish"));
+    }
+
+    // Set the data tables on the dish customization component
+    if (IngredientDataTable && PreparationDataTable)
+    {
+        if (bPU_LogCookingStationDishDebug)
+        {
+            //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartCustomizationFromCurrentOrder - Setting data tables on dish customization component"));
+        }
+        DishCustomizationComponent->SetDataTables(DishDataTable, IngredientDataTable, PreparationDataTable);
+    }
+    else
+    {
+        //UE_LOG(LogTemp,Warning, TEXT("CookingStation::StartCustomizationFromCurrentOrder - Data tables not set on cooking station"));
+    }
+
+    // Start dish customization with the character reference
+    DishCustomizationComponent->StartCustomization(Character);
+
+    // Start planning mode by default
+    DishCustomizationComponent->StartPlanningMode();
+
+    // Hide the interaction widget since we're in dish customization mode
+    if (InteractionWidget)
+    {
+        InteractionWidget->SetVisibility(false);
+    }
+}
+
 void APUCookingStation::StartInteraction()
 {
     //UE_LOG(LogTemp,Log, TEXT("CookingStation::StartInteraction - Attempting to start interaction"));
@@ -103,77 +175,25 @@ void APUCookingStation::StartInteraction()
         return;
     }
 
-    // Check if player has a current order
+    // If the player has a current order, either start customization immediately
+    // or go through dialogue depending on configuration.
     if (Character->HasCurrentOrder())
     {
-        const FPUOrderBase& CurrentOrder = Character->GetCurrentOrder();
-        if (bPU_LogCookingStationDishDebug)
+        if (bStartCustomizationImmediatelyWhenHasOrder)
         {
-            //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Player has active order: %s"), 
-            //    *CurrentOrder.OrderID.ToString());
-        }
-        
-        // Use event-driven data passing
-        if (CurrentOrder.BaseDish.DishTag.IsValid())
-        {
-            if (bPU_LogCookingStationDishDebug)
-            {
-                //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Broadcasting initial dish data from order: %s"), 
-                //    *CurrentOrder.BaseDish.DisplayName.ToString());
-                
-                // Debug: Log the base dish details
-                //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Base dish details:"));
-                //UE_LOG(LogTemp,Display, TEXT("  - Dish Tag: %s"), *CurrentOrder.BaseDish.DishTag.ToString());
-                //UE_LOG(LogTemp,Display, TEXT("  - Display Name: %s"), *CurrentOrder.BaseDish.DisplayName.ToString());
-                //UE_LOG(LogTemp,Display, TEXT("  - Ingredient Data Table: %s"), CurrentOrder.BaseDish.IngredientDataTable.IsValid() ? TEXT("Valid") : TEXT("NULL"));
-                //UE_LOG(LogTemp,Display, TEXT("  - Ingredient Instances: %d"), CurrentOrder.BaseDish.IngredientInstances.Num());
-                
-                for (int32 i = 0; i < CurrentOrder.BaseDish.IngredientInstances.Num(); i++)
-                {
-                    const FIngredientInstance& Instance = CurrentOrder.BaseDish.IngredientInstances[i];
-                    // Use convenient field if available, fallback to data field
-                    FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
-                    //UE_LOG(LogTemp,Display, TEXT("    - Instance %d: %s (Qty: %d)"), 
-                    //    i, *InstanceTag.ToString(), Instance.Quantity);
-                }
-            }
-            
-            // Use the event-driven approach
-            DishCustomizationComponent->BroadcastInitialDishData(CurrentOrder.BaseDish);
+            // Preserve existing behavior: jump straight into customization.
+            StartCustomizationFromCurrentOrder();
         }
         else
         {
-            //UE_LOG(LogTemp,Warning, TEXT("CookingStation::StartInteraction - Order has no base dish"));
-        }
+            if (bPU_LogCookingStationDishDebug)
+            {
+                //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Player has active order, but using dialogue-based flow"));
+            }
 
-        // Set the data tables on the dish customization component
-        if (IngredientDataTable && PreparationDataTable)
-        {
-            if (bPU_LogCookingStationDishDebug)
-            {
-                //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Setting data tables on dish customization component"));
-            }
-            DishCustomizationComponent->SetDataTables(DishDataTable, IngredientDataTable, PreparationDataTable);
+            // Let parent handle dialogue creation and interaction state.
+            Super::StartInteraction();
         }
-        else
-        {
-            //UE_LOG(LogTemp,Warning, TEXT("CookingStation::StartInteraction - Data tables not set on cooking station"));
-        }
-        
-        // Start dish customization with the character reference
-        DishCustomizationComponent->StartCustomization(Character);
-        
-        // Start planning mode by default
-        DishCustomizationComponent->StartPlanningMode();
-        
-        // Hide the interaction widget since we're in dish customization mode
-        if (InteractionWidget)
-        {
-            InteractionWidget->SetVisibility(false);
-        }
-        
-        // Don't call Super::StartInteraction() to avoid triggering dialogue
-        // The dish customization component will handle its own state
     }
     else
     {
@@ -181,7 +201,7 @@ void APUCookingStation::StartInteraction()
         {
             //UE_LOG(LogTemp,Display, TEXT("CookingStation::StartInteraction - Player has no active order, starting dialogue"));
         }
-        
+
         // Let parent handle dialogue creation and interaction state
         Super::StartInteraction();
     }
@@ -196,6 +216,14 @@ void APUCookingStation::EndInteraction()
     }
 
     // Call parent to handle interaction state and dialogue cleanup
+    Super::EndInteraction();
+}
+
+void APUCookingStation::EndDialogueOnly()
+{
+    // Intentionally do NOT touch DishCustomizationComponent here.
+    // This lets us close dialogue while keeping the customization
+    // UI, camera, and input context active.
     Super::EndInteraction();
 }
 
@@ -371,12 +399,14 @@ bool APUCookingStation::OnDialogueEvent_Implementation(UDlgContext* Context, FNa
     
     // Call parent implementation first
     bool bParentResult = Super::OnDialogueEvent_Implementation(Context, EventName);
-    
-    // Handle cooking station specific dialogue events
-    if (EventName == TEXT("EndDialogue"))
+
+    // Optional dialogue event hook to start dish customization from the current order.
+    // This allows dialogue nodes to control WHEN customization begins, instead of it
+    // always auto-starting when the player has an order.
+    if (EventName == TEXT("StartCustomizationFromCurrentOrder") ||
+        EventName == TEXT("StartDishCustomizationFromOrder"))
     {
-        //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnDialogueEvent - Ending dialogue"));
-        EndInteraction();
+        StartCustomizationFromCurrentOrder();
         return true;
     }
     
