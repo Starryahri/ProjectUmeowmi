@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Components/WidgetComponent.h"
+#include "GameplayTagContainer.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "TalkingObjectWidget.h"
 #include "TalkingObject.generated.h"
@@ -12,6 +13,9 @@ class UWidgetComponent;
 class USphereComponent;
 class UDlgDialogue;
 class UDlgContext;
+class UDataTable;
+class UPUEmoteWidget;
+struct FTimerHandle;
 
 // Delegate for when a player enters the interaction sphere
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPlayerEnteredInteractionSphere, class ATalkingObject*, TalkingObject);
@@ -105,6 +109,19 @@ public:
     /** Call from player Tick to drive NPC face-player lerp. Only does work when NPC is lerping. */
     void TickFacePlayerLerp(float DeltaTime);
 
+    // Emote API
+    /** Show an emote above this talking object, using EmoteDataTable to resolve the tag into an icon and optional extras. */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Emote")
+    void ShowEmoteByTag(FGameplayTag EmoteTag);
+
+    /** Clear any active emote immediately. */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Emote")
+    void ClearEmote();
+
+    /** Returns true if an emote is currently visible. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Talking Object|Emote")
+    bool IsEmoteActive() const;
+
 protected:
     // Configurable properties
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
@@ -150,6 +167,10 @@ protected:
     // Visual components
     UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
     UWidgetComponent* InteractionWidget;
+
+    /** Optional emote widget rendered above this talking object (e.g. cat-face icons). */
+    UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
+    UWidgetComponent* EmoteWidget;
 
     // Collision component
     UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
@@ -215,6 +236,24 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
     float NPCFacingRotationSpeed = 360.0f;
 
+    // Emote configuration
+
+    /** Master toggle for showing emotes above this talking object. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Emote")
+    bool bEnableEmotes = true;
+
+    /** Widget class used to render emotes above this talking object. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
+    TSubclassOf<UPUEmoteWidget> EmoteWidgetClass;
+
+    /** Space in which the emote widget is rendered (Screen or World). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
+    EWidgetSpace EmoteWidgetSpace = EWidgetSpace::World;
+
+    /** Data table mapping gameplay tags to emote data (icon, duration, etc.). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
+    UDataTable* EmoteDataTable = nullptr;
+
     // Dialogue context
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
@@ -244,6 +283,15 @@ private:
 
     bool bIsLerpingPlayerToFaceNPC = false;
     FRotator TargetPlayerRotation;
+
+    // Emote state
+
+    /** Currently active emote tag (if any). */
+    UPROPERTY()
+    FGameplayTag ActiveEmoteTag;
+
+    /** Timer used to auto-hide emotes after their duration. */
+    FTimerHandle EmoteHideTimerHandle;
 
     // Helper methods
     void UpdateInteractionWidget();

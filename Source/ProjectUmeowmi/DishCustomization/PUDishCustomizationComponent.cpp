@@ -277,8 +277,10 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
             //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No MouseClickAction set"));
         }
 
+#if WITH_EDITOR
         // Slate pre-input listener: fires BEFORE widgets consume the click (bypasses widget blocking)
         PreInputMouseDownHandle = FSlateApplication::Get().OnApplicationMousePreInputButtonDownListener().AddUObject(this, &UPUDishCustomizationComponent::OnPreInputMouseButtonDown);
+#endif // WITH_EDITOR
 
         // Bind stage navigation actions
         if (NextStageAction)
@@ -404,48 +406,8 @@ void UPUDishCustomizationComponent::EndCustomization()
         return;
     }
 
-    // Set HUD to HitTestInvisible when exiting customization (non-visible but non-hit testable)
-    // This prevents the HUD from being visible but also prevents it from blocking input
-    if (World)
-    {
-        TArray<UUserWidget*> FoundWidgets;
-        
-        // If explicitly provided, just use that class.
-        if (HUDWidgetClass)
-        {
-            UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, HUDWidgetClass, /*TopLevelOnly*/ false);
-            for (UUserWidget* Widget : FoundWidgets)
-            {
-                if (IsValid(Widget))
-                {
-                    Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
-                }
-            }
-        }
-        else
-        {
-            // Fallback: search all user widgets and find something that looks like WBP_HUD.
-            UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, UUserWidget::StaticClass(), /*TopLevelOnly*/ false);
-            
-            for (UUserWidget* Widget : FoundWidgets)
-            {
-                if (!IsValid(Widget))
-                {
-                    continue;
-                }
-                
-                const FString WidgetName = Widget->GetName();
-                const FString ClassName = Widget->GetClass() ? Widget->GetClass()->GetName() : FString();
-                
-                // Typical patterns are WBP_HUD_C, WBP_HUD_C_0, etc.
-                if (WidgetName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase) ||
-                    ClassName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase))
-                {
-                    Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
-                }
-            }
-        }
-    }
+    // Restore HUD visibility when exiting customization
+    SetHUDVisible(true);
 
     // End plating stage if we're in plating mode
     if (bPlatingMode)
@@ -464,12 +426,16 @@ void UPUDishCustomizationComponent::EndCustomization()
         PlayerController->bEnableClickEvents = true;
         PlayerController->CurrentMouseCursor = EMouseCursor::Default;
 
+#if WITH_EDITOR
         // Unregister Slate pre-input listener (must remove before component becomes invalid)
         if (PreInputMouseDownHandle.IsValid())
         {
             FSlateApplication::Get().OnApplicationMousePreInputButtonDownListener().Remove(PreInputMouseDownHandle);
             PreInputMouseDownHandle.Reset();
         }
+#else
+        PreInputMouseDownHandle.Reset();
+#endif // WITH_EDITOR
 
         // Unbind the controller mouse action first (use Cast so we still restore move/look if this fails)
         if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerController->InputComponent))
@@ -830,59 +796,28 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             // Restore the original dish container mesh
             RestoreOriginalDishContainerMesh();
             
-            // Ensure HUD is set to HitTestInvisible before broadcasting (safeguard in case something else changed it)
-            UWorld* World = GetWorld();
-            if (World)
-            {
-                TArray<UUserWidget*> FoundWidgets;
-                
-                if (HUDWidgetClass)
-                {
-                    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, HUDWidgetClass, /*TopLevelOnly*/ false);
-                    for (UUserWidget* Widget : FoundWidgets)
-                    {
-                        if (IsValid(Widget))
-                        {
-                            Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
-                        }
-                    }
-                }
-                else
-                {
-                    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, UUserWidget::StaticClass(), /*TopLevelOnly*/ false);
-                    for (UUserWidget* Widget : FoundWidgets)
-                    {
-                        if (!IsValid(Widget))
-                        {
-                            continue;
-                        }
-                        
-                        const FString WidgetName = Widget->GetName();
-                        const FString ClassName = Widget->GetClass() ? Widget->GetClass()->GetName() : FString();
-                        
-                        if (WidgetName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase) ||
-                            ClassName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase))
-                        {
-                            Widget->SetVisibility(ESlateVisibility::HitTestInvisible);
-                        }
-                    }
-                }
-            }
-            
+            // Ensure HUD is visible again when customization fully ends
+            SetHUDVisible(true);
+
             CameraTransitionCharacter = nullptr;
             CurrentCharacter = nullptr;
-            if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+
+            UWorld* World = GetWorld();
+            if (UPUProjectUmeowmiGameInstance* GI = World ? World->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
             {
                 GI->ClearCurrentDishTag();
             }
             OnCustomizationEnded.Broadcast();
 
             // Force restore move/look and focus when transition fully ends (belt-and-suspenders so player can always move)
-            if (APlayerController* PC = World->GetFirstPlayerController())
+            if (World)
             {
-                PC->SetIgnoreMoveInput(false);
-                PC->SetIgnoreLookInput(false);
-                UWidgetBlueprintLibrary::SetFocusToGameViewport();
+                if (APlayerController* PC = World->GetFirstPlayerController())
+                {
+                    PC->SetIgnoreMoveInput(false);
+                    PC->SetIgnoreLookInput(false);
+                    UWidgetBlueprintLibrary::SetFocusToGameViewport();
+                }
             }
         }
     }

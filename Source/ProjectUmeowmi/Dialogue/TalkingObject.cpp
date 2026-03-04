@@ -1,21 +1,25 @@
 #include "TalkingObject.h"
-#include "Components/WidgetComponent.h"
-#include "Components/SphereComponent.h"
-#include "Camera/CameraComponent.h"
+
 #include "ActorSequenceComponent.h"
 #include "ActorSequencePlayer.h"
-#include "DlgSystem/DlgManager.h"
+#include "Camera/CameraComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/WidgetComponent.h"
 #include "DlgSystem/DlgContext.h"
 #include "DlgSystem/DlgDialogue.h"
-#include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
-#include "ProjectUmeowmi/UI/PUDialogueBox.h"
-#include "PUDishGiver.h"
-//#include "DlgSystem/DlgDialogueParticipant.h"
+#include "DlgSystem/DlgManager.h"
+#include "Engine/DataTable.h"
+#include "Engine/Engine.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "GameFramework/PlayerController.h"
-#include "GameFramework/Character.h"
-#include "Engine/Engine.h"
+#include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
+#include "ProjectUmeowmi/UI/PUDialogueBox.h"
+#include "ProjectUmeowmi/UI/PUEmoteData.h"
+#include "ProjectUmeowmi/UI/PUEmoteWidget.h"
+#include "PUDishGiver.h"
+//#include "DlgSystem/DlgDialogueParticipant.h"
 
 ATalkingObject::ATalkingObject()
 {
@@ -33,11 +37,18 @@ ATalkingObject::ATalkingObject()
     InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereBeginOverlap);
     InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &ATalkingObject::OnInteractionSphereEndOverlap);
 
-    // Create and setup the widget component (attached to root so widget and sphere can be positioned independently)
+    // Create and setup the interaction widget component (attached to root so widget and sphere can be positioned independently)
     InteractionWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("InteractionWidget"));
     InteractionWidget->SetupAttachment(RootComponent);
     InteractionWidget->SetWidgetSpace(InteractionWidgetSpace);
     InteractionWidget->SetVisibility(false);
+
+    // Create and setup the emote widget component (also attached to root so it can be positioned independently)
+    EmoteWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("EmoteWidget"));
+    EmoteWidget->SetupAttachment(RootComponent);
+    EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+    EmoteWidget->SetVisibility(false);
+    EmoteWidget->SetDrawAtDesiredSize(true);
 }
 
 void ATalkingObject::PostInitializeComponents()
@@ -85,6 +96,17 @@ void ATalkingObject::BeginPlay()
     if (InteractionWidgetClass)
     {
         InteractionWidget->SetWidgetClass(InteractionWidgetClass);
+    }
+
+    // Configure emote widget
+    if (EmoteWidget)
+    {
+        EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+        if (EmoteWidgetClass)
+        {
+            EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+        }
+        EmoteWidget->SetVisibility(false);
     }
 
     // Cache base DrawSize for ortho scaling (used when bScaleWidgetWithOrthoZoom is true)
@@ -720,6 +742,98 @@ bool ATalkingObject::IsPlayerInRange() const
     return bPlayerInRange;
 }
 
+void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
+{
+    if (!bEnableEmotes || !EmoteWidget)
+    {
+        return;
+    }
+
+    if (!EmoteTag.IsValid())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::ShowEmoteByTag - Invalid emote tag on %s"), *GetName());
+        return;
+    }
+
+    if (!EmoteDataTable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::ShowEmoteByTag - EmoteDataTable is not set on %s"), *GetName());
+        return;
+    }
+
+    const FName RowName = EmoteTag.GetTagName();
+    const FPUEmoteData* EmoteRow = EmoteDataTable->FindRow<FPUEmoteData>(RowName, TEXT("ShowEmoteByTag"));
+    if (!EmoteRow)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::ShowEmoteByTag - No emote data row for tag %s on %s"), *EmoteTag.ToString(), *GetName());
+        return;
+    }
+
+    if (!EmoteRow->Icon)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::ShowEmoteByTag - Emote row %s has no Icon on %s"), *RowName.ToString(), *GetName());
+        return;
+    }
+
+    UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
+    if (!EmoteUserWidget && EmoteWidgetClass)
+    {
+        // Ensure the widget class is correct and try again
+        EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+        EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
+    }
+
+    if (!EmoteUserWidget)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::ShowEmoteByTag - EmoteWidget is not of type UPUEmoteWidget on %s"), *GetName());
+        return;
+    }
+
+    EmoteUserWidget->SetEmoteIcon(EmoteRow->Icon);
+    EmoteWidget->SetVisibility(true);
+    ActiveEmoteTag = EmoteTag;
+
+    // Play optional sound
+    if (EmoteRow->Sound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, EmoteRow->Sound, GetActorLocation());
+    }
+
+    if (!EmoteRow->bLoop)
+    {
+        const float Duration = EmoteRow->Duration > 0.0f ? EmoteRow->Duration : 2.0f;
+        if (UWorld* World = GetWorld())
+        {
+            World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+            World->GetTimerManager().SetTimer(EmoteHideTimerHandle, this, &ATalkingObject::ClearEmote, Duration, false);
+        }
+    }
+}
+
+void ATalkingObject::ClearEmote()
+{
+    if (EmoteWidget)
+    {
+        if (UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget()))
+        {
+            EmoteUserWidget->ClearEmoteIcon();
+        }
+        EmoteWidget->SetVisibility(false);
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+    }
+
+    ActiveEmoteTag = FGameplayTag();
+}
+
+bool ATalkingObject::IsEmoteActive() const
+{
+    return EmoteWidget && EmoteWidget->IsVisible();
+}
+
 UDlgDialogue* ATalkingObject::GetRandomDialogue() const
 {
     if (AvailableDialogues.Num() == 0)
@@ -865,6 +979,12 @@ void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
     
     // Clear used dialogues set
     UsedDialogues.Empty();
+
+    // Clear any pending emote hide timer
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+    }
     
     // Unregister from player character if still registered
     if (UWorld* World = GetWorld())
