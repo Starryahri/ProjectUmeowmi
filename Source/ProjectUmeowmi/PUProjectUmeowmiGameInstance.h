@@ -70,6 +70,10 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Level Transition")
 	void OnTransitionCompleted();
 
+	/** Returns true if a level transition is currently in progress (e.g. fade out, loading). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
+	bool IsLevelTransitionInProgress() const { return bTransitionInProgress; }
+
 	// Ingredient Inventory System
 	/**
 	 * Unlock an ingredient (adds it to the unlocked set)

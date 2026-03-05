@@ -1,5 +1,6 @@
 #include "PUProjectUmeowmiGameInstance.h"
 #include "ProjectUmeowmiCharacter.h"
+#include "Dialogue/TalkingObject.h"
 #include "LevelTransition/PULevelSpawnPoint.h"
 #include "PUPlayerSaveGame.h"
 #include "DishCustomization/PUIngredientBase.h"
@@ -100,6 +101,17 @@ void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevel
 		UE_LOG(LogTemp, Error, TEXT("Failed to get player controller for level transition"));
 		bTransitionInProgress = false;
 		return;
+	}
+
+	// Hide all interaction UI elements before fade/transition
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(World, ATalkingObject::StaticClass(), FoundActors);
+	for (AActor* Actor : FoundActors)
+	{
+		if (ATalkingObject* TalkingObject = Cast<ATalkingObject>(Actor))
+		{
+			TalkingObject->HideInteractionWidgetForTransition();
+		}
 	}
 
 	// Build the level path - OpenLevel can accept either:

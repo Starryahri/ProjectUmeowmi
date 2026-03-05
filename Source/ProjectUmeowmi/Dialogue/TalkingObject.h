@@ -109,6 +109,10 @@ public:
     /** Call from player Tick to drive NPC face-player lerp. Only does work when NPC is lerping. */
     void TickFacePlayerLerp(float DeltaTime);
 
+    /** Called when a level transition starts. Hides the interaction widget so it doesn't show during fade/load. */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Level Transition")
+    void HideInteractionWidgetForTransition();
+
     // Emote API
     /** Show an emote above this talking object, using EmoteDataTable to resolve the tag into an icon and optional extras. */
     UFUNCTION(BlueprintCallable, Category = "Talking Object|Emote")

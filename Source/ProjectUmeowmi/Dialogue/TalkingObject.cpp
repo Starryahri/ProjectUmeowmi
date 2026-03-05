@@ -15,6 +15,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
+#include "ProjectUmeowmi/PUProjectUmeowmiGameInstance.h"
 #include "ProjectUmeowmi/UI/PUDialogueBox.h"
 #include "ProjectUmeowmi/UI/PUEmoteData.h"
 #include "ProjectUmeowmi/UI/PUEmoteWidget.h"
@@ -664,6 +665,14 @@ void ATalkingObject::ToggleDebugVisualization()
 }
 
 // Helper methods
+void ATalkingObject::HideInteractionWidgetForTransition()
+{
+    if (InteractionWidget)
+    {
+        InteractionWidget->SetVisibility(false);
+    }
+}
+
 void ATalkingObject::SyncInteractionSphereToRange()
 {
     if (InteractionSphere)
@@ -677,6 +686,19 @@ void ATalkingObject::UpdateInteractionWidget()
     if (!InteractionWidget)
     {
         return;
+    }
+
+    // Hide interaction UI during level transitions
+    if (UWorld* World = GetWorld())
+    {
+        if (UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance()))
+        {
+            if (GI->IsLevelTransitionInProgress())
+            {
+                InteractionWidget->SetVisibility(false);
+                return;
+            }
+        }
     }
 
     const bool bCanInteractNow = CanInteract();
