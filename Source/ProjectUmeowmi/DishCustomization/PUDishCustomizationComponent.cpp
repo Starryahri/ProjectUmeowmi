@@ -797,9 +797,10 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     {
         bIsTransitioningCamera = false;
 
-        // Only run exit logic when we're transitioning OUT of customization (not when entering).
-        // TargetOrthoWidth==OriginalOrthoWidth can be true when entering if camera already matches (bug).
-        const bool bIsExiting = !bTransitioningToCustomization;
+        // Only run exit logic when we're transitioning OUT of customization (not when entering or going to cooking).
+        // bTransitioningToCustomization: false = transitioning out, true = transitioning in or to cooking stage.
+        // TargetOrthoWidth==OriginalOrthoWidth: ensures we're actually returning to original camera (not cooking target).
+        const bool bIsExiting = !bTransitioningToCustomization && (TargetOrthoWidth == OriginalOrthoWidth);
 
         // If we're exiting customization (returning to original camera settings), re-enable collision detection
         if (bIsExiting && Char)
@@ -833,13 +834,19 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             }
             OnCustomizationEnded.Broadcast();
 
-            // Force restore move/look and focus when transition fully ends (belt-and-suspenders so player can always move)
+            // Force restore move/look, input mode, and focus when transition fully ends (belt-and-suspenders so player can always move/interact)
             if (World)
             {
                 if (APlayerController* PC = World->GetFirstPlayerController())
                 {
                     PC->SetIgnoreMoveInput(false);
                     PC->SetIgnoreLookInput(false);
+                    PC->bShowMouseCursor = true;
+                    FInputModeGameAndUI InputMode;
+                    InputMode.SetWidgetToFocus(nullptr);
+                    InputMode.SetHideCursorDuringCapture(false);
+                    InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+                    PC->SetInputMode(InputMode);
                     UWidgetBlueprintLibrary::SetFocusToGameViewport();
                 }
             }
