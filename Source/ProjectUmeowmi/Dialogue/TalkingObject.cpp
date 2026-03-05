@@ -402,6 +402,8 @@ void ATalkingObject::StartDialogueAndSetInteracting(UDlgDialogue* Dialogue)
     if (Dialogue)
     {
         bIsInteracting = true;
+        // Hide interaction prompt while actively in dialogue
+        UpdateInteractionWidget();
         StartSpecificDialogue(Dialogue);
     }
 }
@@ -741,6 +743,36 @@ bool ATalkingObject::IsPlayerInRange() const
     return bPlayerInRange;
 }
 
+void ATalkingObject::BeginFadeOutEmote()
+{
+    if (!EmoteWidget)
+    {
+        ClearEmote();
+        return;
+    }
+
+    if (UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget()))
+    {
+        EmoteUserWidget->PlayFadeOut();
+
+        const float FadeDuration = EmoteUserWidget->GetFadeUpDuration();
+        const float TimerDuration = (FadeDuration > 0.0f) ? (FadeDuration / 2.0f) : 0.25f;
+        if (UWorld* World = GetWorld())
+        {
+            World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+            World->GetTimerManager().SetTimer(EmoteFadeOutTimerHandle, this, &ATalkingObject::ClearEmote, TimerDuration, false);
+        }
+        else
+        {
+            ClearEmote();
+        }
+    }
+    else
+    {
+        ClearEmote();
+    }
+}
+
 void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
 {
     if (bShowDebugEmotes)
@@ -825,6 +857,7 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
     EmoteUserWidget->SetEmoteIcon(EmoteRow->Icon);
     EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
     EmoteWidget->SetVisibility(true);
+    EmoteUserWidget->PlayFadeIn();
     ActiveEmoteTag = EmoteTag;
 
     if (bShowDebugEmotes)
@@ -843,7 +876,8 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
         if (UWorld* WorldPtr = GetWorld())
         {
             WorldPtr->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
-            WorldPtr->GetTimerManager().SetTimer(EmoteHideTimerHandle, this, &ATalkingObject::ClearEmote, Duration, false);
+            WorldPtr->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+            WorldPtr->GetTimerManager().SetTimer(EmoteHideTimerHandle, this, &ATalkingObject::BeginFadeOutEmote, Duration, false);
             if (bShowDebugEmotes)
             {
                 UE_LOG(LogTemp, Display, TEXT("[Emote] %s - Auto-hide timer set for %.2fs"), *GetName(), Duration);
@@ -871,6 +905,7 @@ void ATalkingObject::ClearEmote()
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+        World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
     }
 
     ActiveEmoteTag = FGameplayTag();
@@ -1031,6 +1066,7 @@ void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+        World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
     }
     
     // Unregister from player character if still registered

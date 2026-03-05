@@ -123,6 +123,8 @@ public:
     bool IsEmoteActive() const;
 
 protected:
+    /** Called when emote duration expires; plays fade-out then clears after animation. */
+    void BeginFadeOutEmote();
     // Configurable properties
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
     ETalkingObjectType ObjectType;
@@ -250,9 +252,9 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
     TSubclassOf<UPUEmoteWidget> EmoteWidgetClass;
 
-    /** Space in which the emote widget is rendered (Screen or World). Matches interaction widget: default Screen. */
+    /** Space in which the emote widget is rendered (Screen or World). Default: World (overhead bubble). */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
-    EWidgetSpace EmoteWidgetSpace = EWidgetSpace::Screen;
+    EWidgetSpace EmoteWidgetSpace = EWidgetSpace::World;
 
     /** Data table mapping gameplay tags to emote data (icon, duration, etc.). */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
@@ -294,8 +296,11 @@ private:
     UPROPERTY()
     FGameplayTag ActiveEmoteTag;
 
-    /** Timer used to auto-hide emotes after their duration. */
+    /** Timer used to auto-hide emotes after their duration (triggers fade-out + clear). */
     FTimerHandle EmoteHideTimerHandle;
+
+    /** Timer used to clear emote after fade-out finishes. */
+    FTimerHandle EmoteFadeOutTimerHandle;
 
     // Helper methods
     void UpdateInteractionWidget();
