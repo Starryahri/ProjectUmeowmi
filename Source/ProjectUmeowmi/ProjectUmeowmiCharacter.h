@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
+#include "GameplayTagContainer.h"
+#include "Components/WidgetComponent.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "Interfaces/PUInteractableInterface.h"
 #include "DishCustomization/PUOrderBase.h"
@@ -12,6 +14,8 @@
 
 class USpringArmComponent;
 class UCameraComponent;
+class UPUEmoteWidget;
+struct FTimerHandle;
 class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
@@ -184,6 +188,29 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	TScriptInterface<IPUInteractableInterface> CurrentInteractable;
 
 
+	////////////////////////////////////////////////////////////
+	// Emote Configuration
+	////////////////////////////////////////////////////////////
+	/** Emote widget rendered above the player character. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true"))
+	UWidgetComponent* EmoteWidget;
+
+	/** Master toggle for showing emotes above the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true"))
+	bool bEnableEmotes = true;
+
+	/** Widget class used to render emotes above the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
+	TSubclassOf<UPUEmoteWidget> EmoteWidgetClass;
+
+	/** Space in which the emote widget is rendered (Screen or World). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
+	EWidgetSpace EmoteWidgetSpace = EWidgetSpace::World;
+
+	/** Data table mapping gameplay tags to emote data (icon, duration, etc.). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
+	UDataTable* EmoteDataTable = nullptr;
+
 
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }
@@ -282,6 +309,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	bool HasTalkingObjectAvailable() const { return CurrentTalkingObject != nullptr; }
 
+	// Emote API
+	/** Show an emote above the player, using EmoteDataTable to resolve the tag into an icon and optional extras. */
+	UFUNCTION(BlueprintCallable, Category = "Emote")
+	void ShowEmoteByTag(FGameplayTag EmoteTag);
+
+	/** Clear any active emote immediately. */
+	UFUNCTION(BlueprintCallable, Category = "Emote")
+	void ClearEmote();
+
+	/** Returns true if an emote is currently visible. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Emote")
+	bool IsEmoteActive() const;
+
 	/** Get the dialogue box widget */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	FORCEINLINE UPUDialogueBox* GetDialogueBox() const { return DialogueBox; }
@@ -352,5 +392,12 @@ public:
 private:
 	// Helper function to clean up UObject references in orders
 	void CleanupOrderUObjectReferences(FPUOrderBase& Order);
+
+	/** Called when emote duration expires; plays fade-out then clears after animation. */
+	void BeginFadeOutEmote();
+
+	FTimerHandle EmoteHideTimerHandle;
+	FTimerHandle EmoteFadeOutTimerHandle;
+	FGameplayTag ActiveEmoteTag;
 
 };

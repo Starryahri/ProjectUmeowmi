@@ -2,17 +2,22 @@
 
 #include "ProjectUmeowmiCharacter.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/DataTable.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Kismet/GameplayStatics.h"
 #include "Dialogue/TalkingObject.h"
 #include "DishCustomization/PUDishCustomizationComponent.h"
 #include "UI/PUDialogueBox.h"
+#include "UI/PUEmoteData.h"
+#include "UI/PUEmoteWidget.h"
 #include "UI/PUJournalWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 
@@ -56,6 +61,13 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
+	// Create emote widget (above character head)
+	EmoteWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("EmoteWidget"));
+	EmoteWidget->SetupAttachment(RootComponent);
+	EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	EmoteWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f)); // Above character head
+	EmoteWidget->SetVisibility(false);
+
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-15.0f, 45.0f, 0.0f);
 
@@ -76,6 +88,16 @@ void AProjectUmeowmiCharacter::BeginPlay()
 
 	// Initialize the camera position based on the starting index
 	InitializeCameraPosition();
+
+	// Configure emote widget
+	if (EmoteWidget && bEnableEmotes)
+	{
+		if (EmoteWidgetClass)
+		{
+			EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+		}
+		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	}
 
 	//UE_LOG(LogTemp,Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
 }
@@ -526,6 +548,150 @@ void AProjectUmeowmiCharacter::OnInteractionFailed()
 	//UE_LOG(LogTemp,Log, TEXT("Interaction failed"));
 }
 
+//////////////////////////////////////////////////////////////////////////
+// Emote
+
+void AProjectUmeowmiCharacter::BeginFadeOutEmote()
+{
+	if (!EmoteWidget)
+	{
+		ClearEmote();
+		return;
+	}
+
+	if (UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget()))
+	{
+		EmoteUserWidget->PlayFadeOut();
+
+		const float FadeDuration = EmoteUserWidget->GetFadeUpDuration();
+		const float TimerDuration = (FadeDuration > 0.0f) ? (FadeDuration / 2.0f) : 0.25f;
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+			World->GetTimerManager().SetTimer(EmoteFadeOutTimerHandle, this, &AProjectUmeowmiCharacter::ClearEmote, TimerDuration, false);
+		}
+		else
+		{
+			ClearEmote();
+		}
+	}
+	else
+	{
+		ClearEmote();
+	}
+}
+
+void AProjectUmeowmiCharacter::ShowEmoteByTag(FGameplayTag EmoteTag)
+{
+	if (!bEnableEmotes || !EmoteWidget)
+	{
+		return;
+	}
+
+	if (!EmoteTag.IsValid())
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - Invalid emote tag on %s"), *GetName());
+		return;
+	}
+
+	if (!EmoteDataTable)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - EmoteDataTable is not set on %s"), *GetName());
+		return;
+	}
+
+	// DataTable rows use the tag's leaf name (part after last '.') lowercased, e.g. Emote.Happy -> "happy"
+	FString TagStr = EmoteTag.ToString();
+	int32 LastDot = INDEX_NONE;
+	if (TagStr.FindLastChar(TEXT('.'), LastDot) && LastDot >= 0)
+	{
+		TagStr = TagStr.Mid(LastDot + 1);
+	}
+	TagStr = TagStr.ToLower();
+	const FName RowName = FName(*TagStr);
+
+	const FPUEmoteData* EmoteRow = EmoteDataTable->FindRow<FPUEmoteData>(RowName, TEXT("ShowEmoteByTag"));
+	if (!EmoteRow)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - No emote data row for tag %s on %s"), *EmoteTag.ToString(), *GetName());
+		return;
+	}
+
+	if (!EmoteRow->Icon)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - Emote row %s has no Icon on %s"), *RowName.ToString(), *GetName());
+		return;
+	}
+
+	// Ensure widget is created
+	if (!EmoteWidget->GetWidget() && EmoteWidgetClass)
+	{
+		EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	}
+
+	UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
+	if (!EmoteUserWidget && EmoteWidgetClass)
+	{
+		EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+		EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
+	}
+
+	if (!EmoteUserWidget)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - EmoteWidget is not of type UPUEmoteWidget on %s (set EmoteWidgetClass on this actor)"), *GetName());
+		return;
+	}
+
+	EmoteUserWidget->SetEmoteIcon(EmoteRow->Icon);
+	EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	EmoteWidget->SetVisibility(true);
+	EmoteUserWidget->PlayFadeIn();
+	ActiveEmoteTag = EmoteTag;
+
+	if (EmoteRow->Sound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, EmoteRow->Sound, GetActorLocation());
+	}
+
+	if (!EmoteRow->bLoop)
+	{
+		const float Duration = EmoteRow->Duration > 0.0f ? EmoteRow->Duration : 2.0f;
+		if (UWorld* WorldPtr = GetWorld())
+		{
+			WorldPtr->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+			WorldPtr->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+			WorldPtr->GetTimerManager().SetTimer(EmoteHideTimerHandle, this, &AProjectUmeowmiCharacter::BeginFadeOutEmote, Duration, false);
+		}
+	}
+}
+
+void AProjectUmeowmiCharacter::ClearEmote()
+{
+	if (EmoteWidget)
+	{
+		if (UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget()))
+		{
+			EmoteUserWidget->ClearEmoteIcon();
+		}
+		EmoteWidget->SetVisibility(false);
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+		World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+	}
+
+	ActiveEmoteTag = FGameplayTag();
+}
+
+bool AProjectUmeowmiCharacter::IsEmoteActive() const
+{
+	return EmoteWidget && EmoteWidget->IsVisible();
+}
+
 // Order System Integration
 void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 {
@@ -826,6 +992,13 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (JournalWidget)
 	{
 		JournalWidget = nullptr;
+	}
+
+	// Clear any pending emote timers
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+		World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
 	}
 	
 	Super::EndPlay(EndPlayReason);
