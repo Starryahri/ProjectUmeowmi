@@ -106,6 +106,18 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Talking Object|Info")
     ETalkingObjectType GetTalkingObjectType() const { return ObjectType; }
 
+    /** Set the interaction widget class at runtime. Refreshes the widget immediately if the player is in range. */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Config")
+    void SetInteractionWidgetClass(TSubclassOf<UTalkingObjectWidget> NewWidgetClass);
+
+    /** Set the interaction key text at runtime (e.g. "Interact", "Talk", "E"). Refreshes the widget immediately if the player is in range. */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Config")
+    void SetInteractionKey(FName NewKey);
+
+    /** Set the interaction icon at runtime. Pass nullptr to hide the icon. Refreshes the widget immediately if the player is in range. */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Config")
+    void SetInteractionIcon(UTexture2D* NewIcon);
+
     /** Call from player Tick to drive NPC face-player lerp. Only does work when NPC is lerping. */
     void TickFacePlayerLerp(float DeltaTime);
 
@@ -138,6 +150,10 @@ protected:
 
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
     FName InteractionKey = FName(TEXT("Interact"));
+
+    /** Optional icon displayed in the interaction widget. Can be set at runtime via SetInteractionIcon. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
+    UTexture2D* InteractionIcon = nullptr;
 
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
     TArray<UDlgDialogue*> AvailableDialogues;

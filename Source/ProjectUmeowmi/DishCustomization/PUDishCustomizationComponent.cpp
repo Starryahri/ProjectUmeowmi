@@ -24,6 +24,7 @@
 #include "PUIngredientMesh.h"
 #include "Camera/CameraActor.h"
 #include "Framework/Application/SlateApplication.h"
+#include "TimerManager.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -349,6 +350,23 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
             CustomizationWidget->AddToViewport(250);
             //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget added to viewport successfully with Z-Order -100"));
             
+            // Re-hide HUD after AddToViewport - viewport updates can cause HUD to reappear (e.g. Slate invalidation, widget tree rebuild)
+            SetHUDVisible(false);
+            
+            // Defer HUD hide to next frame - catches HUD created lazily or shown by Blueprint/animations after our frame
+            if (UWorld* WorldForTimer = GetWorld())
+            {
+                TWeakObjectPtr<UPUDishCustomizationComponent> WeakThis(this);
+                WorldForTimer->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis]()
+                {
+                    UPUDishCustomizationComponent* Comp = WeakThis.Get();
+                    if (Comp && Comp->IsCustomizing())
+                    {
+                        Comp->SetHUDVisible(false);
+                    }
+                }));
+            }
+            
             // Check if widget is visible
             if (CustomizationWidget->IsVisible())
             {
@@ -552,6 +570,8 @@ void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
     {
         return;
     }
+
+    bTransitioningToCustomization = bToCustomization;
 
     // Store original values if transitioning to customization
     if (bToCustomization)
@@ -777,8 +797,12 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
     {
         bIsTransitioningCamera = false;
 
+        // Only run exit logic when we're transitioning OUT of customization (not when entering).
+        // TargetOrthoWidth==OriginalOrthoWidth can be true when entering if camera already matches (bug).
+        const bool bIsExiting = !bTransitioningToCustomization;
+
         // If we're exiting customization (returning to original camera settings), re-enable collision detection
-        if (TargetOrthoWidth == OriginalOrthoWidth && Char)
+        if (bIsExiting && Char)
         {
             if (CameraBoom)
             {
@@ -788,7 +812,7 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
         }
 
         // If we're exiting customization, clear the character reference and broadcast the end event
-        if (TargetOrthoWidth == OriginalOrthoWidth)
+        if (bIsExiting)
         {
             // Clear all 3D ingredient meshes before ending customization
             ClearAll3DIngredientMeshes();

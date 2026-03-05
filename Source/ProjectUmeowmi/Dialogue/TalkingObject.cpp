@@ -673,6 +673,28 @@ void ATalkingObject::HideInteractionWidgetForTransition()
     }
 }
 
+void ATalkingObject::SetInteractionWidgetClass(TSubclassOf<UTalkingObjectWidget> NewWidgetClass)
+{
+    InteractionWidgetClass = NewWidgetClass;
+    if (InteractionWidget && InteractionWidgetClass)
+    {
+        InteractionWidget->SetWidgetClass(InteractionWidgetClass);
+        UpdateInteractionWidget();
+    }
+}
+
+void ATalkingObject::SetInteractionKey(FName NewKey)
+{
+    InteractionKey = NewKey;
+    UpdateInteractionWidget();
+}
+
+void ATalkingObject::SetInteractionIcon(UTexture2D* NewIcon)
+{
+    InteractionIcon = NewIcon;
+    UpdateInteractionWidget();
+}
+
 void ATalkingObject::SyncInteractionSphereToRange()
 {
     if (InteractionSphere)
@@ -709,6 +731,7 @@ void ATalkingObject::UpdateInteractionWidget()
         if (UTalkingObjectWidget* Widget = Cast<UTalkingObjectWidget>(InteractionWidget->GetWidget()))
         {
             Widget->SetInteractionKey(InteractionKey.ToString());
+            Widget->SetInteractionIcon(InteractionIcon);
         }
     }
 

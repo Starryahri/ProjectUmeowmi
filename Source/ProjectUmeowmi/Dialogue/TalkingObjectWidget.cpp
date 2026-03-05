@@ -17,8 +17,16 @@ void UTalkingObjectWidget::SetInteractionKey(const FString& Key)
 
 void UTalkingObjectWidget::SetInteractionIcon(UTexture2D* Icon)
 {
-    if (InteractionIcon && Icon)
+    if (InteractionIcon)
     {
-        InteractionIcon->SetBrushFromTexture(Icon);
+        if (Icon)
+        {
+            InteractionIcon->SetBrushFromTexture(Icon);
+            InteractionIcon->SetVisibility(ESlateVisibility::Visible);
+        }
+        else
+        {
+            InteractionIcon->SetVisibility(ESlateVisibility::Collapsed);
+        }
     }
 } 

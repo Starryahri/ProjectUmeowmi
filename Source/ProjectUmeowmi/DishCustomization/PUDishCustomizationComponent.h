@@ -353,6 +353,8 @@ protected:
 
     // Camera transition state
     bool bIsTransitioningCamera = false;
+    /** True when transitioning INTO customization; false when transitioning OUT. Used to avoid incorrectly running exit logic when entering. */
+    bool bTransitioningToCustomization = false;
     float OriginalCameraDistance = 0.0f;
     float OriginalCameraPitch = 0.0f;
     float OriginalCameraYaw = 0.0f;
