@@ -8,8 +8,8 @@ class UImage;
 class UTexture2D;
 
 /**
- * Simple widget for displaying a single emote icon above a character's head.
- * Designed to be driven from C++ or Blueprint via ShowEmoteByTag on actors.
+ * Widget class for displaying an emote icon above a character's head.
+ * Mirrors the pattern of UTalkingObjectWidget (component + widget class on actor, single image).
  */
 UCLASS()
 class PROJECTUMEOWMI_API UPUEmoteWidget : public UUserWidget
@@ -17,19 +17,17 @@ class PROJECTUMEOWMI_API UPUEmoteWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	virtual void NativeConstruct() override;
-
-	/** Set the emote icon texture. Passing nullptr leaves the current icon unchanged. */
-	UFUNCTION(BlueprintCallable, Category = "Emote")
+	/** Set the emote icon texture. */
 	void SetEmoteIcon(UTexture2D* Icon);
 
-	/** Clear the emote icon and hide the image (widget visibility is controlled by the owning actor). */
-	UFUNCTION(BlueprintCallable, Category = "Emote")
+	/** Clear the emote icon and hide the image. */
 	void ClearEmoteIcon();
 
 protected:
-	/** Image widget that displays the emote icon. */
-	UPROPERTY(meta = (BindWidgetOptional))
+	virtual void NativeConstruct() override;
+
+	/** The image displaying the emote icon. */
+	UPROPERTY(meta = (BindWidget))
 	UImage* EmoteImage;
 };
 

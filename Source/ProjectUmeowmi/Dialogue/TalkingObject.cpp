@@ -48,7 +48,6 @@ ATalkingObject::ATalkingObject()
     EmoteWidget->SetupAttachment(RootComponent);
     EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
     EmoteWidget->SetVisibility(false);
-    EmoteWidget->SetDrawAtDesiredSize(true);
 }
 
 void ATalkingObject::PostInitializeComponents()
@@ -98,15 +97,15 @@ void ATalkingObject::BeginPlay()
         InteractionWidget->SetWidgetClass(InteractionWidgetClass);
     }
 
-    // Configure emote widget
+    // Configure emote widget (set space after SetWidgetClass - SetWidgetClass can reset space to World).
+    // Do not set visibility false here - constructor already hides it. Otherwise we overwrite ShowEmoteByTag when called from Blueprint BeginPlay.
     if (EmoteWidget)
     {
-        EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
         if (EmoteWidgetClass)
         {
             EmoteWidget->SetWidgetClass(EmoteWidgetClass);
         }
-        EmoteWidget->SetVisibility(false);
+        EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
     }
 
     // Cache base DrawSize for ortho scaling (used when bScaleWidgetWithOrthoZoom is true)
@@ -744,8 +743,17 @@ bool ATalkingObject::IsPlayerInRange() const
 
 void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
 {
+    if (bShowDebugEmotes)
+    {
+        UE_LOG(LogTemp, Display, TEXT("[Emote] %s ShowEmoteByTag called with tag: %s"), *GetName(), *EmoteTag.ToString());
+    }
+
     if (!bEnableEmotes || !EmoteWidget)
     {
+        if (bShowDebugEmotes)
+        {
+            UE_LOG(LogTemp, Display, TEXT("[Emote] %s - Skipped: bEnableEmotes=%d EmoteWidget=%s"), *GetName(), bEnableEmotes ? 1 : 0, EmoteWidget ? TEXT("valid") : TEXT("null"));
+        }
         return;
     }
 
@@ -761,7 +769,21 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
         return;
     }
 
-    const FName RowName = EmoteTag.GetTagName();
+    // DataTable rows use the tag's leaf name (part after last '.') lowercased, e.g. Emote.Happy -> "happy"
+    FString TagStr = EmoteTag.ToString();
+    int32 LastDot = INDEX_NONE;
+    if (TagStr.FindLastChar(TEXT('.'), LastDot) && LastDot >= 0)
+    {
+        TagStr = TagStr.Mid(LastDot + 1);
+    }
+    TagStr = TagStr.ToLower();
+    const FName RowName = FName(*TagStr);
+
+    if (bShowDebugEmotes)
+    {
+        UE_LOG(LogTemp, Display, TEXT("[Emote] %s - Looking up row name: %s in EmoteDataTable (from tag %s)"), *GetName(), *RowName.ToString(), *EmoteTag.ToString());
+    }
+
     const FPUEmoteData* EmoteRow = EmoteDataTable->FindRow<FPUEmoteData>(RowName, TEXT("ShowEmoteByTag"));
     if (!EmoteRow)
     {
@@ -775,25 +797,41 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
         return;
     }
 
+    // Ensure widget is created (e.g. when ShowEmoteByTag is called from Blueprint BeginPlay before our init)
+    if (!EmoteWidget->GetWidget() && EmoteWidgetClass)
+    {
+        EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+        EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+    }
+
     UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
     if (!EmoteUserWidget && EmoteWidgetClass)
     {
-        // Ensure the widget class is correct and try again
+        if (bShowDebugEmotes)
+        {
+            UE_LOG(LogTemp, Display, TEXT("[Emote] %s - Widget was wrong type, re-setting EmoteWidgetClass and retrying"), *GetName());
+        }
         EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+        EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
         EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
     }
 
     if (!EmoteUserWidget)
     {
-        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::ShowEmoteByTag - EmoteWidget is not of type UPUEmoteWidget on %s"), *GetName());
+        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::ShowEmoteByTag - EmoteWidget is not of type UPUEmoteWidget on %s (set EmoteWidgetClass on this actor)"), *GetName());
         return;
     }
 
     EmoteUserWidget->SetEmoteIcon(EmoteRow->Icon);
+    EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
     EmoteWidget->SetVisibility(true);
     ActiveEmoteTag = EmoteTag;
 
-    // Play optional sound
+    if (bShowDebugEmotes)
+    {
+        UE_LOG(LogTemp, Display, TEXT("[Emote] %s - Showing emote %s (Icon=%s Duration=%.2f bLoop=%d)"), *GetName(), *EmoteTag.ToString(), EmoteRow->Icon ? *EmoteRow->Icon->GetName() : TEXT("null"), EmoteRow->Duration, EmoteRow->bLoop ? 1 : 0);
+    }
+
     if (EmoteRow->Sound)
     {
         UGameplayStatics::PlaySoundAtLocation(this, EmoteRow->Sound, GetActorLocation());
@@ -802,16 +840,25 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
     if (!EmoteRow->bLoop)
     {
         const float Duration = EmoteRow->Duration > 0.0f ? EmoteRow->Duration : 2.0f;
-        if (UWorld* World = GetWorld())
+        if (UWorld* WorldPtr = GetWorld())
         {
-            World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
-            World->GetTimerManager().SetTimer(EmoteHideTimerHandle, this, &ATalkingObject::ClearEmote, Duration, false);
+            WorldPtr->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+            WorldPtr->GetTimerManager().SetTimer(EmoteHideTimerHandle, this, &ATalkingObject::ClearEmote, Duration, false);
+            if (bShowDebugEmotes)
+            {
+                UE_LOG(LogTemp, Display, TEXT("[Emote] %s - Auto-hide timer set for %.2fs"), *GetName(), Duration);
+            }
         }
     }
 }
 
 void ATalkingObject::ClearEmote()
 {
+    if (bShowDebugEmotes && (EmoteWidget && EmoteWidget->IsVisible()))
+    {
+        UE_LOG(LogTemp, Display, TEXT("[Emote] %s ClearEmote - hiding emote (was %s)"), *GetName(), *ActiveEmoteTag.ToString());
+    }
+
     if (EmoteWidget)
     {
         if (UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget()))
@@ -980,7 +1027,7 @@ void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
     // Clear used dialogues set
     UsedDialogues.Empty();
 
-    // Clear any pending emote hide timer
+    // Clear any pending emote timers
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);

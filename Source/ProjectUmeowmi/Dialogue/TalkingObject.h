@@ -188,6 +188,10 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
     bool bShowDebugFacePlayerLerp = true;
 
+    /** When true, logs emote show/clear and lookup steps. Set true on TalkingObject to debug emotes. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Debug")
+    bool bShowDebugEmotes = false;
+
     /** For Door type: whether the door is currently open. Toggled on each interaction. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::Door"))
     bool bIsDoorOpen = false;
@@ -246,9 +250,9 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
     TSubclassOf<UPUEmoteWidget> EmoteWidgetClass;
 
-    /** Space in which the emote widget is rendered (Screen or World). */
+    /** Space in which the emote widget is rendered (Screen or World). Matches interaction widget: default Screen. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
-    EWidgetSpace EmoteWidgetSpace = EWidgetSpace::World;
+    EWidgetSpace EmoteWidgetSpace = EWidgetSpace::Screen;
 
     /** Data table mapping gameplay tags to emote data (icon, duration, etc.). */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
