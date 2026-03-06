@@ -138,6 +138,10 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Talking Object|Emote")
     bool IsEmoteActive() const;
 
+    /** Refresh the interaction widget (visibility, key, icon). Call when selection changes among overlapping targets. */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Config")
+    void RefreshInteractionWidget();
+
 protected:
     /** Called when emote duration expires; plays fade-out then clears after animation. */
     void BeginFadeOutEmote();
@@ -322,7 +326,7 @@ private:
     /** Timer used to clear emote after fade-out finishes. */
     FTimerHandle EmoteFadeOutTimerHandle;
 
-    // Helper methods
+    // Helper methods (internal)
     void UpdateInteractionWidget();
     /** Syncs the interaction sphere radius and widget attachment to match InteractionRange. Call when InteractionRange may have changed. */
     void SyncInteractionSphereToRange();

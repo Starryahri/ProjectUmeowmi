@@ -166,6 +166,12 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 		// Interact with talking objects
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Interact);
 
+		// Cycle between overlapping interact targets (Space bar)
+		if (CycleInteractTargetAction)
+		{
+			EnhancedInputComponent->BindAction(CycleInteractTargetAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::CycleInteractTarget);
+		}
+
 		// Open/toggle journal (Start button, I key)
 		if (OpenJournalAction)
 		{
@@ -308,9 +314,9 @@ void AProjectUmeowmiCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (CurrentTalkingObject)
+	if (ATalkingObject* CurrentTalking = GetCurrentTalkingObject())
 	{
-		CurrentTalkingObject->TickFacePlayerLerp(DeltaTime);
+		CurrentTalking->TickFacePlayerLerp(DeltaTime);
 	}
 	else
 	{
@@ -458,20 +464,18 @@ void AProjectUmeowmiCharacter::ToggleJournal(const FInputActionValue& Value)
 
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
-	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::Interact - CurrentTalkingObject: %s, CurrentInteractable: %s"), 
-	//	CurrentTalkingObject ? *CurrentTalkingObject->GetName() : TEXT("NULL"),
-	//	CurrentInteractable ? TEXT("Valid") : TEXT("NULL"));
+	ATalkingObject* CurrentTalking = GetCurrentTalkingObject();
 
 	// When in dialogue, Interact advances the dialogue (skip typewriter or next line)
-	if (CurrentTalkingObject && DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+	if (CurrentTalking && DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
 	{
 		DialogueBox->AdvanceDialogue();
 		return;
 	}
 		
-	if (CurrentTalkingObject)
+	if (CurrentTalking)
 	{
-		CurrentTalkingObject->StartInteraction();
+		CurrentTalking->StartInteraction();
 	}
 	else if (CurrentInteractable)
 	{
@@ -479,26 +483,94 @@ void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 	}
 }
 
+ATalkingObject* AProjectUmeowmiCharacter::GetCurrentTalkingObject() const
+{
+	if (OverlappingTalkingObjects.IsValidIndex(SelectedTalkingObjectIndex))
+	{
+		ATalkingObject* Obj = OverlappingTalkingObjects[SelectedTalkingObjectIndex];
+		return (Obj && IsValid(Obj)) ? Obj : nullptr;
+	}
+	return nullptr;
+}
+
 void AProjectUmeowmiCharacter::RegisterTalkingObject(ATalkingObject* TalkingObject)
 {
-	// Store the talking object reference
-	CurrentTalkingObject = TalkingObject;
-	
-	// Log the registration
-	//UE_LOG(LogTemp,Log, TEXT("Registered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+	if (!TalkingObject || !IsValid(TalkingObject)) return;
+
+	// Add to list if not already present (avoid duplicates from overlap order)
+	int32 ExistingIndex = OverlappingTalkingObjects.Find(TalkingObject);
+	if (ExistingIndex == INDEX_NONE)
+	{
+		OverlappingTalkingObjects.Add(TalkingObject);
+		if (OverlappingTalkingObjects.Num() == 1)
+		{
+			SelectedTalkingObjectIndex = 0;
+		}
+		else
+		{
+			// Most recent overlap becomes the selected target
+			SelectedTalkingObjectIndex = OverlappingTalkingObjects.Num() - 1;
+		}
+		// Refresh all overlapping widgets so opacity updates immediately (e.g. first one fades when second overlaps)
+		for (ATalkingObject* Obj : OverlappingTalkingObjects)
+		{
+			if (Obj && IsValid(Obj))
+			{
+				Obj->RefreshInteractionWidget();
+			}
+		}
+	}
 }
 
 void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingObject)
 {
-	// Only unregister if this is the current talking object
-	if (CurrentTalkingObject == TalkingObject)
+	if (!TalkingObject) return;
+
+	int32 RemovedIndex = OverlappingTalkingObjects.Find(TalkingObject);
+	if (RemovedIndex != INDEX_NONE)
 	{
-		// Clear the reference
-		CurrentTalkingObject = nullptr;
-		
-		// Log the unregistration
-		//UE_LOG(LogTemp,Log, TEXT("Unregistered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+		OverlappingTalkingObjects.RemoveAt(RemovedIndex);
+		// Clamp selection index after removal
+		if (OverlappingTalkingObjects.Num() == 0)
+		{
+			SelectedTalkingObjectIndex = 0;
+		}
+		else if (SelectedTalkingObjectIndex >= OverlappingTalkingObjects.Num())
+		{
+			SelectedTalkingObjectIndex = OverlappingTalkingObjects.Num() - 1;
+		}
+		else if (RemovedIndex < SelectedTalkingObjectIndex)
+		{
+			SelectedTalkingObjectIndex--;
+		}
+		// Refresh remaining widgets so the last one returns to full opacity
+		for (ATalkingObject* Obj : OverlappingTalkingObjects)
+		{
+			if (Obj && IsValid(Obj))
+			{
+				Obj->RefreshInteractionWidget();
+			}
+		}
 	}
+}
+
+void AProjectUmeowmiCharacter::CycleInteractTarget(const FInputActionValue& Value)
+{
+	// Don't cycle during active dialogue
+	if (DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible) return;
+	if (OverlappingTalkingObjects.Num() < 2) return;
+
+	// Cycle forward (Space = next)
+	SelectedTalkingObjectIndex = (SelectedTalkingObjectIndex + 1) % OverlappingTalkingObjects.Num();
+
+		// Refresh all overlapping widgets so they can update selection state (e.g. highlight selected)
+		for (ATalkingObject* Obj : OverlappingTalkingObjects)
+		{
+			if (Obj && IsValid(Obj))
+			{
+				Obj->RefreshInteractionWidget();
+			}
+		}
 }
 
 void AProjectUmeowmiCharacter::RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable)
@@ -967,12 +1039,9 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		CurrentOrderSatisfaction = 0.0f;
 	}
 	
-	// Clear talking object reference to prevent dangling references
-	if (CurrentTalkingObject)
-	{
-		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing talking object reference"));
-		CurrentTalkingObject = nullptr;
-	}
+	// Clear overlapping talking objects to prevent dangling references
+	OverlappingTalkingObjects.Empty();
+	SelectedTalkingObjectIndex = 0;
 	
 	// Clear interactable reference
 	if (CurrentInteractable)

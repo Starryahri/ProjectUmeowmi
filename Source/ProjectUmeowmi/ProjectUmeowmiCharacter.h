@@ -57,6 +57,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* InteractAction;
 
+	/** Cycle between overlapping interact targets (Space bar). Only active when 2+ talking objects overlap. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* CycleInteractTargetAction;
+
 	/** Open/Toggle Journal Input Action (Start button, I key) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* OpenJournalAction;
@@ -159,9 +163,13 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	////////////////////////////////////////////////////////////
 	// Dialogue and Interaction Configuration
 	////////////////////////////////////////////////////////////
-	/** Current talking object that can be interacted with */
+	/** List of talking objects currently in range (overlapping). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Talking Object", meta = (AllowPrivateAccess = "true"))
-	ATalkingObject* CurrentTalkingObject;
+	TArray<ATalkingObject*> OverlappingTalkingObjects;
+
+	/** Index of the currently selected talking object in OverlappingTalkingObjects. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Talking Object", meta = (AllowPrivateAccess = "true"))
+	int32 SelectedTalkingObjectIndex = 0;
 
 	/** Name of the dialogue participant */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Talking Object", meta = (AllowPrivateAccess = "true"))
@@ -307,7 +315,15 @@ public:
 	
 	/** Check if there's a talking object available for interaction */
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	bool HasTalkingObjectAvailable() const { return CurrentTalkingObject != nullptr; }
+	bool HasTalkingObjectAvailable() const { return GetCurrentTalkingObject() != nullptr; }
+
+	/** Number of overlapping talking objects. Use to show "Press Space to switch" when >= 2. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Interaction")
+	int32 GetOverlappingTalkingObjectCount() const { return OverlappingTalkingObjects.Num(); }
+
+	/** Index of the selected talking object (0-based). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Interaction")
+	int32 GetSelectedTalkingObjectIndex() const { return SelectedTalkingObjectIndex; }
 
 	// Emote API
 	/** Show an emote above the player, using EmoteDataTable to resolve the tag into an icon and optional extras. */
@@ -326,9 +342,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	FORCEINLINE UPUDialogueBox* GetDialogueBox() const { return DialogueBox; }
 
-	/** Get the current talking object */
+	/** Get the current talking object (selected from overlapping list). */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
-	ATalkingObject* GetCurrentTalkingObject() const { return CurrentTalkingObject; }
+	ATalkingObject* GetCurrentTalkingObject() const;
+
+	/** Cycle to the next/previous overlapping talking object. Call when CycleInteractTargetAction is pressed. */
+	void CycleInteractTarget(const FInputActionValue& Value);
 
 	void RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
 	void UnregisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);

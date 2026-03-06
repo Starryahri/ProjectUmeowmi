@@ -703,6 +703,11 @@ void ATalkingObject::SyncInteractionSphereToRange()
     }
 }
 
+void ATalkingObject::RefreshInteractionWidget()
+{
+	UpdateInteractionWidget();
+}
+
 void ATalkingObject::UpdateInteractionWidget()
 {
     if (!InteractionWidget)
@@ -730,8 +735,30 @@ void ATalkingObject::UpdateInteractionWidget()
     {
         if (UTalkingObjectWidget* Widget = Cast<UTalkingObjectWidget>(InteractionWidget->GetWidget()))
         {
-            Widget->SetInteractionKey(InteractionKey.ToString());
+            FString DisplayKey = InteractionKey.ToString();
+            bool bIsSelected = true;
+            int32 Total = 1;
+
+            AProjectUmeowmiCharacter* PlayerChar = nullptr;
+            if (UWorld* World = GetWorld())
+            {
+                if (APlayerController* PC = World->GetFirstPlayerController())
+                {
+                    PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+                }
+            }
+            if (PlayerChar)
+            {
+                Total = PlayerChar->GetOverlappingTalkingObjectCount();
+                if (Total >= 2)
+                {
+                    bIsSelected = (PlayerChar->GetCurrentTalkingObject() == this);
+                }
+            }
+
+            Widget->SetInteractionKey(DisplayKey);
             Widget->SetInteractionIcon(InteractionIcon);
+            Widget->SetSelectionState(bIsSelected, Total);
         }
     }
 
