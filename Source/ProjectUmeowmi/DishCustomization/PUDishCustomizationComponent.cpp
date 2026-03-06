@@ -1923,38 +1923,25 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     // Switch to plating camera
     SwitchToPlatingCamera();
     
-    // Swap to plating dish mesh
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Checking PlatingDishMesh..."));
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ PlatingDishMesh.IsValid(): %s"), PlatingDishMesh.IsValid() ? TEXT("TRUE") : TEXT("FALSE"));
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ PlatingDishMesh.ToString(): %s"), *PlatingDishMesh.ToString());
-    
-    if (PlatingDishMesh.IsValid())
+    // Swap to dish mesh from data table (DishData.DishMesh); fallback to PlatingDishMesh if not set
+    TSoftObjectPtr<UStaticMesh> MeshToUse = DishData.DishMesh;
+    if (!MeshToUse.IsValid() && MeshToUse.ToSoftObjectPath().IsNull())
     {
-        UStaticMesh* LoadedMesh = PlatingDishMesh.LoadSynchronous();
-        if (LoadedMesh)
-        {
-            SwapDishContainerMesh(LoadedMesh);
-            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Swapped to plating dish mesh"));
-        }
-        else
-        {
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - Failed to load plating dish mesh"));
-        }
+        MeshToUse = PlatingDishMesh;  // Fallback to component's default plating mesh
     }
-    else
+
+    UStaticMesh* LoadedMesh = nullptr;
+    if (MeshToUse.IsValid())
     {
-        // Try to load the mesh directly by path since IsValid() is false but path exists
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ Trying to load mesh directly by path..."));
-        UStaticMesh* DirectLoadedMesh = LoadObject<UStaticMesh>(nullptr, *PlatingDishMesh.ToString());
-        if (DirectLoadedMesh)
-        {
-            SwapDishContainerMesh(DirectLoadedMesh);
-            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Loaded mesh directly and swapped"));
-        }
-        else
-        {
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::TransitionToPlatingStage - Failed to load mesh directly by path"));
-        }
+        LoadedMesh = MeshToUse.LoadSynchronous();
+    }
+    if (!LoadedMesh && !MeshToUse.ToSoftObjectPath().IsNull())
+    {
+        LoadedMesh = LoadObject<UStaticMesh>(nullptr, *MeshToUse.ToString());
+    }
+    if (LoadedMesh)
+    {
+        SwapDishContainerMesh(LoadedMesh);
     }
     
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating stage transition complete"));

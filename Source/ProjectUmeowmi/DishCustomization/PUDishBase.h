@@ -97,6 +97,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
     TSoftObjectPtr<UTexture2D> JournalTexture;
 
+    /** 3D mesh for the dish container during plating (bowl, plate, etc.) - swapped onto the cooking station */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
+    TSoftObjectPtr<UStaticMesh> DishMesh;
+
     // Data Tables
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Data")
     TSoftObjectPtr<UDataTable> IngredientDataTable;

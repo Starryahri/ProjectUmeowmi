@@ -353,58 +353,29 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
             case EDishCustomizationStageType::Plating:
             {
                 // Setup plating stage
-                //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Setting up plating stage"));
                 CustomizationComponent->SetPlatingMode(true);
                 CustomizationComponent->ResetPlatingPlacements();
                 CustomizationComponent->SwitchToPlatingCamera();
-                
-                // Swap to plating dish mesh
-                //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Checking PlatingDishMesh..."));
-                //UE_LOG(LogTemp,Display, TEXT("🔄 PlatingDishMesh.IsValid(): %s"), CustomizationComponent->PlatingDishMesh.IsValid() ? TEXT("TRUE") : TEXT("FALSE"));
-                //UE_LOG(LogTemp,Display, TEXT("🔄 PlatingDishMesh.ToString(): %s"), *CustomizationComponent->PlatingDishMesh.ToString());
-                
+
+                // Use dish mesh from data table (CurrentData.DishMesh); fallback to PlatingDishMesh if not set
+                TSoftObjectPtr<UStaticMesh> MeshToUse = CurrentData.DishMesh;
+                if (!MeshToUse.IsValid() && MeshToUse.ToSoftObjectPath().IsNull())
+                {
+                    MeshToUse = CustomizationComponent->PlatingDishMesh;
+                }
+
                 UStaticMesh* MeshToSwap = nullptr;
-                
-                if (CustomizationComponent->PlatingDishMesh.IsValid())
+                if (MeshToUse.IsValid())
                 {
-                    MeshToSwap = CustomizationComponent->PlatingDishMesh.LoadSynchronous();
-                    if (MeshToSwap)
-                    {
-                        //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Successfully loaded plating mesh: %s"), *MeshToSwap->GetName());
-                    }
-                    else
-                    {
-                        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::GoToStage - Failed to load plating dish mesh synchronously"));
-                    }
+                    MeshToSwap = MeshToUse.LoadSynchronous();
                 }
-                
-                // If IsValid() was false or LoadSynchronous failed, try direct load
-                if (!MeshToSwap)
+                if (!MeshToSwap && !MeshToUse.ToSoftObjectPath().IsNull())
                 {
-                    //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Trying to load mesh directly by path..."));
-                    FString MeshPath = CustomizationComponent->PlatingDishMesh.ToString();
-                    //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Mesh path: %s"), *MeshPath);
-                    MeshToSwap = LoadObject<UStaticMesh>(nullptr, *MeshPath);
-                    if (MeshToSwap)
-                    {
-                        //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Successfully loaded mesh directly: %s"), *MeshToSwap->GetName());
-                    }
-                    else
-                    {
-                        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::GoToStage - Failed to load mesh directly by path: %s"), *MeshPath);
-                    }
+                    MeshToSwap = LoadObject<UStaticMesh>(nullptr, *MeshToUse.ToString());
                 }
-                
-                // Swap the mesh if we successfully loaded it
                 if (MeshToSwap)
                 {
-                    //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Calling SwapDishContainerMesh with mesh: %s"), *MeshToSwap->GetName());
                     CustomizationComponent->SwapDishContainerMesh(MeshToSwap);
-                    //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - SwapDishContainerMesh call completed"));
-                }
-                else
-                {
-                    //UE_LOG(LogTemp,Error, TEXT("❌ PUDishCustomizationWidget::GoToStage - Could not load plating dish mesh, swap aborted"));
                 }
                 break;
             }
