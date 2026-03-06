@@ -457,6 +457,9 @@ private:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ClearAll3DIngredientMeshes();
 
+    // Capture current transforms from live ingredient meshes into CurrentDishData (call before ClearAll3DIngredientMeshes)
+    void CapturePlatingTransformsFromMeshes();
+
     // Store original dish container mesh
     void StoreOriginalDishContainerMesh();
 

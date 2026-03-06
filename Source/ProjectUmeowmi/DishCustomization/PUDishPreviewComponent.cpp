@@ -1,0 +1,285 @@
+#include "PUDishPreviewComponent.h"
+#include "PUIngredientMesh.h"
+#include "Components/StaticMeshComponent.h"
+#include "ProceduralMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "Engine/Engine.h"
+#include "GameFramework/Actor.h"
+
+DEFINE_LOG_CATEGORY(LogDishPreview);
+
+UPUDishPreviewComponent::UPUDishPreviewComponent()
+{
+    PrimaryComponentTick.bCanEverTick = false;
+
+    DishMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DishMesh"));
+    DishMeshComponent->SetupAttachment(this);
+    DishMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    DishMeshComponent->SetCastShadow(true);
+    DishMeshComponent->SetVisibility(false);
+}
+
+void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
+{
+    UE_LOG(LogDishPreview, Log, TEXT("BuildFromDishData - START (dish: %s, %d ingredients)"),
+        *DishData.DishName.ToString(), DishData.IngredientInstances.Num());
+    if (bEnableDishPreviewDebug && GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Cyan, FString::Printf(TEXT("[DishPreview] BuildFromDishData START - %s (%d ingredients)"), *DishData.DishName.ToString(), DishData.IngredientInstances.Num()));
+    }
+
+    ClearPreview();
+
+    UWorld* World = GetWorld();
+    AActor* Owner = GetOwner();
+    if (!World || !Owner)
+    {
+        UE_LOG(LogDishPreview, Warning, TEXT("BuildFromDishData - No World or Owner"));
+        if (bEnableDishPreviewDebug && GEngine) { GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("[DishPreview] ERROR: No World or Owner")); }
+        return;
+    }
+
+    // Parent: character's root - ensures preview follows player
+    USceneComponent* ParentComponent = Owner->GetRootComponent();
+    if (!ParentComponent)
+    {
+        UE_LOG(LogDishPreview, Warning, TEXT("BuildFromDishData - Owner has no RootComponent"));
+        return;
+    }
+
+    // Base position: character's location + offset above head (same for dish and all ingredients)
+    const FVector OffsetAboveHead = FVector(0.0f, 0.0f, OffsetAboveHeadZ);
+    FVector BaseWorldPos = Owner->GetActorLocation() + Owner->GetActorQuat().RotateVector(OffsetAboveHead);
+    FRotator BaseWorldRot = Owner->GetActorRotation();
+    UE_LOG(LogDishPreview, Log, TEXT("BuildFromDishData - Character at (%.1f, %.1f, %.1f), preview base (%.1f, %.1f, %.1f)"),
+        Owner->GetActorLocation().X, Owner->GetActorLocation().Y, Owner->GetActorLocation().Z,
+        BaseWorldPos.X, BaseWorldPos.Y, BaseWorldPos.Z);
+
+    // Compute origin from PlatingEntries (one per mesh) or fallback to plated IngredientInstances
+    FVector Origin = FVector::ZeroVector;
+    int32 PlatedCount = 0;
+    if (DishData.PlatingEntries.Num() > 0)
+    {
+        for (const FPUPlatingEntry& Entry : DishData.PlatingEntries)
+        {
+            Origin += Entry.Position;
+            PlatedCount++;
+        }
+    }
+    else
+    {
+        for (const FIngredientInstance& Instance : DishData.IngredientInstances)
+        {
+            if (Instance.bIsPlated)
+            {
+                Origin += Instance.PlatingPosition;
+                PlatedCount++;
+            }
+        }
+    }
+    if (PlatedCount > 0)
+    {
+        Origin /= PlatedCount;
+    }
+    UE_LOG(LogDishPreview, Log, TEXT("BuildFromDishData - %d plating entries, %d total ingredients, origin (%.1f, %.1f, %.1f)"),
+        PlatedCount, DishData.IngredientInstances.Num(), Origin.X, Origin.Y, Origin.Z);
+
+    // Dish mesh: try DishData.DishMesh first, then DefaultDishMesh fallback
+    UStaticMesh* DishMesh = nullptr;
+    if (DishData.DishMesh.IsValid())
+    {
+        DishMesh = DishData.DishMesh.LoadSynchronous();
+    }
+    if (!DishMesh && !DishData.DishMesh.ToSoftObjectPath().IsNull())
+    {
+        DishMesh = LoadObject<UStaticMesh>(nullptr, *DishData.DishMesh.ToString());
+    }
+    if (!DishMesh && DefaultDishMesh.IsValid())
+    {
+        DishMesh = DefaultDishMesh.LoadSynchronous();
+        UE_LOG(LogDishPreview, Log, TEXT("BuildFromDishData - Using DefaultDishMesh fallback: %s"), DishMesh ? *DishMesh->GetName() : TEXT("null"));
+    }
+    if (!DishMesh && !DefaultDishMesh.ToSoftObjectPath().IsNull())
+    {
+        DishMesh = LoadObject<UStaticMesh>(nullptr, *DefaultDishMesh.ToString());
+    }
+    if (DishMesh)
+    {
+        DishMeshComponent->SetStaticMesh(DishMesh);
+        DishMeshComponent->SetVisibility(true);
+        DishMeshComponent->SetWorldRotation(FRotator::ZeroRotator);  // No rotation - fixed orientation
+        DishMeshComponent->SetWorldScale3D(FVector(PreviewScale));
+
+        // Offset dish so its SURFACE (top of bounds) aligns with BaseWorldPos, not the mesh pivot.
+        // Without collision, the pivot is often at the mesh origin (center) - placing it directly would put ingredients "in the middle" of the plate.
+        FBoxSphereBounds MeshBounds = DishMesh->GetBounds();
+        float SurfaceOffsetZ = (MeshBounds.Origin.Z + MeshBounds.BoxExtent.Z) * PreviewScale;  // Top of mesh in local space, scaled
+        DishMeshComponent->SetWorldLocation(BaseWorldPos - FVector(0.0f, 0.0f, SurfaceOffsetZ));
+
+        DishMeshComponent->AttachToComponent(ParentComponent, FAttachmentTransformRules::KeepWorldTransform);
+        UE_LOG(LogDishPreview, Log, TEXT("BuildFromDishData - Dish mesh set: %s"), *DishMesh->GetName());
+        if (bEnableDishPreviewDebug && GEngine) { GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, FString::Printf(TEXT("[DishPreview] Dish mesh: %s"), *DishMesh->GetName())); }
+    }
+    else
+    {
+        UE_LOG(LogDishPreview, Warning, TEXT("BuildFromDishData - No dish mesh (set DishMesh in data table or DefaultDishMesh on character)"));
+        if (bEnableDishPreviewDebug && GEngine) { GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("[DishPreview] No dish mesh - set DefaultDishMesh on character Blueprint")); }
+    }
+
+    // Spawn from PlatingEntries (one per mesh - captures ALL plated meshes) or fallback to bIsPlated instances
+    UClass* MeshClass = IngredientMeshClass ? IngredientMeshClass.Get() : APUIngredientMesh::StaticClass();
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = Owner;
+    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+    int32 SpawnedCount = 0;
+    int32 NonPlatedIndex = 0;
+
+    // Dish position is the origin for ingredients - use dish (or component) as parent
+    USceneComponent* IngredientParent = DishMeshComponent->GetStaticMesh() ? DishMeshComponent : ParentComponent;
+
+    if (DishData.PlatingEntries.Num() > 0)
+    {
+        // Use PlatingEntries - one spawn per mesh (handles multiple of same ingredient)
+        // Dish position (BaseWorldPos) is the new zero - ingredients are offset from there
+        for (const FPUPlatingEntry& Entry : DishData.PlatingEntries)
+        {
+            FIngredientInstance Instance;
+            if (!DishData.GetIngredientInstanceByID(Entry.InstanceID, Instance))
+            {
+                UE_LOG(LogDishPreview, Warning, TEXT("BuildFromDishData - PlatingEntry InstanceID %d not found in dish"), Entry.InstanceID);
+                continue;
+            }
+
+            // Offset from plate centroid - dish position is origin. Preserve relative Z from plating, add small upward offset
+            FVector OffsetFromOrigin = (Entry.Position - Origin) * PreviewScale;
+            OffsetFromOrigin.Z += IngredientZOffset;  // Move up slightly so ingredients sit on dish surface
+            FVector WorldPos = BaseWorldPos + OffsetFromOrigin;
+            FRotator WorldRot = FRotator::ZeroRotator;  // No rotation - fixed orientation
+            FVector InstanceScale = (Entry.Scale.SizeSquared() > KINDA_SMALL_NUMBER) ? Entry.Scale : FVector::OneVector;
+            FVector EffectiveScale = InstanceScale * PreviewScale;
+
+            APUIngredientMesh* Spawned = World->SpawnActor<APUIngredientMesh>(MeshClass, WorldPos, WorldRot, SpawnParams);
+            if (!Spawned)
+            {
+                UE_LOG(LogDishPreview, Warning, TEXT("BuildFromDishData - Failed to spawn ingredient InstanceID %d"), Entry.InstanceID);
+                continue;
+            }
+
+            Spawned->InitializeWithIngredientInstance(Instance);
+
+            if (UStaticMeshComponent* MeshComp = Spawned->FindComponentByClass<UStaticMeshComponent>())
+            {
+                MeshComp->SetSimulatePhysics(false);
+                MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+            for (UActorComponent* Comp : Spawned->GetComponents())
+            {
+                if (UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(Comp))
+                {
+                    ProcMesh->SetSimulatePhysics(false);
+                    ProcMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                }
+            }
+
+            Spawned->SetIngredientScale(EffectiveScale);
+            Spawned->AttachToComponent(IngredientParent, FAttachmentTransformRules::KeepWorldTransform);
+            PreviewIngredientMeshes.Add(Spawned);
+            SpawnedCount++;
+        }
+    }
+    else
+    {
+        // Fallback: use IngredientInstances with bIsPlated
+        for (const FIngredientInstance& Instance : DishData.IngredientInstances)
+        {
+            FVector WorldPos;
+            FRotator LocalRot;
+            FVector InstanceScale;
+
+            if (Instance.bIsPlated)
+            {
+                FVector OffsetFromOrigin = (Instance.PlatingPosition - Origin) * PreviewScale;
+                OffsetFromOrigin.Z += IngredientZOffset;  // Move up slightly
+                WorldPos = BaseWorldPos + OffsetFromOrigin;
+                LocalRot = Instance.PlatingRotation;
+                InstanceScale = (Instance.PlatingScale.SizeSquared() > KINDA_SMALL_NUMBER)
+                    ? Instance.PlatingScale : FVector::OneVector;
+            }
+            else
+            {
+                const float FanSpacing = 25.0f;
+                FVector OffsetFromOrigin = FVector(NonPlatedIndex * FanSpacing, 0.0f, 0.0f) * PreviewScale;
+                NonPlatedIndex++;
+                OffsetFromOrigin.Z += IngredientZOffset;
+                WorldPos = BaseWorldPos + OffsetFromOrigin;
+                LocalRot = FRotator::ZeroRotator;
+                InstanceScale = FVector::OneVector;
+            }
+
+            FVector EffectiveScale = InstanceScale * PreviewScale;
+            FRotator WorldRot = FRotator::ZeroRotator;  // No rotation - fixed orientation
+
+            APUIngredientMesh* Spawned = World->SpawnActor<APUIngredientMesh>(MeshClass, WorldPos, WorldRot, SpawnParams);
+            if (!Spawned)
+            {
+                UE_LOG(LogDishPreview, Warning, TEXT("BuildFromDishData - Failed to spawn ingredient InstanceID %d"), Instance.InstanceID);
+                continue;
+            }
+
+            Spawned->InitializeWithIngredientInstance(Instance);
+
+            if (UStaticMeshComponent* MeshComp = Spawned->FindComponentByClass<UStaticMeshComponent>())
+            {
+                MeshComp->SetSimulatePhysics(false);
+                MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+            for (UActorComponent* Comp : Spawned->GetComponents())
+            {
+                if (UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(Comp))
+                {
+                    ProcMesh->SetSimulatePhysics(false);
+                    ProcMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                }
+            }
+
+            Spawned->SetIngredientScale(EffectiveScale);
+            Spawned->AttachToComponent(IngredientParent, FAttachmentTransformRules::KeepWorldTransform);
+            PreviewIngredientMeshes.Add(Spawned);
+            SpawnedCount++;
+        }
+    }
+
+    UE_LOG(LogDishPreview, Log, TEXT("BuildFromDishData - DONE: dish=%s, %d ingredients spawned"),
+        DishMesh ? TEXT("yes") : TEXT("no"), SpawnedCount);
+    if (bEnableDishPreviewDebug && GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, FString::Printf(TEXT("[DishPreview] DONE: dish=%s, %d ingredients"), DishMesh ? TEXT("yes") : TEXT("no"), SpawnedCount));
+    }
+
+    bHasPreview = true;
+}
+
+void UPUDishPreviewComponent::ClearPreview()
+{
+    UE_LOG(LogDishPreview, Log, TEXT("ClearPreview - clearing %d ingredients"), PreviewIngredientMeshes.Num());
+    if (bEnableDishPreviewDebug && GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(128, 128, 128), FString::Printf(TEXT("[DishPreview] ClearPreview - %d ingredients"), PreviewIngredientMeshes.Num()));
+    }
+
+    for (APUIngredientMesh* Mesh : PreviewIngredientMeshes)
+    {
+        if (Mesh && IsValid(Mesh))
+        {
+            Mesh->Destroy();
+        }
+    }
+    PreviewIngredientMeshes.Empty();
+
+    DishMeshComponent->SetStaticMesh(nullptr);
+    DishMeshComponent->SetVisibility(false);
+
+    bHasPreview = false;
+}

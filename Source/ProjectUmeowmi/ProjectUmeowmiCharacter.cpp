@@ -68,6 +68,11 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	EmoteWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f)); // Above character head
 	EmoteWidget->SetVisibility(false);
 
+	// Create dish preview (above character head when carrying a dish)
+	DishPreviewComponent = CreateDefaultSubobject<UPUDishPreviewComponent>(TEXT("DishPreview"));
+	DishPreviewComponent->SetupAttachment(RootComponent);
+	DishPreviewComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 90.0f)); // Above character head
+
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-15.0f, 45.0f, 0.0f);
 
@@ -802,6 +807,12 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+
+	// Clear the dish preview above the character's head
+	if (DishPreviewComponent)
+	{
+		DishPreviewComponent->ClearPreview();
+	}
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== ORDER CLEARED ==="));
 	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));

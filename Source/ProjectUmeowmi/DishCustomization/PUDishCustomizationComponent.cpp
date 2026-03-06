@@ -1,4 +1,5 @@
 #include "PUDishCustomizationComponent.h"
+#include "PUDishPreviewComponent.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
@@ -815,7 +816,7 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
         // If we're exiting customization, clear the character reference and broadcast the end event
         if (bIsExiting)
         {
-            // Clear all 3D ingredient meshes before ending customization
+            // Transforms were already captured in EndPlatingStage; clear meshes now
             ClearAll3DIngredientMeshes();
             
             // Restore the original dish container mesh
@@ -1951,6 +1952,9 @@ void UPUDishCustomizationComponent::EndPlatingStage()
 {
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Ending plating stage"));
 
+    // Capture transforms from live ingredient meshes BEFORE any cleanup (widget removal, mesh destruction)
+    CapturePlatingTransformsFromMeshes();
+
     // Set plating mode to false
     SetPlatingMode(false);
 
@@ -2054,6 +2058,9 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
         
         // Scale the ingredient; for chopped/minced, must set scale on proc mesh pieces directly (actor scale doesn't propagate)
         SpawnedIngredient->SetIngredientScale(EffectiveScale);
+
+        // Store InstanceID for transform capture before cleanup
+        SpawnedIngredient->SetPlatingInstanceID(IngredientInstance.InstanceID);
         
         // Track the spawned mesh for cleanup
         SpawnedIngredientMeshes.Add(SpawnedIngredient);
@@ -2500,6 +2507,48 @@ void UPUDishCustomizationComponent::ResetPlating()
     ClearAll3DIngredientMeshes();
     
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::ResetPlating - Plating reset complete"));
+}
+
+void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
+{
+    UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - %d meshes to capture"), SpawnedIngredientMeshes.Num());
+
+    CurrentDishData.PlatingEntries.Empty();
+    int32 Captured = 0;
+    for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
+    {
+        if (!IngredientMesh || !IsValid(IngredientMesh))
+        {
+            continue;
+        }
+
+        const int32 InstanceID = IngredientMesh->GetPlatingInstanceID();
+        if (InstanceID < 0)
+        {
+            UE_LOG(LogDishPreview, Warning, TEXT("CapturePlatingTransformsFromMeshes - mesh has invalid InstanceID %d, skipping"), InstanceID);
+            continue;
+        }
+
+        const FVector WorldPos = IngredientMesh->GetActorLocation();
+        const FRotator WorldRot = IngredientMesh->GetActorRotation();
+        FVector WorldScale = IngredientMesh->GetActorScale3D();
+        if (WorldScale.SizeSquared() < KINDA_SMALL_NUMBER)
+        {
+            WorldScale = FVector::OneVector;
+        }
+
+        CurrentDishData.SetIngredientPlating(InstanceID, WorldPos, WorldRot, WorldScale);
+        FPUPlatingEntry Entry;
+        Entry.InstanceID = InstanceID;
+        Entry.Position = WorldPos;
+        Entry.Rotation = WorldRot;
+        Entry.Scale = WorldScale;
+        CurrentDishData.PlatingEntries.Add(Entry);
+        Captured++;
+        UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - InstanceID %d at (%.1f, %.1f, %.1f)"), InstanceID, WorldPos.X, WorldPos.Y, WorldPos.Z);
+    }
+
+    UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - captured %d transforms"), Captured);
 }
 
 void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()

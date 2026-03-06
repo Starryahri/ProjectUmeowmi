@@ -10,6 +10,7 @@
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "Interfaces/PUInteractableInterface.h"
 #include "DishCustomization/PUOrderBase.h"
+#include "DishCustomization/PUDishPreviewComponent.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -220,6 +221,14 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UDataTable* EmoteDataTable = nullptr;
 
 
+	////////////////////////////////////////////////////////////
+	// Dish Preview (above head when carrying a dish)
+	////////////////////////////////////////////////////////////
+	/** 3D preview of plated dish shown above character when carrying a dish to give. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Preview", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UPUDishPreviewComponent> DishPreviewComponent;
+
+
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }
     FText GetParticipantDisplayName_Implementation(FName ActiveSpeaker) const override { return DisplayName; }
@@ -337,6 +346,10 @@ public:
 	/** Returns true if an emote is currently visible. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Emote")
 	bool IsEmoteActive() const;
+
+	/** Get the dish preview component (for showing plated dish above head). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish Preview")
+	UPUDishPreviewComponent* GetDishPreviewComponent() const { return DishPreviewComponent; }
 
 	/** Get the dialogue box widget */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")

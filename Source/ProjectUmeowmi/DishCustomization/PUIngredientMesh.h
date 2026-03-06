@@ -70,6 +70,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Interaction")
     void UpdateRotation(const FRotator& NewRotation);
 
+    /** InstanceID from dish data when used for plating - used to capture final transform before cleanup. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    void SetPlatingInstanceID(int32 InInstanceID) { PlatingInstanceID = InInstanceID; }
+    int32 GetPlatingInstanceID() const { return PlatingInstanceID; }
+
 protected:
     // Components
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -119,6 +124,10 @@ protected:
     // Ingredient data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Data")
     FPUIngredientBase IngredientData;
+
+    /** InstanceID when used for plating - links mesh to dish data for transform capture. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Data")
+    int32 PlatingInstanceID = -1;
 
 public:
     // Event dispatchers

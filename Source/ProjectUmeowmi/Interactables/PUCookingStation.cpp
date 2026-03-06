@@ -1,5 +1,6 @@
 #include "PUCookingStation.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../DishCustomization/PUDishPreviewComponent.h"
 #include "GameplayTagContainer.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
@@ -279,6 +280,17 @@ void APUCookingStation::OnCustomizationEnded()
             
             // Set the order result on the player character
             Character->SetOrderResult(bOrderCompleted, SatisfactionScore);
+
+            // Show the plated dish above the character's head
+            if (UPUDishPreviewComponent* DishPreview = Character->GetDishPreviewComponent())
+            {
+                UE_LOG(LogDishPreview, Log, TEXT("CookingStation OnCustomizationEnded - BuildFromDishData (PlatingEntries: %d)"), CompletedDish.PlatingEntries.Num());
+                DishPreview->BuildFromDishData(CompletedDish);
+            }
+            else
+            {
+                UE_LOG(LogDishPreview, Warning, TEXT("CookingStation OnCustomizationEnded - DishPreviewComponent is null"));
+            }
         }
         else
         {
