@@ -893,6 +893,12 @@ void AProjectUmeowmiCharacter::ClearCompletedOrder()
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+
+	// Clear the dish preview above the character's head
+	if (DishPreviewComponent)
+	{
+		DishPreviewComponent->ClearPreview();
+	}
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== COMPLETED ORDER CLEARED ==="));
 	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
