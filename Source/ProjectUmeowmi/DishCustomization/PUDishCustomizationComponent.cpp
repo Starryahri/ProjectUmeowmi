@@ -1263,66 +1263,32 @@ void UPUDishCustomizationComponent::UpdateMouseDrag()
     
     if (PlayerController->DeprojectScreenPositionToWorld(MouseX, MouseY, WorldLocation, WorldDirection))
     {
-        // Find the dish customization station to get the surface height
-        TArray<AActor*> FoundActors;
-        UGameplayStatics::GetAllActorsOfClass(GetWorld(), AActor::StaticClass(), FoundActors);
-        
-        AActor* DishStation = nullptr;
-        for (AActor* Actor : FoundActors)
+        // Use the actual plate/dish surface height (matches GetSpawnPositionAboveStation) instead of
+        // arbitrary station bounds - fixes placement mismatch when camera is angled
+        float SurfaceHeight = 0.0f;
+        if (!GetPlateSurfaceHeight(SurfaceHeight))
         {
-            if (Actor && (Actor->GetName().Contains(TEXT("CookingStation")) || Actor->GetName().Contains(TEXT("DishCustomization"))))
-            {
-                DishStation = Actor;
-                break;
-            }
+            // Fallback: use ingredient's current Z so we at least project onto a sensible plane
+            SurfaceHeight = CurrentlyDraggedIngredient->GetActorLocation().Z;
         }
-        
-        if (DishStation)
+
+        // Calculate where the mouse ray intersects the plate surface plane
+        if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
         {
-            // Calculate world position on the station surface
-            FVector StationLocation = DishStation->GetActorLocation();
-            FVector StationBounds = DishStation->GetComponentsBoundingBox().GetSize();
-            
-            // Calculate where the mouse ray intersects the station surface
-            float StationHeight = StationLocation.Z + (StationBounds.Z * 0.2f);
-            
-            // Calculate intersection point
-            if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
+            float T = (SurfaceHeight - WorldLocation.Z) / WorldDirection.Z;
+            if (T > 0.0f && T < 10000.0f) // Reasonable range
             {
-                float T = (StationHeight - WorldLocation.Z) / WorldDirection.Z;
-                if (T > 0.0f && T < 10000.0f) // Reasonable range
+                FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
+
+                // Apply the stored offset to maintain the grab point
+                FVector NewPosition = MouseWorldPosition + DragOffset;
+
+                // Validate the new position
+                AActor* OwnerActor = GetOwner();
+                FVector RefPoint = OwnerActor ? OwnerActor->GetActorLocation() : FVector::ZeroVector;
+                if (!NewPosition.ContainsNaN() && FVector::Dist(NewPosition, RefPoint) < 5000.0f)
                 {
-                    FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
-                    
-                    // Apply the stored offset to maintain the grab point
-                    FVector NewPosition = MouseWorldPosition + DragOffset;
-                    
-                    // Validate the new position
-                    if (!NewPosition.ContainsNaN() && FVector::Dist(NewPosition, StationLocation) < 5000.0f)
-                    {
-                        // Update ingredient position
-                        FVector OldPosition = CurrentlyDraggedIngredient->GetActorLocation();
-                        CurrentlyDraggedIngredient->UpdatePosition(NewPosition);
-                        
-                        // Verify the ingredient is still visible and at the expected position
-                        FVector VerifyPosition = CurrentlyDraggedIngredient->GetActorLocation();
-                        bool bIsVisible = CurrentlyDraggedIngredient->IsHidden() == false;
-                        
-                        //UE_LOG(LogTemp,Verbose, TEXT("🎯 [DRAG] %s: (%.2f,%.2f,%.2f) -> (%.2f,%.2f,%.2f), Hidden: %s"), 
-                        //    *CurrentlyDraggedIngredient->GetName(),
-                        //    OldPosition.X, OldPosition.Y, OldPosition.Z,
-                        //    VerifyPosition.X, VerifyPosition.Y, VerifyPosition.Z,
-                        //    CurrentlyDraggedIngredient->IsHidden() ? TEXT("Yes") : TEXT("No"));
-                    }
-                    else
-                    {
-                        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] Invalid position calculated for %s: (%.2f,%.2f,%.2f)"), 
-                        //    *CurrentlyDraggedIngredient->GetName(), NewPosition.X, NewPosition.Y, NewPosition.Z);
-                    }
-                }
-                else
-                {
-                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] Invalid T value: %.2f for %s"), T, *CurrentlyDraggedIngredient->GetName());
+                    CurrentlyDraggedIngredient->UpdatePosition(NewPosition);
                 }
             }
         }
@@ -1834,6 +1800,29 @@ FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
     FVector Extent = StationBoundsBox.GetExtent();
     float SurfaceHeight = Center.Z + Extent.Z;
     return FVector(Center.X, Center.Y, SurfaceHeight + IngredientSpawnHeightOffset);
+}
+
+bool UPUDishCustomizationComponent::GetPlateSurfaceHeight(float& OutSurfaceHeight) const
+{
+    AActor* OwnerActor = GetOwner();
+    if (!OwnerActor)
+    {
+        return false;
+    }
+
+    TArray<UStaticMeshComponent*> MeshComponents;
+    OwnerActor->GetComponents<UStaticMeshComponent>(MeshComponents);
+    for (UStaticMeshComponent* MeshComp : MeshComponents)
+    {
+        if (MeshComp && MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
+        {
+            FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
+            OutSurfaceHeight = DishBounds.Origin.Z + DishBounds.BoxExtent.Z;  // Top of bowl/plate
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& DishData)

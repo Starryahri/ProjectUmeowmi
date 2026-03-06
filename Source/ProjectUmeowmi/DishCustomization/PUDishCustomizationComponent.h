@@ -459,4 +459,7 @@ private:
 
     // Store original dish container mesh
     void StoreOriginalDishContainerMesh();
+
+    // Get plate/dish surface height for drag projection (matches GetSpawnPositionAboveStation surface)
+    bool GetPlateSurfaceHeight(float& OutSurfaceHeight) const;
 }; 
