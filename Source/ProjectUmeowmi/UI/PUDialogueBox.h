@@ -5,6 +5,7 @@
 #include "PUDialogueBox.generated.h"
 
 class UTextBlock;
+class UCommonRichTextBlock;
 class UImage;
 class UVerticalBox;
 class UButton;
@@ -33,9 +34,9 @@ public:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     UTextBlock* ParticipantNameText;
 
-    /** Widget to display the dialogue text */
+    /** Widget to display the dialogue text. Supports rich text markup (color, italic, underline) via tags like <StyleName>text</>. Use Common Rich Text Block in Blueprint; assign a Data Table with Rich Text Style Row to Text Styles Set. */
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
-    UTextBlock* DialogueText;
+    UCommonRichTextBlock* DialogueText;
 
     /** Widget to display the participant's image */
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
@@ -144,12 +145,19 @@ private:
 
     /** Typewriter effect state */
     FString FullDialogueText;
-    int32 TypewriterCurrentIndex = 0;
+    int32 TypewriterCurrentIndex = 0;       /**< Current visible character index (not raw string index) */
+    int32 TypewriterTotalVisibleChars = 0; /**< Total visible characters; cached when typewriter starts */
     FTimerHandle TypewriterTimerHandle;
     bool bTypewriterActive = false;
 
     /** Advance typewriter by one character (called by timer) */
     void AdvanceTypewriter();
+
+    /** Returns substring of InText up to TargetVisibleCount visible characters. Skips markup tags when counting so tags never appear as raw text. Supports <TagName>content</> format. */
+    static FString GetSubstringUpToVisibleCharacter(const FString& InText, int32 TargetVisibleCount);
+
+    /** Returns total number of visible (non-tag) characters in InText. */
+    static int32 GetVisibleCharacterCount(const FString& InText);
 
     /** Initialize the vignette material */
     void InitializeVignetteMaterial();

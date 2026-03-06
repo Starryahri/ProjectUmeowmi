@@ -4,6 +4,7 @@
 #include "DlgSystem/DlgContext.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/TextBlock.h"
+#include "CommonRichTextBlock.h"
 #include "Components/Image.h"
 #include "Components/VerticalBox.h"
 #include "Components/Button.h"
@@ -353,8 +354,9 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
 
                 FullDialogueText = NodeText.ToString();
                 TypewriterCurrentIndex = 0;
+                TypewriterTotalVisibleChars = GetVisibleCharacterCount(FullDialogueText);
 
-                if (FullDialogueText.Len() > 0)
+                if (TypewriterTotalVisibleChars > 0)
                 {
                     DialogueText->SetText(FText::FromString(FString()));
                     bTypewriterActive = true;
@@ -440,6 +442,96 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
     }
 }
 
+int32 UPUDialogueBox::GetVisibleCharacterCount(const FString& InText)
+{
+    int32 VisibleCount = 0;
+    int32 i = 0;
+    const int32 Len = InText.Len();
+    while (i < Len)
+    {
+        if (InText[i] == '<')
+        {
+            if (i + 3 <= Len && InText.Mid(i, 3) == TEXT("</>"))
+            {
+                i += 3;
+            }
+            else
+            {
+                const int32 EndOfTag = InText.Find(TEXT(">"), ESearchCase::IgnoreCase, ESearchDir::FromStart, i);
+                if (EndOfTag != INDEX_NONE)
+                {
+                    i = EndOfTag + 1;
+                }
+                else
+                {
+                    VisibleCount++;
+                    i++;
+                }
+            }
+        }
+        else
+        {
+            VisibleCount++;
+            i++;
+        }
+    }
+    return VisibleCount;
+}
+
+FString UPUDialogueBox::GetSubstringUpToVisibleCharacter(const FString& InText, int32 TargetVisibleCount)
+{
+    if (TargetVisibleCount <= 0)
+    {
+        return FString();
+    }
+    FString Output;
+    int32 VisibleCount = 0;
+    int32 i = 0;
+    const int32 Len = InText.Len();
+    bool bInsideStyledRun = false;  // True when we've added an opening tag but not yet closed it
+    while (i < Len && VisibleCount < TargetVisibleCount)
+    {
+        if (InText[i] == '<')
+        {
+            if (i + 3 <= Len && InText.Mid(i, 3) == TEXT("</>"))
+            {
+                Output += InText.Mid(i, 3);
+                bInsideStyledRun = false;
+                i += 3;
+            }
+            else
+            {
+                const int32 EndOfTag = InText.Find(TEXT(">"), ESearchCase::IgnoreCase, ESearchDir::FromStart, i);
+                if (EndOfTag != INDEX_NONE)
+                {
+                    Output += InText.Mid(i, EndOfTag - i + 1);
+                    bInsideStyledRun = true;
+                    i = EndOfTag + 1;
+                }
+                else
+                {
+                    Output += InText[i];
+                    VisibleCount++;
+                    i++;
+                }
+            }
+        }
+        else
+        {
+            Output += InText[i];
+            VisibleCount++;
+            i++;
+        }
+    }
+    // The RichText parser requires complete <Name>content</> blocks. If we ended mid-run,
+    // append the closing tag so styling is applied immediately instead of showing raw tags.
+    if (bInsideStyledRun)
+    {
+        Output += TEXT("</>");
+    }
+    return Output;
+}
+
 UCameraComponent* UPUDialogueBox::GetPlayerCamera() const
 {
     if (UWorld* World = GetWorld())
@@ -467,9 +559,9 @@ void UPUDialogueBox::AdvanceTypewriter()
 
     TypewriterCurrentIndex++;
 
-    if (TypewriterCurrentIndex <= FullDialogueText.Len())
+    if (TypewriterCurrentIndex <= TypewriterTotalVisibleChars)
     {
-        FString VisibleText = FullDialogueText.Left(TypewriterCurrentIndex);
+        FString VisibleText = GetSubstringUpToVisibleCharacter(FullDialogueText, TypewriterCurrentIndex);
         DialogueText->SetText(FText::FromString(VisibleText));
 
         // Play typewriter sound if configured, with random pitch variation
@@ -486,7 +578,7 @@ void UPUDialogueBox::AdvanceTypewriter()
             }
         }
 
-        if (TypewriterCurrentIndex < FullDialogueText.Len())
+        if (TypewriterCurrentIndex < TypewriterTotalVisibleChars)
         {
             float CharDelay = 0.02f;
             if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
@@ -529,7 +621,7 @@ void UPUDialogueBox::CompleteTypewriter()
     }
 
     bTypewriterActive = false;
-    TypewriterCurrentIndex = FullDialogueText.Len();
+    TypewriterCurrentIndex = TypewriterTotalVisibleChars;
 
     if (IsValid(DialogueText))
     {
