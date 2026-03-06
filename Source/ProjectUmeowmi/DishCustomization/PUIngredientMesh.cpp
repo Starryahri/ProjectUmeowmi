@@ -386,6 +386,20 @@ void APUIngredientMesh::SetIngredientScale(const FVector& Scale)
     }
 }
 
+FTransform APUIngredientMesh::GetCaptureTransform() const
+{
+    FVector Scale = FVector::OneVector;
+    if (bIsChopped && ChoppedMeshPieces.Num() > 0 && ChoppedMeshPieces[0])
+    {
+        Scale = ChoppedMeshPieces[0]->GetRelativeScale3D();
+    }
+    else
+    {
+        Scale = GetActorScale3D();
+    }
+    return FTransform(GetActorRotation(), GetActorLocation(), Scale);
+}
+
 void APUIngredientMesh::OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent)
 {
     //UE_LOG(LogTemp,Display, TEXT("🖱️ Hover BEGIN called on ingredient: %s (Hovered: %s, Grabbed: %s)"), 

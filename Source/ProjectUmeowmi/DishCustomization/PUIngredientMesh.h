@@ -42,6 +42,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient")
     void SetIngredientScale(const FVector& Scale);
 
+    /** Get world transform for capture (location, rotation, scale). Chopped uses first proc mesh scale. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    FTransform GetCaptureTransform() const;
+
+    /** Get ingredient data for capture (mesh, material). */
+    const FPUIngredientBase& GetIngredientData() const { return IngredientData; }
+
     // Mouse interaction functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Interaction")
     void OnMouseHoverBegin(UPrimitiveComponent* TouchedComponent);

@@ -71,10 +71,15 @@ void UPUOrderComponent::ClearCurrentOrder()
     //UE_LOG(LogTemp,Display, TEXT("UPUOrderComponent::ClearCurrentOrder - Cleaning up UObject references"));
     
     // Clear UObject references in the completed dish
-    if (CurrentOrder.CompletedDish.PreviewTexture)
-    {
-        CurrentOrder.CompletedDish.PreviewTexture = nullptr;
-    }
+	if (CurrentOrder.CompletedDish.PreviewTexture)
+	{
+		CurrentOrder.CompletedDish.PreviewTexture = nullptr;
+	}
+	if (CurrentOrder.CompletedDish.PlatedDishTexture)
+	{
+		CurrentOrder.CompletedDish.PlatedDishTexture->RemoveFromRoot();
+		CurrentOrder.CompletedDish.PlatedDishTexture = nullptr;
+	}
     if (CurrentOrder.CompletedDish.IngredientDataTable.IsValid())
     {
         CurrentOrder.CompletedDish.IngredientDataTable = nullptr;

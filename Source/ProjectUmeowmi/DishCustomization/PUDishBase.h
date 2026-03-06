@@ -101,6 +101,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
     TSoftObjectPtr<UStaticMesh> DishMesh;
 
+    /** Runtime-captured texture of the plated dish (set when dish is completed, cleared on order cleanup) */
+    UPROPERTY(Transient)
+    TObjectPtr<UTexture2D> PlatedDishTexture;
+
     // Data Tables
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Data")
     TSoftObjectPtr<UDataTable> IngredientDataTable;

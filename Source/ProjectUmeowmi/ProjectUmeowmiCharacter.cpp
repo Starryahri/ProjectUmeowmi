@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "ProjectUmeowmiCharacter.h"
+#include "UI/PUDishIconWidget.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/DataTable.h"
 #include "Camera/CameraComponent.h"
@@ -68,6 +69,13 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	EmoteWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f)); // Above character head
 	EmoteWidget->SetVisibility(false);
 
+	// Create dish icon widget (above character head when carrying completed dish)
+	DishIconWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("DishIconWidget"));
+	DishIconWidget->SetupAttachment(RootComponent);
+	DishIconWidget->SetWidgetSpace(EWidgetSpace::World);
+	DishIconWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f));
+	DishIconWidget->SetVisibility(false);
+
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-15.0f, 45.0f, 0.0f);
 
@@ -97,6 +105,12 @@ void AProjectUmeowmiCharacter::BeginPlay()
 			EmoteWidget->SetWidgetClass(EmoteWidgetClass);
 		}
 		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	}
+
+	// Configure dish icon widget
+	if (DishIconWidget && DishIconWidgetClass)
+	{
+		DishIconWidget->SetWidgetClass(DishIconWidgetClass);
 	}
 
 	//UE_LOG(LogTemp,Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
@@ -802,6 +816,8 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+
+	UpdateDishIconDisplay();
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== ORDER CLEARED ==="));
 	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
@@ -819,6 +835,9 @@ void AProjectUmeowmiCharacter::SetOrderResult(bool bCompleted, float Satisfactio
 	bHasCurrentOrder = false;      // Clear active flag
 	bCurrentOrderCompleted = true; // Set completed flag
 	CurrentOrderSatisfaction = SatisfactionScore;
+	
+	// Show dish icon above head when carrying completed dish
+	UpdateDishIconDisplay();
 	
 	// Display the order result immediately
 	DisplayOrderResult();
@@ -943,12 +962,42 @@ void AProjectUmeowmiCharacter::OnOrderFailed()
 	//UE_LOG(LogTemp,Display, TEXT("Satisfaction: %.1f%% - Try again for better results!"), CurrentOrderSatisfaction * 100.0f);
 }
 
+void AProjectUmeowmiCharacter::UpdateDishIconDisplay()
+{
+	if (!DishIconWidget)
+	{
+		return;
+	}
+
+	UPUDishIconWidget* IconWidget = Cast<UPUDishIconWidget>(DishIconWidget->GetWidget());
+	if (!IconWidget)
+	{
+		return;
+	}
+
+	if (bCurrentOrderCompleted && CurrentOrder.CompletedDish.PlatedDishTexture)
+	{
+		IconWidget->SetDishTexture(CurrentOrder.CompletedDish.PlatedDishTexture);
+		DishIconWidget->SetVisibility(true);
+	}
+	else
+	{
+		IconWidget->ClearDishIcon();
+		DishIconWidget->SetVisibility(false);
+	}
+}
+
 void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order)
 {
 	// Clear UObject references in the completed dish
 	if (Order.CompletedDish.PreviewTexture)
 	{
 		Order.CompletedDish.PreviewTexture = nullptr;
+	}
+	if (Order.CompletedDish.PlatedDishTexture)
+	{
+		Order.CompletedDish.PlatedDishTexture->RemoveFromRoot();
+		Order.CompletedDish.PlatedDishTexture = nullptr;
 	}
 	if (Order.CompletedDish.IngredientDataTable.IsValid())
 	{

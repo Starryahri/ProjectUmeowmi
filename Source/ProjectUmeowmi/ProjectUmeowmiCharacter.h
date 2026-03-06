@@ -219,6 +219,16 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
 	UDataTable* EmoteDataTable = nullptr;
 
+	////////////////////////////////////////////////////////////
+	// Dish Icon (above head when carrying completed dish)
+	////////////////////////////////////////////////////////////
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Icon", meta = (AllowPrivateAccess = "true"))
+	UWidgetComponent* DishIconWidget;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dish Icon", meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<class UPUDishIconWidget> DishIconWidgetClass;
+
+	void UpdateDishIconDisplay();
 
     // IDlgDialogueParticipant Interface
 	FName GetParticipantName_Implementation() const override { return ParticipantName; }

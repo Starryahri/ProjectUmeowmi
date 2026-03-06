@@ -10,6 +10,7 @@
 #include "PUDishCustomizationComponent.generated.h"
 
 // Forward declarations
+class APUIngredientMesh;
 class UUserWidget;
 class UInputAction;
 class UEnhancedInputComponent;
@@ -108,6 +109,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void EndPlatingStage();
+
+    /** Get spawned ingredient meshes for capture (actual transforms). */
+    const TArray<APUIngredientMesh*>& GetSpawnedIngredientMeshes() const { return SpawnedIngredientMeshes; }
 
     // Ingredient dragging (called from ingredient mesh)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
@@ -462,4 +466,13 @@ private:
 
     // Get plate/dish surface height for drag projection (matches GetSpawnPositionAboveStation surface)
     bool GetPlateSurfaceHeight(float& OutSurfaceHeight) const;
+
+public:
+    // Get dish center in world space (for dish capture) - public so PUCookingStation can call it
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    bool GetPlateCenterWorldPosition(FVector& OutCenter) const;
+
+    /** Get dish bounding box half-extents in world space (for capture scale matching). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    bool GetPlateBoundsExtent(FVector& OutBoxExtent) const;
 }; 

@@ -812,10 +812,13 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             }
         }
 
-        // If we're exiting customization, clear the character reference and broadcast the end event
+        // If we're exiting customization, broadcast first (so capture can read SpawnedIngredientMeshes), then cleanup
         if (bIsExiting)
         {
-            // Clear all 3D ingredient meshes before ending customization
+            // Broadcast BEFORE clearing - cooking station needs the ingredient meshes for dish capture
+            OnCustomizationEnded.Broadcast();
+
+            // Clear all 3D ingredient meshes after capture is done
             ClearAll3DIngredientMeshes();
             
             // Restore the original dish container mesh
@@ -832,7 +835,6 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             {
                 GI->ClearCurrentDishTag();
             }
-            OnCustomizationEnded.Broadcast();
 
             // Force restore move/look, input mode, and focus when transition fully ends (belt-and-suspenders so player can always move/interact)
             if (World)
@@ -1818,6 +1820,52 @@ bool UPUDishCustomizationComponent::GetPlateSurfaceHeight(float& OutSurfaceHeigh
         {
             FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
             OutSurfaceHeight = DishBounds.Origin.Z + DishBounds.BoxExtent.Z;  // Top of bowl/plate
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool UPUDishCustomizationComponent::GetPlateCenterWorldPosition(FVector& OutCenter) const
+{
+    AActor* OwnerActor = GetOwner();
+    if (!OwnerActor)
+    {
+        return false;
+    }
+
+    TArray<UStaticMeshComponent*> MeshComponents;
+    OwnerActor->GetComponents<UStaticMeshComponent>(MeshComponents);
+    for (UStaticMeshComponent* MeshComp : MeshComponents)
+    {
+        if (MeshComp && MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
+        {
+            FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
+            OutCenter = DishBounds.Origin;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool UPUDishCustomizationComponent::GetPlateBoundsExtent(FVector& OutBoxExtent) const
+{
+    AActor* OwnerActor = GetOwner();
+    if (!OwnerActor)
+    {
+        return false;
+    }
+
+    TArray<UStaticMeshComponent*> MeshComponents;
+    OwnerActor->GetComponents<UStaticMeshComponent>(MeshComponents);
+    for (UStaticMeshComponent* MeshComp : MeshComponents)
+    {
+        if (MeshComp && MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
+        {
+            FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
+            OutBoxExtent = DishBounds.BoxExtent;
             return true;
         }
     }

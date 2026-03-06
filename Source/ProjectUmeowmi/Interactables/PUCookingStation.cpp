@@ -1,5 +1,6 @@
 #include "PUCookingStation.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../DishCustomization/PUDishCaptureActor.h"
 #include "GameplayTagContainer.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
@@ -273,6 +274,27 @@ void APUCookingStation::OnCustomizationEnded()
             FPUOrderBase UpdatedOrder = CurrentOrder;
             UpdatedOrder.CompletedDish = CompletedDish;
             UpdatedOrder.FinalSatisfactionScore = SatisfactionScore;
+
+            // Capture dish to texture - use actual transforms from spawned ingredient meshes
+            FVector PlateCenter;
+            FVector PlateBoundsExtent;
+            bool bHasPlateCenter = DishCustomizationComponent->GetPlateCenterWorldPosition(PlateCenter);
+            DishCustomizationComponent->GetPlateBoundsExtent(PlateBoundsExtent);
+            if (bHasPlateCenter)
+            {
+                APUDishCaptureActor* CaptureActor = GetWorld()->SpawnActor<APUDishCaptureActor>();
+                if (CaptureActor)
+                {
+                    UTexture2D* CapturedTexture = nullptr;
+                    float IngredientScale = DishCustomizationComponent->IngredientMeshScale.GetMax();
+                    const TArray<APUIngredientMesh*>& SpawnedMeshes = DishCustomizationComponent->GetSpawnedIngredientMeshes();
+                    if (CaptureActor->CaptureDishToTexture(UpdatedOrder.CompletedDish, PlateCenter, SpawnedMeshes, IngredientScale, PlateBoundsExtent, CapturedTexture))
+                    {
+                        UpdatedOrder.CompletedDish.PlatedDishTexture = CapturedTexture;
+                    }
+                    CaptureActor->Destroy();
+                }
+            }
             
             // Update the order with completion data
             Character->SetCurrentOrder(UpdatedOrder);
