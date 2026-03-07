@@ -465,4 +465,7 @@ private:
 
     // Get plate/dish surface height for drag projection (matches GetSpawnPositionAboveStation surface)
     bool GetPlateSurfaceHeight(float& OutSurfaceHeight) const;
+
+    // Get plate surface height and center point (for view-independent drag projection)
+    bool GetPlateSurfaceInfo(float& OutSurfaceHeight, FVector& OutSurfaceCenter) const;
 }; 

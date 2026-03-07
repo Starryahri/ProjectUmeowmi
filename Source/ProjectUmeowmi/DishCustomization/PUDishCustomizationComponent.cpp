@@ -32,6 +32,9 @@ namespace
 {
     // Enables logging of every ingredient tag when dish data is updated.
     constexpr bool bPU_LogDishDataIngredientTags = false;
+
+    // Enables logging for ingredient drag (click detection, trace hits, position updates).
+    constexpr bool bPU_LogIngredientDrag = true;
 }
 
 void UPUDishCustomizationComponent::SetHUDVisible(bool bShouldBeVisible)
@@ -940,119 +943,74 @@ void UPUDishCustomizationComponent::OnPreInputMouseButtonDown(const FPointerEven
 
 void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Value)
 {
+    if (bPU_LogIngredientDrag)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[DRAG] HandleMouseClick called"));
+    }
+
     if (!CurrentCharacter || bIsDragging)
     {
+        if (bPU_LogIngredientDrag) UE_LOG(LogTemp, Log, TEXT("[DRAG] HandleMouseClick early out: Character=%s Dragging=%s"), CurrentCharacter ? TEXT("ok") : TEXT("null"), bIsDragging ? TEXT("yes") : TEXT("no"));
         return;
     }
 
     APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
     if (!PlayerController)
     {
-        //UE_LOG(LogTemp,Display, TEXT("🔍 Mouse click - No player controller"));
+        if (bPU_LogIngredientDrag) UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - No player controller"));
         return;
-    }
-
-    // Check if widget is blocking mouse events
-    if (CustomizationWidget && CustomizationWidget->IsVisible())
-    {
-        //UE_LOG(LogTemp,Display, TEXT("🔍 Customization widget is visible - might be blocking mouse events"));
     }
 
     // Get mouse position
     float MouseX, MouseY;
     PlayerController->GetMousePosition(MouseX, MouseY);
     DragStartMousePosition = FVector(MouseX, MouseY, 0);
-    
-    //UE_LOG(LogTemp,Display, TEXT("🔍 Mouse click at screen position: (%.0f, %.0f)"), MouseX, MouseY);
 
-    // Convert screen position to world space for custom trace
-    FVector WorldLocation;
-    FVector WorldDirection;
-    if (!PlayerController->DeprojectScreenPositionToWorld(MouseX, MouseY, WorldLocation, WorldDirection))
+    // Use GetHitResultUnderCursor - same method the engine uses for mouse clicks.
+    // Our custom trace was returning 0 hits (possibly due to ignore list or camera mismatch)
+    // while NotifyActorOnClicked was firing, so we use the engine's hit detection for consistency.
+    FHitResult HitResult;
+    if (!PlayerController->GetHitResultUnderCursor(ECC_Visibility, true, HitResult))
     {
-        //UE_LOG(LogTemp,Warning, TEXT("🔍 Failed to deproject screen position"));
+        if (bPU_LogIngredientDrag) UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - GetHitResultUnderCursor failed (screen %.0f,%.0f)"), MouseX, MouseY);
         return;
     }
 
-    // Find the station/bowl actor to ignore in the trace
-    AActor* StationActor = GetOwner();
-    TArray<AActor*> ActorsToIgnore;
-    if (StationActor)
+    if (bPU_LogIngredientDrag)
     {
-        ActorsToIgnore.Add(StationActor);
-        // Also find all child components of the station that might be the bowl
-        TArray<AActor*> ChildActors;
-        StationActor->GetAllChildActors(ChildActors);
-        ActorsToIgnore.Append(ChildActors);
+        UE_LOG(LogTemp, Log, TEXT("[DRAG] HandleMouseClick - Hit: %s (%s) at (%.0f,%.0f)"), HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("null"), HitResult.GetComponent() ? *HitResult.GetComponent()->GetName() : TEXT("null"), MouseX, MouseY);
     }
 
-    // Use a multi-line trace to find all hits, then prioritize ingredient meshes
-    TArray<FHitResult> HitResults;
-    FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActors(ActorsToIgnore);
-    QueryParams.bTraceComplex = true; // Use complex collision for more accurate hits
-    
-    FVector TraceStart = WorldLocation;
-    FVector TraceEnd = WorldLocation + (WorldDirection * 10000.0f); // Long trace distance
-    
-    bool bHit = GetWorld()->LineTraceMultiByChannel(HitResults, TraceStart, TraceEnd, ECC_Visibility, QueryParams);
-    
-    //UE_LOG(LogTemp,Display, TEXT("🔍 Line trace found %d hits"), HitResults.Num());
-    
-    // Look for ingredient meshes first (they should be on top/closest)
-    APUIngredientMesh* HitIngredient = nullptr;
-    FHitResult IngredientHitResult;
-    
-    for (const FHitResult& Hit : HitResults)
-    {
-        if (Hit.bBlockingHit)
-        {
-            //UE_LOG(LogTemp,Display, TEXT("🔍 Hit: %s"), Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("NULL"));
-            
-            APUIngredientMesh* TestIngredient = Cast<APUIngredientMesh>(Hit.GetActor());
-            if (TestIngredient)
-            {
-                HitIngredient = TestIngredient;
-                IngredientHitResult = Hit;
-                //UE_LOG(LogTemp,Display, TEXT("🔍 Found ingredient mesh: %s"), *HitIngredient->GetName());
-                break; // Found an ingredient, use it
-            }
-        }
-    }
-    
+    APUIngredientMesh* HitIngredient = Cast<APUIngredientMesh>(HitResult.GetActor());
+    FHitResult IngredientHitResult = HitResult;
+
     if (HitIngredient)
     {
+        if (bPU_LogIngredientDrag)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[DRAG] HandleMouseClick - Started dragging ingredient: %s at (%.1f,%.1f,%.1f)"), *HitIngredient->GetName(), HitIngredient->GetActorLocation().X, HitIngredient->GetActorLocation().Y, HitIngredient->GetActorLocation().Z);
+        }
+
         // Test mouse interaction for this ingredient
         HitIngredient->TestMouseInteraction();
-        
+
         bIsDragging = true;
         CurrentlyDraggedIngredient = HitIngredient;
         DragStartPosition = HitIngredient->GetActorLocation();
-        
+
         // Calculate offset between mouse and ingredient
         FVector MouseWorldPosition = IngredientHitResult.Location;
         DragOffset = DragStartPosition - MouseWorldPosition;
-        
-        //UE_LOG(LogTemp,Display, TEXT("🎯 Started dragging ingredient: %s with offset: (%.2f,%.2f,%.2f)"), 
-        //    *HitIngredient->GetName(), DragOffset.X, DragOffset.Y, DragOffset.Z);
-        
+
         // Call the ingredient's grab function
         HitIngredient->OnMouseGrab();
     }
-    else if (HitResults.Num() > 0)
-    {
-        //UE_LOG(LogTemp,Display, TEXT("🔍 Hit %d actors but none were ingredient meshes"), HitResults.Num());
-        for (const FHitResult& Hit : HitResults)
-        {
-            if (Hit.bBlockingHit && Hit.GetActor())
-            {
-                //UE_LOG(LogTemp,Display, TEXT("🔍   - %s (%s)"), *Hit.GetActor()->GetName(), *Hit.GetActor()->GetClass()->GetName());
-            }
-        }
-    }
     else
     {
-        //UE_LOG(LogTemp,Display, TEXT("🔍 No hit under cursor (ignoring station)"));
+        if (bPU_LogIngredientDrag && HitResult.GetActor())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - Hit %s but not an ingredient mesh"), *HitResult.GetActor()->GetName());
+        }
     }
 }
 
@@ -1122,6 +1080,11 @@ void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& 
 
 void UPUDishCustomizationComponent::StartDraggingIngredient(APUIngredientMesh* Ingredient)
 {
+    if (bPU_LogIngredientDrag)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[DRAG] StartDraggingIngredient called for %s"), Ingredient ? *Ingredient->GetName() : TEXT("null"));
+    }
+
     if (!Ingredient)
     {
         return;
@@ -1155,47 +1118,35 @@ void UPUDishCustomizationComponent::StartDraggingIngredient(APUIngredientMesh* I
     float MouseX, MouseY;
     PlayerController->GetMousePosition(MouseX, MouseY);
     
-    // Convert screen position to world space
+    // Convert screen position to world space and compute grab offset.
+    // Use view-perpendicular plane through ingredient (works with any camera angle).
     FVector WorldLocation;
     FVector WorldDirection;
     if (PlayerController->DeprojectScreenPositionToWorld(MouseX, MouseY, WorldLocation, WorldDirection))
     {
-        // Find where the mouse ray intersects with the ingredient's Z plane (same height as ingredient)
-        // This gives us the mouse position on the same plane as the ingredient
-        float IngredientZ = IngredientStartPos.Z;
-        
-        if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
+        FVector PlanePoint(IngredientStartPos.X, IngredientStartPos.Y, IngredientStartPos.Z);
+        float DirLenSq = WorldDirection.SizeSquared();
+        if (DirLenSq > SMALL_NUMBER)
         {
-            // Calculate where the ray intersects the ingredient's Z plane
-            float T = (IngredientZ - WorldLocation.Z) / WorldDirection.Z;
-            if (T > 0.0f)
+            float T = FVector::DotProduct(PlanePoint - WorldLocation, WorldDirection) / DirLenSq;
+            if (T > 0.0f && T < 10000.0f)
             {
                 FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
-                // Calculate offset from mouse hit point to ingredient center
                 DragOffset = IngredientStartPos - MouseWorldPosition;
-                
-                //UE_LOG(LogTemp,Display, TEXT("🖱️ [DRAG] Mouse ray hit plane at (%.2f,%.2f,%.2f), offset: (%.2f,%.2f,%.2f)"), 
-                //    MouseWorldPosition.X, MouseWorldPosition.Y, MouseWorldPosition.Z,
-                //    DragOffset.X, DragOffset.Y, DragOffset.Z);
             }
             else
             {
-                // Ray is going away from the plane, use zero offset
                 DragOffset = FVector::ZeroVector;
-                //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] Mouse ray going away from ingredient plane, using zero offset"));
             }
         }
         else
         {
-            // Ray is parallel to Z plane, use zero offset
             DragOffset = FVector::ZeroVector;
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] Mouse ray parallel to ingredient plane, using zero offset"));
         }
     }
     else
     {
         DragOffset = FVector::ZeroVector;
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] Failed to deproject mouse position, using zero offset"));
     }
     
     // Call the ingredient's grab function first to set up its state
@@ -1254,45 +1205,29 @@ void UPUDishCustomizationComponent::UpdateMouseDrag()
         return;
     }
 
-    // Get current mouse position
-    float MouseX, MouseY;
-    PlayerController->GetMousePosition(MouseX, MouseY);
-
-    // Convert mouse screen position to world position on the station surface
-    FVector WorldLocation;
-    FVector WorldDirection;
-    
-    if (PlayerController->DeprojectScreenPositionToWorld(MouseX, MouseY, WorldLocation, WorldDirection))
+    // Use GetHitResultUnderCursor - same engine logic that works for HandleMouseClick.
+    // When dragging, cursor is over the ingredient (or dish); use hit location X,Y + surface height.
+    FHitResult HitResult;
+    if (!PlayerController->GetHitResultUnderCursor(ECC_Visibility, true, HitResult))
     {
-        // Use the actual plate/dish surface height (matches GetSpawnPositionAboveStation) instead of
-        // arbitrary station bounds - fixes placement mismatch when camera is angled
-        float SurfaceHeight = 0.0f;
-        if (!GetPlateSurfaceHeight(SurfaceHeight))
-        {
-            // Fallback: use ingredient's current Z so we at least project onto a sensible plane
-            SurfaceHeight = CurrentlyDraggedIngredient->GetActorLocation().Z;
-        }
+        return;
+    }
 
-        // Calculate where the mouse ray intersects the plate surface plane
-        if (FMath::Abs(WorldDirection.Z) > SMALL_NUMBER)
-        {
-            float T = (SurfaceHeight - WorldLocation.Z) / WorldDirection.Z;
-            if (T > 0.0f && T < 10000.0f) // Reasonable range
-            {
-                FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
+    float SurfaceHeight = 0.0f;
+    if (!GetPlateSurfaceHeight(SurfaceHeight))
+    {
+        SurfaceHeight = CurrentlyDraggedIngredient->GetActorLocation().Z;
+    }
 
-                // Apply the stored offset to maintain the grab point
-                FVector NewPosition = MouseWorldPosition + DragOffset;
+    // Project hit location onto dish surface (use X,Y from hit, Z from surface)
+    FVector MouseWorldPosition(HitResult.Location.X, HitResult.Location.Y, SurfaceHeight);
+    FVector NewPosition = MouseWorldPosition + DragOffset;
 
-                // Validate the new position
-                AActor* OwnerActor = GetOwner();
-                FVector RefPoint = OwnerActor ? OwnerActor->GetActorLocation() : FVector::ZeroVector;
-                if (!NewPosition.ContainsNaN() && FVector::Dist(NewPosition, RefPoint) < 5000.0f)
-                {
-                    CurrentlyDraggedIngredient->UpdatePosition(NewPosition);
-                }
-            }
-        }
+    AActor* OwnerActor = GetOwner();
+    FVector RefPoint = OwnerActor ? OwnerActor->GetActorLocation() : FVector::ZeroVector;
+    if (!NewPosition.ContainsNaN() && FVector::Dist(NewPosition, RefPoint) < 5000.0f)
+    {
+        CurrentlyDraggedIngredient->UpdatePosition(NewPosition);
     }
 }
 
@@ -1805,6 +1740,12 @@ FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
 
 bool UPUDishCustomizationComponent::GetPlateSurfaceHeight(float& OutSurfaceHeight) const
 {
+    FVector DummyCenter;
+    return GetPlateSurfaceInfo(OutSurfaceHeight, DummyCenter);
+}
+
+bool UPUDishCustomizationComponent::GetPlateSurfaceInfo(float& OutSurfaceHeight, FVector& OutSurfaceCenter) const
+{
     AActor* OwnerActor = GetOwner();
     if (!OwnerActor)
     {
@@ -1819,6 +1760,7 @@ bool UPUDishCustomizationComponent::GetPlateSurfaceHeight(float& OutSurfaceHeigh
         {
             FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
             OutSurfaceHeight = DishBounds.Origin.Z + DishBounds.BoxExtent.Z;  // Top of bowl/plate
+            OutSurfaceCenter = FVector(DishBounds.Origin.X, DishBounds.Origin.Y, OutSurfaceHeight);
             return true;
         }
     }
