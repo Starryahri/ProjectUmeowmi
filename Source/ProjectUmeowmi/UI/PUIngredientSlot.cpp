@@ -2936,22 +2936,9 @@ FString UPUIngredientSlot::GetPreparationIconText() const
 
 void UPUIngredientSlot::SpawnIngredientAtPosition(const FVector2D& ScreenPosition)
 {
-    // Find the dish customization component (attached to cooking station)
-    TArray<AActor*> FoundActors;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AActor::StaticClass(), FoundActors);
-
-    UPUDishCustomizationComponent* DishComponent = nullptr;
-    for (AActor* Actor : FoundActors)
-    {
-        if (Actor)
-        {
-            DishComponent = Actor->FindComponentByClass<UPUDishCustomizationComponent>();
-            if (DishComponent)
-            {
-                break;
-            }
-        }
-    }
+    // Use the component from our widget hierarchy - the one for the station we're interacting with.
+    // World search would always return the first station when multiple exist.
+    UPUDishCustomizationComponent* DishComponent = GetDishCustomizationComponent();
 
     if (!DishComponent)
     {
