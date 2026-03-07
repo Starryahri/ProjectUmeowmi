@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "PUJournalSectionWidget.h"
 #include "PURecipesSectionWidget.generated.h"
 
@@ -43,4 +44,23 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Journal|Recipes")
 	void SetRecipeIllustration(UImage* Image, const FPUDishBase& DishData);
+
+	/**
+	 * Display a dish by its gameplay tag. Called when cycling dishes with bumper keys.
+	 * Override in Blueprint to populate your layout: get dish data from Game Instance's
+	 * GetDishDataForTag, then call PopulateIngredientsList and SetRecipeIllustration.
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Journal|Recipes")
+	void DisplayDishByTag(const FGameplayTag& DishTag);
+	virtual void DisplayDishByTag_Implementation(const FGameplayTag& DishTag);
+
+protected:
+	virtual void OnSectionActivated_Implementation() override;
+
+	/** Optional: if set in Blueprint, DisplayDishByTag will auto-populate these. Override DisplayDishByTag for custom layouts. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UVerticalBox> IngredientsContainer;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> RecipeIllustrationImage;
 };

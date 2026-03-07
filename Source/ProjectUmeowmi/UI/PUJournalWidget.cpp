@@ -3,6 +3,9 @@
 #include "PUJournalWidget.h"
 #include "PUJournalTabListWidget.h"
 #include "PUJournalSectionWidget.h"
+#include "PURecipesSectionWidget.h"
+#include "../PUProjectUmeowmiGameInstance.h"
+#include "Kismet/GameplayStatics.h"
 #include "CommonActivatableWidgetSwitcher.h"
 #include "CommonAnimatedSwitcher.h"
 #include "CommonButtonBase.h"
@@ -88,6 +91,37 @@ EJournalSectionType UPUJournalWidget::GetActiveSection() const
 	if (ActiveTab == JournalTabNames::Settings)    return EJournalSectionType::Settings;
 
 	return EJournalSectionType::Recipes;
+}
+
+bool UPUJournalWidget::CycleRecipesDish(int32 Direction)
+{
+	if (GetActiveSection() != EJournalSectionType::Recipes) return false;
+
+	UWorld* World = GetWorld();
+	if (!World) return false;
+
+	UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>();
+	if (!GI) return false;
+
+	const FGameplayTag NewTag = GI->CycleJournalDish(Direction);
+	if (!NewTag.IsValid()) return false;
+
+	UPURecipesSectionWidget* RecipesSection = GetRecipesSection();
+	if (RecipesSection)
+	{
+		RecipesSection->DisplayDishByTag(NewTag);
+	}
+	return true;
+}
+
+UPURecipesSectionWidget* UPUJournalWidget::GetRecipesSection() const
+{
+	// Recipes is the first section (index 0)
+	if (SectionWidgets.IsValidIndex(0))
+	{
+		return Cast<UPURecipesSectionWidget>(SectionWidgets[0]);
+	}
+	return nullptr;
 }
 
 void UPUJournalWidget::RegisterJournalTabs()

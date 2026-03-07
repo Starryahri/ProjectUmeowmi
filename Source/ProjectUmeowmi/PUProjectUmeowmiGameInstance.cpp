@@ -479,6 +479,60 @@ void UPUProjectUmeowmiGameInstance::ClearCurrentDishTag()
 	CurrentDishTag = FGameplayTag();
 }
 
+TArray<FGameplayTag> UPUProjectUmeowmiGameInstance::GetOrderedUnlockedDishTags() const
+{
+	TArray<FGameplayTag> Ordered;
+	Ordered.Reserve(UnlockedDishTags.Num());
+	for (const FGameplayTag& Tag : UnlockedDishTags)
+	{
+		if (Tag.IsValid())
+		{
+			Ordered.Add(Tag);
+		}
+	}
+	Ordered.Sort([](const FGameplayTag& A, const FGameplayTag& B) { return A.ToString() < B.ToString(); });
+	return Ordered;
+}
+
+FGameplayTag UPUProjectUmeowmiGameInstance::CycleJournalDish(int32 Direction)
+{
+	TArray<FGameplayTag> Ordered = GetOrderedUnlockedDishTags();
+	if (Ordered.Num() == 0)
+	{
+		return FGameplayTag();
+	}
+
+	int32 CurrentIndex = 0;
+	if (CurrentDishTag.IsValid())
+	{
+		const int32 Found = Ordered.Find(CurrentDishTag);
+		if (Found != INDEX_NONE)
+		{
+			CurrentIndex = Found;
+		}
+	}
+
+	int32 NewIndex = CurrentIndex + Direction;
+	if (NewIndex < 0)
+	{
+		NewIndex = Ordered.Num() - 1;
+	}
+	else if (NewIndex >= Ordered.Num())
+	{
+		NewIndex = 0;
+	}
+
+	const FGameplayTag NewTag = Ordered[NewIndex];
+	CurrentDishTag = NewTag;
+	return NewTag;
+}
+
+bool UPUProjectUmeowmiGameInstance::GetDishDataForTag(const FGameplayTag& DishTag, FPUDishBase& OutDish) const
+{
+	if (!DishTag.IsValid() || !DishDataTable) return false;
+	return UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, OutDish);
+}
+
 // Save/Load System
 bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 {
@@ -790,32 +844,39 @@ void UPUProjectUmeowmiGameInstance::ShowPopupWithCallback(const FPopupData& Popu
 	// Store the callback
 	CurrentPopupCallback = OnPopupClosed;
 
-	// Handle modal behavior - block input if modal
-	if (PopupData.bModal && PlayerController)
-	{
-		// Block player movement and look input
-		PlayerController->SetIgnoreMoveInput(true);
-		PlayerController->SetIgnoreLookInput(true);
-		
-		// Set input mode to UI only (mouse visible, can interact with UI)
-		FInputModeUIOnly InputMode;
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		PlayerController->SetInputMode(InputMode);
-		PlayerController->bShowMouseCursor = true;
-		
-		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Modal popup: Input blocked"));
-	}
-
-	// Add to viewport
+	// Add to viewport first so widget hierarchy is built before we set focus
 	PopupWidget->AddToViewport(1000); // High z-order to appear on top
 
 	// Set popup data directly (now we have a proper C++ class!)
 	PopupWidget->SetPopupData(PopupData);
 
+	// Set input mode and focus for ALL popups - required for controller support
+	if (PlayerController)
+	{
+		// Handle modal behavior - block movement/look if modal
+		if (PopupData.bModal)
+		{
+			PlayerController->SetIgnoreMoveInput(true);
+			PlayerController->SetIgnoreLookInput(true);
+		}
+
+		// UI-only input so controller can navigate to popup buttons
+		FInputModeUIOnly InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		if (UWidget* FocusTarget = PopupWidget->GetPreferredFocusTarget())
+		{
+			InputMode.SetWidgetToFocus(FocusTarget);
+		}
+		PlayerController->SetInputMode(InputMode);
+		PlayerController->bShowMouseCursor = true;
+
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Popup shown with focus (Modal: %d)"), PopupData.bModal);
+	}
+
 	// Broadcast event
 	OnPopupClosedEvent.Broadcast(NAME_None);
 
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Showing popup: %s (Modal: %d)"), *PopupData.Title.ToString(), PopupData.bModal);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Showing popup: %s"), *PopupData.Title.ToString());
 }
 
 void UPUProjectUmeowmiGameInstance::ShowIngredientUnlockPopup(const FGameplayTag& IngredientTag, const FText& IngredientDisplayName)

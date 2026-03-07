@@ -66,6 +66,14 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* OpenJournalAction;
 
+	/** Cycle to previous dish in journal Recipes tab (LB / Left Bumper). Only active when journal is open on Recipes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleDishPrevAction;
+
+	/** Cycle to next dish in journal Recipes tab (RB / Right Bumper). Only active when journal is open on Recipes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleDishNextAction;
+
 	//Todo: Add input for cancel action
 	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	// UInputAction* CancelAction;
@@ -241,6 +249,8 @@ public:
 	void ZoomCamera(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
 	void ToggleJournal(const FInputActionValue& Value);
+	void OnJournalCycleDishPrev(const FInputActionValue& Value);
+	void OnJournalCycleDishNext(const FInputActionValue& Value);
 	
 	/** Initialize camera position based on the starting index */
 	void InitializeCameraPosition();

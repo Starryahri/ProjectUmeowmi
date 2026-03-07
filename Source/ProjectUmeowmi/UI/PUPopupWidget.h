@@ -49,6 +49,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Popup")
 	const FPopupData& GetPopupData() const { return CurrentPopupData; }
 
+	/**
+	 * Get the preferred widget to receive focus when the popup is shown (for controller support).
+	 * Returns the first button, close button, or the popup itself.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup")
+	UWidget* GetPreferredFocusTarget() const;
+
 protected:
 	// UI Elements (use BindWidget meta to auto-bind from Blueprint)
 	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "Popup|UI")
@@ -87,6 +94,9 @@ protected:
 
 	// Auto-dismiss timer
 	FTimerHandle AutoDismissTimer;
+
+	// Track if we've applied deferred focus (SetWidgetToFocus can fail if widget isn't ready)
+	bool bHasAppliedDeferredFocus = false;
 
 	// Helper function for auto-dismiss timer (no parameters)
 	void OnAutoDismissTimer();

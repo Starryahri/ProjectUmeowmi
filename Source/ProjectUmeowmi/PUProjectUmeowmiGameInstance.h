@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
 #include "DishCustomization/PUOrderBase.h"
+#include "DishCustomization/PUDishBase.h"
 #include "GameplayTagContainer.h"
 #include "UI/PUPopupData.h"
 #include "PUProjectUmeowmiGameInstance.generated.h"
@@ -155,6 +156,27 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
 	void ClearCurrentDishTag();
+
+	/**
+	 * Get unlocked dish tags in a deterministic order (sorted by tag name) for cycling in the journal.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	TArray<FGameplayTag> GetOrderedUnlockedDishTags() const;
+
+	/**
+	 * Cycle the journal's displayed dish to next or previous in the unlocked list.
+	 * @param Direction +1 for next, -1 for previous
+	 * @return The new dish tag to display (may be invalid if no unlocked dishes)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	FGameplayTag CycleJournalDish(int32 Direction);
+
+	/**
+	 * Get dish data for a tag from the configured data tables. Use in journal Recipes section when displaying.
+	 * @return True if dish was found
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	bool GetDishDataForTag(const FGameplayTag& DishTag, FPUDishBase& OutDish) const;
 
 	// Save/Load System
 	/**

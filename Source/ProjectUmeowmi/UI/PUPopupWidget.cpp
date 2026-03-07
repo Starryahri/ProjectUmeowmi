@@ -11,12 +11,16 @@
 #include "Engine/World.h"
 #include "Blueprint/WidgetTree.h"
 #include "UObject/StructOnScope.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GameFramework/PlayerController.h"
 
 UPUPopupWidget::UPUPopupWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	// Default to UButton, but can be overridden in Blueprint
 	ButtonWidgetClass = nullptr; // Will be set in Blueprint
+	// Ensure popup can receive focus for controller navigation
+	SetIsFocusable(true);
 }
 
 void UPUPopupWidget::NativeConstruct()
@@ -44,6 +48,23 @@ void UPUPopupWidget::NativeDestruct()
 void UPUPopupWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// Deferred focus: SetWidgetToFocus can fail if widget isn't ready on first frame
+	if (!bHasAppliedDeferredFocus)
+	{
+		bHasAppliedDeferredFocus = true;
+		if (UWidget* FocusTarget = GetPreferredFocusTarget())
+		{
+			if (TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget())
+			{
+				FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
+				if (APlayerController* PC = GetOwningPlayer())
+				{
+					FSlateApplication::Get().SetUserFocus(PC->GetLocalPlayer()->GetControllerId(), SlateWidget, EFocusCause::SetDirectly);
+				}
+			}
+		}
+	}
 }
 
 void UPUPopupWidget::SetPopupData(const FPopupData& InPopupData)
@@ -433,5 +454,26 @@ FName UPUPopupWidget::GetButtonID(UButton* Button) const
 		return ButtonIDMap[Button];
 	}
 	return NAME_None;
+}
+
+UWidget* UPUPopupWidget::GetPreferredFocusTarget() const
+{
+	// Prefer first button so user can immediately press A to confirm
+	if (SpawnedButtons.Num() > 0 && IsValid(SpawnedButtons[0]))
+	{
+		return SpawnedButtons[0];
+	}
+	// Custom button widgets (no UButton child) - use first widget
+	if (SpawnedButtonWidgets.Num() > 0 && IsValid(SpawnedButtonWidgets[0]))
+	{
+		return SpawnedButtonWidgets[0];
+	}
+	// Fall back to close button if visible
+	if (CloseButton && CloseButton->GetVisibility() == ESlateVisibility::Visible)
+	{
+		return CloseButton;
+	}
+	// Fall back to popup root
+	return const_cast<UPUPopupWidget*>(this);
 }
 

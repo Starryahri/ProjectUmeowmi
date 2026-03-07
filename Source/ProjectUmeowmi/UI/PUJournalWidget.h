@@ -45,6 +45,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
 	EJournalSectionType GetActiveSection() const;
 
+	/** Cycle the displayed dish in the Recipes tab. Direction: +1 next, -1 previous. Returns true if a dish was cycled. */
+	UFUNCTION(BlueprintCallable, Category = "Journal")
+	bool CycleRecipesDish(int32 Direction);
+
 	/** Get the tab list widget */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
 	UPUJournalTabListWidget* GetTabList() const { return TabList; }
@@ -63,6 +67,9 @@ protected:
 
 	/** Create a section widget from class and add to switcher */
 	UUserWidget* CreateAndAddSectionWidget(TSubclassOf<UUserWidget> WidgetClass);
+
+	/** Get the Recipes section widget (index 0 in SectionWidgets) */
+	class UPURecipesSectionWidget* GetRecipesSection() const;
 
 	/** Called when a tab button is created - sets the label text */
 	UFUNCTION()

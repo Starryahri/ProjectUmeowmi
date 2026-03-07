@@ -182,6 +182,16 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 		{
 			EnhancedInputComponent->BindAction(OpenJournalAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::ToggleJournal);
 		}
+
+		// Journal Recipes tab: cycle dishes with bumpers (only when journal open on Recipes)
+		if (JournalCycleDishPrevAction)
+		{
+			EnhancedInputComponent->BindAction(JournalCycleDishPrevAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleDishPrev);
+		}
+		if (JournalCycleDishNextAction)
+		{
+			EnhancedInputComponent->BindAction(JournalCycleDishNextAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleDishNext);
+		}
 	}
 	else
 	{
@@ -191,6 +201,26 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 {
+	// Block movement when journal is open
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		return;
+	}
+
 	// Get the input value
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -272,6 +302,26 @@ void AProjectUmeowmiCharacter::InitializeCameraPositionFromBlueprint()
 
 void AProjectUmeowmiCharacter::GetCameraPositionIndex(const FInputActionValue& Value)
 {
+	// When journal is open, bumpers cycle dishes instead of rotating camera
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		return;
+	}
+
 	float InputValue = Value.Get<float>();
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Position Index: %f"), InputValue);
 	
@@ -464,6 +514,50 @@ void AProjectUmeowmiCharacter::ToggleJournal(const FInputActionValue& Value)
 		{
 			Journal->OpenJournal();
 		}
+	}
+}
+
+void AProjectUmeowmiCharacter::OnJournalCycleDishPrev(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		Journal->CycleRecipesDish(-1);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnJournalCycleDishNext(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		Journal->CycleRecipesDish(1);
 	}
 }
 
