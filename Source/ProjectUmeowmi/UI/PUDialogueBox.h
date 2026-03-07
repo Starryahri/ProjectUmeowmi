@@ -87,6 +87,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void AdvanceDialogue();
 
+    /** Skip mode: fast typewriter, no sound, auto-advance when single option. Toggle via SetSkipMode or Skip button. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue|Skip")
+    bool IsSkipMode() const { return bSkipMode; }
+
+    UFUNCTION(BlueprintCallable, Category = "Dialogue|Skip")
+    void SetSkipMode(bool bEnabled);
+
+    /** Optional Skip button. If bound in Blueprint, clicking toggles skip mode. */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
+    UButton* SkipButton;
+
     // Implementation functions
     virtual void Open_Implementation(UDlgContext* ActiveContext);
     virtual void Close_Implementation();
@@ -116,6 +127,10 @@ protected:
     /** Vignette fade out duration in seconds */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vignette|Settings", meta = (ClampMin = "0.0", ToolTip = "How long it takes for the vignette to fade out when dialogue closes"))
     float VignetteFadeOutDuration = 1.0f;
+
+    /** Typewriter delay (seconds per char) when skip mode is active. Lower = faster. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue|Skip")
+    float SkipModeCharacterDelay = 0.005f;
 
 private:
     /** Dynamic material instance for the vignette */
@@ -148,7 +163,20 @@ private:
     int32 TypewriterCurrentIndex = 0;       /**< Current visible character index (not raw string index) */
     int32 TypewriterTotalVisibleChars = 0; /**< Total visible characters; cached when typewriter starts */
     FTimerHandle TypewriterTimerHandle;
+    FTimerHandle AutoAdvanceTimerHandle;
     bool bTypewriterActive = false;
+
+    /** Skip mode: fast typewriter, no sound, auto-advance on single option */
+    bool bSkipMode = false;
+
+    /** Set when typewriter completes in skip mode; Tick performs the advance and clears it */
+    bool bPendingSkipAdvance = false;
+
+    /** Called when typewriter completes in skip mode to auto-advance (deferred to next tick) */
+    void OnTypewriterCompleteAutoAdvance();
+
+    UFUNCTION()
+    void OnSkipButtonClicked();
 
     /** Advance typewriter by one character (called by timer) */
     void AdvanceTypewriter();

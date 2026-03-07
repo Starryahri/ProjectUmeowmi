@@ -3,6 +3,7 @@
 #include "PUDishBlueprintLibrary.h"
 #include "Engine/Engine.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../Dialogue/PUDishGiver.h"
 
 UPUOrderComponent::UPUOrderComponent()
 {
@@ -259,4 +260,10 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
         DialogueText
     );
     CurrentOrder.BaseDish = BaseDish;
+
+    // Set dish giver from owner if this component is on a dish giver
+    if (APUDishGiver* DishGiver = Cast<APUDishGiver>(GetOwner()))
+    {
+        CurrentOrder.OrderGiverParticipantName = DishGiver->GetTalkingObjectName();
+    }
 } 

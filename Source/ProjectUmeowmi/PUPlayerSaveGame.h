@@ -48,6 +48,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	bool bDialogueTypewriterSkipOnInput = true;
 
+	/** Typewriter delay (seconds per char) when skip mode is active. Lower = faster. Default 0.005. */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	float DialogueSkipModeCharacterDelay = 0.005f;
+
 	// Save version for future migration support
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	int32 SaveVersion = 1;

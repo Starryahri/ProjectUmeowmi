@@ -268,6 +268,13 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
 	float GetDialogueTypewriterPitchVariation() const { return DialogueTypewriterPitchVariation; }
 
+	/** Typewriter delay (seconds per char) when skip mode is active. Lower = faster. Persisted to save. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	float GetDialogueSkipModeCharacterDelay() const { return DialogueSkipModeCharacterDelay; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueSkipModeSpeed(float CharacterDelaySeconds);
+
 	// Level Transition Lock System
 	/**
 	 * Unlock a level transition by its LockID.
@@ -420,6 +427,10 @@ protected:
 	/** Pitch variation range (e.g. 0.1 = ±10%). Pitch randomly varies between (1 - Value) and (1 + Value) per character. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings", meta = (ClampMin = "0.0", ClampMax = "0.5"))
 	float DialogueTypewriterPitchVariation = 0.1f;
+
+	/** Typewriter delay (seconds per char) when skip mode is active. Lower = faster. Persisted to save. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	float DialogueSkipModeCharacterDelay = 0.005f;
 
 	// Level Transition Lock System - IDs that have been unlocked (persisted to save)
 	UPROPERTY(BlueprintReadOnly, Category = "Level Transition")

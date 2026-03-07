@@ -13,6 +13,7 @@
 #include "UObject/StructOnScope.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
+#include "Blueprint/GameViewportSubsystem.h"
 
 UPUPopupWidget::UPUPopupWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -126,6 +127,9 @@ void UPUPopupWidget::SetPopupData(const FPopupData& InPopupData)
 
 	// Update popup style based on type
 	UpdatePopupStyle();
+
+	// Apply viewport layout (alignment, position offset, size)
+	ApplyViewportLayout();
 
 	UE_LOG(LogTemp, Log, TEXT("UPUPopupWidget::SetPopupData - Popup data set: %s"), *InPopupData.Title.ToString());
 }
@@ -444,6 +448,42 @@ void UPUPopupWidget::UpdatePopupStyle()
 		// You can set different border colors/styles based on PopupType
 		// Example: Red for Error, Yellow for Warning, Blue for Info, etc.
 		// This would require setting up styles in Blueprint or using dynamic materials
+	}
+}
+
+void UPUPopupWidget::ApplyViewportLayout()
+{
+	if (!IsInViewport())
+	{
+		return;
+	}
+
+	UGameViewportSubsystem* Subsystem = UGameViewportSubsystem::Get(GetWorld());
+	if (!Subsystem)
+	{
+		return;
+	}
+
+	FGameViewportWidgetSlot ViewportSlot = Subsystem->GetWidgetSlot(this);
+
+	// Anchors and alignment: (0,0)=top-left, (0.5,0.5)=center, (1,1)=bottom-right
+	float H = CurrentPopupData.HorizontalAlignment;
+	float V = CurrentPopupData.VerticalAlignment;
+	ViewportSlot.Anchors = FAnchors(H, V, H, V);
+	ViewportSlot.Alignment = FVector2D(H, V);
+
+	// Position offset (pixels) - Left/Top in FMargin
+	if (CurrentPopupData.PositionOffset != FVector2D::ZeroVector)
+	{
+		ViewportSlot.Offsets = FMargin(CurrentPopupData.PositionOffset.X, CurrentPopupData.PositionOffset.Y, 0.0f, 0.0f);
+	}
+
+	Subsystem->SetWidgetSlot(this, ViewportSlot);
+
+	// Size override
+	if (CurrentPopupData.SizeOverride.X > 0 && CurrentPopupData.SizeOverride.Y > 0)
+	{
+		SetDesiredSizeInViewport(CurrentPopupData.SizeOverride);
 	}
 }
 

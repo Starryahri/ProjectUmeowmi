@@ -192,6 +192,13 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 		{
 			EnhancedInputComponent->BindAction(JournalCycleDishNextAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleDishNext);
 		}
+
+		// Hold to skip dialogue (fast typewriter, no sound, auto-advance)
+		if (SkipDialogueAction)
+		{
+			EnhancedInputComponent->BindAction(SkipDialogueAction, ETriggerEvent::Started, this, &AProjectUmeowmiCharacter::OnSkipDialogueStarted);
+			EnhancedInputComponent->BindAction(SkipDialogueAction, ETriggerEvent::Completed, this, &AProjectUmeowmiCharacter::OnSkipDialogueCompleted);
+		}
 	}
 	else
 	{
@@ -536,6 +543,22 @@ void AProjectUmeowmiCharacter::OnJournalCycleDishPrev(const FInputActionValue& V
 	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
 	{
 		Journal->CycleRecipesDish(-1);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnSkipDialogueStarted(const FInputActionValue& Value)
+{
+	if (DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+	{
+		DialogueBox->SetSkipMode(true);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnSkipDialogueCompleted(const FInputActionValue& Value)
+{
+	if (DialogueBox)
+	{
+		DialogueBox->SetSkipMode(false);
 	}
 }
 

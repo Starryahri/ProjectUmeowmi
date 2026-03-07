@@ -35,11 +35,15 @@ void APUDishGiver::StartInteraction()
         }
     }
     
-    // Check if player has a completed order first
+    // Check if player has a completed order FROM THIS dish giver first
     if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
     {
-        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
-        HandleOrderCompletion(PlayerChar);
+        const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+        const FName MyParticipantName = GetTalkingObjectName();
+        if (Order.OrderGiverParticipantName.IsNone() || Order.OrderGiverParticipantName == MyParticipantName)
+        {
+            HandleOrderCompletion(PlayerChar);
+        }
     }
     // Check if player already has an active order
     else if (PlayerChar && PlayerChar->HasCurrentOrder())
@@ -114,13 +118,14 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
     }
     
     // Get the order with validation
-    const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
+    FPUOrderBase Order = OrderComponent->GetCurrentOrder();
     if (!Order.OrderID.IsValid())
     {
         //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generated order has invalid ID"));
         return;
     }
     
+    Order.OrderGiverParticipantName = GetTalkingObjectName();
     PlayerChar->SetCurrentOrder(Order);
     SetDialogueVariablesFromOrder(Order);
 }
@@ -142,9 +147,10 @@ void APUDishGiver::GenerateAndGiveOrderToPlayerWithDish(FGameplayTag DishTag)
     OrderComponent->GenerateNewOrderWithDish(DishTag);
     if (!OrderComponent->HasActiveOrder()) return;
 
-    const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
+    FPUOrderBase Order = OrderComponent->GetCurrentOrder();
     if (!Order.OrderID.IsValid()) return;
 
+    Order.OrderGiverParticipantName = GetTalkingObjectName();
     PlayerChar->SetCurrentOrder(Order);
     SetDialogueVariablesFromOrder(Order);
 }
@@ -217,27 +223,29 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
     
     switch (ConditionType)
     {
-        case 1: // HasActiveOrder
+        case 1: // HasActiveOrder - true only if player has an active order FROM THIS dish giver
         {
             if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
             {
-                bool bHasOrder = PlayerChar->HasCurrentOrder();
-                //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: %s"), bHasOrder ? TEXT("TRUE") : TEXT("FALSE"));
-                return bHasOrder;
+                if (!PlayerChar->HasCurrentOrder()) return false;
+                const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+                const FName MyParticipantName = GetTalkingObjectName();
+                bool bOrderIsFromMe = Order.OrderGiverParticipantName.IsNone() || Order.OrderGiverParticipantName == MyParticipantName;
+                return bOrderIsFromMe;
             }
-            //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: Could not find player character, returning FALSE"));
             return false;
         }
         
-        case 2: // OrderCompleted
+        case 2: // OrderCompleted - true only if player has a completed order FROM THIS dish giver
         {
             if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
             {
-                bool bOrderCompleted = PlayerChar->IsCurrentOrderCompleted();
-                //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - OrderCompleted: %s"), bOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
-                return bOrderCompleted;
+                if (!PlayerChar->IsCurrentOrderCompleted()) return false;
+                const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+                const FName MyParticipantName = GetTalkingObjectName();
+                bool bOrderIsFromMe = Order.OrderGiverParticipantName.IsNone() || Order.OrderGiverParticipantName == MyParticipantName;
+                return bOrderIsFromMe;
             }
-            //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::CheckCondition - OrderCompleted: Could not find player character, returning FALSE"));
             return false;
         }
         

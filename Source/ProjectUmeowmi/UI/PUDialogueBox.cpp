@@ -48,6 +48,12 @@ void UPUDialogueBox::NativeConstruct()
     
     // Ensure we're focusable
     SetIsFocusable(true);
+
+    // Wire optional Skip button to toggle skip mode
+    if (SkipButton)
+    {
+        SkipButton->OnClicked.AddDynamic(this, &UPUDialogueBox::OnSkipButtonClicked);
+    }
     
     // Add to viewport if not already there
     if (!IsInViewport())
@@ -72,11 +78,17 @@ void UPUDialogueBox::NativeConstruct()
 
 void UPUDialogueBox::NativeDestruct()
 {
+    if (SkipButton)
+    {
+        SkipButton->OnClicked.RemoveAll(this);
+    }
+
     // Clear any active timers
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(VignetteAnimationTimer);
         World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+        World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
     }
 
     // Stop animating
@@ -97,6 +109,13 @@ void UPUDialogueBox::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
     if (bVignetteAnimating)
     {
         UpdateVignetteIntensity();
+    }
+
+    // Skip mode: perform pending auto-advance (driven by Tick for reliability)
+    if (bPendingSkipAdvance)
+    {
+        bPendingSkipAdvance = false;
+        OnTypewriterCompleteAutoAdvance();
     }
 }
 
@@ -214,15 +233,33 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
     Update(ActiveContext);
 }
 
+void UPUDialogueBox::SetSkipMode(bool bEnabled)
+{
+    if (bSkipMode != bEnabled)
+    {
+        bSkipMode = bEnabled;
+    }
+}
+
+void UPUDialogueBox::OnSkipButtonClicked()
+{
+    SetSkipMode(!bSkipMode);
+}
+
 void UPUDialogueBox::Close_Implementation()
 {
     //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Close_Implementation called"));
     //UE_LOG(LogTemp,Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
 
+    // Reset skip mode when dialogue closes
+    bSkipMode = false;
+    bPendingSkipAdvance = false;
+
     // Stop typewriter if active
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+        World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
     }
     bTypewriterActive = false;
     
@@ -365,11 +402,28 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 else
                 {
                     DialogueText->SetText(NodeText);
+                    if (bSkipMode)
+                    {
+                        bPendingSkipAdvance = true;
+                    }
                 }
             }
             else
             {
                 DialogueText->SetText(NodeText);
+                // Typewriter disabled + skip mode: schedule auto-advance after brief delay
+                if (bSkipMode)
+                {
+                    if (UWorld* World = GetWorld())
+                    {
+                        World->GetTimerManager().SetTimer(
+                            AutoAdvanceTimerHandle,
+                            [this]() { bPendingSkipAdvance = true; },
+                            0.05f,
+                            false
+                        );
+                    }
+                }
             }
         }
         if (IsValid(ParticipantImage))
@@ -564,16 +618,16 @@ void UPUDialogueBox::AdvanceTypewriter()
         FString VisibleText = GetSubstringUpToVisibleCharacter(FullDialogueText, TypewriterCurrentIndex);
         DialogueText->SetText(FText::FromString(VisibleText));
 
-        // Play typewriter sound if configured, with random pitch variation
-        if (UWorld* World = GetWorld())
+        // Play typewriter sound only when NOT in skip mode
+        if (!bSkipMode && GetWorld())
         {
-            if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+            if (UPUProjectUmeowmiGameInstance* GI = GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>())
             {
                 if (USoundBase* TypewriterSound = GI->GetDialogueTypewriterSound())
                 {
                     const float PitchVariation = GI->GetDialogueTypewriterPitchVariation();
                     const float PitchMultiplier = FMath::RandRange(1.0f - PitchVariation, 1.0f + PitchVariation);
-                    UGameplayStatics::PlaySound2D(World, TypewriterSound, 1.0f, PitchMultiplier);
+                    UGameplayStatics::PlaySound2D(GetWorld(), TypewriterSound, 1.0f, PitchMultiplier);
                 }
             }
         }
@@ -581,9 +635,23 @@ void UPUDialogueBox::AdvanceTypewriter()
         if (TypewriterCurrentIndex < TypewriterTotalVisibleChars)
         {
             float CharDelay = 0.02f;
-            if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+            if (bSkipMode)
             {
-                CharDelay = GI->GetDialogueTypewriterCharacterDelay();
+                if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+                {
+                    CharDelay = GI->GetDialogueSkipModeCharacterDelay();
+                }
+                else
+                {
+                    CharDelay = SkipModeCharacterDelay;
+                }
+            }
+            if (!bSkipMode && GetWorld())
+            {
+                if (UPUProjectUmeowmiGameInstance* GI = GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+                {
+                    CharDelay = GI->GetDialogueTypewriterCharacterDelay();
+                }
             }
 
             if (UWorld* World = GetWorld())
@@ -600,11 +668,36 @@ void UPUDialogueBox::AdvanceTypewriter()
         else
         {
             bTypewriterActive = false;
+            // In skip mode, schedule auto-advance for next tick (Tick will perform it)
+            if (bSkipMode)
+            {
+                bPendingSkipAdvance = true;
+            }
         }
     }
     else
     {
         bTypewriterActive = false;
+    }
+}
+
+void UPUDialogueBox::OnTypewriterCompleteAutoAdvance()
+{
+    if (!bSkipMode)
+    {
+        return;
+    }
+
+    // Advance via DlgContext directly - bypasses UI, works regardless of dialogue box layout
+    if (IsValid(CurrentContext) && !CurrentContext->HasDialogueEnded() && CurrentContext->GetOptionsNum() > 0)
+    {
+        CurrentContext->ChooseOption(0);
+        Update(CurrentContext);  // Refresh UI and handle dialogue end
+    }
+    else
+    {
+        // Fallback: widget-based advance (for custom layouts where options aren't in DlgContext)
+        AdvanceDialogue();
     }
 }
 

@@ -74,6 +74,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* JournalCycleDishNextAction;
 
+	/** Hold to skip dialogue (fast typewriter, no sound, auto-advance). Only active when in dialogue. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* SkipDialogueAction;
+
 	//Todo: Add input for cancel action
 	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	// UInputAction* CancelAction;
@@ -251,6 +255,8 @@ public:
 	void ToggleJournal(const FInputActionValue& Value);
 	void OnJournalCycleDishPrev(const FInputActionValue& Value);
 	void OnJournalCycleDishNext(const FInputActionValue& Value);
+	void OnSkipDialogueStarted(const FInputActionValue& Value);
+	void OnSkipDialogueCompleted(const FInputActionValue& Value);
 	
 	/** Initialize camera position based on the starting index */
 	void InitializeCameraPosition();

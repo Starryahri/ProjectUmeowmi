@@ -42,6 +42,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Basic")
     FName OrderID;
 
+    /** Participant name of the dish giver who gave this order. Used to scope HasActiveOrder/OrderCompleted dialogue conditions per participant. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Basic")
+    FName OrderGiverParticipantName;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Basic")
     FText OrderDescription;
 
@@ -77,6 +81,9 @@ public:
     void LogOrderDetails() const;
 
     void LogValidationResults(const FPUDishBase& Dish) const;
+
+    /** Returns display text for the order including the dish giver (e.g. "Order from Yeoh: Make me something..."). Use in UI. */
+    FText GetOrderDisplayText() const;
 
     void LogCompletionDetails() const;
 

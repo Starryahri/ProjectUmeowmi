@@ -116,6 +116,7 @@ protected:
 	void StopAutoDismissTimer();
 	void OnButtonClicked(FName ButtonID);
 	void UpdatePopupStyle();
+	void ApplyViewportLayout();
 
 	// Button click handler (called by button delegates)
 	// Note: Since we can't easily determine which button called this with dynamic delegates,

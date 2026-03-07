@@ -19,6 +19,11 @@ void UPUOrderBlueprintLibrary::LogOrderDetails(const FPUOrderBase& Order)
     Order.LogOrderDetails();
 }
 
+FText UPUOrderBlueprintLibrary::GetOrderDisplayText(const FPUOrderBase& Order)
+{
+    return Order.GetOrderDisplayText();
+}
+
 void UPUOrderBlueprintLibrary::LogValidationResults(const FPUOrderBase& Order, const FPUDishBase& Dish)
 {
     //UE_LOG(LogTemp,Log, TEXT("UPUOrderBlueprintLibrary::LogValidationResults - Called from Blueprint"));

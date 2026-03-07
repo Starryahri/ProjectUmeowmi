@@ -70,6 +70,7 @@ void FPUOrderBase::LogOrderDetails() const
 
     UE_LOG(LogTemp, Display, TEXT("=== ORDER DETAILS ==="));
     UE_LOG(LogTemp, Display, TEXT("Order ID: %s"), *OrderID.ToString());
+    UE_LOG(LogTemp, Display, TEXT("Dish Giver: %s"), OrderGiverParticipantName.IsNone() ? TEXT("(none)") : *OrderGiverParticipantName.ToString());
     UE_LOG(LogTemp, Display, TEXT("Description: %s"), *OrderDescription.ToString());
     UE_LOG(LogTemp, Display, TEXT("Min Ingredients: %d"), MinIngredientCount);
     UE_LOG(LogTemp, Display, TEXT("Base Dish: %s (Tag: %s)"), *BaseDish.DisplayName.ToString(), *BaseDish.DishTag.ToString());
@@ -79,6 +80,19 @@ void FPUOrderBase::LogOrderDetails() const
     }
     UE_LOG(LogTemp, Display, TEXT("Dialogue Text: %s"), *OrderDialogueText.ToString());
     UE_LOG(LogTemp, Display, TEXT("==================="));
+}
+
+FText FPUOrderBase::GetOrderDisplayText() const
+{
+    if (OrderGiverParticipantName.IsNone())
+    {
+        return OrderDescription;
+    }
+    return FText::Format(
+        FText::FromString(TEXT("Order from {0}: {1}")),
+        FText::FromName(OrderGiverParticipantName),
+        OrderDescription
+    );
 }
 
 void FPUOrderBase::LogValidationResults(const FPUDishBase& Dish) const

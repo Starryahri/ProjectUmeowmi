@@ -555,6 +555,7 @@ bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 	PlayerSaveGame->bUseDialogueTypewriterEffect = bUseDialogueTypewriterEffect;
 	PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
 	PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
+	PlayerSaveGame->DialogueSkipModeCharacterDelay = DialogueSkipModeCharacterDelay;
 
 	// Save to disk
 	if (UGameplayStatics::SaveGameToSlot(PlayerSaveGame, SlotName, 0))
@@ -599,6 +600,7 @@ bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
 	bUseDialogueTypewriterEffect = PlayerSaveGame->bUseDialogueTypewriterEffect;
 	DialogueTypewriterCharacterDelay = PlayerSaveGame->DialogueTypewriterCharacterDelay;
 	bDialogueTypewriterSkipOnInput = PlayerSaveGame->bDialogueTypewriterSkipOnInput;
+	DialogueSkipModeCharacterDelay = PlayerSaveGame->DialogueSkipModeCharacterDelay;
 
 	// Migration: old saves may not have UnlockedDishTags; initialize from StartingDishTags if empty
 	if (UnlockedDishTags.Num() == 0 && StartingDishTags.Num() > 0)
@@ -659,6 +661,7 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		PlayerSaveGame->bUseDialogueTypewriterEffect = bUseDialogueTypewriterEffect;
 		PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
 		PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
+		PlayerSaveGame->DialogueSkipModeCharacterDelay = DialogueSkipModeCharacterDelay;
 		PlayerSaveGame->SaveVersion = 1;
 
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Save game object created"));
@@ -746,6 +749,12 @@ void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSpeed(float CharacterDe
 void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSkipOnInput(bool bSkipOnInput)
 {
 	bDialogueTypewriterSkipOnInput = bSkipOnInput;
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueSkipModeSpeed(float CharacterDelaySeconds)
+{
+	DialogueSkipModeCharacterDelay = CharacterDelaySeconds;
 	SaveGame();
 }
 
@@ -865,7 +874,10 @@ void UPUProjectUmeowmiGameInstance::ShowPopupWithCallback(const FPopupData& Popu
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		if (UWidget* FocusTarget = PopupWidget->GetPreferredFocusTarget())
 		{
-			InputMode.SetWidgetToFocus(FocusTarget);
+			if (TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget())
+			{
+				InputMode.SetWidgetToFocus(SlateWidget);
+			}
 		}
 		PlayerController->SetInputMode(InputMode);
 		PlayerController->bShowMouseCursor = true;
