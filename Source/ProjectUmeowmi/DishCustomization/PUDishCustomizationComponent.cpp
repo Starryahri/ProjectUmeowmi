@@ -2622,17 +2622,9 @@ void UPUDishCustomizationComponent::SwapDishContainerMesh(UStaticMesh* NewDishMe
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is valid: %s"), 
     //    *NewDishMesh->GetName());
     
-    // Find the cooking station actor by searching all actors
-    AActor* DishStation = nullptr;
-    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
-    {
-        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
-        {
-            DishStation = *ActorItr;
-            break;
-        }
-    }
-    
+    // Use the owner (the cooking station this component belongs to) - NOT a world search.
+    // With multiple cooking stations, a world search would always pick the first instance.
+    AActor* DishStation = GetOwner();
     if (!DishStation)
     {
         //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - DishStation not found"));
@@ -2718,17 +2710,9 @@ void UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh()
 {
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restoring original dish container mesh"));
     
-    // Find the cooking station actor by searching all actors
-    AActor* DishStation = nullptr;
-    for (TActorIterator<AActor> ActorItr(GetWorld()); ActorItr; ++ActorItr)
-    {
-        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
-        {
-            DishStation = *ActorItr;
-            break;
-        }
-    }
-    
+    // Use the owner (the cooking station this component belongs to) - NOT a world search.
+    // With multiple cooking stations, a world search would always pick the first instance.
+    AActor* DishStation = GetOwner();
     if (!DishStation)
     {
         //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - BP_CookingStation not found"));
@@ -2807,25 +2791,9 @@ void UPUDishCustomizationComponent::StoreOriginalDishContainerMesh()
 {
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Storing original dish container mesh"));
     
-    // Check if we have a valid world
-    UWorld* World = GetWorld();
-    if (!World)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - No world available, cannot store mesh"));
-        return;
-    }
-    
-    // Find the cooking station actor by searching all actors
-    AActor* DishStation = nullptr;
-    for (TActorIterator<AActor> ActorItr(World); ActorItr; ++ActorItr)
-    {
-        if (ActorItr->GetName().Contains(TEXT("BP_CookingStation")))
-        {
-            DishStation = *ActorItr;
-            break;
-        }
-    }
-    
+    // Use the owner (the cooking station this component belongs to) - NOT a world search.
+    // With multiple cooking stations, a world search would always pick the first instance.
+    AActor* DishStation = GetOwner();
     if (!DishStation)
     {
         //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - BP_CookingStation not found"));

@@ -927,8 +927,7 @@ void UPUProjectUmeowmiGameInstance::ShowIngredientUnlockPopup(const FGameplayTag
 
 	PopupData.Message = FText::Format(FText::FromString(TEXT("You unlocked: {0}")), DisplayName);
 	PopupData.bModal = false;
-	PopupData.bAutoDismiss = true;
-	PopupData.AutoDismissTime = 3.0f;
+	PopupData.bAutoDismiss = false;
 	PopupData.bShowCloseButton = true;
 	
 	// Add ingredient tag to additional data
@@ -986,8 +985,7 @@ void UPUProjectUmeowmiGameInstance::ShowIngredientUnlockPopupMultiple(const TArr
 
 	PopupData.Message = FText::FromString(MessageString);
 	PopupData.bModal = false;
-	PopupData.bAutoDismiss = true;
-	PopupData.AutoDismissTime = 4.0f; // Slightly longer for multiple ingredients
+	PopupData.bAutoDismiss = false;
 	PopupData.bShowCloseButton = true;
 	
 	// Add all ingredient tags to additional data
