@@ -95,8 +95,14 @@ protected:
 	// Auto-dismiss timer
 	FTimerHandle AutoDismissTimer;
 
+	// Deferred focus timer - focus must be set next frame for controller/gamepad to work
+	FTimerHandle DeferredFocusTimerHandle;
+
 	// Track if we've applied deferred focus (SetWidgetToFocus can fail if widget isn't ready)
 	bool bHasAppliedDeferredFocus = false;
+
+	// Apply focus to preferred target (called by timer - deferred to next frame for controller support)
+	void ApplyDeferredFocus();
 
 	// Helper function for auto-dismiss timer (no parameters)
 	void OnAutoDismissTimer();

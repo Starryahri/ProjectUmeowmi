@@ -1,4 +1,5 @@
 #include "PUPopupWidget.h"
+#include "Blueprint/UserWidget.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "Components/Button.h"
@@ -9,6 +10,7 @@
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 #include "Blueprint/WidgetTree.h"
 #include "UObject/StructOnScope.h"
 #include "Framework/Application/SlateApplication.h"
@@ -28,7 +30,7 @@ void UPUPopupWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// Bind close button if it exists
+	// Bind close button if it exists (UButton is focusable by default)
 	if (CloseButton)
 	{
 		CloseButton->OnClicked.AddDynamic(this, &UPUPopupWidget::HandleButtonClick);
@@ -37,8 +39,12 @@ void UPUPopupWidget::NativeConstruct()
 
 void UPUPopupWidget::NativeDestruct()
 {
-	// Stop auto-dismiss timer
+	// Stop timers
 	StopAutoDismissTimer();
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DeferredFocusTimerHandle);
+	}
 
 	// Clear buttons
 	ClearButtons();
@@ -50,22 +56,42 @@ void UPUPopupWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	// Deferred focus: SetWidgetToFocus can fail if widget isn't ready on first frame
+	// Deferred focus fallback: apply on first tick if timer hasn't run yet
 	if (!bHasAppliedDeferredFocus)
 	{
-		bHasAppliedDeferredFocus = true;
-		if (UWidget* FocusTarget = GetPreferredFocusTarget())
+		ApplyDeferredFocus();
+	}
+}
+
+void UPUPopupWidget::ApplyDeferredFocus()
+{
+	if (bHasAppliedDeferredFocus) return;
+
+	UWidget* FocusTarget = GetPreferredFocusTarget();
+	if (!FocusTarget) return;
+
+	TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget();
+	if (!SlateWidget.IsValid()) return;
+
+	// Ensure UserWidget targets are focusable (UButton is focusable by default)
+	if (UUserWidget* UserWidgetTarget = Cast<UUserWidget>(FocusTarget))
+	{
+		UserWidgetTarget->SetIsFocusable(true);
+	}
+
+	// Set keyboard focus (works for both keyboard and gamepad)
+	FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
+
+	// SetUserFocus routes gamepad input to this widget - required for controller
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
 		{
-			if (TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget())
-			{
-				FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
-				if (APlayerController* PC = GetOwningPlayer())
-				{
-					FSlateApplication::Get().SetUserFocus(PC->GetLocalPlayer()->GetControllerId(), SlateWidget, EFocusCause::SetDirectly);
-				}
-			}
+			FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), SlateWidget.ToSharedRef(), EFocusCause::SetDirectly);
 		}
 	}
+
+	bHasAppliedDeferredFocus = true;
 }
 
 void UPUPopupWidget::SetPopupData(const FPopupData& InPopupData)
@@ -114,6 +140,14 @@ void UPUPopupWidget::SetPopupData(const FPopupData& InPopupData)
 
 	// Create buttons
 	CreateButtons();
+
+	// Schedule deferred focus for next frame - required for controller/gamepad (focus fails if set immediately)
+	bHasAppliedDeferredFocus = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DeferredFocusTimerHandle);
+		World->GetTimerManager().SetTimer(DeferredFocusTimerHandle, this, &UPUPopupWidget::ApplyDeferredFocus, 0.05f, false);
+	}
 
 	// Start auto-dismiss timer if needed
 	if (InPopupData.bAutoDismiss)
@@ -324,6 +358,9 @@ void UPUPopupWidget::CreateButtons()
 			ButtonComponent->SetToolTipText(ButtonData.ButtonLabel);
 			UE_LOG(LogTemp, Warning, TEXT("UPUPopupWidget::CreateButtons - Could not find TextBlock for button label '%s'. Set ButtonLabelWidgetName on WBP_Popup to your TextBlock's name."), *ButtonData.ButtonLabel.ToString());
 		}
+
+		// Ensure custom button widgets are focusable (UButton is focusable by default)
+		NewButtonWidget->SetIsFocusable(true);
 
 		// Add to container
 		ButtonsContainer->AddChild(NewButtonWidget);
