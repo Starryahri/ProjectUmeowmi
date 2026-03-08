@@ -556,6 +556,8 @@ bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 	PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
 	PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
 	PlayerSaveGame->DialogueSkipModeCharacterDelay = DialogueSkipModeCharacterDelay;
+	PlayerSaveGame->bTutorialCompleted = bTutorialCompleted;
+	PlayerSaveGame->TutorialStep = TutorialStep;
 
 	// Save to disk
 	if (UGameplayStatics::SaveGameToSlot(PlayerSaveGame, SlotName, 0))
@@ -601,6 +603,8 @@ bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
 	DialogueTypewriterCharacterDelay = PlayerSaveGame->DialogueTypewriterCharacterDelay;
 	bDialogueTypewriterSkipOnInput = PlayerSaveGame->bDialogueTypewriterSkipOnInput;
 	DialogueSkipModeCharacterDelay = PlayerSaveGame->DialogueSkipModeCharacterDelay;
+	bTutorialCompleted = PlayerSaveGame->bTutorialCompleted;
+	TutorialStep = PlayerSaveGame->TutorialStep;
 
 	// Migration: old saves may not have UnlockedDishTags; initialize from StartingDishTags if empty
 	if (UnlockedDishTags.Num() == 0 && StartingDishTags.Num() > 0)
@@ -633,12 +637,14 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Keeping existing save file"));
 	}
 
-	// Clear all unlocked ingredients, dishes, dialogue states, and level transitions FIRST
+	// Clear all unlocked ingredients, dishes, dialogue states, level transitions, and tutorial state FIRST
 	UnlockedIngredientTags.Empty();
 	UnlockedDishTags.Empty();
 	CurrentDishTag = FGameplayTag();
 	CompletedDialogueNames.Empty();
 	UnlockedLevelTransitionIDs.Empty();
+	bTutorialCompleted = false;
+	TutorialStep = 0;
 	
 	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Cleared all unlocked ingredients and dishes"));
 
@@ -662,6 +668,8 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
 		PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
 		PlayerSaveGame->DialogueSkipModeCharacterDelay = DialogueSkipModeCharacterDelay;
+		PlayerSaveGame->bTutorialCompleted = false;
+		PlayerSaveGame->TutorialStep = 0;
 		PlayerSaveGame->SaveVersion = 1;
 
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Save game object created"));
@@ -699,6 +707,44 @@ bool UPUProjectUmeowmiGameInstance::DeleteSaveGame(const FString& SlotName)
 	{
 		UE_LOG(LogTemp, Error, TEXT("UPUProjectUmeowmiGameInstance::DeleteSaveGame - Failed to delete save file: %s"), *SlotName);
 		return false;
+	}
+}
+
+// Tutorial System
+void UPUProjectUmeowmiGameInstance::SetTutorialStep(int32 Step)
+{
+	TutorialStep = FMath::Clamp(Step, 0, 7);
+}
+
+void UPUProjectUmeowmiGameInstance::AdvanceTutorialStep()
+{
+	++TutorialStep;
+	if (TutorialStep >= 7)
+	{
+		TutorialStep = 7;
+		SetTutorialCompleted();
+	}
+	else
+	{
+		SaveGame();
+	}
+}
+
+void UPUProjectUmeowmiGameInstance::SetTutorialCompleted()
+{
+	bTutorialCompleted = true;
+	TutorialStep = 7;
+	SaveGame();
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::SetTutorialCompleted - Tutorial marked as completed"));
+}
+
+FGameplayTag UPUProjectUmeowmiGameInstance::GetTutorialAllowedIngredientTag() const
+{
+	switch (TutorialStep)
+	{
+		case 1: return TutorialStep1IngredientTag;
+		case 2: return TutorialStep2IngredientTag;
+		default: return FGameplayTag();
 	}
 }
 
@@ -1039,8 +1085,14 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 				}
 			}
 
-			PlayerController->SetIgnoreMoveInput(bInCustomization);
-			PlayerController->SetIgnoreLookInput(bInCustomization);
+			UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OnPopupWidgetClosed - bInCustomization=%d"), bInCustomization);
+			// Use Reset to clear stacked ignore state; SetIgnore* uses a counter that accumulates across popups
+			PlayerController->ResetIgnoreInputFlags();
+			if (bInCustomization)
+			{
+				PlayerController->SetIgnoreMoveInput(true);
+				PlayerController->SetIgnoreLookInput(true);
+			}
 
 			// GameAndUI + DoNotLock: allows free mouse for UI and 3D ingredient interaction
 			FInputModeGameAndUI InputMode;

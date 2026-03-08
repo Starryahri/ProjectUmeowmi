@@ -764,4 +764,29 @@ UTexture2D* UPUDishBlueprintLibrary::GetLoadedPreviewTexture(const FPUDishBase& 
 {
     if (Dish.PreviewTexture.IsNull()) return nullptr;
     return Dish.PreviewTexture.LoadSynchronous();
+}
+
+bool UPUDishBlueprintLibrary::IsDishSuspicious(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish)
+{
+    for (const FIngredientInstance& BaseInstance : BaseRecipeDish.IngredientInstances)
+    {
+        FGameplayTag BaseTag = BaseInstance.IngredientTag.IsValid() ? BaseInstance.IngredientTag : BaseInstance.IngredientData.IngredientTag;
+        if (!BaseTag.IsValid()) continue;
+        if (!HasIngredient(CompletedDish, BaseTag))
+        {
+            return true; // Missing a base ingredient -> suspicious
+        }
+    }
+    return false;
+}
+
+FText UPUDishBlueprintLibrary::GetEndingStageText(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish)
+{
+    const FString DishName = BaseRecipeDish.DisplayName.ToString();
+    const bool bSuspicious = IsDishSuspicious(CompletedDish, BaseRecipeDish);
+    if (bSuspicious)
+    {
+        return FText::FromString(FString::Printf(TEXT("You created Suspicious %s"), *DishName));
+    }
+    return FText::FromString(FString::Printf(TEXT("You created %s"), *DishName));
 } 

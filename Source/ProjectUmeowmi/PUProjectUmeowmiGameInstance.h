@@ -219,6 +219,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Save/Load")
 	bool DoesSaveGameExist(const FString& SlotName = TEXT("PlayerSave")) const;
 
+	// Tutorial System (global, persisted across sessions)
+	/** Returns true when tutorial mode is active (tutorial not yet completed). Use for branching in Blueprint. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tutorial")
+	bool IsTutorialModeEnabled() const { return !bTutorialCompleted; }
+
+	/** Get the current tutorial step (0 = not started, 1-7 = in progress). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tutorial")
+	int32 GetTutorialStep() const { return TutorialStep; }
+
+	/** Set the tutorial step directly. Call SaveGame() after if you want to persist. */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void SetTutorialStep(int32 Step);
+
+	/** Advance to the next tutorial step and save. */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void AdvanceTutorialStep();
+
+	/** Mark the tutorial as completed and save. Tutorial mode will no longer be active. */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void SetTutorialCompleted();
+
+	/** Get the ingredient tag that must be selected for the current step. Returns invalid tag if step has no restriction. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tutorial")
+	FGameplayTag GetTutorialAllowedIngredientTag() const;
+
+	/** Ingredient tag required for tutorial step 1 (e.g. Egg Yolk Cookies). Set in Game Instance Blueprint. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tutorial", meta = (Categories = "Ingredient"))
+	FGameplayTag TutorialStep1IngredientTag;
+
+	/** Ingredient tag required for tutorial step 2 (e.g. Gochujang). Set in Game Instance Blueprint. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tutorial", meta = (Categories = "Ingredient"))
+	FGameplayTag TutorialStep2IngredientTag;
+
 	// Dialogue State (stubbed for future use)
 	/**
 	 * Mark a dialogue as completed (stubbed for future implementation)
@@ -435,6 +468,13 @@ protected:
 	// Level Transition Lock System - IDs that have been unlocked (persisted to save)
 	UPROPERTY(BlueprintReadOnly, Category = "Level Transition")
 	TSet<FName> UnlockedLevelTransitionIDs;
+
+	// Tutorial system (persisted to save)
+	UPROPERTY(BlueprintReadOnly, Category = "Tutorial")
+	bool bTutorialCompleted = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Tutorial")
+	int32 TutorialStep = 0;
 
 	// Save Game Reference
 	UPROPERTY()

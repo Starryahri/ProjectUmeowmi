@@ -164,4 +164,22 @@ public:
      */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Visual", meta = (DisplayName = "Get Loaded Preview Texture"))
     static UTexture2D* GetLoadedPreviewTexture(const FPUDishBase& Dish);
+
+    /**
+     * Check if the completed dish is "suspicious" - i.e. missing any base/recipe ingredients from the original dish.
+     * Use for the Ending stage: if true, show "You created Suspicious [dish name]".
+     * @param CompletedDish - The dish the player actually made (after prep, cooking, plating)
+     * @param BaseRecipeDish - The original recipe from the data table (get via GetDishFromDataTable or GameInstance GetDishDataForTag)
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Ending")
+    static bool IsDishSuspicious(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish);
+
+    /**
+     * Get the ending stage text: "You created [dish name]" or "You created Suspicious [dish name]".
+     * Suspicious when the completed dish is missing base recipe ingredients.
+     * @param CompletedDish - The dish the player actually made
+     * @param BaseRecipeDish - The original recipe (get via GetDishFromDataTable or GameInstance GetDishDataForTag)
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Ending")
+    static FText GetEndingStageText(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish);
 }; 

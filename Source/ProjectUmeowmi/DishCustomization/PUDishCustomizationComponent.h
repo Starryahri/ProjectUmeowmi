@@ -426,7 +426,7 @@ private:
 
     // Plating stage camera handling
     void SetPlatingCameraPositionOffset(const FVector& NewOffset);
-    void StartPlatingCameraTransition();
+    void StartPlatingCameraTransition(const FVector* ExplicitStartLocation = nullptr, const FRotator* ExplicitStartRotation = nullptr, float ExplicitStartOrthoWidth = -1.0f);
     void UpdatePlatingCameraTransition(float DeltaTime);
 
     // Plating placement limits

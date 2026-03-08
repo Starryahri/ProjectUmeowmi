@@ -5,6 +5,7 @@
 #include "InputActionValue.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Blueprint/UserWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "../ProjectUmeowmiCharacter.h"
@@ -35,6 +36,26 @@ namespace
 
     // Enables logging for ingredient drag (click detection, trace hits, position updates).
     constexpr bool bPU_LogIngredientDrag = true;
+
+    // Enables logging for movement restoration when exiting customization (to debug "can look but not move").
+    constexpr bool bPU_LogMovementRestore = true;
+
+    void LogMovementState(APlayerController* PC, const TCHAR* Context)
+    {
+        if (!bPU_LogMovementRestore || !PC) return;
+        bool bIgnoreMove = PC->IsMoveInputIgnored();
+        bool bIgnoreLook = PC->IsLookInputIgnored();
+        EMovementMode MoveMode = MOVE_None;
+        if (APawn* Pawn = PC->GetPawn())
+        {
+            if (ACharacter* C = Cast<ACharacter>(Pawn))
+            {
+                if (UCharacterMovementComponent* M = C->GetCharacterMovement())
+                    MoveMode = M->MovementMode;
+            }
+        }
+        UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] %s - IgnoreMove=%d IgnoreLook=%d MovementMode=%d"), Context, bIgnoreMove, bIgnoreLook, (int32)MoveMode);
+    }
 }
 
 void UPUDishCustomizationComponent::SetHUDVisible(bool bShouldBeVisible)
@@ -416,14 +437,31 @@ void UPUDishCustomizationComponent::EndCustomization()
     UWorld* World = GetWorld();
     APlayerController* WorldPC = World ? World->GetFirstPlayerController() : nullptr;
 
+    if (bPU_LogMovementRestore)
+        UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] EndCustomization ENTRY - Component=%s CurrentCharacter=%s WorldPC=%s"), *GetName(), CurrentCharacter ? *CurrentCharacter->GetName() : TEXT("NULL"), WorldPC ? *WorldPC->GetName() : TEXT("NULL"));
+
     if (!CurrentCharacter)
     {
+        if (bPU_LogMovementRestore)
+            UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] EndCustomization EARLY RETURN (no CurrentCharacter) - restoring via WorldPC"));
         // Still restore movement so player can move (e.g. component ref mismatch or already cleared)
         if (WorldPC)
         {
-            WorldPC->SetIgnoreMoveInput(false);
-            WorldPC->SetIgnoreLookInput(false);
+            LogMovementState(WorldPC, TEXT("EARLY before restore"));
+            WorldPC->ResetIgnoreMoveInput();
+            WorldPC->ResetIgnoreLookInput();
             UWidgetBlueprintLibrary::SetFocusToGameViewport();
+            if (APawn* Pawn = WorldPC->GetPawn())
+            {
+                if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
+                {
+                    if (UCharacterMovementComponent* MovementComp = PlayerCharacter->GetCharacterMovement())
+                    {
+                        MovementComp->SetMovementMode(MOVE_Walking);
+                    }
+                }
+            }
+            LogMovementState(WorldPC, TEXT("EARLY after restore"));
         }
         return;
     }
@@ -498,18 +536,48 @@ void UPUDishCustomizationComponent::EndCustomization()
                 //UE_LOG(LogTemp,Log, TEXT("Removed customization mapping context"));
             }
 
-            // Restore the original mapping context
-            if (OriginalMappingContext)
+            // Restore the original mapping context (contains Move, Look, etc.)
+            UInputMappingContext* ContextToRestore = OriginalMappingContext;
+            if (!ContextToRestore && CurrentCharacter)
             {
-                Subsystem->AddMappingContext(OriginalMappingContext, 0);
+                ContextToRestore = CurrentCharacter->GetDefaultMappingContext();
+                if (bPU_LogMovementRestore && ContextToRestore)
+                    UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OriginalMappingContext was NULL - using Character->GetDefaultMappingContext()"));
+            }
+            if (ContextToRestore)
+            {
+                Subsystem->AddMappingContext(ContextToRestore, 0);
                 //UE_LOG(LogTemp,Log, TEXT("Restored original mapping context"));
+            }
+            else if (bPU_LogMovementRestore)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] WARNING: No mapping context to restore! Move/Look input may not work."));
             }
         }
 
         // Re-enable movement and look
-        PlayerController->SetIgnoreMoveInput(false);
-        PlayerController->SetIgnoreLookInput(false);
+        if (bPU_LogMovementRestore)
+            LogMovementState(PlayerController, TEXT("MAIN before restore"));
+        PlayerController->ResetIgnoreMoveInput();
+        PlayerController->ResetIgnoreLookInput();
         PlayerController->bShowMouseCursor = true;
+
+        // Restore character movement (dialogue box or other systems may have called DisableMovement)
+        if (APawn* Pawn = PlayerController->GetPawn())
+        {
+            if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
+            {
+                if (UCharacterMovementComponent* MovementComp = PlayerCharacter->GetCharacterMovement())
+                {
+                    MovementComp->SetMovementMode(MOVE_Walking);
+                }
+            }
+        }
+        if (bPU_LogMovementRestore)
+        {
+            LogMovementState(PlayerController, TEXT("MAIN after restore"));
+            UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OriginalMappingContext=%s"), OriginalMappingContext ? *OriginalMappingContext->GetName() : TEXT("NULL"));
+        }
 
         // Set input mode back to game and UI (mouse visible, no specific widget focus)
         FInputModeGameAndUI InputMode;
@@ -554,9 +622,25 @@ void UPUDishCustomizationComponent::EndCustomization()
     // Always re-enable movement on the world's player controller so keyboard/joystick move works no matter what.
     if (WorldPC)
     {
-        WorldPC->SetIgnoreMoveInput(false);
-        WorldPC->SetIgnoreLookInput(false);
+        if (bPU_LogMovementRestore)
+            LogMovementState(WorldPC, TEXT("WorldPC before restore"));
+        WorldPC->ResetIgnoreMoveInput();
+        WorldPC->ResetIgnoreLookInput();
         UWidgetBlueprintLibrary::SetFocusToGameViewport();
+
+        // Restore character movement (belt-and-suspenders in case PlayerController path was skipped)
+        if (APawn* Pawn = WorldPC->GetPawn())
+        {
+            if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
+            {
+                if (UCharacterMovementComponent* MovementComp = PlayerCharacter->GetCharacterMovement())
+                {
+                    MovementComp->SetMovementMode(MOVE_Walking);
+                }
+            }
+        }
+        if (bPU_LogMovementRestore)
+            LogMovementState(WorldPC, TEXT("WorldPC after restore"));
     }
 }
 
@@ -843,9 +927,26 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             {
                 if (APlayerController* PC = World->GetFirstPlayerController())
                 {
-                    PC->SetIgnoreMoveInput(false);
-                    PC->SetIgnoreLookInput(false);
+                    if (bPU_LogMovementRestore)
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] UpdateCameraTransition bIsExiting - restoring move/look"));
+                        LogMovementState(PC, TEXT("CAMERA_TRANSITION before"));
+                    }
+                    PC->ResetIgnoreMoveInput();
+                    PC->ResetIgnoreLookInput();
                     PC->bShowMouseCursor = true;
+                    if (APawn* Pawn = PC->GetPawn())
+                    {
+                        if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
+                        {
+                            if (UCharacterMovementComponent* MovementComp = PlayerCharacter->GetCharacterMovement())
+                            {
+                                MovementComp->SetMovementMode(MOVE_Walking);
+                            }
+                        }
+                    }
+                    if (bPU_LogMovementRestore)
+                        LogMovementState(PC, TEXT("CAMERA_TRANSITION after"));
                     FInputModeGameAndUI InputMode;
                     InputMode.SetWidgetToFocus(nullptr);
                     InputMode.SetHideCursorDuringCapture(false);
@@ -2104,45 +2205,75 @@ void UPUDishCustomizationComponent::SwitchToPlatingCamera()
     {
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Configuring plating camera: %s"), *PlatingStationCamera->GetName());
         
-        // CRITICAL: Set the PlatingCamera as the active camera component on the actor FIRST
+        // Get transition start position: CookingCamera when viewing station, else current view (e.g. when skipping Cooking)
+        FVector StartLocation = PlatingStationCamera->GetComponentLocation();
+        FRotator StartRotation = PlatingStationCamera->GetComponentRotation();
+        float StartOrthoWidth = PlatingOrthoWidth;
         AActor* StationActor = PlatingStationCamera->GetOwner();
-        if (StationActor)
+        const bool bViewingStation = StationActor && PlayerController && PlayerController->GetViewTarget() == StationActor;
+        if (bViewingStation && StationActor)
         {
-            // Disable the cooking camera first
             TArray<UCameraComponent*> AllCameras;
             StationActor->GetComponents<UCameraComponent>(AllCameras);
-            
+            for (UCameraComponent* Camera : AllCameras)
+            {
+                if (Camera && Camera->GetName() == TEXT("CookingCamera"))
+                {
+                    StartLocation = Camera->GetComponentLocation();
+                    StartRotation = Camera->GetComponentRotation();
+                    StartOrthoWidth = Camera->OrthoWidth;
+                    break;
+                }
+            }
+        }
+        else if (PlayerController && PlayerController->PlayerCameraManager)
+        {
+            // Skipping Cooking or not viewing station - use current view so transition starts from where the player is looking
+            StartLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
+            StartRotation = PlayerController->PlayerCameraManager->GetCameraRotation();
+        }
+
+        // Set PlatingCamera to START position first so transition animates from cooking view to plating view
+        PlatingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+        PlatingStationCamera->OrthoWidth = StartOrthoWidth;
+        PlatingStationCamera->SetWorldLocation(StartLocation);
+        PlatingStationCamera->SetWorldRotation(StartRotation);
+
+        // Disable cooking camera and enable plating camera
+        if (StationActor)
+        {
+            TArray<UCameraComponent*> AllCameras;
+            StationActor->GetComponents<UCameraComponent>(AllCameras);
             for (UCameraComponent* Camera : AllCameras)
             {
                 if (Camera && Camera->GetName() == TEXT("CookingCamera"))
                 {
                     Camera->SetActive(false);
-                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Disabled CookingCamera"));
+                    break;
                 }
             }
-            
-            // Enable the plating camera
             PlatingStationCamera->SetActive(true);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Activated PlatingCamera"));
         }
 
-        // Configure the plating camera BEFORE switching to it
-        PlatingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
-        PlatingStationCamera->OrthoWidth = PlatingOrthoWidth;
+        // Ensure we're viewing the station (needed when skipping Cooking stage - ViewTarget might still be character)
+        if (StationActor)
+        {
+            PlayerController->SetViewTargetWithBlend(StationActor, 0.0f);  // Instant - our transition handles the animation
+        }
 
-        // Set camera position and rotation BEFORE switching
-        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
-        FRotator CameraRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
+        // Set target position so StartPlatingCameraTransition can read it, then restore start for first frame
+        FVector TargetLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
+        FRotator TargetRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
+        PlatingStationCamera->SetWorldLocation(TargetLocation);
+        PlatingStationCamera->SetWorldRotation(TargetRotation);
 
-        PlatingStationCamera->SetWorldLocation(CameraLocation);
-        PlatingStationCamera->SetWorldRotation(CameraRotation);
+        // Start smooth transition (reads target from camera; pass explicit start when we used fallback e.g. skipping Cooking)
+        StartPlatingCameraTransition(&StartLocation, &StartRotation, StartOrthoWidth);
 
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Configured camera - Width: %.2f, Location: %s, Rotation: %s"),
-        //    PlatingOrthoWidth, *CameraLocation.ToString(), *CameraRotation.ToString());
-
-        // Start smooth transition for camera properties
-        StartPlatingCameraTransition();
-        //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::SwitchToPlatingCamera - Started smooth plating camera transition"));
+        // Restore start position for first frame - UpdatePlatingCameraTransition will animate from here
+        PlatingStationCamera->SetWorldLocation(StartLocation);
+        PlatingStationCamera->SetWorldRotation(StartRotation);
+        PlatingStationCamera->OrthoWidth = StartOrthoWidth;
     }
     else
     {
@@ -2150,7 +2281,7 @@ void UPUDishCustomizationComponent::SwitchToPlatingCamera()
     }
 }
 
-void UPUDishCustomizationComponent::StartPlatingCameraTransition()
+void UPUDishCustomizationComponent::StartPlatingCameraTransition(const FVector* ExplicitStartLocation, const FRotator* ExplicitStartRotation, float ExplicitStartOrthoWidth)
 {
     if (!PlatingStationCamera || !CurrentCharacter)
     {
@@ -2160,27 +2291,33 @@ void UPUDishCustomizationComponent::StartPlatingCameraTransition()
 
     //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Starting smooth camera transition"));
 
-    // Get current camera position and properties (from cooking camera)
+    // Use explicit start when provided (e.g. when skipping Cooking), else derive from CookingCamera
     FVector CurrentLocation = PlatingStationCamera->GetComponentLocation();
     FRotator CurrentRotation = PlatingStationCamera->GetComponentRotation();
     float CurrentOrthoWidth = PlatingStationCamera->OrthoWidth;
-    
-    // Try to get the cooking camera properties for smoother transition
-    AActor* StationActor = PlatingStationCamera->GetOwner();
-    if (StationActor)
+
+    if (ExplicitStartLocation && ExplicitStartRotation && ExplicitStartOrthoWidth >= 0.0f)
     {
-        TArray<UCameraComponent*> AllCameras;
-        StationActor->GetComponents<UCameraComponent>(AllCameras);
-        
-        for (UCameraComponent* Camera : AllCameras)
+        CurrentLocation = *ExplicitStartLocation;
+        CurrentRotation = *ExplicitStartRotation;
+        CurrentOrthoWidth = ExplicitStartOrthoWidth;
+    }
+    else
+    {
+        AActor* StationActor = PlatingStationCamera->GetOwner();
+        if (StationActor)
         {
-            if (Camera && Camera->GetName() == TEXT("CookingCamera"))
+            TArray<UCameraComponent*> AllCameras;
+            StationActor->GetComponents<UCameraComponent>(AllCameras);
+            for (UCameraComponent* Camera : AllCameras)
             {
-                CurrentLocation = Camera->GetComponentLocation();
-                CurrentRotation = Camera->GetComponentRotation();
-                CurrentOrthoWidth = Camera->OrthoWidth;
-                //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Using cooking camera properties"));
-                break;
+                if (Camera && Camera->GetName() == TEXT("CookingCamera"))
+                {
+                    CurrentLocation = Camera->GetComponentLocation();
+                    CurrentRotation = Camera->GetComponentRotation();
+                    CurrentOrthoWidth = Camera->OrthoWidth;
+                    break;
+                }
             }
         }
     }

@@ -52,6 +52,15 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	float DialogueSkipModeCharacterDelay = 0.005f;
 
+	// Tutorial system (persisted across sessions)
+	/** True when the dish customization tutorial has been completed. When false, tutorial mode is active. */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	bool bTutorialCompleted = false;
+
+	/** Current tutorial step (0 = not started, 1-7 = in progress). Used to drive popups, restrictions, and dialogue. */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data")
+	int32 TutorialStep = 0;
+
 	// Save version for future migration support
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	int32 SaveVersion = 1;
