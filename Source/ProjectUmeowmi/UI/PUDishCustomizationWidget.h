@@ -46,6 +46,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void OnCustomizationEnded();
 
+    /** Called when a popup closes - restores focus to pantry if open (e.g. after tutorial popup dismissed) */
+    UFUNCTION()
+    void OnPopupClosedForFocusRestore(FName ButtonID);
+
     // Set the customization component reference (for event subscription only)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void SetCustomizationComponent(UPUDishCustomizationComponent* Component);

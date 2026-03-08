@@ -1345,6 +1345,10 @@ void UPUDishCustomizationWidget::SubscribeToEvents()
         
         //UE_LOG(LogTemp,Display, TEXT("📡 PUDishCustomizationWidget::SubscribeToEvents - Subscribing to OnCustomizationEnded"));
         CustomizationComponent->OnCustomizationEnded.AddDynamic(this, &UPUDishCustomizationWidget::OnCustomizationEnded);
+        if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+        {
+            GI->OnPopupClosedEvent.AddDynamic(this, &UPUDishCustomizationWidget::OnPopupClosedForFocusRestore);
+        }
         
         //UE_LOG(LogTemp,Display, TEXT("✅ PUDishCustomizationWidget::SubscribeToEvents - All events subscribed successfully"));
     }
@@ -1366,6 +1370,20 @@ void UPUDishCustomizationWidget::UnsubscribeFromEvents()
         CustomizationComponent->OnInitialDishDataReceived.RemoveDynamic(this, &UPUDishCustomizationWidget::OnInitialDishDataReceived);
         CustomizationComponent->OnDishDataUpdated.RemoveDynamic(this, &UPUDishCustomizationWidget::OnDishDataUpdated);
         CustomizationComponent->OnCustomizationEnded.RemoveDynamic(this, &UPUDishCustomizationWidget::OnCustomizationEnded);
+    }
+    
+    if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+    {
+        GI->OnPopupClosedEvent.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPopupClosedForFocusRestore);
+    }
+}
+
+void UPUDishCustomizationWidget::OnPopupClosedForFocusRestore(FName ButtonID)
+{
+    // When a popup closes (e.g. tutorial) and the pantry is open, restore focus to the pantry
+    if (bPantryOpen)
+    {
+        SetInitialFocusForPantry();
     }
 }
 
@@ -2558,8 +2576,13 @@ void UPUDishCustomizationWidget::OpenPantry()
     // Call Blueprint event to trigger UMG animation
     OnPantryOpened();
     
-    // Set initial focus for pantry after a short delay (to allow animation to complete)
-    SetInitialFocusForPantry();
+    // Set initial focus for pantry - but NOT when a popup is showing (tutorial, etc.)
+    // Otherwise we steal focus from the popup/dialogue and the user can't dismiss it with controller
+    UPUProjectUmeowmiGameInstance* GICheck = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
+    if (!GICheck || !GICheck->IsPopupShowing())
+    {
+        SetInitialFocusForPantry();
+    }
     
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OpenPantry - Pantry opened (Blueprint will handle animation)"));
 }
