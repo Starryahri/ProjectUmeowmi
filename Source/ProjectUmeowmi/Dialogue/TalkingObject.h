@@ -222,6 +222,10 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::Door"))
     bool bIsDoorOpen = false;
 
+    /** For Door type: optional dialogue shown when the door is locked. Uses ParticipantName as the lock ID. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::Door"))
+    UDlgDialogue* LockedDoorDialogue = nullptr;
+
     /** For NPC type: Master toggle to rotate NPC to face the player when dialogue starts. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
     bool bRotateNPCToFacePlayer = true;
@@ -337,4 +341,7 @@ private:
     void DrawDebugRange() const;
     /** Builds the filtered participant list for this interactable (same logic used when starting dialogue). */
     TArray<UObject*> BuildActiveParticipantsList() const;
+
+    /** For Door type: checks the global lock state using ParticipantName as the lock ID. */
+    bool IsDoorUnlocked() const;
 }; 

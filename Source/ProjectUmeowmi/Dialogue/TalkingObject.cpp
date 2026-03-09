@@ -257,7 +257,28 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
     UE_LOG(LogTemp, Display, TEXT("Event Name: %s"), *EventName.ToString());
     UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
     UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
-    
+
+    // Handle generic unlock events using ParticipantName as the LockID in the GameInstance.
+    // This allows doors (and other talking objects) to participate in the global lock system.
+    if (EventName == TEXT("UnlockDoor") || EventName == TEXT("UnlockLevelTransition") || EventName == TEXT("UnlockTransition"))
+    {
+        if (ParticipantName == NAME_None)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::OnDialogueEvent - Unlock event received but ParticipantName is NAME_None on %s"), *GetName());
+            return false;
+        }
+
+        if (UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(GetGameInstance()))
+        {
+            GI->UnlockLevelTransition(ParticipantName);
+            UE_LOG(LogTemp, Log, TEXT("ATalkingObject::OnDialogueEvent - Unlocked object with ParticipantName as LockID: %s"), *ParticipantName.ToString());
+            return true;
+        }
+
+        UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::OnDialogueEvent - Unlock event but GameInstance was null for %s"), *GetName());
+        return false;
+    }
+
     // Handle order generation event
     if (EventName == TEXT("GenerateOrder"))
     {
@@ -287,10 +308,19 @@ bool ATalkingObject::CanInteract() const
 {
     UE_LOG(LogTemp, Display, TEXT("TalkingObject::CanInteract - %s: bPlayerInRange=%d, bIsInteracting=%d, AvailableDialogues=%d"),
         *GetName(), bPlayerInRange, bIsInteracting, AvailableDialogues.Num());
-    // Doors can interact without dialogues (they play DoorAction sequence)
     if (ObjectType == ETalkingObjectType::Door)
     {
-        return bPlayerInRange && !bIsInteracting;
+        const bool bDoorUnlocked = IsDoorUnlocked();
+
+        // Unlocked door: behaves like before (plays DoorAction sequence)
+        if (bDoorUnlocked)
+        {
+            return bPlayerInRange && !bIsInteracting;
+        }
+
+        // Locked door: allow interaction only if we have a LockedDoorDialogue to show
+        const bool bHasLockedDialogue = (LockedDoorDialogue != nullptr);
+        return bPlayerInRange && !bIsInteracting && bHasLockedDialogue;
     }
     return bPlayerInRange && !bIsInteracting && AvailableDialogues.Num() > 0;
 }
@@ -304,9 +334,27 @@ void ATalkingObject::StartInteraction()
         return;
     }
 
-    // Door type: find DoorAction component and toggle open/close
     if (ObjectType == ETalkingObjectType::Door)
     {
+        const bool bDoorUnlocked = IsDoorUnlocked();
+
+        // If locked: play the locked-door dialogue (if configured) instead of opening
+        if (!bDoorUnlocked)
+        {
+            if (LockedDoorDialogue)
+            {
+                UE_LOG(LogTemp, Log, TEXT("TalkingObject::StartInteraction - Door '%s' is locked. Starting LockedDoorDialogue using ParticipantName as LockID: %s"),
+                    *GetName(), *ParticipantName.ToString());
+                StartDialogueAndSetInteracting(LockedDoorDialogue);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("TalkingObject::StartInteraction - Door '%s' is locked but has no LockedDoorDialogue set"), *GetName());
+            }
+            return;
+        }
+
+        // Door type: find DoorAction component and toggle open/close
         TArray<UActorSequenceComponent*> SeqComps;
         GetComponents<UActorSequenceComponent>(SeqComps);
         UActorSequenceComponent* DoorActionComp = nullptr;
@@ -813,6 +861,36 @@ void ATalkingObject::UpdateOrthoWidgetScale()
 bool ATalkingObject::IsPlayerInRange() const
 {
     return bPlayerInRange;
+}
+
+bool ATalkingObject::IsDoorUnlocked() const
+{
+    // Only meaningful for Door type; other types are treated as unlocked here.
+    if (ObjectType != ETalkingObjectType::Door)
+    {
+        return true;
+    }
+
+    // If no ParticipantName is set, treat the door as always unlocked.
+    if (ParticipantName == NAME_None)
+    {
+        return true;
+    }
+
+    const UWorld* World = GetWorld();
+    if (!World)
+    {
+        // Fail-open to avoid soft-locking the player due to missing world context.
+        return true;
+    }
+
+    if (const UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance()))
+    {
+        return GI->IsLevelTransitionUnlocked(ParticipantName);
+    }
+
+    // If we can't reach the GameInstance, default to unlocked to avoid unintended locks.
+    return true;
 }
 
 void ATalkingObject::BeginFadeOutEmote()
