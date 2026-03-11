@@ -19,7 +19,9 @@
 #include "UI/PUEmoteData.h"
 #include "UI/PUEmoteWidget.h"
 #include "UI/PUJournalWidget.h"
+#include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Blueprint/UserWidget.h"
 
 #include "Interfaces/PUInteractableInterface.h"
 
@@ -1059,12 +1061,35 @@ FText AProjectUmeowmiCharacter::GetOrderResultText() const
 
 void AProjectUmeowmiCharacter::OnOrderCompleted()
 {
-	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::OnOrderCompleted - Order completed successfully!"));
-	
-	// This function can be overridden in Blueprints to add visual/audio feedback
-	// For now, just log the completion
-	//UE_LOG(LogTemp,Display, TEXT("🎉 ORDER COMPLETED! 🎉"));
-	//UE_LOG(LogTemp,Display, TEXT("Satisfaction: %.1f%%"), CurrentOrderSatisfaction * 100.0f);
+}
+
+UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass)
+{
+	UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowScorecard called: bCurrentOrderCompleted=%d, Class=%s"), bCurrentOrderCompleted ? 1 : 0, ScorecardWidgetClass ? *ScorecardWidgetClass->GetName() : TEXT("NULL"));
+	if (!bCurrentOrderCompleted || !ScorecardWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: order not completed or class null"));
+		return nullptr;
+	}
+
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: no PlayerController"));
+		return nullptr;
+	}
+
+	UPUScorecardWidget* Widget = CreateWidget<UPUScorecardWidget>(PC, ScorecardWidgetClass);
+	if (!Widget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: CreateWidget failed"));
+		return nullptr;
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("[Scorecard] AddToViewport + ShowFromOrder (Order has %d base ingredients, %d completed ingredients)"), CurrentOrder.BaseDish.IngredientInstances.Num(), CurrentOrder.GetCompletedDish().IngredientInstances.Num());
+	Widget->AddToViewport();
+	Widget->ShowFromOrder(CurrentOrder, nullptr);
+	return Widget;
 }
 
 void AProjectUmeowmiCharacter::OnOrderFailed()

@@ -8,6 +8,7 @@
 #include "Components/Image.h"
 #include "Components/VerticalBox.h"
 #include "Components/Button.h"
+#include "Input/Events.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
@@ -54,7 +55,7 @@ void UPUDialogueBox::NativeConstruct()
     {
         SkipButton->OnClicked.AddDynamic(this, &UPUDialogueBox::OnSkipButtonClicked);
     }
-    
+
     // Add to viewport if not already there
     if (!IsInViewport())
     {
@@ -244,6 +245,20 @@ void UPUDialogueBox::SetSkipMode(bool bEnabled)
 void UPUDialogueBox::OnSkipButtonClicked()
 {
     SetSkipMode(!bSkipMode);
+}
+
+FReply UPUDialogueBox::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    FReply Reply = Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
+
+    if (GetVisibility() == ESlateVisibility::Visible &&
+        InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        AdvanceDialogue();
+        return FReply::Handled();
+    }
+
+    return Reply;
 }
 
 void UPUDialogueBox::Close_Implementation()

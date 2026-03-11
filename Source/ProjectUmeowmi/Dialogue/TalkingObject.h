@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "TalkingObjectWidget.h"
+#include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "TalkingObject.generated.h"
 
 // Forward declarations
@@ -269,6 +270,10 @@ protected:
     /** For NPC type: Rotation speed (degrees/sec) when lerping to face the player. Higher = faster. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
     float NPCFacingRotationSpeed = 360.0f;
+
+    /** Widget class for ShowScorecard dialogue event. Assign WBP_Scorecard. Used when dialogue fires "ShowScorecard" event. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Dialogue")
+    TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass;
 
     // Emote configuration
 

@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "PUDishBase.h"
+#include "PUOrderBase.h"
+#include "../UI/PUScorecardTypes.h"
 
 #include "PUDishBlueprintLibrary.generated.h"
 
@@ -182,4 +184,12 @@ public:
      */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Ending")
     static FText GetEndingStageText(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish);
+
+    /**
+     * Build scorecard data from a completed order. Use when displaying the scorecard after order delivery.
+     * @param Order - The completed order (must have CompletedDish and FinalSatisfactionScore set)
+     * @return Scorecard data with seal tier, base ingredients, flavor profile, texture profile
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Scorecard")
+    static FPUScorecardData GetScorecardData(const FPUOrderBase& Order);
 }; 

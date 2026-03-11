@@ -1130,6 +1130,24 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
         //    *PantryInstance.IngredientData.IngredientTag.ToString(),
         //    PendingEmptySlot.IsValid() ? TEXT("YES") : TEXT("NO"));
         
+        // If no pending empty slot (e.g. pantry opened via button), use first empty prep slot
+        if (!PendingEmptySlot.IsValid())
+        {
+            if (CurrentDishData.IngredientInstances.Num() >= MaxIngredients)
+            {
+                ClosePantry();
+                return;
+            }
+            for (UPUIngredientSlot* PrepSlot : CreatedIngredientSlots)
+            {
+                if (PrepSlot && PrepSlot->GetLocation() == EPUIngredientSlotLocation::Prep && PrepSlot->IsEmpty())
+                {
+                    PendingEmptySlot = PrepSlot;
+                    break;
+                }
+            }
+        }
+        
         // If we have a pending empty slot, populate it
         if (PendingEmptySlot.IsValid())
         {

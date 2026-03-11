@@ -670,8 +670,8 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     }
     
     // Calculate normalization scale based on maximum value
-    // Scale increments by 25: 0-25 = scale 25, 25-50 = scale 50, etc., up to max 300
-    const float SCALE_INCREMENT = 25.0f;
+    // Scale increments by 10: 0-10 = scale 10, 10-20 = scale 20, etc., up to max 300 (finer tiers for small values)
+    const float SCALE_INCREMENT = 10.0f;
     const float MAX_SCALE = 300.0f;
     
     float MaxValue = 0.0f;
@@ -683,10 +683,10 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
         }
     }
     
-    // Calculate scale: round up to next 25 increment, capped at 300
+    // Calculate scale: round up to next 10 increment, capped at 300
     float NormalizationScale = FMath::Min(FMath::CeilToFloat(MaxValue / SCALE_INCREMENT) * SCALE_INCREMENT, MAX_SCALE);
     
-    // Ensure minimum scale of 25 if we have any values
+    // Ensure minimum scale of 10 if we have any values
     if (MaxValue > 0.0f && NormalizationScale < SCALE_INCREMENT)
     {
         NormalizationScale = SCALE_INCREMENT;
@@ -776,8 +776,8 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     }
     
     // Calculate normalization scale based on maximum value
-    // Scale increments by 25: 0-25 = scale 25, 25-50 = scale 50, etc., up to max 300
-    const float SCALE_INCREMENT = 25.0f;
+    // Scale increments by 10: 0-10 = scale 10, 10-20 = scale 20, etc., up to max 300 (finer tiers for small values)
+    const float SCALE_INCREMENT = 10.0f;
     const float MAX_SCALE = 300.0f;
     
     float MaxValue = 0.0f;
@@ -789,10 +789,10 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
         }
     }
     
-    // Calculate scale: round up to next 25 increment, capped at 300
+    // Calculate scale: round up to next 10 increment, capped at 300
     float NormalizationScale = FMath::Min(FMath::CeilToFloat(MaxValue / SCALE_INCREMENT) * SCALE_INCREMENT, MAX_SCALE);
     
-    // Ensure minimum scale of 25 if we have any values
+    // Ensure minimum scale of 10 if we have any values
     if (MaxValue > 0.0f && NormalizationScale < SCALE_INCREMENT)
     {
         NormalizationScale = SCALE_INCREMENT;
@@ -878,8 +878,8 @@ bool UPURadarChart::SetValuesFromDishFlavorProfileWithFluctuations(
         DisplayNames.Add(AspectName.ToString());
     }
     
-    // Calculate normalization scale based on maximum value
-    const float SCALE_INCREMENT = 25.0f;
+    // Calculate normalization scale based on maximum value (increments of 10 for finer tiers)
+    const float SCALE_INCREMENT = 10.0f;
     const float MAX_SCALE = 300.0f;
     
     float MaxValue = 0.0f;
@@ -975,8 +975,8 @@ bool UPURadarChart::SetValuesFromDishTextureProfileWithFluctuations(
         DisplayNames.Add(AspectName.ToString());
     }
     
-    // Calculate normalization scale based on maximum value
-    const float SCALE_INCREMENT = 25.0f;
+    // Calculate normalization scale based on maximum value (increments of 10 for finer tiers)
+    const float SCALE_INCREMENT = 10.0f;
     const float MAX_SCALE = 300.0f;
     
     float MaxValue = 0.0f;

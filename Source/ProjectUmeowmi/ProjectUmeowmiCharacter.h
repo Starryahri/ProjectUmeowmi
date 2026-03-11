@@ -11,6 +11,7 @@
 #include "Interfaces/PUInteractableInterface.h"
 #include "DishCustomization/PUOrderBase.h"
 #include "DishCustomization/PUDishPreviewComponent.h"
+#include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -423,6 +424,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	void OnOrderFailed();
+
+	/** Show the scorecard for the current completed order. Call from dialogue, etc. Returns the widget for chaining (e.g. bind Close to a button). */
+	UFUNCTION(BlueprintCallable, Category = "Order System", meta = (DisplayName = "Show Scorecard"))
+	class UPUScorecardWidget* ShowScorecard(TSubclassOf<class UPUScorecardWidget> ScorecardWidgetClass);
 
 	// Order System Storage
 	UPROPERTY(BlueprintReadWrite, Category = "Order System")

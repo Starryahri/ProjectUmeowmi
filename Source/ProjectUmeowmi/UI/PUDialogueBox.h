@@ -55,6 +55,9 @@ public:
     /** Called every frame */
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
+    /** Click anywhere to advance dialogue (playtest feedback) */
+    virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
     /** Event called when the dialogue box is opened */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void Open(UDlgContext* ActiveContext);

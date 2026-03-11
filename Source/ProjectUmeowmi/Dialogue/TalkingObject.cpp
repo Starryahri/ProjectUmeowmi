@@ -1,4 +1,5 @@
 #include "TalkingObject.h"
+#include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 
 #include "ActorSequenceComponent.h"
 #include "ActorSequencePlayer.h"
@@ -296,6 +297,32 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
             UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::OnDialogueEvent - GenerateOrder event called on non-dish-giver object: %s"), *GetName());
             return false;
         }
+    }
+
+    // Handle scorecard display (e.g. when player delivers order to dish giver)
+    if (EventName == TEXT("ShowScorecard"))
+    {
+        if (!ScorecardWidgetClass)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ATalkingObject::OnDialogueEvent - ShowScorecard event but ScorecardWidgetClass not set on %s"), *GetName());
+            return false;
+        }
+        AProjectUmeowmiCharacter* PlayerChar = nullptr;
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+            }
+        }
+        if (PlayerChar)
+        {
+            UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowScorecard event -> Calling PlayerChar->ShowScorecard (OrderCompleted=%d)"), PlayerChar->IsCurrentOrderCompleted() ? 1 : 0);
+            PlayerChar->ShowScorecard(ScorecardWidgetClass);
+            return true;
+        }
+        UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard event -> PlayerChar not found"));
+        return false;
     }
     
     UE_LOG(LogTemp, Display, TEXT("ATalkingObject::OnDialogueEvent - Unknown event: %s"), *EventName.ToString());
@@ -1146,8 +1173,8 @@ TArray<UObject*> ATalkingObject::BuildActiveParticipantsList() const
 
     // Add any additional participants explicitly listed in AllowedParticipantNames
 
-    // For NPCs and Props, add participants from the level when in AllowedParticipantNames
-    if (ObjectType == ETalkingObjectType::NPC || ObjectType == ETalkingObjectType::Prop)
+    // For NPCs, Props, and Doors (LockedDoorDialogue), add participants from the level when in AllowedParticipantNames
+    if (ObjectType == ETalkingObjectType::NPC || ObjectType == ETalkingObjectType::Prop || ObjectType == ETalkingObjectType::Door)
     {
         TArray<UObject*> AllParticipants = UDlgManager::GetObjectsWithDialogueParticipantInterface(const_cast<ATalkingObject*>(this));
 
