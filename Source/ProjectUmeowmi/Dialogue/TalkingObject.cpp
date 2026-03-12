@@ -299,6 +299,20 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
         }
     }
 
+    // Handle hint reveal (e.g. "RevealHint_Salt", "RevealHint_Crispy") - only works on dish givers
+    const FString EventStr = EventName.ToString();
+    if (EventStr.StartsWith(TEXT("RevealHint_")) && EventStr.Len() > 11)
+    {
+        const FName AspectName = FName(*EventStr.RightChop(11));
+        UE_LOG(LogTemp, Display, TEXT("[Hint] Dialogue event RevealHint_%s received on %s"), *AspectName.ToString(), *GetName());
+        if (APUDishGiver* DishGiver = Cast<APUDishGiver>(this))
+        {
+            DishGiver->RevealHintToPlayer(AspectName);
+            return true;
+        }
+        UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHint_%s ignored - %s is not a DishGiver"), *AspectName.ToString(), *GetName());
+    }
+
     // Handle scorecard display (e.g. when player delivers order to dish giver)
     if (EventName == TEXT("ShowScorecard"))
     {

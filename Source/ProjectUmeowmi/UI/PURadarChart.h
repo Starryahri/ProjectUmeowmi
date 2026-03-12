@@ -6,6 +6,7 @@
 #include "RadarChartTypes.h"
 #include "../DishCustomization/PUIngredientBase.h"
 #include "../DishCustomization/PUDishBase.h"
+#include "../DishCustomization/PUOrderBase.h"
 #include "PURadarChart.generated.h"
 
 /**
@@ -121,6 +122,45 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "Radar Chart")
     bool SetValuesFromDishTextureProfile(const FPUDishBase& Dish);
+
+    /**
+     * Sets values from an order's flavor profile: hint layer (0) from discovered preferences behind, player layer (1) from dish in front.
+     * Only aspects in DiscoveredHints are shown on the hint shape; undiscovered aspects show as zero.
+     * @param Order - The order context
+     * @param PlayerDish - The player's dish for the main shape
+     * @param DiscoveredHints - Hints the player has found (e.g. from dialogue). Only these appear on the chart. Filter by EOrderAspectType::Flavor.
+     * @return True if successful
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetValuesFromOrderFlavorProfile(const FPUOrderBase& Order, const FPUDishBase& PlayerDish, const TArray<FOrderAspectRequirement>& DiscoveredHints);
+
+    /**
+     * Sets values from an order's texture profile: hint layer (0) from discovered preferences behind, player layer (1) from dish in front.
+     * Only aspects in DiscoveredHints are shown on the hint shape; undiscovered aspects show as zero.
+     * @param Order - The order context
+     * @param PlayerDish - The player's dish for the main shape
+     * @param DiscoveredHints - Hints the player has found. Only these appear. Filter by EOrderAspectType::Texture.
+     * @return True if successful
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    bool SetValuesFromOrderTextureProfile(const FPUOrderBase& Order, const FPUDishBase& PlayerDish, const TArray<FOrderAspectRequirement>& DiscoveredHints);
+
+    /**
+     * Sets whether the hint/guide shape (layer 0) is visible. Use with SetValuesFromOrder*.
+     * @param bShow - True to show the hint shape, false to hide it
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart")
+    void SetShowHintLayer(bool bShow);
+
+    /**
+     * Gets whether the hint/guide shape is currently shown.
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Radar Chart")
+    bool GetShowHintLayer() const { return bShowHintLayer; }
+
+    /** When true, the hint/guide shape (layer 0) is visible. Used with SetValuesFromOrder*. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radar Chart|Hints")
+    bool bShowHintLayer = true;
 
     /**
      * Sets values from a dish's flavor profile with random fluctuations before settling.
@@ -282,4 +322,13 @@ private:
     float SettleDuration;
     uint8 AnimationFps;
     TEnumAsByte<EEasingFunc::Type> AnimationEase;
+
+    /** Ensures ValueLayers has at least 2 layers (hint=0, player=1) and configures hint layer appearance. Returns false if layer count cannot be achieved. */
+    bool EnsureHintAndPlayerLayersExist();
+
+    /** Sets values for a layer only if that layer exists. Returns true if set. */
+    bool SetValuesForLayerSafe(int32 ValueLayerIndex, const TArray<float>& InValues);
+
+    /** Builds hint values from DiscoveredHints for the given aspect names and type. */
+    TArray<float> BuildHintValuesFromDiscoveredHints(const TArray<FOrderAspectRequirement>& DiscoveredHints, const TArray<FName>& AspectNames, EOrderAspectType AspectType) const;
 }; 

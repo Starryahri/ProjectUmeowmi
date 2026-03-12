@@ -57,6 +57,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Requirements")
     TArray<FOrderAspectRequirement> TargetAspects;
 
+    /** Hints the player has discovered (e.g. from dialogue). Subset of TargetAspects. Use for partial radar chart display. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Requirements")
+    TArray<FOrderAspectRequirement> DiscoveredHints;
+
     // Dialogue Integration
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Dialogue")
     FText OrderDialogueText;

@@ -396,6 +396,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	void ClearCurrentOrder();
 
+	/** Reveals a hint for the current order if the player has an active order and the aspect exists in TargetAspects. Call from dialogue (e.g. RevealHint_Salt). */
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void RevealHintOnCurrentOrder(FName AspectName);
+
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	void SetOrderResult(bool bCompleted, float SatisfactionScore);
 

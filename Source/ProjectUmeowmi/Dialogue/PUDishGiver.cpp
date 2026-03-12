@@ -155,6 +155,40 @@ void APUDishGiver::GenerateAndGiveOrderToPlayerWithDish(FGameplayTag DishTag)
     SetDialogueVariablesFromOrder(Order);
 }
 
+void APUDishGiver::RevealHintToPlayer(FName AspectName)
+{
+    UE_LOG(LogTemp, Display, TEXT("[Hint] RevealHintToPlayer(%s) called on %s"), *AspectName.ToString(), *GetName());
+
+    if (!GetWorld() || AspectName.IsNone())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintToPlayer aborted - no world or invalid aspect"));
+        return;
+    }
+
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+    {
+        PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+    }
+
+    if (!IsValid(PlayerChar) || !PlayerChar->HasCurrentOrder())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintToPlayer aborted - player has no active order"));
+        return;
+    }
+
+    const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+    const FName MyParticipantName = GetTalkingObjectName();
+    if (!Order.OrderGiverParticipantName.IsNone() && Order.OrderGiverParticipantName != MyParticipantName)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintToPlayer aborted - order is from %s, not %s"), *Order.OrderGiverParticipantName.ToString(), *MyParticipantName.ToString());
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("[Hint] Passing hint %s to player character"), *AspectName.ToString());
+    PlayerChar->RevealHintOnCurrentOrder(AspectName);
+}
+
 FText APUDishGiver::GetOrderDialogueText() const
 {
     if (OrderComponent && OrderComponent->HasActiveOrder())

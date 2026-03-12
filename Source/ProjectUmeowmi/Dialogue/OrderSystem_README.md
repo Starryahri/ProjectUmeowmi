@@ -57,6 +57,7 @@ Text: "Let me see what you've made..."
 
 ### Available Methods for Dialogue Events
 - **`GenerateAndGiveOrderToPlayer()`**: Generates a new order and gives it to the player (only if they don't have an active order)
+- **`RevealHint_Salt`**, **`RevealHint_Sweet`**, **`RevealHint_Crispy`**, etc.: Reveals that aspect as a hint on the player's current order (for radar chart display). Use format `RevealHint_` + aspect name. See `Docs/OrderHintRadarChartSetup.md`.
 
 ## Technical Details
 

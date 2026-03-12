@@ -908,6 +908,38 @@ void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Order set successfully"));
 }
 
+void AProjectUmeowmiCharacter::RevealHintOnCurrentOrder(FName AspectName)
+{
+	UE_LOG(LogTemp, Display, TEXT("[Hint] RevealHintOnCurrentOrder(%s) - hasOrder=%d completed=%d"), *AspectName.ToString(), bHasCurrentOrder, bCurrentOrderCompleted);
+
+	if (!bHasCurrentOrder || bCurrentOrderCompleted || AspectName.IsNone())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintOnCurrentOrder aborted - no active order or aspect invalid"));
+		return;
+	}
+
+	for (const FOrderAspectRequirement& Req : CurrentOrder.TargetAspects)
+	{
+		if (Req.AspectName == AspectName)
+		{
+			// Check if already discovered
+			for (const FOrderAspectRequirement& Discovered : CurrentOrder.DiscoveredHints)
+			{
+				if (Discovered.AspectName == AspectName)
+				{
+					UE_LOG(LogTemp, Display, TEXT("[Hint] Hint %s already revealed, skipping"), *AspectName.ToString());
+					return;
+				}
+			}
+			CurrentOrder.DiscoveredHints.Add(Req);
+			UE_LOG(LogTemp, Display, TEXT("[Hint] SUCCESS: Revealed hint %s (target %.1f) - total discovered: %d"), *AspectName.ToString(), Req.MinValue, CurrentOrder.DiscoveredHints.Num());
+			return;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintOnCurrentOrder - aspect %s not in order's TargetAspects"), *AspectName.ToString());
+}
+
 void AProjectUmeowmiCharacter::ClearCurrentOrder()
 {
 	//UE_LOG(LogTemp,Display, TEXT("=== CLEARING CURRENT ORDER ==="));
