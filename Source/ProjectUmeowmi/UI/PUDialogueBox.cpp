@@ -261,6 +261,45 @@ FReply UPUDialogueBox::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometr
     return Reply;
 }
 
+FReply UPUDialogueBox::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    if (GetVisibility() != ESlateVisibility::Visible)
+    {
+        return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+    }
+
+    const FKey Key = InKeyEvent.GetKey();
+
+    // F = hold to skip, tap to advance
+    if (Key == EKeys::F)
+    {
+        SetSkipMode(true);
+        AdvanceDialogue();
+        return FReply::Handled();
+    }
+
+    return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+FReply UPUDialogueBox::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    if (GetVisibility() != ESlateVisibility::Visible)
+    {
+        return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
+    }
+
+    const FKey Key = InKeyEvent.GetKey();
+
+    // F = release skip mode
+    if (Key == EKeys::F)
+    {
+        SetSkipMode(false);
+        return FReply::Handled();
+    }
+
+    return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
+}
+
 void UPUDialogueBox::Close_Implementation()
 {
     //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Close_Implementation called"));

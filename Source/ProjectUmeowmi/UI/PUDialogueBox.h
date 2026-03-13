@@ -58,6 +58,10 @@ public:
     /** Click anywhere to advance dialogue (playtest feedback) */
     virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
+    /** Handle F (skip) and E/Space (advance) when dialogue has keyboard focus - fixes F key not reaching Enhanced Input */
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+    virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+
     /** Event called when the dialogue box is opened */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void Open(UDlgContext* ActiveContext);
