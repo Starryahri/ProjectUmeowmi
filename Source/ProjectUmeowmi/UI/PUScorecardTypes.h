@@ -27,7 +27,7 @@ enum class EPUScorecardSealTier : uint8
 	Good = 2 UMETA(DisplayName = "Good")
 };
 
-/** Single aspect ranking: aspect name, top 3 contributing ingredients, total value, and 0-5 star rating. */
+/** Single aspect ranking: aspect name, top 3 contributing ingredients (icons), total value, and 0-5 star rating. */
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUAspectRanking
 {
@@ -36,8 +36,9 @@ struct PROJECTUMEOWMI_API FPUAspectRanking
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
 	FName AspectName;
 
+	/** Top 3 contributing ingredients (icon + optional name). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
-	TArray<FText> TopContributingIngredients;
+	TArray<FPUBaseIngredientEntry> TopContributingIngredients;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
 	float TotalValue = 0.0f;

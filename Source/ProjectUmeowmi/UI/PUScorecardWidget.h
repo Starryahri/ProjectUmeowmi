@@ -75,13 +75,13 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
 	TObjectPtr<UPanelWidget> BaseIngredientsContainer;
 
-	/** Container for flavor profile - C++ spawns PUAspectProfileWidget into this */
+	/** Container for flavor profile - bind any panel (HorizontalBox, VerticalBox, WrapBox, etc.) */
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
-	TObjectPtr<UVerticalBox> FlavorProfileContainer;
+	TObjectPtr<UPanelWidget> FlavorProfileContainer;
 
-	/** Container for texture profile - C++ spawns PUAspectProfileWidget into this */
+	/** Container for texture profile - bind any panel (HorizontalBox, VerticalBox, WrapBox, etc.) */
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
-	TObjectPtr<UVerticalBox> TextureProfileContainer;
+	TObjectPtr<UPanelWidget> TextureProfileContainer;
 
 	/** Widget class for flavor/texture profile. Assign WBP_AspectProfile here. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard", meta = (AllowAbstract = "false"))

@@ -806,9 +806,9 @@ namespace
         FPUAspectRanking Ranking;
         Ranking.AspectName = AspectName;
 
-        // Sum contribution per ingredient (group by IngredientTag)
+        // Sum contribution per ingredient (group by IngredientTag), store entry for display
         TMap<FGameplayTag, float> ContributionByIngredient;
-        TMap<FGameplayTag, FText> DisplayNameByIngredient;
+        TMap<FGameplayTag, FPUBaseIngredientEntry> EntryByIngredient;
 
         for (const FIngredientInstance& Instance : Dish.IngredientInstances)
         {
@@ -826,7 +826,10 @@ namespace
             else
             {
                 ContributionByIngredient.Add(Tag, Contribution);
-                DisplayNameByIngredient.Add(Tag, Instance.IngredientData.DisplayName);
+                FPUBaseIngredientEntry Entry;
+                Entry.DisplayName = Instance.IngredientData.DisplayName;
+                Entry.PreviewTexture = Instance.IngredientData.PantryTexture ? Instance.IngredientData.PantryTexture : Instance.IngredientData.PreviewTexture;
+                EntryByIngredient.Add(Tag, Entry);
             }
         }
 
@@ -843,9 +846,9 @@ namespace
 
         for (int32 i = 0; i < FMath::Min(3, Sorted.Num()); ++i)
         {
-            if (FText* DisplayName = DisplayNameByIngredient.Find(Sorted[i].Key))
+            if (FPUBaseIngredientEntry* Entry = EntryByIngredient.Find(Sorted[i].Key))
             {
-                Ranking.TopContributingIngredients.Add(*DisplayName);
+                Ranking.TopContributingIngredients.Add(*Entry);
             }
         }
 

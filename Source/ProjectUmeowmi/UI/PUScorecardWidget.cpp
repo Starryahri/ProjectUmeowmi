@@ -99,8 +99,8 @@ void UPUScorecardWidget::UpdateDisplay()
 			USizeBox* IconSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 			if (IconSizeBox)
 			{
-				IconSizeBox->SetWidthOverride(32.0f);
-				IconSizeBox->SetHeightOverride(32.0f);
+				IconSizeBox->SetWidthOverride(128.0f);
+				IconSizeBox->SetHeightOverride(128.0f);
 				IconSizeBox->AddChild(IconImage);
 				BaseIngredientsContainer->AddChild(IconSizeBox);
 			}
@@ -129,21 +129,6 @@ void UPUScorecardWidget::UpdateDisplay()
 				FlavorProfileContainer->AddChild(AspectWidget);
 			}
 		}
-		// Overall flavor star rating (added to container)
-		if (WidgetTree)
-		{
-			UTextBlock* StarsBlock = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			if (StarsBlock)
-			{
-				FString StarsStr;
-				for (int32 i = 0; i < 5; ++i)
-				{
-					StarsStr += (i < ScorecardData.FlavorProfile.StarRating) ? TEXT("★") : TEXT("☆");
-				}
-				StarsBlock->SetText(FText::FromString(StarsStr));
-				FlavorProfileContainer->AddChild(StarsBlock);
-			}
-		}
 	}
 
 	// Texture profile - spawn 2 aspect widgets (one per top aspect)
@@ -162,21 +147,6 @@ void UPUScorecardWidget::UpdateDisplay()
 			{
 				AspectWidget->SetAspectData(Aspect);
 				TextureProfileContainer->AddChild(AspectWidget);
-			}
-		}
-		// Overall texture star rating (added to container)
-		if (WidgetTree)
-		{
-			UTextBlock* StarsBlock = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			if (StarsBlock)
-			{
-				FString StarsStr;
-				for (int32 i = 0; i < 5; ++i)
-				{
-					StarsStr += (i < ScorecardData.TextureProfile.StarRating) ? TEXT("★") : TEXT("☆");
-				}
-				StarsBlock->SetText(FText::FromString(StarsStr));
-				TextureProfileContainer->AddChild(StarsBlock);
 			}
 		}
 	}

@@ -1,10 +1,14 @@
 #include "PUAspectProfileWidget.h"
 #include "Components/TextBlock.h"
-#include "Components/VerticalBox.h"
+#include "Components/Image.h"
+#include "Components/SizeBox.h"
+#include "Components/PanelWidget.h"
 #include "Components/HorizontalBox.h"
-#include "Components/VerticalBoxSlot.h"
-#include "Components/HorizontalBoxSlot.h"
+#include "Components/Border.h"
 #include "Blueprint/WidgetTree.h"
+#include "Engine/Texture2D.h"
+#include "Engine/DataTable.h"
+#include "Components/RichTextBlock.h"
 
 UPUAspectProfileWidget::UPUAspectProfileWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -40,38 +44,84 @@ void UPUAspectProfileWidget::UpdateDisplay()
 		AspectNameText->SetText(FText::FromName(AspectData.AspectName));
 	}
 
-	// Top 3 contributing ingredients
+	// Top 3 contributing ingredient icons
 	if (IngredientsContainer)
 	{
 		IngredientsContainer->ClearChildren();
-		for (const FText& Ingredient : AspectData.TopContributingIngredients)
+		for (const FPUBaseIngredientEntry& Entry : AspectData.TopContributingIngredients)
 		{
-			UTextBlock* IngBlock = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-			if (IngBlock)
+			if (!Entry.PreviewTexture) continue;
+
+			UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+			if (!IconImage) continue;
+
+			IconImage->SetBrushFromTexture(Entry.PreviewTexture);
+			USizeBox* IconSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			if (IconSizeBox)
 			{
-				IngBlock->SetText(Ingredient);
-				if (UHorizontalBoxSlot* IngSlot = Cast<UHorizontalBoxSlot>(IngredientsContainer->AddChild(IngBlock)))
-				{
-					IngSlot->SetPadding(FMargin(8.0f, 0.0f, 0.0f, 0.0f));
-				}
+				IconSizeBox->SetWidthOverride(128.0f);
+				IconSizeBox->SetHeightOverride(128.0f);
+				IconSizeBox->AddChild(IconImage);
+				IngredientsContainer->AddChild(IconSizeBox);
+			}
+			else
+			{
+				IngredientsContainer->AddChild(IconImage);
 			}
 		}
 	}
 
-	// Star rating (e.g. ★★★☆☆)
+	// Star rating - use custom textures if both set, else fallback to ★/☆ text
 	if (StarRatingContainer)
 	{
 		StarRatingContainer->ClearChildren();
-		UTextBlock* StarsBlock = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		if (StarsBlock)
+		UTexture2D* FilledTex = StarTextureFilled.LoadSynchronous();
+		UTexture2D* UnfilledTex = StarTextureUnfilled.LoadSynchronous();
+		if (FilledTex && UnfilledTex)
 		{
-			FString StarsStr;
 			for (int32 i = 0; i < 5; ++i)
 			{
-				StarsStr += (i < AspectData.StarRating) ? TEXT("★") : TEXT("☆");
+				UImage* StarImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+				if (!StarImage) continue;
+
+				StarImage->SetBrushFromTexture((i < AspectData.StarRating) ? FilledTex : UnfilledTex);
+				USizeBox* StarSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+				if (StarSizeBox)
+				{
+					StarSizeBox->SetWidthOverride(StarImageSize);
+					StarSizeBox->SetHeightOverride(StarImageSize);
+					StarSizeBox->AddChild(StarImage);
+					StarRatingContainer->AddChild(StarSizeBox);
+				}
+				else
+				{
+					StarRatingContainer->AddChild(StarImage);
+				}
 			}
-			StarsBlock->SetText(FText::FromString(StarsStr));
-			StarRatingContainer->AddChild(StarsBlock);
+		}
+		else
+		{
+			UTextBlock* StarsBlock = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+			if (StarsBlock)
+			{
+				FString StarsStr;
+				for (int32 i = 0; i < 5; ++i)
+				{
+					StarsStr += (i < AspectData.StarRating) ? TEXT("★") : TEXT("☆");
+				}
+				StarsBlock->SetText(FText::FromString(StarsStr));
+				StarRatingContainer->AddChild(StarsBlock);
+			}
+		}
+	}
+
+	// Aspect border color from Rich Text Style data table (row name = aspect name)
+	if (AspectBorder && AspectColorDataTable && AspectData.AspectName.IsValid())
+	{
+		if (const FRichTextStyleRow* StyleRow = AspectColorDataTable->FindRow<FRichTextStyleRow>(AspectData.AspectName, TEXT("AspectColor")))
+		{
+			FLinearColor Color = StyleRow->TextStyle.ColorAndOpacity.GetSpecifiedColor();
+			AspectBorder->SetBrushColor(Color);
 		}
 	}
 }

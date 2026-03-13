@@ -3,11 +3,15 @@
 #include "CoreMinimal.h"
 #include "PUCommonUserWidget.h"
 #include "PUScorecardTypes.h"
+#include "Engine/Texture2D.h"
 #include "PUAspectProfileWidget.generated.h"
 
 class UTextBlock;
 class UVerticalBox;
 class UHorizontalBox;
+class UPanelWidget;
+class UBorder;
+class UDataTable;
 
 /**
  * Widget that displays ONE aspect: aspect name, top 3 contributing ingredients, and 5-star rating.
@@ -39,13 +43,33 @@ protected:
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
 	TObjectPtr<UTextBlock> AspectNameText;
 
-	/** Container for top 3 contributing ingredients */
+	/** Container for top 3 contributing ingredient icons - bind any panel */
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
-	TObjectPtr<UHorizontalBox> IngredientsContainer;
+	TObjectPtr<UPanelWidget> IngredientsContainer;
 
 	/** Container for star rating (5 stars) */
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
 	TObjectPtr<UHorizontalBox> StarRatingContainer;
+
+	/** Filled star texture - if set with StarTextureUnfilled, uses images instead of ★/☆ text */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Stars")
+	TSoftObjectPtr<UTexture2D> StarTextureFilled;
+
+	/** Unfilled/empty star texture - if set with StarTextureFilled, uses images instead of ★/☆ text */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Stars")
+	TSoftObjectPtr<UTexture2D> StarTextureUnfilled;
+
+	/** Size of each star image when using custom textures (default 24) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Stars", meta = (ClampMin = "8", ClampMax = "128"))
+	float StarImageSize = 24.0f;
+
+	/** Border to tint with the aspect color from AspectColorDataTable (row name = aspect name) */
+	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
+	TObjectPtr<UBorder> AspectBorder;
+
+	/** Rich Text Style data table - row names = aspect names (Umami, Salt, Sweet, etc.). Color from TextStyle.ColorAndOpacity is applied to AspectBorder. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard", meta = (RequiredAssetDataTags = "RowStructure=/Script/UMG.RichTextStyleRow"))
+	TObjectPtr<UDataTable> AspectColorDataTable;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Scorecard")
 	FPUAspectRanking AspectData;
