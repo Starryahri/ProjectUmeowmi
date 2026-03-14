@@ -50,6 +50,10 @@ public:
     UFUNCTION()
     void OnPopupClosedForFocusRestore(FName ButtonID);
 
+    /** Called when dialogue closes - restores focus to dish customization if active (e.g. opened from dialogue) */
+    UFUNCTION()
+    void OnDialogueClosedForFocusRestore();
+
     // Set the customization component reference (for event subscription only)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void SetCustomizationComponent(UPUDishCustomizationComponent* Component);
@@ -309,6 +313,9 @@ public:
     // Set initial focus for cooking stage (first ingredient slot)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
     void SetInitialFocusForCookingStage();
+
+    /** True if dialogue box is visible - don't steal focus when dialogue is active (e.g. customization opened from dialogue) */
+    bool IsDialogueVisible() const;
 
 protected:
     // Current dish data

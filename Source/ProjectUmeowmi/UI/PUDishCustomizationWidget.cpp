@@ -1,5 +1,8 @@
 #include "PUDishCustomizationWidget.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
+#include "../ProjectUmeowmiCharacter.h"
+#include "PUDialogueBox.h"
+#include "Kismet/GameplayStatics.h"
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "PUPopupData.h"
@@ -1221,7 +1224,7 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
                 FTimerHandle FocusRestoreTimerHandle;
                 World->GetTimerManager().SetTimer(FocusRestoreTimerHandle, [PrepSlotToFocus, this]()
                 {
-                    if (PrepSlotToFocus.IsValid())
+                    if (PrepSlotToFocus.IsValid() && !IsDialogueVisible())
                     {
                         UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::OnPantrySlotClicked - Restoring focus to prep slot: %s"), 
                             *PrepSlotToFocus->GetName());
@@ -1366,6 +1369,7 @@ void UPUDishCustomizationWidget::SubscribeToEvents()
         if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
         {
             GI->OnPopupClosedEvent.AddDynamic(this, &UPUDishCustomizationWidget::OnPopupClosedForFocusRestore);
+            GI->OnDialogueClosedEvent.AddDynamic(this, &UPUDishCustomizationWidget::OnDialogueClosedForFocusRestore);
         }
         
         //UE_LOG(LogTemp,Display, TEXT("✅ PUDishCustomizationWidget::SubscribeToEvents - All events subscribed successfully"));
@@ -1393,14 +1397,50 @@ void UPUDishCustomizationWidget::UnsubscribeFromEvents()
     if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
     {
         GI->OnPopupClosedEvent.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPopupClosedForFocusRestore);
+        GI->OnDialogueClosedEvent.RemoveDynamic(this, &UPUDishCustomizationWidget::OnDialogueClosedForFocusRestore);
+    }
+}
+
+void UPUDishCustomizationWidget::OnDialogueClosedForFocusRestore()
+{
+    // When dialogue closes and we're customizing, restore focus to dish customization (controller support).
+    if (!CustomizationComponent || !CustomizationComponent->IsCustomizing())
+    {
+        return;
+    }
+    if (bPantryOpen)
+    {
+        SetInitialFocusForPantry();
+    }
+    else if (StageType == EDishCustomizationStageType::Cooking || StageType == EDishCustomizationStageType::Plating)
+    {
+        SetInitialFocusForCookingStage();
+    }
+    else
+    {
+        SetInitialFocusForPrepStage();
     }
 }
 
 void UPUDishCustomizationWidget::OnPopupClosedForFocusRestore(FName ButtonID)
 {
-    // When a popup closes (e.g. tutorial) and the pantry is open, restore focus to the pantry
+    // When a popup closes (e.g. tutorial) and the pantry is open, restore focus to the pantry.
+    // Skip if dialogue is visible - popup-close handler already restored focus to dialogue (dialogue has priority).
     if (bPantryOpen)
     {
+        if (ACharacter* PC = UGameplayStatics::GetPlayerCharacter(this, 0))
+        {
+            if (AProjectUmeowmiCharacter* Char = Cast<AProjectUmeowmiCharacter>(PC))
+            {
+                if (UPUDialogueBox* DialogueBox = Char->GetDialogueBox())
+                {
+                    if (DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+                    {
+                        return; // Dialogue has focus, don't steal it
+                    }
+                }
+            }
+        }
         SetInitialFocusForPantry();
     }
 }
@@ -2594,10 +2634,10 @@ void UPUDishCustomizationWidget::OpenPantry()
     // Call Blueprint event to trigger UMG animation
     OnPantryOpened();
     
-    // Set initial focus for pantry - but NOT when a popup is showing (tutorial, etc.)
-    // Otherwise we steal focus from the popup/dialogue and the user can't dismiss it with controller
+    // Set initial focus for pantry - but NOT when a popup or dialogue is showing.
+    // Otherwise we steal focus and the user can't dismiss/advance with controller.
     UPUProjectUmeowmiGameInstance* GICheck = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
-    if (!GICheck || !GICheck->IsPopupShowing())
+    if ((!GICheck || !GICheck->IsPopupShowing()) && !IsDialogueVisible())
     {
         SetInitialFocusForPantry();
     }
@@ -3123,8 +3163,29 @@ void UPUDishCustomizationWidget::SetupPantrySlotNavigation()
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - Navigation setup complete for %d pantry slots"), PantrySlots.Num());
 }
 
+bool UPUDishCustomizationWidget::IsDialogueVisible() const
+{
+    UWorld* World = GetWorld();
+    if (!World) return false;
+    if (ACharacter* PC = UGameplayStatics::GetPlayerCharacter(World, 0))
+    {
+        if (AProjectUmeowmiCharacter* Char = Cast<AProjectUmeowmiCharacter>(PC))
+        {
+            if (UPUDialogueBox* DialogueBox = Char->GetDialogueBox())
+            {
+                return DialogueBox->GetVisibility() == ESlateVisibility::Visible;
+            }
+        }
+    }
+    return false;
+}
+
 void UPUDishCustomizationWidget::SetInitialFocusForPantry()
 {
+    if (IsDialogueVisible())
+    {
+        return; // Dialogue has priority - don't steal focus
+    }
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Setting initial focus for pantry"));
     
     // Ensure this widget can receive focus first
@@ -3145,7 +3206,7 @@ void UPUDishCustomizationWidget::SetInitialFocusForPantry()
             FTimerHandle FocusTimerHandle;
             GetWorld()->GetTimerManager().SetTimer(FocusTimerHandle, [WeakSlot = TWeakObjectPtr<UPUIngredientSlot>(PantrySlot), this]()
             {
-                if (WeakSlot.IsValid())
+                if (WeakSlot.IsValid() && !IsDialogueVisible())
                 {
                     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Setting focus to pantry slot: %s"), 
                         *WeakSlot->GetName());
@@ -3264,6 +3325,10 @@ void UPUDishCustomizationWidget::SetupCookingSlotNavigation()
 
 void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
 {
+    if (IsDialogueVisible())
+    {
+        return; // Dialogue has priority - don't steal focus
+    }
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Setting initial focus for cooking stage"));
     
     SetIsFocusable(true);
@@ -3285,7 +3350,6 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
     }
     
     if (!FirstSlot)
-    if (!FirstSlot)
     {
         UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - No cooking stage slots found"));
         return;
@@ -3303,7 +3367,7 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
         
         World->GetTimerManager().SetTimer(InitialFocusTimerHandle, [WeakSlot, this]()
         {
-            if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel())
+            if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel() && !IsDialogueVisible())
             {
                 UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
                 
@@ -3346,6 +3410,10 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
 
 void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
 {
+    if (IsDialogueVisible())
+    {
+        return; // Dialogue has priority - don't steal focus
+    }
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Setting initial focus for prep stage"));
     
     // Ensure this widget can receive focus first
@@ -3376,7 +3444,7 @@ void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
                 
                 World->GetTimerManager().SetTimer(InitialFocusTimerHandle, [WeakSlot, this]()
                 {
-                    if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel())
+                    if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel() && !IsDialogueVisible())
                     {
                         UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
                         

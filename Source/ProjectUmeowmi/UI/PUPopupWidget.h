@@ -29,6 +29,9 @@ public:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
+	/** F or A (gamepad) to close/confirm popup */
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+
 	/**
 	 * Set the popup data and update the UI
 	 * @param InPopupData - The popup configuration data

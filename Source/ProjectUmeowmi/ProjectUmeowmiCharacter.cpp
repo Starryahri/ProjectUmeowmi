@@ -5,6 +5,7 @@
 #include "Engine/DataTable.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -74,6 +75,14 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	DishPreviewComponent = CreateDefaultSubobject<UPUDishPreviewComponent>(TEXT("DishPreview"));
 	DishPreviewComponent->SetupAttachment(RootComponent);
 	DishPreviewComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 90.0f)); // Above character head
+
+	// Dish mesh created here (not in DishPreviewComponent) to avoid template/instance attachment mismatch in Blueprint subclasses (BP_Bao)
+	DishPreviewMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DishPreviewMesh"));
+	DishPreviewMeshComponent->SetupAttachment(DishPreviewComponent);
+	DishPreviewMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	DishPreviewMeshComponent->SetCastShadow(true);
+	DishPreviewMeshComponent->SetVisibility(false);
+	DishPreviewComponent->SetDishMeshComponent(DishPreviewMeshComponent);
 
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-15.0f, 45.0f, 0.0f);

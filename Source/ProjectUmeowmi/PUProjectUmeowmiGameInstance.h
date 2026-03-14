@@ -396,6 +396,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Popup Manager|Events", meta = (DisplayName = "On Popup Closed"))
 	FOnPopupClosedEvent OnPopupClosedEvent;
 
+	/** Broadcast when dialogue box closes. Use to restore focus (e.g. dish customization opened from dialogue). */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueClosedEvent);
+	UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events", meta = (DisplayName = "On Dialogue Closed"))
+	FOnDialogueClosedEvent OnDialogueClosedEvent;
+
+	/** Called by dialogue box when it closes (internal use) */
+	UFUNCTION(BlueprintCallable, Category = "Dialogue")
+	void NotifyDialogueClosed();
+
 protected:
 	// Saved player state
 	UPROPERTY(BlueprintReadWrite, Category = "Level Transition")

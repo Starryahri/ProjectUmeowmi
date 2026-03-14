@@ -14,7 +14,6 @@
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
 #include "ProjectUmeowmi/Interactables/PUCookingStation.h"
-#include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "Engine/GameViewportClient.h"
 #include "Camera/CameraComponent.h"
@@ -343,6 +342,15 @@ void UPUDialogueBox::Close_Implementation()
     if (PC)
     {
         //UE_LOG(LogTemp,Log, TEXT("Found player controller: %p"), PC);
+
+        // Notify GameInstance so dish customization etc. can restore focus
+        if (UWorld* World = GetWorld())
+        {
+            if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+            {
+                GI->NotifyDialogueClosed();
+            }
+        }
         
         // Re-enable player movement and input
         PC->SetIgnoreMoveInput(false);
@@ -774,6 +782,22 @@ void UPUDialogueBox::CompleteTypewriter()
     {
         DialogueText->SetText(FText::FromString(FullDialogueText));
     }
+}
+
+UWidget* UPUDialogueBox::GetFocusTarget() const
+{
+    if (GetVisibility() != ESlateVisibility::Visible)
+    {
+        return nullptr;
+    }
+    if (IsValid(DialogueOptions) && DialogueOptions->GetChildrenCount() > 0)
+    {
+        if (UPUDialogueOption* FirstOption = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(0)))
+        {
+            if (FirstOption->OptionButton) return FirstOption->OptionButton;
+        }
+    }
+    return const_cast<UPUDialogueBox*>(this);
 }
 
 void UPUDialogueBox::AdvanceDialogue()

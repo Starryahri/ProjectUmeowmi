@@ -14,6 +14,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "UObject/StructOnScope.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Input/Events.h"
 #include "GameFramework/PlayerController.h"
 #include "Blueprint/GameViewportSubsystem.h"
 
@@ -61,6 +62,44 @@ void UPUPopupWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	{
 		ApplyDeferredFocus();
 	}
+}
+
+FReply UPUPopupWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	const FKey Key = InKeyEvent.GetKey();
+
+	// F or A (gamepad) or Enter/Space - close/confirm popup (same as clicking primary button)
+	if (Key == EKeys::F || Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
+	{
+		// Trigger primary action: first button, or close button, or Close(NAME_None)
+		if (SpawnedButtons.Num() > 0 && IsValid(SpawnedButtons[0]))
+		{
+			FName ButtonID = GetButtonID(SpawnedButtons[0]);
+			if (ButtonID != NAME_None)
+			{
+				HandleButtonClickWithIDDirect(ButtonID);
+			}
+			else
+			{
+				HandleButtonClick();
+			}
+			return FReply::Handled();
+		}
+		if (SpawnedButtonWidgets.Num() > 0 && CurrentPopupData.Buttons.Num() > 0)
+		{
+			HandleButtonClickWithIDDirect(CurrentPopupData.Buttons[0].ButtonID);
+			return FReply::Handled();
+		}
+		if (CloseButton && CloseButton->GetVisibility() == ESlateVisibility::Visible)
+		{
+			HandleButtonClick();
+			return FReply::Handled();
+		}
+		Close(NAME_None);
+		return FReply::Handled();
+	}
+
+	return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
 }
 
 void UPUPopupWidget::ApplyDeferredFocus()

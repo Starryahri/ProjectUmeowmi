@@ -16,6 +16,7 @@
 
 class USpringArmComponent;
 class UCameraComponent;
+class UStaticMeshComponent;
 class UPUEmoteWidget;
 struct FTimerHandle;
 class UInputMappingContext;
@@ -240,6 +241,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** 3D preview of plated dish shown above character when carrying a dish to give. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Preview", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UPUDishPreviewComponent> DishPreviewComponent;
+
+	/** Dish mesh for preview - created here (not in DishPreviewComponent) to avoid template/instance attachment mismatch in Blueprint subclasses. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Preview", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStaticMeshComponent> DishPreviewMeshComponent;
 
 
     // IDlgDialogueParticipant Interface

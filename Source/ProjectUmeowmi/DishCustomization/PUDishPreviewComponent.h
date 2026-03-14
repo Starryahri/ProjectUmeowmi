@@ -23,6 +23,9 @@ class PROJECTUMEOWMI_API UPUDishPreviewComponent : public USceneComponent
 public:
     UPUDishPreviewComponent();
 
+    /** Initialize with an externally-created DishMeshComponent (avoids template/instance mismatch in Blueprint subclasses). Call from owning Actor's constructor. */
+    void SetDishMeshComponent(UStaticMeshComponent* InDishMesh);
+
     /** Build the preview from dish data. Clears any existing preview first. */
     UFUNCTION(BlueprintCallable, Category = "Dish Preview")
     void BuildFromDishData(const FPUDishBase& DishData);
@@ -60,8 +63,9 @@ public:
     TSubclassOf<APUIngredientMesh> IngredientMeshClass;
 
 protected:
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Preview")
-    UStaticMeshComponent* DishMeshComponent;
+    /** Dish mesh - created by owning Actor to avoid template/instance attachment mismatch in Blueprint subclasses. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Preview", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UStaticMeshComponent> DishMeshComponent;
 
     UPROPERTY()
     TArray<APUIngredientMesh*> PreviewIngredientMeshes;

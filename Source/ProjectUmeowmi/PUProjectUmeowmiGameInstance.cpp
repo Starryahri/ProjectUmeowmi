@@ -1,5 +1,6 @@
 #include "PUProjectUmeowmiGameInstance.h"
 #include "ProjectUmeowmiCharacter.h"
+#include "UI/PUDialogueBox.h"
 #include "Dialogue/TalkingObject.h"
 #include "LevelTransition/PULevelSpawnPoint.h"
 #include "PUPlayerSaveGame.h"
@@ -1061,6 +1062,11 @@ void UPUProjectUmeowmiGameInstance::NotifyPopupClosed(FName ButtonID)
 	OnPopupWidgetClosed(ButtonID);
 }
 
+void UPUProjectUmeowmiGameInstance::NotifyDialogueClosed()
+{
+	OnDialogueClosedEvent.Broadcast();
+}
+
 void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 {
 	// Restore input after popup closes - must use GameAndUI with DoNotLock (FInputModeGameOnly
@@ -1088,7 +1094,25 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 			UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OnPopupWidgetClosed - bInCustomization=%d"), bInCustomization);
 			// Use Reset to clear stacked ignore state; SetIgnore* uses a counter that accumulates across popups
 			PlayerController->ResetIgnoreInputFlags();
-			if (bInCustomization)
+			AProjectUmeowmiCharacter* PlayerChar = nullptr;
+			if (APawn* Pawn = PlayerController->GetPawn())
+			{
+				PlayerChar = Cast<AProjectUmeowmiCharacter>(Pawn);
+			}
+			bool bDialogueVisible = false;
+			UWidget* FocusTarget = nullptr;
+			if (PlayerChar)
+			{
+				if (UPUDialogueBox* DialogueBox = PlayerChar->GetDialogueBox())
+				{
+					bDialogueVisible = (DialogueBox->GetVisibility() == ESlateVisibility::Visible);
+					if (bDialogueVisible)
+					{
+						FocusTarget = DialogueBox->GetFocusTarget();
+					}
+				}
+			}
+			if (bInCustomization || bDialogueVisible)
 			{
 				PlayerController->SetIgnoreMoveInput(true);
 				PlayerController->SetIgnoreLookInput(true);
@@ -1096,13 +1120,21 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 
 			// GameAndUI + DoNotLock: allows free mouse for UI and 3D ingredient interaction
 			FInputModeGameAndUI InputMode;
-			InputMode.SetWidgetToFocus(nullptr);
 			InputMode.SetHideCursorDuringCapture(false);
 			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+			// Restore focus to dialogue if still visible (popup had priority, now hand back to dialogue)
+			if (FocusTarget)
+			{
+				if (TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget())
+				{
+					InputMode.SetWidgetToFocus(SlateWidget);
+				}
+			}
 			PlayerController->SetInputMode(InputMode);
 			PlayerController->bShowMouseCursor = true;
 
-			UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed - Input restored"));
+			UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed - Input restored (focus: %s)"), FocusTarget ? *FocusTarget->GetName() : TEXT("none"));
 		}
 	}
 

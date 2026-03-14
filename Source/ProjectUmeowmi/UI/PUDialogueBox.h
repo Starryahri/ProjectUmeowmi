@@ -94,6 +94,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void AdvanceDialogue();
 
+    /** Request focus (e.g. when popup closes and dialogue is still visible). Returns the widget to focus, or nullptr. */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    UWidget* GetFocusTarget() const;
+
     /** Skip mode: fast typewriter, no sound, auto-advance when single option. Toggle via SetSkipMode or Skip button. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue|Skip")
     bool IsSkipMode() const { return bSkipMode; }

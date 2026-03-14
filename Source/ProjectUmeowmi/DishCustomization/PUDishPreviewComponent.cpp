@@ -12,12 +12,12 @@ DEFINE_LOG_CATEGORY(LogDishPreview);
 UPUDishPreviewComponent::UPUDishPreviewComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
+    DishMeshComponent = nullptr;  // Set via SetDishMeshComponent from owning Actor to avoid template/instance mismatch
+}
 
-    DishMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DishMesh"));
-    DishMeshComponent->SetupAttachment(this);
-    DishMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    DishMeshComponent->SetCastShadow(true);
-    DishMeshComponent->SetVisibility(false);
+void UPUDishPreviewComponent::SetDishMeshComponent(UStaticMeshComponent* InDishMesh)
+{
+    DishMeshComponent = InDishMesh;
 }
 
 void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
@@ -104,7 +104,7 @@ void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
     {
         DishMesh = LoadObject<UStaticMesh>(nullptr, *DefaultDishMesh.ToString());
     }
-    if (DishMesh)
+    if (DishMesh && DishMeshComponent)
     {
         DishMeshComponent->SetStaticMesh(DishMesh);
         DishMeshComponent->SetVisibility(true);
@@ -137,7 +137,7 @@ void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
     int32 NonPlatedIndex = 0;
 
     // Dish position is the origin for ingredients - use dish (or component) as parent
-    USceneComponent* IngredientParent = DishMeshComponent->GetStaticMesh() ? DishMeshComponent : ParentComponent;
+    USceneComponent* IngredientParent = (DishMeshComponent && DishMeshComponent->GetStaticMesh()) ? DishMeshComponent : ParentComponent;
 
     if (DishData.PlatingEntries.Num() > 0)
     {
@@ -278,8 +278,11 @@ void UPUDishPreviewComponent::ClearPreview()
     }
     PreviewIngredientMeshes.Empty();
 
-    DishMeshComponent->SetStaticMesh(nullptr);
-    DishMeshComponent->SetVisibility(false);
+    if (DishMeshComponent)
+    {
+        DishMeshComponent->SetStaticMesh(nullptr);
+        DishMeshComponent->SetVisibility(false);
+    }
 
     bHasPreview = false;
 }
