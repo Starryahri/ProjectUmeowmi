@@ -158,6 +158,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UStaticMesh> IngredientMesh;
 
+    /** Pre-computed average tint color from texture. Used in packaged builds where runtime texture sampling fails.
+     *  Set in editor (or leave default white). Run "Bake Average Color" in editor to populate from texture. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    FLinearColor AverageTintColor = FLinearColor::White;
+
     // Flavor Aspects
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Aspects")
     FFlavorAspects FlavorAspects;

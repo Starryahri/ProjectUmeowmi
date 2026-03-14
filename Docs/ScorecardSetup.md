@@ -13,6 +13,7 @@ The scorecard displays when you complete and deliver an order to a dish giver. I
 
 1. Create a Widget Blueprint that inherits from **PUScorecardWidget**.
 2. Add these child widgets from the **Palette** (drag and drop, name them exactly):
+   - **DishNameText** – Text Block (dish name; populated from completed dish)
    - **DishImage** – Image (for the dish capture)
    - **SealImage** – Image (for the seal; texture changes by tier)
    - **BaseIngredientsContainer** – Vertical Box (for base ingredients list)

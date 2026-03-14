@@ -4,6 +4,8 @@
 #include "../DishCustomization/PUOrderBase.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "Components/Image.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
@@ -71,6 +73,12 @@ void UPUScorecardWidget::UpdateDisplay()
 		BaseIngredientsContainer ? TEXT("OK") : TEXT("NULL"), FlavorProfileContainer ? TEXT("OK") : TEXT("NULL"), TextureProfileContainer ? TEXT("OK") : TEXT("NULL"),
 		AspectProfileWidgetClass ? *AspectProfileWidgetClass->GetName() : TEXT("NULL (using C++ default)"));
 
+	// Dish name text
+	if (DishNameText)
+	{
+		DishNameText->SetText(ScorecardData.DisplayName);
+	}
+
 	// Dish image: use override or leave for Blueprint to set from CompletedDish
 	if (DishImage)
 	{
@@ -83,31 +91,90 @@ void UPUScorecardWidget::UpdateDisplay()
 
 	UpdateSealImage();
 
-	// Base ingredients (icon + text per ingredient)
+	// Base ingredients: SizeBox -> Overlay -> IconImage + checkmark/X (bottom-right)
 	if (BaseIngredientsContainer && WidgetTree)
 	{
 		BaseIngredientsContainer->ClearChildren();
 		UE_LOG(LogTemp, Display, TEXT("[Scorecard] UpdateDisplay: Adding %d base ingredients"), ScorecardData.BaseIngredients.Num());
 		for (const FPUBaseIngredientEntry& Entry : ScorecardData.BaseIngredients)
 		{
-			if (!Entry.PreviewTexture) continue;
+			USizeBox* EntrySizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+			if (!EntrySizeBox) continue;
 
-			UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
-			if (!IconImage) continue;
+			EntrySizeBox->SetWidthOverride(128.0f);
+			EntrySizeBox->SetHeightOverride(128.0f);
 
-			IconImage->SetBrushFromTexture(Entry.PreviewTexture);
-			USizeBox* IconSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-			if (IconSizeBox)
+			UOverlay* EntryOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+			if (!EntryOverlay)
 			{
-				IconSizeBox->SetWidthOverride(128.0f);
-				IconSizeBox->SetHeightOverride(128.0f);
-				IconSizeBox->AddChild(IconImage);
-				BaseIngredientsContainer->AddChild(IconSizeBox);
+				BaseIngredientsContainer->AddChild(EntrySizeBox);
+				continue;
+			}
+
+			// Icon (fills overlay at 128x128; use placeholder if no texture so checkmark/X still shows)
+			UImage* IconImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+			if (IconImage)
+			{
+				if (Entry.PreviewTexture)
+				{
+					IconImage->SetBrushFromTexture(Entry.PreviewTexture);
+					FSlateBrush Brush = IconImage->GetBrush();
+					Brush.SetImageSize(FVector2D(128.0f, 128.0f));
+					IconImage->SetBrush(Brush);
+				}
+				EntryOverlay->AddChild(IconImage);
+			}
+
+			// Checkmark/X in bottom-right of overlay
+			UTexture2D* CheckTex = CheckmarkTexture.LoadSynchronous();
+			UTexture2D* XTex = XTexture.LoadSynchronous();
+			UWidget* StatusWidget = nullptr;
+			if (CheckTex && XTex)
+			{
+				UImage* StatusImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+				if (StatusImage)
+				{
+					StatusImage->SetBrushFromTexture(Entry.bObtained ? CheckTex : XTex);
+					FSlateBrush StatusBrush = StatusImage->GetBrush();
+					StatusBrush.SetImageSize(FVector2D(StatusIconSize, StatusIconSize));
+					StatusImage->SetBrush(StatusBrush);
+					USizeBox* StatusSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+					if (StatusSizeBox)
+					{
+						StatusSizeBox->SetWidthOverride(StatusIconSize);
+						StatusSizeBox->SetHeightOverride(StatusIconSize);
+						StatusSizeBox->AddChild(StatusImage);
+						StatusWidget = StatusSizeBox;
+					}
+					else
+					{
+						StatusWidget = StatusImage;
+					}
+				}
 			}
 			else
 			{
-				BaseIngredientsContainer->AddChild(IconImage);
+				UTextBlock* StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+				if (StatusText)
+				{
+					StatusText->SetText(FText::FromString(Entry.bObtained ? TEXT("\u2713") : TEXT("\u2717")));
+					StatusText->SetColorAndOpacity(FSlateColor(Entry.bObtained ? FLinearColor::Green : FLinearColor::Red));
+					StatusWidget = StatusText;
+				}
 			}
+
+			if (StatusWidget)
+			{
+				if (UOverlaySlot* StatusSlot = Cast<UOverlaySlot>(EntryOverlay->AddChild(StatusWidget)))
+				{
+					StatusSlot->SetHorizontalAlignment(HAlign_Right);
+					StatusSlot->SetVerticalAlignment(VAlign_Bottom);
+					StatusSlot->SetPadding(FMargin(0.0f, 0.0f, 4.0f, 4.0f));
+				}
+			}
+
+			EntrySizeBox->AddChild(EntryOverlay);
+			BaseIngredientsContainer->AddChild(EntrySizeBox);
 		}
 	}
 

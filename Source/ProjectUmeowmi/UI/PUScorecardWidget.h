@@ -63,6 +63,10 @@ public:
 protected:
 	virtual void NativeConstruct() override;
 
+	/** Dish name. Bind a Text Block named exactly "DishNameText". */
+	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
+	TObjectPtr<UTextBlock> DishNameText;
+
 	/** Dish capture/preview image */
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Scorecard")
 	TObjectPtr<UImage> DishImage;
@@ -96,6 +100,18 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Seals")
 	TSoftObjectPtr<UTexture2D> SealTextureGood;
+
+	/** Optional texture for checkmark (obtained ingredient). If unset, falls back to Unicode ✓. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Base Ingredients")
+	TSoftObjectPtr<UTexture2D> CheckmarkTexture;
+
+	/** Optional texture for X (missing ingredient). If unset, falls back to Unicode ✗. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Base Ingredients")
+	TSoftObjectPtr<UTexture2D> XTexture;
+
+	/** Size of checkmark/X image when using custom textures (default 32) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Base Ingredients", meta = (ClampMin = "8", ClampMax = "64"))
+	float StatusIconSize = 32.0f;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Scorecard")
 	FPUScorecardData ScorecardData;

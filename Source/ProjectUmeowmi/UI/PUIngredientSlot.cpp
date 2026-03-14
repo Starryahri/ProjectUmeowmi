@@ -1331,11 +1331,18 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
     }
 
     // Get the source image from the texture using FImageUtils
+    // NOTE: GetTexture2DSourceImage fails in packaged builds - source texture data is stripped during cooking.
+    // Fall back to AverageTintColor from ingredient data when this happens.
     FImage SourceImage;
     if (!FImageUtils::GetTexture2DSourceImage(Texture, SourceImage))
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetAverageColorFromIngredientTexture - Failed to get source image from texture: %s"),
-        //    *Texture->GetName());
+        // Packaged build or texture not ready - use pre-computed AverageTintColor from ingredient data
+        // Apply same saturation logic as runtime sampling (boost for non-suspicious, raw for suspicious)
+        FLinearColor BaseColor = IngredientInstance.IngredientData.AverageTintColor;
+        TArray<FGameplayTag> PrepTags;
+        IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
+        bool bIsSuspicious = PrepTags.Num() >= 2;
+        CachedAverageColor = bIsSuspicious ? BaseColor : BoostColorSaturation(BaseColor, ColorSaturationMultiplier);
         return;
     }
 

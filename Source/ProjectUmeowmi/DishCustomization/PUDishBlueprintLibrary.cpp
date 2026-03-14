@@ -882,6 +882,14 @@ namespace
                 CountForStars++;
             }
         }
+        // When dish has no ingredients, always show at least one aspect: "None", no icon, zero stars
+        if (Profile.TopAspects.Num() == 0)
+        {
+            FPUAspectRanking NoneRanking;
+            NoneRanking.AspectName = FName(TEXT("None"));
+            NoneRanking.StarRating = 0;
+            Profile.TopAspects.Add(NoneRanking);
+        }
         // Overall star rating: average of top 2 aspect totals (0-5 scale), rounded to integer
         if (CountForStars > 0)
         {
@@ -895,6 +903,9 @@ namespace
 FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& Order)
 {
     FPUScorecardData Data;
+
+    // Display name: dish name from completed dish
+    Data.DisplayName = GetCurrentDisplayName(Order.GetCompletedDish());
 
     // Seal tier: 3 tiers (Perfect, Great, Good)
     const float Score = Order.GetFinalSatisfactionScore();
@@ -914,7 +925,8 @@ FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& O
     // Base ingredients: prefer BaseDish (recipe), fallback to CompletedDish when recipe has none
     const FPUDishBase& BaseDish = Order.BaseDish;
     const FPUDishBase& CompletedDish = Order.GetCompletedDish();
-    const TArray<FIngredientInstance>& IngredientSource = BaseDish.IngredientInstances.Num() > 0
+    const bool bUsingRecipe = BaseDish.IngredientInstances.Num() > 0;
+    const TArray<FIngredientInstance>& IngredientSource = bUsingRecipe
         ? BaseDish.IngredientInstances
         : CompletedDish.IngredientInstances;
     TSet<FGameplayTag> SeenTags;
@@ -927,6 +939,7 @@ FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& O
             FPUBaseIngredientEntry Entry;
             Entry.DisplayName = Instance.IngredientData.DisplayName;
             Entry.PreviewTexture = Instance.IngredientData.PantryTexture ? Instance.IngredientData.PantryTexture : Instance.IngredientData.PreviewTexture;
+            Entry.bObtained = bUsingRecipe ? HasIngredient(CompletedDish, Tag) : true;
             Data.BaseIngredients.Add(Entry);
         }
     }

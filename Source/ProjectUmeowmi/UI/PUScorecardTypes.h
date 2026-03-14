@@ -5,7 +5,7 @@
 #include "Engine/Texture2D.h"
 #include "PUScorecardTypes.generated.h"
 
-/** Single base ingredient entry for scorecard display (name + optional icon). */
+/** Single base ingredient entry for scorecard display (name + optional icon + obtained status). */
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUBaseIngredientEntry
 {
@@ -16,6 +16,10 @@ struct PROJECTUMEOWMI_API FPUBaseIngredientEntry
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
 	TObjectPtr<UTexture2D> PreviewTexture = nullptr;
+
+	/** True if the player included this core/base ingredient in the completed dish. Used for checkmark/X display. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
+	bool bObtained = true;
 };
 
 /** Seal of approval tier - 3 tiers for scorecard display. */
@@ -67,6 +71,10 @@ USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUScorecardData
 {
 	GENERATED_BODY()
+
+	/** Display name shown on the scorecard (e.g. dish name or order giver name). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
+	FText DisplayName;
 
 	/** Seal tier based on satisfaction score (Perfect/Great/Good). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
