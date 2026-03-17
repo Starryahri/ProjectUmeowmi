@@ -20,6 +20,12 @@ public class ProjectUmeowmiEditorUtilities : ModuleRules
 			"Blutility",
 			"UnrealEd",
 			"ImageWrapper",
+			"ContentBrowser",
+			"DesktopPlatform",
+			"DlgSystem",
+			"Slate",
+			"SlateCore",
+			"ToolMenus",
 		});
 
 		// ProjectUmeowmi module path for DishCustomization/PUIngredientBase.h

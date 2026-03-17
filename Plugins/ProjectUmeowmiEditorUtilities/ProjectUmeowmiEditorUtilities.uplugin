@@ -23,5 +23,11 @@
 	],
 	"TargetAllowList": [
 		"Editor"
+	],
+	"Plugins": [
+		{
+			"Name": "DlgSystem",
+			"Enabled": true
+		}
 	]
 }

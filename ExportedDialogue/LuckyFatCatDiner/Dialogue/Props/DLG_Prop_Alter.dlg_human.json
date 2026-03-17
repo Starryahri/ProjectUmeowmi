@@ -1,0 +1,44 @@
+{
+	"DialogueName": "DLG_Prop_Alter",
+	"DialogueGUID": "B3330B08484FA76BA388DC8752802160",
+	"SpeechNodes": [
+		{
+			"NodeIndex": -1,
+			"Speaker": "None",
+			"Text": "",
+			"Edges": [
+				{
+					"TargetNodeIndex": 0,
+					"Text": "Next"
+				},
+				{
+					"TargetNodeIndex": 1,
+					"Text": "Next"
+				}
+			]
+		},
+		{
+			"NodeIndex": 0,
+			"Speaker": "Bao",
+			"Text": "I don't see anything here about congee toppings either! Let alone anything tasty for Mom to snack on.",
+			"Edges": [
+				{
+					"TargetNodeIndex": 2,
+					"Text": "Finish"
+				}
+			]
+		},
+		{
+			"NodeIndex": 1,
+			"Speaker": "Bao",
+			"Text": "Nothing here about congee toppings!",
+			"Edges": [
+				{
+					"TargetNodeIndex": 2,
+					"Text": "Finish"
+				}
+			]
+		}
+	],
+	"SpeechSequenceNodes": []
+}
