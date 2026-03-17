@@ -25,10 +25,5 @@ public class ProjectUmeowmi : ModuleRules
 		"MovieScene"
 		});
         PrivateDependencyModuleNames.AddRange(new string[] { "DlgSystem" });
-
-        if (Target.bBuildEditor)
-        {
-            PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "Blutility" });
-        }
     }
 }

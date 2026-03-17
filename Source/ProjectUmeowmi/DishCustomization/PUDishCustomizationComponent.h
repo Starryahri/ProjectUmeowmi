@@ -29,6 +29,7 @@ public:
     UPUDishCustomizationComponent();
 
     virtual void BeginPlay() override;
+    virtual void BeginDestroy() override;
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
     // Activation/Deactivation

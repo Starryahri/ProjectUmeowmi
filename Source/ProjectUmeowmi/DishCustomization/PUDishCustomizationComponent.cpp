@@ -121,6 +121,20 @@ void UPUDishCustomizationComponent::BeginPlay()
     Super::BeginPlay();
 }
 
+void UPUDishCustomizationComponent::BeginDestroy()
+{
+#if WITH_EDITOR
+    // Unregister Slate delegate before destruction to prevent shutdown crash.
+    // EndCustomization() may not be called when editor closes or level unloads.
+    if (PreInputMouseDownHandle.IsValid() && FSlateApplication::IsInitialized())
+    {
+        FSlateApplication::Get().OnApplicationMousePreInputButtonDownListener().Remove(PreInputMouseDownHandle);
+        PreInputMouseDownHandle.Reset();
+    }
+#endif
+    Super::BeginDestroy();
+}
+
 void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);

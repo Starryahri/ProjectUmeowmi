@@ -2,6 +2,7 @@
 #include "PUDialogueOption.h"
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "DlgSystem/DlgContext.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/TextBlock.h"
 #include "CommonRichTextBlock.h"

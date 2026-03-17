@@ -592,4 +592,3 @@ UWidget* UPUPopupWidget::GetPreferredFocusTarget() const
 	// Fall back to popup root
 	return const_cast<UPUPopupWidget*>(this);
 }
-

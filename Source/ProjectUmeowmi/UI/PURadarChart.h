@@ -323,11 +323,14 @@ private:
     uint8 AnimationFps;
     TEnumAsByte<EEasingFunc::Type> AnimationEase;
 
-    /** Ensures ValueLayers has at least 2 layers (hint=0, player=1) and configures hint layer appearance. Returns false if layer count cannot be achieved. */
-    bool EnsureHintAndPlayerLayersExist();
+    /** Layer index to animate during fluctuations (1=player when dual-layer, 0 otherwise) */
+    int32 FluctuationLayerIndex;
 
     /** Sets values for a layer only if that layer exists. Returns true if set. */
     bool SetValuesForLayerSafe(int32 ValueLayerIndex, const TArray<float>& InValues);
+
+    /** Sets values for a layer with animation. Returns true if animation started. */
+    bool SetValuesAnimatedForLayer(int32 ValueLayerIndex, const TArray<float>& InValues, float Duration = 0.5f, uint8 Fps = 18, TEnumAsByte<EEasingFunc::Type> Ease = EEasingFunc::ExpoOut);
 
     /** Builds hint values from DiscoveredHints for the given aspect names and type. */
     TArray<float> BuildHintValuesFromDiscoveredHints(const TArray<FOrderAspectRequirement>& DiscoveredHints, const TArray<FName>& AspectNames, EOrderAspectType AspectType) const;

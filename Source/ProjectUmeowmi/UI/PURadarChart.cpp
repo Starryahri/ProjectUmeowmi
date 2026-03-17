@@ -19,6 +19,7 @@ UPURadarChart::UPURadarChart()
     , SettleDuration(0.5f)
     , AnimationFps(18)
     , AnimationEase(EEasingFunc::ExpoOut)
+    , FluctuationLayerIndex(0)
 {
     // Initialize with default segment count
     InitializeSegments();
@@ -851,41 +852,43 @@ bool UPURadarChart::SetValuesForLayerSafe(int32 ValueLayerIndex, const TArray<fl
     return true;
 }
 
-bool UPURadarChart::EnsureHintAndPlayerLayersExist()
+bool UPURadarChart::SetValuesAnimatedForLayer(int32 ValueLayerIndex, const TArray<float>& InValues, float Duration, uint8 Fps, TEnumAsByte<EEasingFunc::Type> Ease)
 {
-    const int32 RequiredLayers = 2;
-    const int32 SegmentCount = ChartStyle.Segments.Num();
-    if (SegmentCount <= 0)
+    if (!ValueLayers.IsValidIndex(ValueLayerIndex))
     {
         return false;
     }
-
-    while (ValueLayers.Num() < RequiredLayers)
+    if (InValues.Num() != ChartStyle.Segments.Num())
     {
-        FRadarChartValueLayer NewLayer;
-        NewLayer.RawValues.SetNumZeroed(SegmentCount);
-        NewLayer.Appearance.bShowShape = 1;
-        NewLayer.Appearance.bShowOutline = 1;
-        NewLayer.Appearance.bShowPins = 0;
-        ValueLayers.Add(NewLayer);
+        return false;
+    }
+    for (int32 i = 0; i < InValues.Num(); ++i)
+    {
+        if (!FMath::IsFinite(InValues[i]))
+        {
+            return false;
+        }
     }
 
-    // Configure hint layer (0) appearance: semi-transparent guide behind player shape
-    FRadarChartValueLayer& HintLayer = ValueLayers[0];
-    HintLayer.Appearance.bShowShape = bShowHintLayer ? 1 : 0;
-    HintLayer.Appearance.bShowOutline = 1;
-    HintLayer.Appearance.bShowPins = 0;
-    HintLayer.Appearance.BlendMode = ERadarChartBlendMode::Translucent;
-    HintLayer.Appearance.ShapeColor.Method = ERadarChartColorOverride::OverrideAlphaOnly;
-    HintLayer.Appearance.ShapeColor.Color = FLinearColor(1.0f, 1.0f, 1.0f, 0.25f);
-    HintLayer.Appearance.OutlineColor = FLinearColor(0.5f, 0.8f, 1.0f, 0.8f);
-    HintLayer.Appearance.OutlineThickness = 2.0f;
-    HintLayer.TextSettings.DisplayMode = ERadarChartValueDisplay::Disabled;
+    // Ensure RawValues for this layer is sized (SRadarChart::SetValuesAnimated requires it)
+    FRadarChartValueLayer& Layer = ValueLayers[ValueLayerIndex];
+    if (Layer.RawValues.Num() != ChartStyle.Segments.Num())
+    {
+        int32 OldSize = Layer.RawValues.Num();
+        Layer.RawValues.SetNum(ChartStyle.Segments.Num());
+        for (int32 i = OldSize; i < Layer.RawValues.Num(); ++i)
+        {
+            Layer.RawValues[i] = 0.0f;
+        }
+    }
 
-    // Ensure both layers have correct value count
-    UpdateValueLayers();
-
-    return ValueLayers.Num() >= RequiredLayers;
+    TSharedPtr<SRadarChart> RadarWidget = GetRadarWidget();
+    if (RadarWidget.IsValid())
+    {
+        RadarWidget->SetValuesAnimated(static_cast<uint8>(ValueLayerIndex), InValues, Duration, Fps, static_cast<EEasingFunc::Type>(Ease));
+        return true;
+    }
+    return false;
 }
 
 TArray<float> UPURadarChart::BuildHintValuesFromDiscoveredHints(const TArray<FOrderAspectRequirement>& DiscoveredHints, const TArray<FName>& AspectNames, EOrderAspectType AspectType) const
@@ -929,15 +932,17 @@ bool UPURadarChart::SetValuesFromOrderFlavorProfile(const FPUOrderBase& Order, c
         TEXT("Umami"), TEXT("Salt"), TEXT("Sweet"), TEXT("Sour"), TEXT("Bitter"), TEXT("Spicy")
     };
 
+    // Preserve layer 1 (player) RawValues so animation goes from current values to new, not zero to new
+    TArray<float> PreservedPlayerRawValues;
+    bool bSegmentCountChanged = (GetSegmentCount() != TOTAL_FLAVOR_ASPECTS);
+    if (!bSegmentCountChanged && ValueLayers.Num() > 1 && ValueLayers[1].RawValues.Num() == GetSegmentCount())
+    {
+        PreservedPlayerRawValues = ValueLayers[1].RawValues;
+    }
+
     if (!SetSegmentCount(TOTAL_FLAVOR_ASPECTS))
     {
         UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderFlavorProfile failed - SetSegmentCount"));
-        return false;
-    }
-
-    if (!EnsureHintAndPlayerLayersExist())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderFlavorProfile failed - EnsureHintAndPlayerLayersExist"));
         return false;
     }
 
@@ -978,18 +983,24 @@ bool UPURadarChart::SetValuesFromOrderFlavorProfile(const FPUOrderBase& Order, c
     }
     SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::ExpoOut);
 
+    // Restore preserved player values so animation goes from value-to-value
+    if (!bSegmentCountChanged && PreservedPlayerRawValues.Num() == TOTAL_FLAVOR_ASPECTS && ValueLayers.Num() > 1)
+    {
+        ValueLayers[1].RawValues = PreservedPlayerRawValues;
+    }
+
     if (!SetValuesForLayerSafe(0, HintValues))
     {
         UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderFlavorProfile failed - SetValuesForLayerSafe(0, hint)"));
         return false;
     }
-    if (!SetValuesForLayerSafe(1, PlayerValues))
+    if (!SetValuesAnimatedForLayer(1, PlayerValues, 0.5f, 18, EEasingFunc::ExpoOut))
     {
-        UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderFlavorProfile failed - SetValuesForLayerSafe(1, player)"));
+        UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderFlavorProfile failed - SetValuesAnimatedForLayer(1, player)"));
         return false;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("[Radar] Flavor: Layer0(hint) updated, Layer1(player) updated - scale %.0f"), NormalizationScale);
+    UE_LOG(LogTemp, Display, TEXT("[Radar] Flavor: Layer0(hint) updated, Layer1(player) animated - scale %.0f"), NormalizationScale);
     ForceRebuild();
     return true;
 }
@@ -1014,15 +1025,17 @@ bool UPURadarChart::SetValuesFromOrderTextureProfile(const FPUOrderBase& Order, 
         TEXT("Rich"), TEXT("Juicy"), TEXT("Tender"), TEXT("Chewy"), TEXT("Crispy"), TEXT("Crumbly")
     };
 
+    // Preserve layer 1 (player) RawValues so animation goes from current values to new, not zero to new
+    TArray<float> PreservedPlayerRawValues;
+    bool bSegmentCountChanged = (GetSegmentCount() != TOTAL_TEXTURE_ASPECTS);
+    if (!bSegmentCountChanged && ValueLayers.Num() > 1 && ValueLayers[1].RawValues.Num() == GetSegmentCount())
+    {
+        PreservedPlayerRawValues = ValueLayers[1].RawValues;
+    }
+
     if (!SetSegmentCount(TOTAL_TEXTURE_ASPECTS))
     {
         UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderTextureProfile failed - SetSegmentCount"));
-        return false;
-    }
-
-    if (!EnsureHintAndPlayerLayersExist())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderTextureProfile failed - EnsureHintAndPlayerLayersExist"));
         return false;
     }
 
@@ -1063,18 +1076,24 @@ bool UPURadarChart::SetValuesFromOrderTextureProfile(const FPUOrderBase& Order, 
     }
     SetNormalizationScaleAnimated(NormalizationScale, 0.5f, 18, EEasingFunc::ExpoOut);
 
+    // Restore preserved player values so animation goes from value-to-value
+    if (!bSegmentCountChanged && PreservedPlayerRawValues.Num() == TOTAL_TEXTURE_ASPECTS && ValueLayers.Num() > 1)
+    {
+        ValueLayers[1].RawValues = PreservedPlayerRawValues;
+    }
+
     if (!SetValuesForLayerSafe(0, HintValues))
     {
         UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderTextureProfile failed - SetValuesForLayerSafe(0, hint)"));
         return false;
     }
-    if (!SetValuesForLayerSafe(1, PlayerValues))
+    if (!SetValuesAnimatedForLayer(1, PlayerValues, 0.5f, 18, EEasingFunc::ExpoOut))
     {
-        UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderTextureProfile failed - SetValuesForLayerSafe(1, player)"));
+        UE_LOG(LogTemp, Warning, TEXT("[Radar] SetValuesFromOrderTextureProfile failed - SetValuesAnimatedForLayer(1, player)"));
         return false;
     }
 
-    UE_LOG(LogTemp, Display, TEXT("[Radar] Texture: Layer0(hint) updated, Layer1(player) updated - scale %.0f"), NormalizationScale);
+    UE_LOG(LogTemp, Display, TEXT("[Radar] Texture: Layer0(hint) updated, Layer1(player) animated - scale %.0f"), NormalizationScale);
     ForceRebuild();
     return true;
 }
@@ -1104,13 +1123,13 @@ bool UPURadarChart::SetValuesFromDishFlavorProfileWithFluctuations(
     // Always show all 6 segments
     int32 TotalSegments = TOTAL_FLAVOR_ASPECTS;
     
-    // CRITICAL: Preserve current RawValues before changing segment count
+    // CRITICAL: Preserve current RawValues before changing segment count (layer 1=player when dual-layer, else 0)
+    const int32 PreserveLayerIndex = (ValueLayers.Num() >= 2) ? 1 : 0;
     TArray<float> PreservedRawValues;
     bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
-    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    if (!bSegmentCountChanged && ValueLayers.IsValidIndex(PreserveLayerIndex) && ValueLayers[PreserveLayerIndex].RawValues.Num() == GetSegmentCount())
     {
-        PreservedRawValues = ValueLayers[0].RawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Preserving %d current RawValues"), PreservedRawValues.Num());
+        PreservedRawValues = ValueLayers[PreserveLayerIndex].RawValues;
     }
     
     // Set the number of segments
@@ -1121,10 +1140,9 @@ bool UPURadarChart::SetValuesFromDishFlavorProfileWithFluctuations(
     }
     
     // Restore preserved RawValues if segment count didn't change
-    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.IsValidIndex(PreserveLayerIndex))
     {
-        ValueLayers[0].RawValues = PreservedRawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Restored preserved RawValues"));
+        ValueLayers[PreserveLayerIndex].RawValues = PreservedRawValues;
     }
     
     // Prepare arrays for values and names
@@ -1201,13 +1219,13 @@ bool UPURadarChart::SetValuesFromDishTextureProfileWithFluctuations(
     // Always show all 6 segments
     int32 TotalSegments = TOTAL_TEXTURE_ASPECTS;
     
-    // CRITICAL: Preserve current RawValues before changing segment count
+    // CRITICAL: Preserve current RawValues before changing segment count (layer 1=player when dual-layer, else 0)
+    const int32 PreserveLayerIndex = (ValueLayers.Num() >= 2) ? 1 : 0;
     TArray<float> PreservedRawValues;
     bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
-    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    if (!bSegmentCountChanged && ValueLayers.IsValidIndex(PreserveLayerIndex) && ValueLayers[PreserveLayerIndex].RawValues.Num() == GetSegmentCount())
     {
-        PreservedRawValues = ValueLayers[0].RawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Preserving %d current RawValues"), PreservedRawValues.Num());
+        PreservedRawValues = ValueLayers[PreserveLayerIndex].RawValues;
     }
     
     // Set the number of segments
@@ -1218,10 +1236,9 @@ bool UPURadarChart::SetValuesFromDishTextureProfileWithFluctuations(
     }
     
     // Restore preserved RawValues if segment count didn't change
-    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.IsValidIndex(PreserveLayerIndex))
     {
-        ValueLayers[0].RawValues = PreservedRawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Restored preserved RawValues"));
+        ValueLayers[PreserveLayerIndex].RawValues = PreservedRawValues;
     }
     
     // Prepare arrays for values and names
@@ -1335,6 +1352,9 @@ void UPURadarChart::SetValuesWithFluctuations(
     // Cancel any existing fluctuation animation
     CancelFluctuationAnimation();
 
+    // Use layer 1 (player) when we have dual-layer setup (hint + player), else layer 0
+    FluctuationLayerIndex = (ValueLayers.Num() >= 2) ? 1 : 0;
+
     // Store parameters
     FinalTargetValues = InValues;
     FluctuationIntensity = FMath::Clamp(InFluctuationIntensity, 0.0f, 1.0f);
@@ -1386,11 +1406,11 @@ void UPURadarChart::ProcessFluctuationStep()
         return;
     }
 
-    // Get current values from the chart
+    // Get current values from the layer we're animating
     TArray<float> CurrentValues;
-    if (ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == ChartStyle.Segments.Num())
+    if (ValueLayers.IsValidIndex(FluctuationLayerIndex) && ValueLayers[FluctuationLayerIndex].RawValues.Num() == ChartStyle.Segments.Num())
     {
-        CurrentValues = ValueLayers[0].RawValues;
+        CurrentValues = ValueLayers[FluctuationLayerIndex].RawValues;
     }
     else
     {
@@ -1419,8 +1439,8 @@ void UPURadarChart::ProcessFluctuationStep()
         //UE_LOG(LogTemp,Log, TEXT("PURadarChart::ProcessFluctuationStep: Final step - Settling on target values"));
     }
 
-    // Animate to the target values
-    SetValuesAnimated(TargetValues, AnimationDuration, AnimationFps, AnimationEase);
+    // Animate to the target values on the correct layer
+    SetValuesAnimatedForLayer(FluctuationLayerIndex, TargetValues, AnimationDuration, AnimationFps, AnimationEase);
 
     // Schedule next step
     CurrentFluctuationStep++;

@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "PUEditorUtilityBakeAverageColor.h"
-#include "../DishCustomization/PUIngredientBase.h"
+#include "DishCustomization/PUIngredientBase.h"
 #include "Engine/DataTable.h"
 #include "Engine/Texture2D.h"
 #include "ImageUtils.h"
@@ -92,6 +92,14 @@ namespace
 		);
 		return true;
 	}
+}
+
+FLinearColor UPUEditorUtilityBakeAverageColor::BakeAverageColorForIngredientRow(UDataTable* DataTable, FName RowName)
+{
+	if (!DataTable) return FLinearColor::White;
+	const FPUIngredientBase* Row = DataTable->FindRow<FPUIngredientBase>(RowName, TEXT("BakeAverageColorForIngredientRow"));
+	if (!Row) return FLinearColor::White;
+	return BakeAverageColorForIngredient(*Row);
 }
 
 FLinearColor UPUEditorUtilityBakeAverageColor::BakeAverageColorForIngredient(const FPUIngredientBase& Ingredient)
