@@ -29,6 +29,9 @@ public:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
+	/** F or A (gamepad) to close/confirm popup */
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+
 	/**
 	 * Set the popup data and update the UI
 	 * @param InPopupData - The popup configuration data
@@ -48,6 +51,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Popup")
 	const FPopupData& GetPopupData() const { return CurrentPopupData; }
+
+	/**
+	 * Get the preferred widget to receive focus when the popup is shown (for controller support).
+	 * Returns the first button, close button, or the popup itself.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Popup")
+	UWidget* GetPreferredFocusTarget() const;
 
 protected:
 	// UI Elements (use BindWidget meta to auto-bind from Blueprint)
@@ -88,6 +98,15 @@ protected:
 	// Auto-dismiss timer
 	FTimerHandle AutoDismissTimer;
 
+	// Deferred focus timer - focus must be set next frame for controller/gamepad to work
+	FTimerHandle DeferredFocusTimerHandle;
+
+	// Track if we've applied deferred focus (SetWidgetToFocus can fail if widget isn't ready)
+	bool bHasAppliedDeferredFocus = false;
+
+	// Apply focus to preferred target (called by timer - deferred to next frame for controller support)
+	void ApplyDeferredFocus();
+
 	// Helper function for auto-dismiss timer (no parameters)
 	void OnAutoDismissTimer();
 
@@ -106,6 +125,7 @@ protected:
 	void StopAutoDismissTimer();
 	void OnButtonClicked(FName ButtonID);
 	void UpdatePopupStyle();
+	void ApplyViewportLayout();
 
 	// Button click handler (called by button delegates)
 	// Note: Since we can't easily determine which button called this with dynamic delegates,

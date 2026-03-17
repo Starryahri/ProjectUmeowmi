@@ -1,0 +1,27 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Project Umeowmi Editor Utilities",
+	"Description": "Editor-only utilities for Project Umeowmi (e.g. Bake Average Color)",
+	"Category": "Editor",
+	"CreatedBy": "ProjectUmeowmi",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "ProjectUmeowmiEditorUtilities",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
+		}
+	],
+	"TargetAllowList": [
+		"Editor"
+	]
+}

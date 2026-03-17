@@ -4,6 +4,7 @@
 #include "Components/ArrowComponent.h"
 #include "Engine/StaticMesh.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Engine/EngineTypes.h"
 
 APULevelSpawnPoint::APULevelSpawnPoint()
 {
@@ -16,7 +17,6 @@ APULevelSpawnPoint::APULevelSpawnPoint()
 	// Create visual mesh (cylinder for visibility in editor)
 	VisualMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("VisualMesh"));
 	VisualMesh->SetupAttachment(RootComponent);
-	// DO NOT set collision during CDO construction - will be set in PostInitializeComponents
 	VisualMesh->SetHiddenInGame(true); // Only visible in editor
 
 	// Try to set a default mesh (cylinder)
@@ -27,6 +27,8 @@ APULevelSpawnPoint::APULevelSpawnPoint()
 		VisualMesh->SetRelativeScale3D(FVector(0.5f, 0.5f, 0.2f));
 		VisualMesh->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
 	}
+	// Ignore pawn - spawn points are markers only, player should not bump into them
+	VisualMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 
 	// Create direction arrow
 	DirectionArrow = CreateDefaultSubobject<UArrowComponent>(TEXT("DirectionArrow"));
@@ -34,6 +36,7 @@ APULevelSpawnPoint::APULevelSpawnPoint()
 	DirectionArrow->SetArrowColor(FLinearColor::Green);
 	DirectionArrow->SetArrowSize(2.0f);
 	DirectionArrow->SetRelativeLocation(FVector(0.0f, 0.0f, 50.0f));
+	DirectionArrow->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 
 	// Set default spawn point tag
 	SpawnPointTag = TEXT("Default");
@@ -43,6 +46,16 @@ APULevelSpawnPoint::APULevelSpawnPoint()
 void APULevelSpawnPoint::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Ensure pawn is ignored at runtime (in case mesh/Blueprint overrides collision)
+	if (VisualMesh)
+	{
+		VisualMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	}
+	if (DirectionArrow)
+	{
+		DirectionArrow->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	}
 
 	// Notify GameInstance that the level is ready so it can position the player
 	if (UWorld* World = GetWorld())

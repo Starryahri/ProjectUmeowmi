@@ -27,13 +27,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Order|Debug")
     static void LogOrderDetails(const FPUOrderBase& Order);
 
+    /** Get order display text including dish giver (e.g. "Order from Yeoh: Make me something..."). Use in UI. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Order|Display")
+    static FText GetOrderDisplayText(const FPUOrderBase& Order);
+
     /** Log validation results for debugging */
     UFUNCTION(BlueprintCallable, Category = "Order|Debug")
     static void LogValidationResults(const FPUOrderBase& Order, const FPUDishBase& Dish);
 
-    /** Create a simple order with specified requirements */
+    /** Create a simple order with specified requirements (dish-agnostic; set BaseDish separately). */
     UFUNCTION(BlueprintCallable, Category = "Order|Creation")
-    static FPUOrderBase CreateSimpleOrder(FName OrderID, FText Description, int32 MinIngredients, FName TargetFlavor, float MinFlavorValue, FText DialogueText);
+    static FPUOrderBase CreateSimpleOrder(FName OrderID, FText Description, int32 MinIngredients, const TArray<FOrderAspectRequirement>& TargetAspects, FText DialogueText);
 
 
 }; 

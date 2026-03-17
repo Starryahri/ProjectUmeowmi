@@ -67,6 +67,17 @@ struct FIngredientInstance
     float TemperatureValue = 0.0f;
 };
 
+/** One entry per mesh on plate - supports multiple meshes per InstanceID (e.g. Quantity > 1). */
+USTRUCT(BlueprintType)
+struct PROJECTUMEOWMI_API FPUPlatingEntry
+{
+    GENERATED_BODY()
+    int32 InstanceID = 0;
+    FVector Position = FVector::ZeroVector;
+    FRotator Rotation = FRotator::ZeroRotator;
+    FVector Scale = FVector::OneVector;
+};
+
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUDishBase : public FTableRowBase
 {
@@ -85,9 +96,21 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
     FText DisplayName;
 
+    /** Recipe description shown in the journal (e.g. narrative or cooking notes) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic")
+    FText Description;
+
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
     TSoftObjectPtr<UTexture2D> PreviewTexture;
+
+    /** Texture shown in the journal recipe book (e.g. dish illustration on the right page) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
+    TSoftObjectPtr<UTexture2D> JournalTexture;
+
+    /** 3D mesh for the dish container during plating (bowl, plate, etc.) - swapped onto the cooking station */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Visual")
+    TSoftObjectPtr<UStaticMesh> DishMesh;
 
     // Data Tables
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Data")
@@ -96,6 +119,10 @@ public:
     // Array of ingredient instances in the dish
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Ingredients")
     TArray<FIngredientInstance> IngredientInstances;
+
+    /** One entry per mesh on plate - supports multiple meshes per InstanceID. Captured from SpawnedIngredientMeshes. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Plating")
+    TArray<FPUPlatingEntry> PlatingEntries;
 
     // Tags associated with this dish
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Tags", meta = (Categories = "Dish"))

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/GameInstance.h"
 #include "DishCustomization/PUOrderBase.h"
+#include "DishCustomization/PUDishBase.h"
 #include "GameplayTagContainer.h"
 #include "UI/PUPopupData.h"
 #include "PUProjectUmeowmiGameInstance.generated.h"
@@ -12,6 +13,7 @@ class APULevelSpawnPoint;
 class UPUPlayerSaveGame;
 class UUserWidget;
 class UPUPopupWidget;
+class USoundBase;
 
 /**
  * GameInstance that persists across level transitions.
@@ -69,22 +71,28 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Level Transition")
 	void OnTransitionCompleted();
 
+	/** Returns true if a level transition is currently in progress (e.g. fade out, loading). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
+	bool IsLevelTransitionInProgress() const { return bTransitionInProgress; }
+
 	// Ingredient Inventory System
 	/**
 	 * Unlock an ingredient (adds it to the unlocked set)
 	 * @param IngredientTag - The gameplay tag of the ingredient to unlock
+	 * @param bSilent - If true, do not show the unlock popup (e.g. when adding dish ingredients to pantry)
 	 * @return True if the ingredient was successfully unlocked (or was already unlocked)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory")
-	bool UnlockIngredient(const FGameplayTag& IngredientTag);
+	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory", meta = (AdvancedDisplay = "1"))
+	bool UnlockIngredient(const FGameplayTag& IngredientTag, bool bSilent = false);
 
 	/**
 	 * Unlock multiple ingredients at once
 	 * @param IngredientTags - Array of gameplay tags to unlock
+	 * @param bSilent - If true, do not show the unlock popup (e.g. when adding dish ingredients to pantry)
 	 * @return Number of ingredients successfully unlocked (including ones that were already unlocked)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory")
-	int32 UnlockIngredients(const TArray<FGameplayTag>& IngredientTags);
+	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory", meta = (AdvancedDisplay = "1"))
+	int32 UnlockIngredients(const TArray<FGameplayTag>& IngredientTags, bool bSilent = false);
 
 	/**
 	 * Check if an ingredient is unlocked
@@ -100,6 +108,75 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Ingredient Inventory")
 	TSet<FGameplayTag> GetUnlockedIngredients() const { return UnlockedIngredientTags; }
+
+	// Recipe/Dish Journal System
+	/**
+	 * Unlock a dish/recipe (adds it to the journal)
+	 * @param DishTag - The gameplay tag of the dish to unlock
+	 * @return True if the dish was successfully unlocked (or was already unlocked)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	bool UnlockDish(const FGameplayTag& DishTag);
+
+	/**
+	 * Unlock multiple dishes at once
+	 * @param DishTags - Array of gameplay tags to unlock
+	 * @return Number of dishes successfully unlocked
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	int32 UnlockDishes(const TArray<FGameplayTag>& DishTags);
+
+	/**
+	 * Check if a dish is unlocked
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	bool IsDishUnlocked(const FGameplayTag& DishTag) const;
+
+	/**
+	 * Get all unlocked dish tags
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	TSet<FGameplayTag> GetUnlockedDishes() const { return UnlockedDishTags; }
+
+	/**
+	 * Set the dish the player is currently working on (e.g. during customization).
+	 * When opening the journal recipe section during customization, this dish is shown first.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	void SetCurrentDishTag(const FGameplayTag& DishTag);
+
+	/**
+	 * Get the dish the player is currently working on (may be invalid)
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	FGameplayTag GetCurrentDishTag() const { return CurrentDishTag; }
+
+	/**
+	 * Clear the current dish (e.g. when exiting customization)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	void ClearCurrentDishTag();
+
+	/**
+	 * Get unlocked dish tags in a deterministic order (sorted by tag name) for cycling in the journal.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	TArray<FGameplayTag> GetOrderedUnlockedDishTags() const;
+
+	/**
+	 * Cycle the journal's displayed dish to next or previous in the unlocked list.
+	 * @param Direction +1 for next, -1 for previous
+	 * @return The new dish tag to display (may be invalid if no unlocked dishes)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Recipe Journal")
+	FGameplayTag CycleJournalDish(int32 Direction);
+
+	/**
+	 * Get dish data for a tag from the configured data tables. Use in journal Recipes section when displaying.
+	 * @return True if dish was found
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	bool GetDishDataForTag(const FGameplayTag& DishTag, FPUDishBase& OutDish) const;
 
 	// Save/Load System
 	/**
@@ -142,6 +219,39 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Save/Load")
 	bool DoesSaveGameExist(const FString& SlotName = TEXT("PlayerSave")) const;
 
+	// Tutorial System (global, persisted across sessions)
+	/** Returns true when tutorial mode is active (tutorial not yet completed). Use for branching in Blueprint. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tutorial")
+	bool IsTutorialModeEnabled() const { return !bTutorialCompleted; }
+
+	/** Get the current tutorial step (0 = not started, 1-7 = in progress). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tutorial")
+	int32 GetTutorialStep() const { return TutorialStep; }
+
+	/** Set the tutorial step directly. Call SaveGame() after if you want to persist. */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void SetTutorialStep(int32 Step);
+
+	/** Advance to the next tutorial step and save. */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void AdvanceTutorialStep();
+
+	/** Mark the tutorial as completed and save. Tutorial mode will no longer be active. */
+	UFUNCTION(BlueprintCallable, Category = "Tutorial")
+	void SetTutorialCompleted();
+
+	/** Get the ingredient tag that must be selected for the current step. Returns invalid tag if step has no restriction. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Tutorial")
+	FGameplayTag GetTutorialAllowedIngredientTag() const;
+
+	/** Ingredient tag required for tutorial step 1 (e.g. Egg Yolk Cookies). Set in Game Instance Blueprint. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tutorial", meta = (Categories = "Ingredient"))
+	FGameplayTag TutorialStep1IngredientTag;
+
+	/** Ingredient tag required for tutorial step 2 (e.g. Gochujang). Set in Game Instance Blueprint. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Tutorial", meta = (Categories = "Ingredient"))
+	FGameplayTag TutorialStep2IngredientTag;
+
 	// Dialogue State (stubbed for future use)
 	/**
 	 * Mark a dialogue as completed (stubbed for future implementation)
@@ -157,6 +267,70 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue State")
 	bool IsDialogueCompleted(const FName& DialogueName) const;
+
+	// Dialogue Typewriter Settings (global, persisted to save)
+	/** Whether dialogue text uses typewriter effect (character-by-character reveal) */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	bool GetDialogueTypewriterEnabled() const { return bUseDialogueTypewriterEffect; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterEnabled(bool bEnabled);
+
+	/** Delay between characters in seconds (e.g. 0.02 = fast, 0.05 = medium) */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	float GetDialogueTypewriterCharacterDelay() const { return DialogueTypewriterCharacterDelay; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterSpeed(float CharacterDelaySeconds);
+
+	/** If true, clicking "Next" while typing instantly completes the text */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	bool GetDialogueTypewriterSkipOnInput() const { return bDialogueTypewriterSkipOnInput; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterSkipOnInput(bool bSkipOnInput);
+
+	/** Sound to play for each character during typewriter effect. Leave empty for no sound. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	USoundBase* GetDialogueTypewriterSound() const { return DialogueTypewriterSound; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueTypewriterSound(USoundBase* Sound);
+
+	/** Pitch variation range (0.1 = ±10%). Getter for typewriter pitch variation. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	float GetDialogueTypewriterPitchVariation() const { return DialogueTypewriterPitchVariation; }
+
+	/** Typewriter delay (seconds per char) when skip mode is active. Lower = faster. Persisted to save. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue Settings")
+	float GetDialogueSkipModeCharacterDelay() const { return DialogueSkipModeCharacterDelay; }
+
+	UFUNCTION(BlueprintCallable, Category = "Dialogue Settings")
+	void SetDialogueSkipModeSpeed(float CharacterDelaySeconds);
+
+	// Level Transition Lock System
+	/**
+	 * Unlock a level transition by its LockID.
+	 * Can be called from anywhere (dialogue, Blueprint, C++).
+	 * @param LockID - The LockID set on the APULevelTransition actor
+	 * @return True if the transition was unlocked (or was already unlocked)
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Level Transition")
+	bool UnlockLevelTransition(const FName& LockID);
+
+	/**
+	 * Check if a level transition is unlocked
+	 * @param LockID - The LockID set on the APULevelTransition actor
+	 * @return True if the transition is unlocked (or LockID is NAME_None)
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
+	bool IsLevelTransitionUnlocked(const FName& LockID) const;
+
+	/**
+	 * Get all unlocked level transition IDs
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
+	TSet<FName> GetUnlockedLevelTransitions() const { return UnlockedLevelTransitionIDs; }
 
 	// Popup Manager System
 	// Delegate for popup button callbacks (declared before use)
@@ -222,6 +396,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Popup Manager|Events", meta = (DisplayName = "On Popup Closed"))
 	FOnPopupClosedEvent OnPopupClosedEvent;
 
+	/** Broadcast when dialogue box closes. Use to restore focus (e.g. dish customization opened from dialogue). */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueClosedEvent);
+	UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events", meta = (DisplayName = "On Dialogue Closed"))
+	FOnDialogueClosedEvent OnDialogueClosedEvent;
+
+	/** Called by dialogue box when it closes (internal use) */
+	UFUNCTION(BlueprintCallable, Category = "Dialogue")
+	void NotifyDialogueClosed();
+
 protected:
 	// Saved player state
 	UPROPERTY(BlueprintReadWrite, Category = "Level Transition")
@@ -246,9 +429,61 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Inventory")
 	TSet<FGameplayTag> StartingIngredientTags;
 
+	// Recipe Journal - unlocked dishes
+	UPROPERTY(BlueprintReadOnly, Category = "Recipe Journal")
+	TSet<FGameplayTag> UnlockedDishTags;
+
+	// Dish the player is currently working on (during customization). Shown first when opening journal.
+	UPROPERTY(BlueprintReadWrite, Category = "Recipe Journal")
+	FGameplayTag CurrentDishTag;
+
+	// Starting dishes unlocked when creating a new game (e.g. your two initial recipes)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
+	TSet<FGameplayTag> StartingDishTags;
+
+	// Data tables for journal dish lookup (set in Game Instance Blueprint - same as cooking station)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
+	TObjectPtr<class UDataTable> DishDataTable;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
+	TObjectPtr<class UDataTable> IngredientDataTable;
+
 	// Dialogue State (stubbed for future use)
 	UPROPERTY(BlueprintReadOnly, Category = "Dialogue State")
 	TSet<FName> CompletedDialogueNames;
+
+	// Dialogue Typewriter Settings (global, persisted to save)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	bool bUseDialogueTypewriterEffect = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	float DialogueTypewriterCharacterDelay = 0.02f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	bool bDialogueTypewriterSkipOnInput = true;
+
+	/** Sound to play for each character during typewriter effect. Set in Game Instance Blueprint. Defaults to none. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue Settings")
+	TObjectPtr<USoundBase> DialogueTypewriterSound = nullptr;
+
+	/** Pitch variation range (e.g. 0.1 = ±10%). Pitch randomly varies between (1 - Value) and (1 + Value) per character. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float DialogueTypewriterPitchVariation = 0.1f;
+
+	/** Typewriter delay (seconds per char) when skip mode is active. Lower = faster. Persisted to save. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Dialogue Settings")
+	float DialogueSkipModeCharacterDelay = 0.005f;
+
+	// Level Transition Lock System - IDs that have been unlocked (persisted to save)
+	UPROPERTY(BlueprintReadOnly, Category = "Level Transition")
+	TSet<FName> UnlockedLevelTransitionIDs;
+
+	// Tutorial system (persisted to save)
+	UPROPERTY(BlueprintReadOnly, Category = "Tutorial")
+	bool bTutorialCompleted = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Tutorial")
+	int32 TutorialStep = 0;
 
 	// Save Game Reference
 	UPROPERTY()

@@ -5,6 +5,7 @@
 #include "PUDialogueBox.generated.h"
 
 class UTextBlock;
+class UCommonRichTextBlock;
 class UImage;
 class UVerticalBox;
 class UButton;
@@ -33,9 +34,9 @@ public:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     UTextBlock* ParticipantNameText;
 
-    /** Widget to display the dialogue text */
+    /** Widget to display the dialogue text. Supports rich text markup (color, italic, underline) via tags like <StyleName>text</>. Use Common Rich Text Block in Blueprint; assign a Data Table with Rich Text Style Row to Text Styles Set. */
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
-    UTextBlock* DialogueText;
+    UCommonRichTextBlock* DialogueText;
 
     /** Widget to display the participant's image */
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
@@ -53,6 +54,13 @@ public:
 
     /** Called every frame */
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
+    /** Click anywhere to advance dialogue (playtest feedback) */
+    virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+    /** Handle F (skip) and E/Space (advance) when dialogue has keyboard focus - fixes F key not reaching Enhanced Input */
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+    virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     /** Event called when the dialogue box is opened */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
@@ -73,6 +81,33 @@ public:
     /** Debug function to check if vignette material is set */
     UFUNCTION(BlueprintCallable, Category = "Vignette|Debug")
     void DebugVignetteMaterial() const;
+
+    /** Check if typewriter effect is currently animating */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue")
+    bool IsTypewriterActive() const { return bTypewriterActive; }
+
+    /** Instantly complete the typewriter effect (show full text). Called when player skips. */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    void CompleteTypewriter();
+
+    /** Advance dialogue (skip typewriter or go to next line). Call when player presses Interact during dialogue. */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    void AdvanceDialogue();
+
+    /** Request focus (e.g. when popup closes and dialogue is still visible). Returns the widget to focus, or nullptr. */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    UWidget* GetFocusTarget() const;
+
+    /** Skip mode: fast typewriter, no sound, auto-advance when single option. Toggle via SetSkipMode or Skip button. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue|Skip")
+    bool IsSkipMode() const { return bSkipMode; }
+
+    UFUNCTION(BlueprintCallable, Category = "Dialogue|Skip")
+    void SetSkipMode(bool bEnabled);
+
+    /** Optional Skip button. If bound in Blueprint, clicking toggles skip mode. */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
+    UButton* SkipButton;
 
     // Implementation functions
     virtual void Open_Implementation(UDlgContext* ActiveContext);
@@ -104,6 +139,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Vignette|Settings", meta = (ClampMin = "0.0", ToolTip = "How long it takes for the vignette to fade out when dialogue closes"))
     float VignetteFadeOutDuration = 1.0f;
 
+    /** Typewriter delay (seconds per char) when skip mode is active. Lower = faster. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue|Skip")
+    float SkipModeCharacterDelay = 0.005f;
+
 private:
     /** Dynamic material instance for the vignette */
     UPROPERTY()
@@ -129,6 +168,35 @@ private:
 
     /** Whether vignette animation is currently active */
     bool bVignetteAnimating = false;
+
+    /** Typewriter effect state */
+    FString FullDialogueText;
+    int32 TypewriterCurrentIndex = 0;       /**< Current visible character index (not raw string index) */
+    int32 TypewriterTotalVisibleChars = 0; /**< Total visible characters; cached when typewriter starts */
+    FTimerHandle TypewriterTimerHandle;
+    FTimerHandle AutoAdvanceTimerHandle;
+    bool bTypewriterActive = false;
+
+    /** Skip mode: fast typewriter, no sound, auto-advance on single option */
+    bool bSkipMode = false;
+
+    /** Set when typewriter completes in skip mode; Tick performs the advance and clears it */
+    bool bPendingSkipAdvance = false;
+
+    /** Called when typewriter completes in skip mode to auto-advance (deferred to next tick) */
+    void OnTypewriterCompleteAutoAdvance();
+
+    UFUNCTION()
+    void OnSkipButtonClicked();
+
+    /** Advance typewriter by one character (called by timer) */
+    void AdvanceTypewriter();
+
+    /** Returns substring of InText up to TargetVisibleCount visible characters. Skips markup tags when counting so tags never appear as raw text. Supports <TagName>content</> format. */
+    static FString GetSubstringUpToVisibleCharacter(const FString& InText, int32 TargetVisibleCount);
+
+    /** Returns total number of visible (non-tag) characters in InText. */
+    static int32 GetVisibleCharacterCount(const FString& InText);
 
     /** Initialize the vignette material */
     void InitializeVignetteMaterial();

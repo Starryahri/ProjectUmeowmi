@@ -4,20 +4,15 @@
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
 #include "DlgSystem/DlgContext.h"
+#include "DlgSystem/DlgDialogue.h"
 
 APULevelTransition::APULevelTransition()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// Configure talking-object defaults
+	// Configure talking-object defaults (sphere radius synced by base TalkingObject::SyncInteractionSphereToRange)
 	ObjectType = ETalkingObjectType::System;
 	InteractionRange = 250.0f;
-
-	// Make sure the interaction sphere uses our range
-	if (InteractionSphere)
-	{
-		InteractionSphere->SetSphereRadius(InteractionRange);
-	}
 
 	// Default values
 	bAutoTrigger = false;
@@ -41,23 +36,55 @@ void APULevelTransition::BeginPlay()
 	}
 }
 
+bool APULevelTransition::IsUnlocked() const
+{
+	UPUProjectUmeowmiGameInstance* GameInstance = Cast<UPUProjectUmeowmiGameInstance>(GetGameInstance());
+	return GameInstance ? GameInstance->IsLevelTransitionUnlocked(LockID) : (LockID == NAME_None);
+}
+
 bool APULevelTransition::CanInteract() const
 {
-	// For level transitions, we just require the player to be in range.
-	// We don't rely on dialogues, unlike normal talking objects.
-	return IsPlayerInRange();
+	// Show prompt when: unlocked (can transition) OR locked with a LockedDialogue (can trigger dialogue)
+	if (!IsPlayerInRange())
+	{
+		return false;
+	}
+	if (IsUnlocked())
+	{
+		return true;
+	}
+	// Locked: show prompt only if we have a dialogue to play
+	return LockedDialogue != nullptr;
 }
 
 void APULevelTransition::StartInteraction()
 {
-	if (TargetLevelName.IsEmpty())
+	if (!IsPlayerInRange())
 	{
-		UE_LOG(LogTemp, Error, TEXT("Cannot transition: TargetLevelName is empty for %s"), *GetName());
 		return;
 	}
 
-	// Perform the transition when the player presses the interact key
-	PerformTransition();
+	if (IsUnlocked())
+	{
+		if (TargetLevelName.IsEmpty())
+		{
+			UE_LOG(LogTemp, Error, TEXT("Cannot transition: TargetLevelName is empty for %s"), *GetName());
+			return;
+		}
+		PerformTransition();
+		return;
+	}
+
+	// Locked: trigger the locked dialogue instead
+	if (LockedDialogue)
+	{
+		UE_LOG(LogTemp, Log, TEXT("Level transition %s is locked - starting locked dialogue"), *GetName());
+		StartDialogueAndSetInteracting(LockedDialogue);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Level transition %s is locked but has no LockedDialogue set"), *GetName());
+	}
 }
 
 void APULevelTransition::PerformTransition()
@@ -86,8 +113,8 @@ void APULevelTransition::OnTransitionSphereBeginOverlap(UPrimitiveComponent* Ove
 		return;
 	}
 
-	// If auto-trigger is enabled, perform transition immediately on overlap
-	if (bAutoTrigger)
+	// If auto-trigger is enabled and unlocked, perform transition immediately on overlap
+	if (bAutoTrigger && IsUnlocked())
 	{
 		PerformTransition();
 	}
@@ -98,9 +125,28 @@ void APULevelTransition::OnTransitionSphereBeginOverlap(UPrimitiveComponent* Ove
 
 bool APULevelTransition::OnDialogueEvent_Implementation(UDlgContext* Context, FName EventName)
 {
+	// Handle unlock event - unlocks this transition's LockID (can be called from dialogue)
+	if (EventName == TEXT("UnlockLevelTransition") || EventName == TEXT("UnlockTransition"))
+	{
+		if (LockID != NAME_None)
+		{
+			if (UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(GetGameInstance()))
+			{
+				GI->UnlockLevelTransition(LockID);
+				UE_LOG(LogTemp, Log, TEXT("APULevelTransition::OnDialogueEvent - Unlocked level transition: %s"), *LockID.ToString());
+			}
+		}
+		return true;
+	}
+
 	// Handle level transition event from dialogue
 	if (EventName == TEXT("TransitionLevel") || EventName == TEXT("LevelTransition"))
 	{
+		if (!IsUnlocked())
+		{
+			UE_LOG(LogTemp, Log, TEXT("APULevelTransition::OnDialogueEvent - Level transition triggered from dialogue but locked (LockID: %s)"), *LockID.ToString());
+			return false;
+		}
 		UE_LOG(LogTemp, Log, TEXT("APULevelTransition::OnDialogueEvent - Level transition triggered from dialogue"));
 		
 		// Perform the transition using the configured target level and spawn point

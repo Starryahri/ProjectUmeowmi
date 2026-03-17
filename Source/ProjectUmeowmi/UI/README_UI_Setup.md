@@ -83,7 +83,7 @@ If you're using a different widget class, you can manually bind to events:
 
 - **Dish Name Text Block** - `DishData.DisplayName`
 - **Ingredient List** - `DishData.IngredientInstances`
-- **Dish Preview Image** - `DishData.PreviewTexture`
+- **Dish Preview Image** - Use `Get Loaded Preview Texture (DishData)` from Dish Blueprint Library (DishData.PreviewTexture is a soft reference and must be loaded)
 - **Custom Name Input** - `DishData.CustomName`
 
 ### **Example: Update Dish Name**
@@ -114,6 +114,38 @@ Event On Ingredient Added Button Clicked
 └── Call UpdateDishData (Modified Dish Data)
 ```
 
+## Journal Recipe Cycling (Bumper Keys)
+
+When the journal is open on the **Recipes** tab, use the bumper keys to cycle through unlocked dishes:
+- **LB (Left Bumper)** – previous dish
+- **RB (Right Bumper)** – next dish
+
+### Setup Required
+
+1. Create two **Input Action** assets (e.g. `IA_JournalCycleDishPrev`, `IA_JournalCycleDishNext`).
+2. Add them to your **Input Mapping Context**:
+   - `IA_JournalCycleDishPrev` → `Gamepad_LeftShoulder` (and optionally `Q` for keyboard)
+   - `IA_JournalCycleDishNext` → `Gamepad_RightShoulder` (and optionally `E` for keyboard)
+3. In your **Character Blueprint**, assign:
+   - `Journal Cycle Dish Prev Action` → `IA_JournalCycleDishPrev`
+   - `Journal Cycle Dish Next Action` → `IA_JournalCycleDishNext`
+
+### Recipes Section Blueprint
+
+For `DisplayDishByTag` to work, your Recipes Section Blueprint should either:
+- Have widgets named `IngredientsContainer` (Vertical Box) and `RecipeIllustrationImage` (Image) – they will auto-populate, or
+- Override `Display Dish By Tag` and call `Populate Ingredients List` / `Set Recipe Illustration` with `Get Dish Data For Tag` from the Game Instance.
+
+## Journal Recipe Illustration
+
+The journal recipe book uses `JournalTexture` for dish illustrations. Unlike prep stage icons (which use direct `UTexture2D*` references that auto-load), dish textures are soft references and must be loaded explicitly.
+
+**In your Recipes Section Blueprint**, when displaying a recipe:
+- Use `Set Recipe Illustration (Image, DishData)` on the Recipes Section widget, **or**
+- Use `Get Loaded Journal Texture (DishData)` from the Dish Blueprint Library, then pass the result to `Set Brush From Texture`
+
+This ensures textures load correctly when you play without opening them in the editor first.
+
 ## Troubleshooting
 
 ### **Widget not receiving data?**
@@ -138,7 +170,7 @@ Here's a complete example of what your widget might look like:
 ```
 Event OnDishDataReceived (FPUDishBase DishData)
 ├── Set Text (DishNameText, DishData.DisplayName)
-├── Set Image (DishPreviewImage, DishData.PreviewTexture)
+├── Set Brush From Texture (DishPreviewImage, Get Loaded Preview Texture (DishData))
 ├── Set Text (CustomNameInput, DishData.CustomName)
 └── Call UpdateIngredientList (DishData)
 

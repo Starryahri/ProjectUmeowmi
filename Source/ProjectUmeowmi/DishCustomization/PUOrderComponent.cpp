@@ -3,17 +3,13 @@
 #include "PUDishBlueprintLibrary.h"
 #include "Engine/Engine.h"
 #include "../ProjectUmeowmiCharacter.h"
+#include "../Dialogue/PUDishGiver.h"
 
 UPUOrderComponent::UPUOrderComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
-    
-    // Set default values
     DefaultMinIngredients = 3;
-    DefaultTargetFlavor = FName(TEXT("Saltiness"));
-    DefaultMinFlavorValue = 5.0f;
-    DefaultOrderDescription = FText::FromString(TEXT("Make me congee with {0} ingredients. Make it {1}."));
-    
+    DefaultOrderDescription = FText::FromString(TEXT("Make me something with {0} ingredients. I want it {1}."));
     bHasActiveOrder = false;
 }
 
@@ -26,15 +22,15 @@ void UPUOrderComponent::BeginPlay()
 
 void UPUOrderComponent::GenerateNewOrder()
 {
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateNewOrder - Starting order generation"));
-    
+    UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateNewOrder - Starting order generation"));
+
     // Validate the world first
     if (!GetWorld())
     {
-        //UE_LOG(LogTemp,Error, TEXT("UPUOrderComponent::GenerateNewOrder - No valid world!"));
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] GenerateNewOrder - No valid world!"));
         return;
     }
-    
+
     // Check if player has a completed order - if so, don't generate a new one
     AProjectUmeowmiCharacter* PlayerChar = nullptr;
     if (UWorld* World = GetWorld())
@@ -44,27 +40,24 @@ void UPUOrderComponent::GenerateNewOrder()
             PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
         }
     }
-    
+
     if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
     {
-        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateNewOrder - Player has completed order, refusing to generate new order"));
+        UE_LOG(LogTemp, Warning, TEXT("[OrderGen] GenerateNewOrder - Player has completed order, refusing to generate new order"));
         return;
     }
-    
+
     // Clear any existing order (only if no completed order)
     if (bHasActiveOrder)
     {
-        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateNewOrder - Clearing existing order"));
+        UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateNewOrder - Clearing existing order"));
         ClearCurrentOrder();
     }
-    
-    // Generate a simple order with safety checks
-    GenerateSimpleOrder();
-    
-    // Set active flag
+
+    GenerateSimpleOrder(FGameplayTag()); // invalid = use pool or fallback
     bHasActiveOrder = true;
-    
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateNewOrder - Order generated successfully"));
+
+    UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateNewOrder - Order generated successfully"));
     CurrentOrder.LogOrderDetails();
     
     // Broadcast the event
@@ -171,95 +164,106 @@ float UPUOrderComponent::GetSatisfactionScore(const FPUDishBase& Dish) const
     return UPUOrderBlueprintLibrary::GetSatisfactionScore(CurrentOrder, Dish);
 }
 
-void UPUOrderComponent::GenerateSimpleOrder()
+void UPUOrderComponent::GenerateNewOrderWithDish(FGameplayTag DishTag)
 {
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Generating simple order"));
-    
-    // Get a random dish tag with safety check
+    if (!GetWorld()) return;
+
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+    {
+        PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+    }
+    if (PlayerChar && PlayerChar->IsCurrentOrderCompleted()) return;
+    if (bHasActiveOrder) ClearCurrentOrder();
+
+    GenerateSimpleOrder(DishTag);
+    bHasActiveOrder = true;
+    CurrentOrder.LogOrderDetails();
+    OnOrderGenerated.Broadcast(CurrentOrder);
+}
+
+void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
+{
     FGameplayTag DishTag;
-    DishTag = UPUDishBlueprintLibrary::GetRandomDishTag();
-    
+    if (OptionalDishTag.IsValid())
+    {
+        DishTag = OptionalDishTag;
+        UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Using override dish tag: %s"), *DishTag.ToString());
+    }
+    else if (AvailableDishTags.Num() > 0)
+    {
+        TArray<FGameplayTag> Valid;
+        for (const FGameplayTag& Tag : AvailableDishTags)
+        {
+            if (Tag.IsValid()) Valid.Add(Tag);
+        }
+        if (Valid.Num() > 0)
+        {
+            DishTag = Valid[FMath::RandRange(0, Valid.Num() - 1)];
+            UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Picked from pool (%d tags): %s"), Valid.Num(), *DishTag.ToString());
+        }
+    }
     if (!DishTag.IsValid())
     {
-        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get valid dish tag, using default"));
-        DishTag = FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee"));
+        DishTag = UPUDishBlueprintLibrary::GetRandomDishTag();
+        if (DishTag.IsValid())
+        {
+            UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - From GetRandomDishTag: %s"), *DishTag.ToString());
+        }
     }
-    
-    // Get the base dish from the data table with safety checks
+    if (!DishTag.IsValid())
+    {
+        DishTag = FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee"));
+        UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Fallback dish: Dish.Congee"));
+    }
+
     FPUDishBase BaseDish;
     bool bGotBaseDish = false;
-    
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is %s"), 
-    //    DishDataTable ? TEXT("valid") : TEXT("NULL"));
-    
     if (DishDataTable && IsValid(DishDataTable))
     {
-        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Attempting to get dish from data table"));
         bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, BaseDish);
-        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - GetDishFromDataTable result: %s"), 
-        //    bGotBaseDish ? TEXT("SUCCESS") : TEXT("FAILED"));
     }
-    else
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - DishDataTable is not set or invalid! This will cause issues."));
-    }
-    
+    UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Base dish from data table: %s (ingredients: %d)"), bGotBaseDish ? TEXT("yes") : TEXT("no"), BaseDish.IngredientInstances.Num());
     if (!bGotBaseDish)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("UPUOrderComponent::GenerateSimpleOrder - Failed to get base dish, creating empty dish"));
         BaseDish.DishTag = DishTag;
         BaseDish.DisplayName = FText::FromString(DishTag.ToString());
-        BaseDish.IngredientDataTable = nullptr; // Ensure no ingredient data table
-        BaseDish.IngredientInstances.Empty(); // Ensure no ingredient instances
-        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Created fallback dish: %s"), *BaseDish.DisplayName.ToString());
+        BaseDish.IngredientDataTable = nullptr;
+        BaseDish.IngredientInstances.Empty();
     }
-    else
-    {
-        //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Successfully got base dish: %s"), *BaseDish.DisplayName.ToString());
-    }
-    
-    // Create a unique order ID
+
     FName OrderID = FName(*FString::Printf(TEXT("Order_%d"), FMath::RandRange(1000, 9999)));
-    
-    // Create the dialogue text with the specific dish name
+    FString AspectSummary = (DefaultTargetAspects.Num() > 0)
+        ? DefaultTargetAspects[0].AspectName.ToString()
+        : FString(TEXT("flavorful"));
     FText DialogueText = FText::Format(
         DefaultOrderDescription,
         FText::AsNumber(DefaultMinIngredients),
-        FText::FromString(DefaultTargetFlavor.ToString())
+        FText::FromString(AspectSummary)
     );
-    
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Creating order with ID: %s for dish: %s"), 
-    //    *OrderID.ToString(), *DishTag.ToString());
-    
-    // Create the order using the Blueprint Library with safety check
+
+    TArray<FOrderAspectRequirement> Aspects = DefaultTargetAspects;
+    if (Aspects.Num() == 0)
+    {
+        FOrderAspectRequirement DefaultReq;
+        DefaultReq.AspectName = FName(TEXT("Salt"));
+        DefaultReq.MinValue = 5.0f;
+        DefaultReq.AspectType = EOrderAspectType::Flavor;
+        Aspects.Add(DefaultReq);
+    }
+
     CurrentOrder = UPUOrderBlueprintLibrary::CreateSimpleOrder(
         OrderID,
         FText::FromString(FString::Printf(TEXT("Simple %s order"), *DishTag.ToString())),
         DefaultMinIngredients,
-        DefaultTargetFlavor,
-        DefaultMinFlavorValue,
+        Aspects,
         DialogueText
     );
-    
-    // Set the base dish in the order
     CurrentOrder.BaseDish = BaseDish;
-    
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Order created successfully with base dish: %s (%d ingredients)"), 
-    //    *BaseDish.DisplayName.ToString(), BaseDish.IngredientInstances.Num());
-    
-    // Debug: Log the base dish details
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::GenerateSimpleOrder - Base dish details:"));
-    //UE_LOG(LogTemp,Log, TEXT("  - Dish Tag: %s"), *BaseDish.DishTag.ToString());
-    //UE_LOG(LogTemp,Log, TEXT("  - Display Name: %s"), *BaseDish.DisplayName.ToString());
-    //UE_LOG(LogTemp,Log, TEXT("  - Ingredient Data Table: %s"), BaseDish.IngredientDataTable.IsValid() ? TEXT("Valid") : TEXT("NULL"));
-    //UE_LOG(LogTemp,Log, TEXT("  - Ingredient Instances: %d"), BaseDish.IngredientInstances.Num());
-    
-    for (int32 i = 0; i < BaseDish.IngredientInstances.Num(); i++)
+
+    // Set dish giver from owner if this component is on a dish giver
+    if (APUDishGiver* DishGiver = Cast<APUDishGiver>(GetOwner()))
     {
-        const FIngredientInstance& Instance = BaseDish.IngredientInstances[i];
-        // Use convenient field if available, fallback to data field
-        FGameplayTag InstanceTag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
-        //UE_LOG(LogTemp,Log, TEXT("    - Instance %d: %s (Qty: %d)"), 
-        //    i, *InstanceTag.ToString(), Instance.Quantity);
+        CurrentOrder.OrderGiverParticipantName = DishGiver->GetTalkingObjectName();
     }
 } 

@@ -1,16 +1,21 @@
 #include "PUDialogueBox.h"
 #include "PUDialogueOption.h"
+#include "../PUProjectUmeowmiGameInstance.h"
 #include "DlgSystem/DlgContext.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/TextBlock.h"
+#include "CommonRichTextBlock.h"
 #include "Components/Image.h"
 #include "Components/VerticalBox.h"
 #include "Components/Button.h"
+#include "Input/Events.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
-#include "Kismet/GameplayStatics.h"
+#include "ProjectUmeowmi/Interactables/PUCookingStation.h"
+#include "Sound/SoundBase.h"
 #include "Engine/GameViewportClient.h"
 #include "Camera/CameraComponent.h"
 #include "Materials/MaterialInterface.h"
@@ -44,7 +49,13 @@ void UPUDialogueBox::NativeConstruct()
     
     // Ensure we're focusable
     SetIsFocusable(true);
-    
+
+    // Wire optional Skip button to toggle skip mode
+    if (SkipButton)
+    {
+        SkipButton->OnClicked.AddDynamic(this, &UPUDialogueBox::OnSkipButtonClicked);
+    }
+
     // Add to viewport if not already there
     if (!IsInViewport())
     {
@@ -68,14 +79,22 @@ void UPUDialogueBox::NativeConstruct()
 
 void UPUDialogueBox::NativeDestruct()
 {
-    // Clear any active vignette animation timer
+    if (SkipButton)
+    {
+        SkipButton->OnClicked.RemoveAll(this);
+    }
+
+    // Clear any active timers
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(VignetteAnimationTimer);
+        World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+        World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
     }
 
     // Stop animating
     bVignetteAnimating = false;
+    bTypewriterActive = false;
 
     // Clean up dynamic material reference
     VignetteDynamicMaterial = nullptr;
@@ -91,6 +110,13 @@ void UPUDialogueBox::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
     if (bVignetteAnimating)
     {
         UpdateVignetteIntensity();
+    }
+
+    // Skip mode: perform pending auto-advance (driven by Tick for reliability)
+    if (bPendingSkipAdvance)
+    {
+        bPendingSkipAdvance = false;
+        OnTypewriterCompleteAutoAdvance();
     }
 }
 
@@ -208,10 +234,88 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
     Update(ActiveContext);
 }
 
+void UPUDialogueBox::SetSkipMode(bool bEnabled)
+{
+    if (bSkipMode != bEnabled)
+    {
+        bSkipMode = bEnabled;
+    }
+}
+
+void UPUDialogueBox::OnSkipButtonClicked()
+{
+    SetSkipMode(!bSkipMode);
+}
+
+FReply UPUDialogueBox::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+    FReply Reply = Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
+
+    if (GetVisibility() == ESlateVisibility::Visible &&
+        InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        AdvanceDialogue();
+        return FReply::Handled();
+    }
+
+    return Reply;
+}
+
+FReply UPUDialogueBox::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    if (GetVisibility() != ESlateVisibility::Visible)
+    {
+        return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+    }
+
+    const FKey Key = InKeyEvent.GetKey();
+
+    // F = hold to skip, tap to advance
+    if (Key == EKeys::F)
+    {
+        SetSkipMode(true);
+        AdvanceDialogue();
+        return FReply::Handled();
+    }
+
+    return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+FReply UPUDialogueBox::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    if (GetVisibility() != ESlateVisibility::Visible)
+    {
+        return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
+    }
+
+    const FKey Key = InKeyEvent.GetKey();
+
+    // F = release skip mode
+    if (Key == EKeys::F)
+    {
+        SetSkipMode(false);
+        return FReply::Handled();
+    }
+
+    return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
+}
+
 void UPUDialogueBox::Close_Implementation()
 {
     //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Close_Implementation called"));
     //UE_LOG(LogTemp,Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
+
+    // Reset skip mode when dialogue closes
+    bSkipMode = false;
+    bPendingSkipAdvance = false;
+
+    // Stop typewriter if active
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+        World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
+    }
+    bTypewriterActive = false;
     
     // Clear the context reference to prevent dangling references
     CurrentContext = nullptr;
@@ -239,6 +343,15 @@ void UPUDialogueBox::Close_Implementation()
     if (PC)
     {
         //UE_LOG(LogTemp,Log, TEXT("Found player controller: %p"), PC);
+
+        // Notify GameInstance so dish customization etc. can restore focus
+        if (UWorld* World = GetWorld())
+        {
+            if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+            {
+                GI->NotifyDialogueClosed();
+            }
+        }
         
         // Re-enable player movement and input
         PC->SetIgnoreMoveInput(false);
@@ -327,7 +440,54 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
         }
         if (IsValid(DialogueText))
         {
-            DialogueText->SetText(NodeText);
+            UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
+            const bool bUseTypewriter = GI ? GI->GetDialogueTypewriterEnabled() : true;
+
+            if (bUseTypewriter)
+            {
+                // Cancel any existing typewriter
+                if (UWorld* World = GetWorld())
+                {
+                    World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+                }
+                bTypewriterActive = false;
+
+                FullDialogueText = NodeText.ToString();
+                TypewriterCurrentIndex = 0;
+                TypewriterTotalVisibleChars = GetVisibleCharacterCount(FullDialogueText);
+
+                if (TypewriterTotalVisibleChars > 0)
+                {
+                    DialogueText->SetText(FText::FromString(FString()));
+                    bTypewriterActive = true;
+                    AdvanceTypewriter();
+                }
+                else
+                {
+                    DialogueText->SetText(NodeText);
+                    if (bSkipMode)
+                    {
+                        bPendingSkipAdvance = true;
+                    }
+                }
+            }
+            else
+            {
+                DialogueText->SetText(NodeText);
+                // Typewriter disabled + skip mode: schedule auto-advance after brief delay
+                if (bSkipMode)
+                {
+                    if (UWorld* World = GetWorld())
+                    {
+                        World->GetTimerManager().SetTimer(
+                            AutoAdvanceTimerHandle,
+                            [this]() { bPendingSkipAdvance = true; },
+                            0.05f,
+                            false
+                        );
+                    }
+                }
+            }
         }
         if (IsValid(ParticipantImage))
         {
@@ -360,8 +520,18 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 {
                     if (ATalkingObject* TalkingObject = ProjectCharacter->GetCurrentTalkingObject())
                     {
-                        //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Ending interaction with talking object"));
-                        TalkingObject->EndInteraction();
+                        // For cooking stations, closing dialogue should NOT end the active
+                        // dish customization flow. Use the station's dialogue-only end.
+                        if (APUCookingStation* CookingStation = Cast<APUCookingStation>(TalkingObject))
+                        {
+                            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Ending dialogue only for cooking station"));
+                            CookingStation->EndDialogueOnly();
+                        }
+                        else
+                        {
+                            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Ending interaction with talking object"));
+                            TalkingObject->EndInteraction();
+                        }
                     }
                 }
             }
@@ -389,6 +559,96 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
     }
 }
 
+int32 UPUDialogueBox::GetVisibleCharacterCount(const FString& InText)
+{
+    int32 VisibleCount = 0;
+    int32 i = 0;
+    const int32 Len = InText.Len();
+    while (i < Len)
+    {
+        if (InText[i] == '<')
+        {
+            if (i + 3 <= Len && InText.Mid(i, 3) == TEXT("</>"))
+            {
+                i += 3;
+            }
+            else
+            {
+                const int32 EndOfTag = InText.Find(TEXT(">"), ESearchCase::IgnoreCase, ESearchDir::FromStart, i);
+                if (EndOfTag != INDEX_NONE)
+                {
+                    i = EndOfTag + 1;
+                }
+                else
+                {
+                    VisibleCount++;
+                    i++;
+                }
+            }
+        }
+        else
+        {
+            VisibleCount++;
+            i++;
+        }
+    }
+    return VisibleCount;
+}
+
+FString UPUDialogueBox::GetSubstringUpToVisibleCharacter(const FString& InText, int32 TargetVisibleCount)
+{
+    if (TargetVisibleCount <= 0)
+    {
+        return FString();
+    }
+    FString Output;
+    int32 VisibleCount = 0;
+    int32 i = 0;
+    const int32 Len = InText.Len();
+    bool bInsideStyledRun = false;  // True when we've added an opening tag but not yet closed it
+    while (i < Len && VisibleCount < TargetVisibleCount)
+    {
+        if (InText[i] == '<')
+        {
+            if (i + 3 <= Len && InText.Mid(i, 3) == TEXT("</>"))
+            {
+                Output += InText.Mid(i, 3);
+                bInsideStyledRun = false;
+                i += 3;
+            }
+            else
+            {
+                const int32 EndOfTag = InText.Find(TEXT(">"), ESearchCase::IgnoreCase, ESearchDir::FromStart, i);
+                if (EndOfTag != INDEX_NONE)
+                {
+                    Output += InText.Mid(i, EndOfTag - i + 1);
+                    bInsideStyledRun = true;
+                    i = EndOfTag + 1;
+                }
+                else
+                {
+                    Output += InText[i];
+                    VisibleCount++;
+                    i++;
+                }
+            }
+        }
+        else
+        {
+            Output += InText[i];
+            VisibleCount++;
+            i++;
+        }
+    }
+    // The RichText parser requires complete <Name>content</> blocks. If we ended mid-run,
+    // append the closing tag so styling is applied immediately instead of showing raw tags.
+    if (bInsideStyledRun)
+    {
+        Output += TEXT("</>");
+    }
+    return Output;
+}
+
 UCameraComponent* UPUDialogueBox::GetPlayerCamera() const
 {
     if (UWorld* World = GetWorld())
@@ -405,6 +665,161 @@ UCameraComponent* UPUDialogueBox::GetPlayerCamera() const
         }
     }
     return nullptr;
+}
+
+void UPUDialogueBox::AdvanceTypewriter()
+{
+    if (!IsValid(DialogueText) || !bTypewriterActive)
+    {
+        return;
+    }
+
+    TypewriterCurrentIndex++;
+
+    if (TypewriterCurrentIndex <= TypewriterTotalVisibleChars)
+    {
+        FString VisibleText = GetSubstringUpToVisibleCharacter(FullDialogueText, TypewriterCurrentIndex);
+        DialogueText->SetText(FText::FromString(VisibleText));
+
+        // Play typewriter sound only when NOT in skip mode
+        if (!bSkipMode && GetWorld())
+        {
+            if (UPUProjectUmeowmiGameInstance* GI = GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+            {
+                if (USoundBase* TypewriterSound = GI->GetDialogueTypewriterSound())
+                {
+                    const float PitchVariation = GI->GetDialogueTypewriterPitchVariation();
+                    const float PitchMultiplier = FMath::RandRange(1.0f - PitchVariation, 1.0f + PitchVariation);
+                    UGameplayStatics::PlaySound2D(GetWorld(), TypewriterSound, 1.0f, PitchMultiplier);
+                }
+            }
+        }
+
+        if (TypewriterCurrentIndex < TypewriterTotalVisibleChars)
+        {
+            float CharDelay = 0.02f;
+            if (bSkipMode)
+            {
+                if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+                {
+                    CharDelay = GI->GetDialogueSkipModeCharacterDelay();
+                }
+                else
+                {
+                    CharDelay = SkipModeCharacterDelay;
+                }
+            }
+            if (!bSkipMode && GetWorld())
+            {
+                if (UPUProjectUmeowmiGameInstance* GI = GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+                {
+                    CharDelay = GI->GetDialogueTypewriterCharacterDelay();
+                }
+            }
+
+            if (UWorld* World = GetWorld())
+            {
+                World->GetTimerManager().SetTimer(
+                    TypewriterTimerHandle,
+                    this,
+                    &UPUDialogueBox::AdvanceTypewriter,
+                    CharDelay,
+                    false
+                );
+            }
+        }
+        else
+        {
+            bTypewriterActive = false;
+            // In skip mode, schedule auto-advance for next tick (Tick will perform it)
+            if (bSkipMode)
+            {
+                bPendingSkipAdvance = true;
+            }
+        }
+    }
+    else
+    {
+        bTypewriterActive = false;
+    }
+}
+
+void UPUDialogueBox::OnTypewriterCompleteAutoAdvance()
+{
+    if (!bSkipMode)
+    {
+        return;
+    }
+
+    // Advance via DlgContext directly - bypasses UI, works regardless of dialogue box layout
+    if (IsValid(CurrentContext) && !CurrentContext->HasDialogueEnded() && CurrentContext->GetOptionsNum() > 0)
+    {
+        CurrentContext->ChooseOption(0);
+        Update(CurrentContext);  // Refresh UI and handle dialogue end
+    }
+    else
+    {
+        // Fallback: widget-based advance (for custom layouts where options aren't in DlgContext)
+        AdvanceDialogue();
+    }
+}
+
+void UPUDialogueBox::CompleteTypewriter()
+{
+    if (!bTypewriterActive)
+    {
+        return;
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(TypewriterTimerHandle);
+    }
+
+    bTypewriterActive = false;
+    TypewriterCurrentIndex = TypewriterTotalVisibleChars;
+
+    if (IsValid(DialogueText))
+    {
+        DialogueText->SetText(FText::FromString(FullDialogueText));
+    }
+}
+
+UWidget* UPUDialogueBox::GetFocusTarget() const
+{
+    if (GetVisibility() != ESlateVisibility::Visible)
+    {
+        return nullptr;
+    }
+    if (IsValid(DialogueOptions) && DialogueOptions->GetChildrenCount() > 0)
+    {
+        if (UPUDialogueOption* FirstOption = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(0)))
+        {
+            if (FirstOption->OptionButton) return FirstOption->OptionButton;
+        }
+    }
+    return const_cast<UPUDialogueBox*>(this);
+}
+
+void UPUDialogueBox::AdvanceDialogue()
+{
+    if (!IsValid(DialogueOptions) || DialogueOptions->GetChildrenCount() == 0)
+    {
+        return;
+    }
+
+    // Find the first visible option and trigger it (same as clicking the Next button)
+    for (int32 i = 0; i < DialogueOptions->GetChildrenCount(); i++)
+    {
+        if (UPUDialogueOption* Option = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(i)))
+        {
+            if (Option->GetVisibility() == ESlateVisibility::Visible)
+            {
+                Option->SelectOption();
+                return;
+            }
+        }
+    }
 }
 
 void UPUDialogueBox::InitializeVignetteMaterial()

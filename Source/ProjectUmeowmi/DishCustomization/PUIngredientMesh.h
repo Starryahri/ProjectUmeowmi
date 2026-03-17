@@ -2,8 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "GameplayTagContainer.h"
+#include "PUDishBase.h"
 #include "PUIngredientBase.h"
 #include "PUIngredientMesh.generated.h"
+
+class UProceduralMeshComponent;
+class UStaticMeshComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIngredientMoved, const FVector&, NewPosition);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIngredientRotated, const FRotator&, NewRotation);
@@ -24,6 +29,18 @@ public:
     // Setup the mesh with ingredient data
     UFUNCTION(BlueprintCallable, Category = "Ingredient")
     void InitializeWithIngredient(const FPUIngredientBase& IngredientData);
+
+    // Setup with ingredient data and preparations (handles chopped mesh slicing)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    void InitializeWithIngredientInstance(const struct FIngredientInstance& IngredientInstance);
+
+    // Whether this ingredient uses sliced procedural meshes (chopped/minced)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    bool IsChopped() const { return bIsChopped; }
+
+    // Apply scale to the ingredient; for chopped/minced, sets scale on each procedural mesh piece (actor scale doesn't propagate correctly)
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    void SetIngredientScale(const FVector& Scale);
 
     // Mouse interaction functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Interaction")
@@ -53,10 +70,23 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Interaction")
     void UpdateRotation(const FRotator& NewRotation);
 
+    /** InstanceID from dish data when used for plating - used to capture final transform before cleanup. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    void SetPlatingInstanceID(int32 InInstanceID) { PlatingInstanceID = InInstanceID; }
+    int32 GetPlatingInstanceID() const { return PlatingInstanceID; }
+
 protected:
     // Components
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UStaticMeshComponent* MeshComponent;
+
+    // Procedural mesh pieces for chopped ingredients (when bIsChopped is true)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    TArray<UProceduralMeshComponent*> ChoppedMeshPieces;
+
+    // Whether this ingredient uses sliced procedural meshes (chopped preparation)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")
+    bool bIsChopped = false;
 
     // Interaction properties
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Interaction")
@@ -94,6 +124,10 @@ protected:
     // Ingredient data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Data")
     FPUIngredientBase IngredientData;
+
+    /** InstanceID when used for plating - links mesh to dish data for transform capture. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Data")
+    int32 PlatingInstanceID = -1;
 
 public:
     // Event dispatchers

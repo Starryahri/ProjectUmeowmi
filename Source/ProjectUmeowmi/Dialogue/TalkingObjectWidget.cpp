@@ -17,8 +17,22 @@ void UTalkingObjectWidget::SetInteractionKey(const FString& Key)
 
 void UTalkingObjectWidget::SetInteractionIcon(UTexture2D* Icon)
 {
-    if (InteractionIcon && Icon)
+    if (InteractionIcon)
     {
-        InteractionIcon->SetBrushFromTexture(Icon);
+        if (Icon)
+        {
+            InteractionIcon->SetBrushFromTexture(Icon);
+            InteractionIcon->SetVisibility(ESlateVisibility::Visible);
+        }
+        else
+        {
+            InteractionIcon->SetVisibility(ESlateVisibility::Collapsed);
+        }
     }
+}
+
+void UTalkingObjectWidget::SetSelectionState(bool bSelected, int32 Total)
+{
+    // Dim unselected targets when multiple overlap
+    SetRenderOpacity(bSelected ? 1.0f : 0.5f);
 } 

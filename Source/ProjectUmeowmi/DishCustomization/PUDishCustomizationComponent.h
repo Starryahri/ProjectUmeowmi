@@ -29,6 +29,7 @@ public:
     UPUDishCustomizationComponent();
 
     virtual void BeginPlay() override;
+    virtual void BeginDestroy() override;
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
     // Activation/Deactivation
@@ -89,11 +90,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void SpawnIngredientIn3DByInstanceID(int32 InstanceID, const FVector& WorldPosition);
 
+    // Get spawn position above the cooking station/pan (for reliable ingredient placement)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    FVector GetSpawnPositionAboveStation() const;
+
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void SetPlatingMode(bool bInPlatingMode);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     bool IsPlatingMode() const;
+
+    // True when 3D ingredient spawning is allowed (both cooking and plating stages)
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    bool CanSpawnIngredientsIn3D() const;
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void TransitionToPlatingStage(const FPUDishBase& DishData);
@@ -292,6 +301,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
     FVector IngredientMeshScale = FVector(1.0f, 1.0f, 1.0f);
 
+    // Height above dish container to spawn ingredients (avoids collision with rim/platform)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating", meta = (ClampMin = "10.0", UIMin = "10.0"))
+    float IngredientSpawnHeightOffset = 30.0f;
+
+    // Blueprint class for spawned 3D ingredient meshes (set DefaultMaterial, HoverMaterial, GrabbedMaterial here)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
+    TSubclassOf<class APUIngredientMesh> IngredientMeshClass;
+
     // Original dish container mesh (stored when customization starts)
     UPROPERTY()
     UStaticMesh* OriginalDishContainerMesh = nullptr;
@@ -311,6 +328,10 @@ protected:
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;
 
+    /** Used during camera transition out of customization so we can clear CurrentCharacter (and thus IsCustomizing()) immediately while the transition still has a character reference. */
+    UPROPERTY()
+    TWeakObjectPtr<AProjectUmeowmiCharacter> CameraTransitionCharacter;
+
     // Input context management
     UPROPERTY()
     UInputMappingContext* OriginalMappingContext;
@@ -319,11 +340,13 @@ protected:
     uint32 ExitActionBindingHandle;
     uint32 ControllerMouseBindingHandle;
     uint32 MouseClickBindingHandle;
+    FDelegateHandle PreInputMouseDownHandle;  // Slate pre-input listener (bypasses widget consumption)
     uint32 NextStageBindingHandle;
     uint32 PreviousStageBindingHandle;
 
     // Mouse interaction state
     bool bIsDragging = false;
+    bool bWasMouseDown = false;  // For Tick-based click fallback when widget blocks Enhanced Input
     class APUIngredientMesh* CurrentlyDraggedIngredient = nullptr;
     FVector DragStartPosition;
     FVector DragStartMousePosition;
@@ -331,6 +354,8 @@ protected:
 
     // Camera transition state
     bool bIsTransitioningCamera = false;
+    /** True when transitioning INTO customization; false when transitioning OUT. Used to avoid incorrectly running exit logic when entering. */
+    bool bTransitioningToCustomization = false;
     float OriginalCameraDistance = 0.0f;
     float OriginalCameraPitch = 0.0f;
     float OriginalCameraYaw = 0.0f;
@@ -349,6 +374,9 @@ protected:
 private:
 	// Hide/show HUD widgets when entering/exiting customization.
 	void SetHUDVisible(bool bShouldBeVisible);
+
+	/** Unlock any ingredients in the dish that aren't already in the pantry (so they appear when customization starts). */
+	void EnsureDishIngredientsInPantry(const FPUDishBase& Dish);
 
     // Spawn visual 3D mesh for ingredient
     void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
@@ -382,6 +410,7 @@ private:
     // Input handling
     void HandleExitInput();
     void HandleControllerMouse(const FInputActionValue& Value);
+    void OnPreInputMouseButtonDown(const struct FPointerEvent& MouseEvent);  // Slate pre-input (before widgets consume)
     void HandleMouseClick(const FInputActionValue& Value);
     void HandleMouseRelease(const FInputActionValue& Value);
     void HandleNextStage();
@@ -398,7 +427,7 @@ private:
 
     // Plating stage camera handling
     void SetPlatingCameraPositionOffset(const FVector& NewOffset);
-    void StartPlatingCameraTransition();
+    void StartPlatingCameraTransition(const FVector* ExplicitStartLocation = nullptr, const FRotator* ExplicitStartRotation = nullptr, float ExplicitStartOrthoWidth = -1.0f);
     void UpdatePlatingCameraTransition(float DeltaTime);
 
     // Plating placement limits
@@ -429,6 +458,15 @@ private:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ClearAll3DIngredientMeshes();
 
+    // Capture current transforms from live ingredient meshes into CurrentDishData (call before ClearAll3DIngredientMeshes)
+    void CapturePlatingTransformsFromMeshes();
+
     // Store original dish container mesh
     void StoreOriginalDishContainerMesh();
+
+    // Get plate/dish surface height for drag projection (matches GetSpawnPositionAboveStation surface)
+    bool GetPlateSurfaceHeight(float& OutSurfaceHeight) const;
+
+    // Get plate surface height and center point (for view-independent drag projection)
+    bool GetPlateSurfaceInfo(float& OutSurfaceHeight, FVector& OutSurfaceCenter) const;
 }; 

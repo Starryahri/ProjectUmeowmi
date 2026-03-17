@@ -2,16 +2,27 @@
 
 #include "ProjectUmeowmiCharacter.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/DataTable.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Kismet/GameplayStatics.h"
 #include "Dialogue/TalkingObject.h"
 #include "DishCustomization/PUDishCustomizationComponent.h"
+#include "UI/PUDialogueBox.h"
+#include "UI/PUEmoteData.h"
+#include "UI/PUEmoteWidget.h"
+#include "UI/PUJournalWidget.h"
+#include "ProjectUmeowmi/UI/PUScorecardWidget.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Blueprint/UserWidget.h"
 
 #include "Interfaces/PUInteractableInterface.h"
 
@@ -53,6 +64,26 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
+	// Create emote widget (above character head)
+	EmoteWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("EmoteWidget"));
+	EmoteWidget->SetupAttachment(RootComponent);
+	EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	EmoteWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f)); // Above character head
+	EmoteWidget->SetVisibility(false);
+
+	// Create dish preview (above character head when carrying a dish)
+	DishPreviewComponent = CreateDefaultSubobject<UPUDishPreviewComponent>(TEXT("DishPreview"));
+	DishPreviewComponent->SetupAttachment(RootComponent);
+	DishPreviewComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 90.0f)); // Above character head
+
+	// Dish mesh created here (not in DishPreviewComponent) to avoid template/instance attachment mismatch in Blueprint subclasses (BP_Bao)
+	DishPreviewMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DishPreviewMesh"));
+	DishPreviewMeshComponent->SetupAttachment(DishPreviewComponent);
+	DishPreviewMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	DishPreviewMeshComponent->SetCastShadow(true);
+	DishPreviewMeshComponent->SetVisibility(false);
+	DishPreviewComponent->SetDishMeshComponent(DishPreviewMeshComponent);
+
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-15.0f, 45.0f, 0.0f);
 
@@ -73,6 +104,16 @@ void AProjectUmeowmiCharacter::BeginPlay()
 
 	// Initialize the camera position based on the starting index
 	InitializeCameraPosition();
+
+	// Configure emote widget
+	if (EmoteWidget && bEnableEmotes)
+	{
+		if (EmoteWidgetClass)
+		{
+			EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+		}
+		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	}
 
 	//UE_LOG(LogTemp,Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
 }
@@ -140,6 +181,35 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 		// Interact with talking objects
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::Interact);
+
+		// Cycle between overlapping interact targets (Space bar)
+		if (CycleInteractTargetAction)
+		{
+			EnhancedInputComponent->BindAction(CycleInteractTargetAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::CycleInteractTarget);
+		}
+
+		// Open/toggle journal (Start button, I key)
+		if (OpenJournalAction)
+		{
+			EnhancedInputComponent->BindAction(OpenJournalAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::ToggleJournal);
+		}
+
+		// Journal Recipes tab: cycle dishes with bumpers (only when journal open on Recipes)
+		if (JournalCycleDishPrevAction)
+		{
+			EnhancedInputComponent->BindAction(JournalCycleDishPrevAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleDishPrev);
+		}
+		if (JournalCycleDishNextAction)
+		{
+			EnhancedInputComponent->BindAction(JournalCycleDishNextAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleDishNext);
+		}
+
+		// Hold to skip dialogue (fast typewriter, no sound, auto-advance)
+		if (SkipDialogueAction)
+		{
+			EnhancedInputComponent->BindAction(SkipDialogueAction, ETriggerEvent::Started, this, &AProjectUmeowmiCharacter::OnSkipDialogueStarted);
+			EnhancedInputComponent->BindAction(SkipDialogueAction, ETriggerEvent::Completed, this, &AProjectUmeowmiCharacter::OnSkipDialogueCompleted);
+		}
 	}
 	else
 	{
@@ -149,6 +219,26 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 
 void AProjectUmeowmiCharacter::Move(const FInputActionValue& Value)
 {
+	// Block movement when journal is open
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		return;
+	}
+
 	// Get the input value
 	FVector2D MovementVector = Value.Get<FVector2D>();
 
@@ -230,6 +320,26 @@ void AProjectUmeowmiCharacter::InitializeCameraPositionFromBlueprint()
 
 void AProjectUmeowmiCharacter::GetCameraPositionIndex(const FInputActionValue& Value)
 {
+	// When journal is open, bumpers cycle dishes instead of rotating camera
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		return;
+	}
+
 	float InputValue = Value.Get<float>();
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Camera Position Index: %f"), InputValue);
 	
@@ -276,6 +386,17 @@ void AProjectUmeowmiCharacter::Look(const FInputActionValue& Value)
 void AProjectUmeowmiCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (ATalkingObject* CurrentTalking = GetCurrentTalkingObject())
+	{
+		CurrentTalking->TickFacePlayerLerp(DeltaTime);
+	}
+	else
+	{
+		// Debug: uncomment to verify player Tick runs when no talking object
+		// static int32 FrameCount = 0;
+		// if (++FrameCount % 300 == 0) UE_LOG(LogTemp, Log, TEXT("[FacePlayerLerp] Player Tick, no CurrentTalkingObject"));
+	}
 
 	// Smoothly interpolate the camera rotation
 	FRotator CurrentRotation = CameraBoom->GetRelativeRotation();
@@ -382,15 +503,112 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 	FollowCamera->OrthoWidth = NewOrthoWidth;
 }
 
+void AProjectUmeowmiCharacter::ToggleJournal(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		// Fallback: search for journal widget in the world (e.g. if it's a child of HUD)
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), /*bTopLevelOnly=*/ false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+
+	if (Journal)
+	{
+		const bool bIsVisible = Journal->GetVisibility() == ESlateVisibility::Visible;
+		if (bIsVisible)
+		{
+			Journal->CloseJournal();
+		}
+		else
+		{
+			Journal->OpenJournal();
+		}
+	}
+}
+
+void AProjectUmeowmiCharacter::OnJournalCycleDishPrev(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		Journal->CycleRecipesDish(-1);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnSkipDialogueStarted(const FInputActionValue& Value)
+{
+	if (DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+	{
+		DialogueBox->SetSkipMode(true);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnSkipDialogueCompleted(const FInputActionValue& Value)
+{
+	if (DialogueBox)
+	{
+		DialogueBox->SetSkipMode(false);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnJournalCycleDishNext(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		Journal->CycleRecipesDish(1);
+	}
+}
+
 void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 {
-	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::Interact - CurrentTalkingObject: %s, CurrentInteractable: %s"), 
-	//	CurrentTalkingObject ? *CurrentTalkingObject->GetName() : TEXT("NULL"),
-	//	CurrentInteractable ? TEXT("Valid") : TEXT("NULL"));
-		
-	if (CurrentTalkingObject)
+	ATalkingObject* CurrentTalking = GetCurrentTalkingObject();
+
+	// When in dialogue, Interact advances the dialogue (skip typewriter or next line)
+	if (CurrentTalking && DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
 	{
-		CurrentTalkingObject->StartInteraction();
+		DialogueBox->AdvanceDialogue();
+		return;
+	}
+		
+	if (CurrentTalking)
+	{
+		CurrentTalking->StartInteraction();
 	}
 	else if (CurrentInteractable)
 	{
@@ -398,26 +616,94 @@ void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 	}
 }
 
+ATalkingObject* AProjectUmeowmiCharacter::GetCurrentTalkingObject() const
+{
+	if (OverlappingTalkingObjects.IsValidIndex(SelectedTalkingObjectIndex))
+	{
+		ATalkingObject* Obj = OverlappingTalkingObjects[SelectedTalkingObjectIndex];
+		return (Obj && IsValid(Obj)) ? Obj : nullptr;
+	}
+	return nullptr;
+}
+
 void AProjectUmeowmiCharacter::RegisterTalkingObject(ATalkingObject* TalkingObject)
 {
-	// Store the talking object reference
-	CurrentTalkingObject = TalkingObject;
-	
-	// Log the registration
-	//UE_LOG(LogTemp,Log, TEXT("Registered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+	if (!TalkingObject || !IsValid(TalkingObject)) return;
+
+	// Add to list if not already present (avoid duplicates from overlap order)
+	int32 ExistingIndex = OverlappingTalkingObjects.Find(TalkingObject);
+	if (ExistingIndex == INDEX_NONE)
+	{
+		OverlappingTalkingObjects.Add(TalkingObject);
+		if (OverlappingTalkingObjects.Num() == 1)
+		{
+			SelectedTalkingObjectIndex = 0;
+		}
+		else
+		{
+			// Most recent overlap becomes the selected target
+			SelectedTalkingObjectIndex = OverlappingTalkingObjects.Num() - 1;
+		}
+		// Refresh all overlapping widgets so opacity updates immediately (e.g. first one fades when second overlaps)
+		for (ATalkingObject* Obj : OverlappingTalkingObjects)
+		{
+			if (Obj && IsValid(Obj))
+			{
+				Obj->RefreshInteractionWidget();
+			}
+		}
+	}
 }
 
 void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingObject)
 {
-	// Only unregister if this is the current talking object
-	if (CurrentTalkingObject == TalkingObject)
+	if (!TalkingObject) return;
+
+	int32 RemovedIndex = OverlappingTalkingObjects.Find(TalkingObject);
+	if (RemovedIndex != INDEX_NONE)
 	{
-		// Clear the reference
-		CurrentTalkingObject = nullptr;
-		
-		// Log the unregistration
-		//UE_LOG(LogTemp,Log, TEXT("Unregistered talking object: %s"), *TalkingObject->GetTalkingObjectDisplayName().ToString());
+		OverlappingTalkingObjects.RemoveAt(RemovedIndex);
+		// Clamp selection index after removal
+		if (OverlappingTalkingObjects.Num() == 0)
+		{
+			SelectedTalkingObjectIndex = 0;
+		}
+		else if (SelectedTalkingObjectIndex >= OverlappingTalkingObjects.Num())
+		{
+			SelectedTalkingObjectIndex = OverlappingTalkingObjects.Num() - 1;
+		}
+		else if (RemovedIndex < SelectedTalkingObjectIndex)
+		{
+			SelectedTalkingObjectIndex--;
+		}
+		// Refresh remaining widgets so the last one returns to full opacity
+		for (ATalkingObject* Obj : OverlappingTalkingObjects)
+		{
+			if (Obj && IsValid(Obj))
+			{
+				Obj->RefreshInteractionWidget();
+			}
+		}
 	}
+}
+
+void AProjectUmeowmiCharacter::CycleInteractTarget(const FInputActionValue& Value)
+{
+	// Don't cycle during active dialogue
+	if (DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible) return;
+	if (OverlappingTalkingObjects.Num() < 2) return;
+
+	// Cycle forward (Space = next)
+	SelectedTalkingObjectIndex = (SelectedTalkingObjectIndex + 1) % OverlappingTalkingObjects.Num();
+
+		// Refresh all overlapping widgets so they can update selection state (e.g. highlight selected)
+		for (ATalkingObject* Obj : OverlappingTalkingObjects)
+		{
+			if (Obj && IsValid(Obj))
+			{
+				Obj->RefreshInteractionWidget();
+			}
+		}
 }
 
 void AProjectUmeowmiCharacter::RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable)
@@ -467,6 +753,150 @@ void AProjectUmeowmiCharacter::OnInteractionFailed()
 	//UE_LOG(LogTemp,Log, TEXT("Interaction failed"));
 }
 
+//////////////////////////////////////////////////////////////////////////
+// Emote
+
+void AProjectUmeowmiCharacter::BeginFadeOutEmote()
+{
+	if (!EmoteWidget)
+	{
+		ClearEmote();
+		return;
+	}
+
+	if (UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget()))
+	{
+		EmoteUserWidget->PlayFadeOut();
+
+		const float FadeDuration = EmoteUserWidget->GetFadeUpDuration();
+		const float TimerDuration = (FadeDuration > 0.0f) ? (FadeDuration / 2.0f) : 0.25f;
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+			World->GetTimerManager().SetTimer(EmoteFadeOutTimerHandle, this, &AProjectUmeowmiCharacter::ClearEmote, TimerDuration, false);
+		}
+		else
+		{
+			ClearEmote();
+		}
+	}
+	else
+	{
+		ClearEmote();
+	}
+}
+
+void AProjectUmeowmiCharacter::ShowEmoteByTag(FGameplayTag EmoteTag)
+{
+	if (!bEnableEmotes || !EmoteWidget)
+	{
+		return;
+	}
+
+	if (!EmoteTag.IsValid())
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - Invalid emote tag on %s"), *GetName());
+		return;
+	}
+
+	if (!EmoteDataTable)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - EmoteDataTable is not set on %s"), *GetName());
+		return;
+	}
+
+	// DataTable rows use the tag's leaf name (part after last '.') lowercased, e.g. Emote.Happy -> "happy"
+	FString TagStr = EmoteTag.ToString();
+	int32 LastDot = INDEX_NONE;
+	if (TagStr.FindLastChar(TEXT('.'), LastDot) && LastDot >= 0)
+	{
+		TagStr = TagStr.Mid(LastDot + 1);
+	}
+	TagStr = TagStr.ToLower();
+	const FName RowName = FName(*TagStr);
+
+	const FPUEmoteData* EmoteRow = EmoteDataTable->FindRow<FPUEmoteData>(RowName, TEXT("ShowEmoteByTag"));
+	if (!EmoteRow)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - No emote data row for tag %s on %s"), *EmoteTag.ToString(), *GetName());
+		return;
+	}
+
+	if (!EmoteRow->Icon)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - Emote row %s has no Icon on %s"), *RowName.ToString(), *GetName());
+		return;
+	}
+
+	// Ensure widget is created
+	if (!EmoteWidget->GetWidget() && EmoteWidgetClass)
+	{
+		EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	}
+
+	UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
+	if (!EmoteUserWidget && EmoteWidgetClass)
+	{
+		EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+		EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
+	}
+
+	if (!EmoteUserWidget)
+	{
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("ShowEmoteByTag - EmoteWidget is not of type UPUEmoteWidget on %s (set EmoteWidgetClass on this actor)"), *GetName());
+		return;
+	}
+
+	EmoteUserWidget->SetEmoteIcon(EmoteRow->Icon);
+	EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	EmoteWidget->SetVisibility(true);
+	EmoteUserWidget->PlayFadeIn();
+	ActiveEmoteTag = EmoteTag;
+
+	if (EmoteRow->Sound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, EmoteRow->Sound, GetActorLocation());
+	}
+
+	if (!EmoteRow->bLoop)
+	{
+		const float Duration = EmoteRow->Duration > 0.0f ? EmoteRow->Duration : 2.0f;
+		if (UWorld* WorldPtr = GetWorld())
+		{
+			WorldPtr->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+			WorldPtr->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+			WorldPtr->GetTimerManager().SetTimer(EmoteHideTimerHandle, this, &AProjectUmeowmiCharacter::BeginFadeOutEmote, Duration, false);
+		}
+	}
+}
+
+void AProjectUmeowmiCharacter::ClearEmote()
+{
+	if (EmoteWidget)
+	{
+		if (UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget()))
+		{
+			EmoteUserWidget->ClearEmoteIcon();
+		}
+		EmoteWidget->SetVisibility(false);
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+		World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+	}
+
+	ActiveEmoteTag = FGameplayTag();
+}
+
+bool AProjectUmeowmiCharacter::IsEmoteActive() const
+{
+	return EmoteWidget && EmoteWidget->IsVisible();
+}
+
 // Order System Integration
 void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 {
@@ -487,6 +917,38 @@ void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Order set successfully"));
 }
 
+void AProjectUmeowmiCharacter::RevealHintOnCurrentOrder(FName AspectName)
+{
+	UE_LOG(LogTemp, Display, TEXT("[Hint] RevealHintOnCurrentOrder(%s) - hasOrder=%d completed=%d"), *AspectName.ToString(), bHasCurrentOrder, bCurrentOrderCompleted);
+
+	if (!bHasCurrentOrder || bCurrentOrderCompleted || AspectName.IsNone())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintOnCurrentOrder aborted - no active order or aspect invalid"));
+		return;
+	}
+
+	for (const FOrderAspectRequirement& Req : CurrentOrder.TargetAspects)
+	{
+		if (Req.AspectName == AspectName)
+		{
+			// Check if already discovered
+			for (const FOrderAspectRequirement& Discovered : CurrentOrder.DiscoveredHints)
+			{
+				if (Discovered.AspectName == AspectName)
+				{
+					UE_LOG(LogTemp, Display, TEXT("[Hint] Hint %s already revealed, skipping"), *AspectName.ToString());
+					return;
+				}
+			}
+			CurrentOrder.DiscoveredHints.Add(Req);
+			UE_LOG(LogTemp, Display, TEXT("[Hint] SUCCESS: Revealed hint %s (target %.1f) - total discovered: %d"), *AspectName.ToString(), Req.MinValue, CurrentOrder.DiscoveredHints.Num());
+			return;
+		}
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintOnCurrentOrder - aspect %s not in order's TargetAspects"), *AspectName.ToString());
+}
+
 void AProjectUmeowmiCharacter::ClearCurrentOrder()
 {
 	//UE_LOG(LogTemp,Display, TEXT("=== CLEARING CURRENT ORDER ==="));
@@ -505,6 +967,12 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+
+	// Clear the dish preview above the character's head
+	if (DishPreviewComponent)
+	{
+		DishPreviewComponent->ClearPreview();
+	}
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== ORDER CLEARED ==="));
 	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
@@ -585,6 +1053,12 @@ void AProjectUmeowmiCharacter::ClearCompletedOrder()
 	bHasCurrentOrder = false;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+
+	// Clear the dish preview above the character's head
+	if (DishPreviewComponent)
+	{
+		DishPreviewComponent->ClearPreview();
+	}
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== COMPLETED ORDER CLEARED ==="));
 	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
@@ -628,12 +1102,35 @@ FText AProjectUmeowmiCharacter::GetOrderResultText() const
 
 void AProjectUmeowmiCharacter::OnOrderCompleted()
 {
-	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::OnOrderCompleted - Order completed successfully!"));
-	
-	// This function can be overridden in Blueprints to add visual/audio feedback
-	// For now, just log the completion
-	//UE_LOG(LogTemp,Display, TEXT("🎉 ORDER COMPLETED! 🎉"));
-	//UE_LOG(LogTemp,Display, TEXT("Satisfaction: %.1f%%"), CurrentOrderSatisfaction * 100.0f);
+}
+
+UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass)
+{
+	UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowScorecard called: bCurrentOrderCompleted=%d, Class=%s"), bCurrentOrderCompleted ? 1 : 0, ScorecardWidgetClass ? *ScorecardWidgetClass->GetName() : TEXT("NULL"));
+	if (!bCurrentOrderCompleted || !ScorecardWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: order not completed or class null"));
+		return nullptr;
+	}
+
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: no PlayerController"));
+		return nullptr;
+	}
+
+	UPUScorecardWidget* Widget = CreateWidget<UPUScorecardWidget>(PC, ScorecardWidgetClass);
+	if (!Widget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: CreateWidget failed"));
+		return nullptr;
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("[Scorecard] AddToViewport + ShowFromOrder (Order has %d base ingredients, %d completed ingredients)"), CurrentOrder.BaseDish.IngredientInstances.Num(), CurrentOrder.GetCompletedDish().IngredientInstances.Num());
+	Widget->AddToViewport();
+	Widget->ShowFromOrder(CurrentOrder, nullptr);
+	return Widget;
 }
 
 void AProjectUmeowmiCharacter::OnOrderFailed()
@@ -742,12 +1239,9 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		CurrentOrderSatisfaction = 0.0f;
 	}
 	
-	// Clear talking object reference to prevent dangling references
-	if (CurrentTalkingObject)
-	{
-		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing talking object reference"));
-		CurrentTalkingObject = nullptr;
-	}
+	// Clear overlapping talking objects to prevent dangling references
+	OverlappingTalkingObjects.Empty();
+	SelectedTalkingObjectIndex = 0;
 	
 	// Clear interactable reference
 	if (CurrentInteractable)
@@ -761,6 +1255,19 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Clearing dialogue box reference"));
 		DialogueBox = nullptr;
+	}
+
+	// Clear journal widget reference
+	if (JournalWidget)
+	{
+		JournalWidget = nullptr;
+	}
+
+	// Clear any pending emote timers
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
+		World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
 	}
 	
 	Super::EndPlay(EndPlayReason);

@@ -3,6 +3,8 @@
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
 #include "../UI/PUDishCustomizationWidget.h"
+#include "../UI/PUScorecardTypes.h"
+#include "Engine/Texture2D.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid startup/on-screen spam).
 namespace
@@ -479,21 +481,28 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
         return false;
     }
 
-    // Get the dish name from the tag (everything after the last period) and convert to lowercase
+    // Get the dish row name from the tag: strip "Dish." prefix, lowercase, remove all periods.
+    // Example: "Dish.Cookies.EggYolk" -> "cookieseggyolk" (same convention as GetIngredientRowNameFromTag)
     FString FullTag = DishTag.ToString();
-    int32 LastPeriodIndex;
     FName RowName = NAME_None;
-    if (FullTag.FindLastChar('.', LastPeriodIndex))
+    if (FullTag.StartsWith(TEXT("Dish.")))
     {
-        FString DishName = FullTag.RightChop(LastPeriodIndex + 1).ToLower();
-        RowName = FName(*DishName);
-        
-        if (bPU_LogDishTagSpam)
-        {
-            //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"),
-            //    *DishTag.ToString(), *RowName.ToString());
-        }
-        
+        FullTag = FullTag.RightChop(5); // Remove "Dish." (5 characters)
+    }
+    FullTag = FullTag.ToLower();
+    FullTag.ReplaceInline(TEXT("."), TEXT(""));
+    if (!FullTag.IsEmpty())
+    {
+        RowName = FName(*FullTag);
+    }
+    if (RowName != NAME_None && bPU_LogDishTagSpam)
+    {
+        //UE_LOG(LogTemp,Display, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Looking for dish: %s (RowName: %s)"),
+        //    *DishTag.ToString(), *RowName.ToString());
+    }
+
+    if (RowName != NAME_None)
+    {
         if (FPUDishBase* FoundDish = DishDataTable->FindRow<FPUDishBase>(RowName, TEXT("GetDishFromDataTable")))
         {
             OutDish = *FoundDish;
@@ -643,15 +652,15 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
         }
         else
         {
-            //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s (RowName: %s)"), 
+            //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Dish not found in data table: %s (RowName: %s)"),
             //    *DishTag.ToString(), *RowName.ToString());
         }
     }
     else
     {
-        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Invalid dish tag format: %s"), *DishTag.ToString());
+        //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::GetDishFromDataTable - Invalid or empty dish tag (expected e.g. Dish.Cookies.EggYolk -> row cookieseggyolk): %s"), *DishTag.ToString());
     }
-    
+
     return false;
 }
 
@@ -744,4 +753,202 @@ void UPUDishBlueprintLibrary::ClearIngredientPlating(FPUDishBase& Dish, int32 In
 bool UPUDishBlueprintLibrary::GetIngredientPlating(const FPUDishBase& Dish, int32 InstanceID, FVector& OutPosition, FRotator& OutRotation, FVector& OutScale)
 {
     return Dish.GetIngredientPlating(InstanceID, OutPosition, OutRotation, OutScale);
+}
+
+UTexture2D* UPUDishBlueprintLibrary::GetLoadedJournalTexture(const FPUDishBase& Dish)
+{
+    if (Dish.JournalTexture.IsNull()) return nullptr;
+    return Dish.JournalTexture.LoadSynchronous();
+}
+
+UTexture2D* UPUDishBlueprintLibrary::GetLoadedPreviewTexture(const FPUDishBase& Dish)
+{
+    if (Dish.PreviewTexture.IsNull()) return nullptr;
+    return Dish.PreviewTexture.LoadSynchronous();
+}
+
+bool UPUDishBlueprintLibrary::IsDishSuspicious(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish)
+{
+    for (const FIngredientInstance& BaseInstance : BaseRecipeDish.IngredientInstances)
+    {
+        FGameplayTag BaseTag = BaseInstance.IngredientTag.IsValid() ? BaseInstance.IngredientTag : BaseInstance.IngredientData.IngredientTag;
+        if (!BaseTag.IsValid()) continue;
+        if (!HasIngredient(CompletedDish, BaseTag))
+        {
+            return true; // Missing a base ingredient -> suspicious
+        }
+    }
+    return false;
+}
+
+FText UPUDishBlueprintLibrary::GetEndingStageText(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish)
+{
+    const FString DishName = BaseRecipeDish.DisplayName.ToString();
+    const bool bSuspicious = IsDishSuspicious(CompletedDish, BaseRecipeDish);
+    if (bSuspicious)
+    {
+        return FText::FromString(FString::Printf(TEXT("You created Suspicious %s"), *DishName));
+    }
+    return FText::FromString(FString::Printf(TEXT("You created %s"), *DishName));
+}
+
+namespace
+{
+    const TArray<FName> FlavorAspectNames = {
+        TEXT("Umami"), TEXT("Salt"), TEXT("Sweet"), TEXT("Sour"), TEXT("Bitter"), TEXT("Spicy")
+    };
+    const TArray<FName> TextureAspectNames = {
+        TEXT("Rich"), TEXT("Juicy"), TEXT("Tender"), TEXT("Chewy"), TEXT("Crispy"), TEXT("Crumbly")
+    };
+
+    FPUAspectRanking BuildAspectRanking(const FPUDishBase& Dish, const FName& AspectName, bool bFlavor)
+    {
+        FPUAspectRanking Ranking;
+        Ranking.AspectName = AspectName;
+
+        // Sum contribution per ingredient (group by IngredientTag), store entry for display
+        TMap<FGameplayTag, float> ContributionByIngredient;
+        TMap<FGameplayTag, FPUBaseIngredientEntry> EntryByIngredient;
+
+        for (const FIngredientInstance& Instance : Dish.IngredientInstances)
+        {
+            FGameplayTag Tag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+            if (!Tag.IsValid()) continue;
+
+            float Contribution = (bFlavor ? Instance.IngredientData.GetFlavorAspect(AspectName) : Instance.IngredientData.GetTextureAspect(AspectName))
+                * static_cast<float>(Instance.Quantity);
+
+            float* Existing = ContributionByIngredient.Find(Tag);
+            if (Existing)
+            {
+                *Existing += Contribution;
+            }
+            else
+            {
+                ContributionByIngredient.Add(Tag, Contribution);
+                FPUBaseIngredientEntry Entry;
+                Entry.DisplayName = Instance.IngredientData.DisplayName;
+                Entry.PreviewTexture = Instance.IngredientData.PantryTexture ? Instance.IngredientData.PantryTexture : Instance.IngredientData.PreviewTexture;
+                EntryByIngredient.Add(Tag, Entry);
+            }
+        }
+
+        // Sort by contribution descending, take top 3
+        TArray<TPair<FGameplayTag, float>> Sorted;
+        for (const auto& Pair : ContributionByIngredient)
+        {
+            if (Pair.Value > 0.0f)
+            {
+                Sorted.Add(TPair<FGameplayTag, float>(Pair.Key, Pair.Value));
+            }
+        }
+        Sorted.Sort([](const TPair<FGameplayTag, float>& A, const TPair<FGameplayTag, float>& B) { return A.Value > B.Value; });
+
+        for (int32 i = 0; i < FMath::Min(3, Sorted.Num()); ++i)
+        {
+            if (FPUBaseIngredientEntry* Entry = EntryByIngredient.Find(Sorted[i].Key))
+            {
+                Ranking.TopContributingIngredients.Add(*Entry);
+            }
+        }
+
+        Ranking.TotalValue = bFlavor ? Dish.GetTotalFlavorAspect(AspectName) : Dish.GetTotalTextureAspect(AspectName);
+        // Integer star rating 0-5: clamp and round (aspect values 0-5)
+        Ranking.StarRating = FMath::Clamp(FMath::RoundToInt(Ranking.TotalValue), 0, 5);
+
+        return Ranking;
+    }
+
+    FPUAspectProfileData BuildAspectProfile(const FPUDishBase& Dish, const TArray<FName>& AspectNames, bool bFlavor)
+    {
+        FPUAspectProfileData Profile;
+
+        TArray<TPair<FName, float>> AspectTotals;
+        for (const FName& Name : AspectNames)
+        {
+            float Total = bFlavor ? Dish.GetTotalFlavorAspect(Name) : Dish.GetTotalTextureAspect(Name);
+            AspectTotals.Add(TPair<FName, float>(Name, Total));
+        }
+        AspectTotals.Sort([](const TPair<FName, float>& A, const TPair<FName, float>& B) { return A.Value > B.Value; });
+
+        float SumForStars = 0.0f;
+        int32 CountForStars = 0;
+        for (int32 i = 0; i < FMath::Min(2, AspectTotals.Num()); ++i)
+        {
+            if (AspectTotals[i].Value > 0.0f)
+            {
+                Profile.TopAspects.Add(BuildAspectRanking(Dish, AspectTotals[i].Key, bFlavor));
+                SumForStars += AspectTotals[i].Value;
+                CountForStars++;
+            }
+        }
+        // When dish has no ingredients, always show at least one aspect: "None", no icon, zero stars
+        if (Profile.TopAspects.Num() == 0)
+        {
+            FPUAspectRanking NoneRanking;
+            NoneRanking.AspectName = FName(TEXT("None"));
+            NoneRanking.StarRating = 0;
+            Profile.TopAspects.Add(NoneRanking);
+        }
+        // Overall star rating: average of top 2 aspect totals (0-5 scale), rounded to integer
+        if (CountForStars > 0)
+        {
+            Profile.StarRating = FMath::Clamp(FMath::RoundToInt(SumForStars / static_cast<float>(CountForStars)), 0, 5);
+        }
+
+        return Profile;
+    }
+}
+
+FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& Order)
+{
+    FPUScorecardData Data;
+
+    // Display name: dish name from completed dish
+    Data.DisplayName = GetCurrentDisplayName(Order.GetCompletedDish());
+
+    // Seal tier: 3 tiers (Perfect, Great, Good)
+    const float Score = Order.GetFinalSatisfactionScore();
+    if (Score >= 0.9f)
+    {
+        Data.SealTier = EPUScorecardSealTier::Perfect;
+    }
+    else if (Score >= 0.7f)
+    {
+        Data.SealTier = EPUScorecardSealTier::Great;
+    }
+    else
+    {
+        Data.SealTier = EPUScorecardSealTier::Good;
+    }
+
+    // Base ingredients: prefer BaseDish (recipe), fallback to CompletedDish when recipe has none
+    const FPUDishBase& BaseDish = Order.BaseDish;
+    const FPUDishBase& CompletedDish = Order.GetCompletedDish();
+    const bool bUsingRecipe = BaseDish.IngredientInstances.Num() > 0;
+    const TArray<FIngredientInstance>& IngredientSource = bUsingRecipe
+        ? BaseDish.IngredientInstances
+        : CompletedDish.IngredientInstances;
+    TSet<FGameplayTag> SeenTags;
+    for (const FIngredientInstance& Instance : IngredientSource)
+    {
+        FGameplayTag Tag = Instance.IngredientTag.IsValid() ? Instance.IngredientTag : Instance.IngredientData.IngredientTag;
+        if (Tag.IsValid() && !SeenTags.Contains(Tag))
+        {
+            SeenTags.Add(Tag);
+            FPUBaseIngredientEntry Entry;
+            Entry.DisplayName = Instance.IngredientData.DisplayName;
+            Entry.PreviewTexture = Instance.IngredientData.PantryTexture ? Instance.IngredientData.PantryTexture : Instance.IngredientData.PreviewTexture;
+            Entry.bObtained = bUsingRecipe ? HasIngredient(CompletedDish, Tag) : true;
+            Data.BaseIngredients.Add(Entry);
+        }
+    }
+
+    // Flavor and texture profiles from CompletedDish
+    Data.FlavorProfile = BuildAspectProfile(CompletedDish, FlavorAspectNames, true);
+    Data.TextureProfile = BuildAspectProfile(CompletedDish, TextureAspectNames, false);
+
+    UE_LOG(LogTemp, Display, TEXT("[Scorecard] GetScorecardData: Score=%.2f, SealTier=%d, BaseIngredients=%d, FlavorTopAspects=%d, TextureTopAspects=%d"),
+        Score, (int32)Data.SealTier, Data.BaseIngredients.Num(), Data.FlavorProfile.TopAspects.Num(), Data.TextureProfile.TopAspects.Num());
+    return Data;
 } 

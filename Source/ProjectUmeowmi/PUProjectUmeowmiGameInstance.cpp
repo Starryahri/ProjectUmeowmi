@@ -1,11 +1,15 @@
 #include "PUProjectUmeowmiGameInstance.h"
 #include "ProjectUmeowmiCharacter.h"
+#include "UI/PUDialogueBox.h"
+#include "Dialogue/TalkingObject.h"
 #include "LevelTransition/PULevelSpawnPoint.h"
 #include "PUPlayerSaveGame.h"
 #include "DishCustomization/PUIngredientBase.h"
 #include "DishCustomization/PUDishBlueprintLibrary.h"
 #include "UI/PUPopupWidget.h"
+#include "DishCustomization/PUDishCustomizationComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "EngineUtils.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Framework/Application/SlateApplication.h"
@@ -17,6 +21,7 @@
 #include "UObject/StructOnScope.h"
 #include "Components/Button.h"
 #include "UObject/UObjectGlobals.h"
+#include "Sound/SoundBase.h"
 
 UPUProjectUmeowmiGameInstance::UPUProjectUmeowmiGameInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -97,6 +102,17 @@ void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevel
 		UE_LOG(LogTemp, Error, TEXT("Failed to get player controller for level transition"));
 		bTransitionInProgress = false;
 		return;
+	}
+
+	// Hide all interaction UI elements before fade/transition
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(World, ATalkingObject::StaticClass(), FoundActors);
+	for (AActor* Actor : FoundActors)
+	{
+		if (ATalkingObject* TalkingObject = Cast<ATalkingObject>(Actor))
+		{
+			TalkingObject->HideInteractionWidgetForTransition();
+		}
 	}
 
 	// Build the level path - OpenLevel can accept either:
@@ -269,6 +285,17 @@ void UPUProjectUmeowmiGameInstance::PositionPlayerAtSpawnPoint(const FName& Spaw
 			PlayerController->GetPawn()->SetActorLocationAndRotation(SpawnLocation, SpawnRotation);
 			UE_LOG(LogTemp, Log, TEXT("Positioned player at spawn point: %s (Location: %s)"), 
 				*TargetSpawnPoint->GetSpawnPointTag().ToString(), *SpawnLocation.ToString());
+
+			// Apply camera position index from spawn point so the isometric camera faces the correct angle
+			if (AProjectUmeowmiCharacter* Character = Cast<AProjectUmeowmiCharacter>(PlayerController->GetPawn()))
+			{
+				int32 CameraIndex = TargetSpawnPoint->GetCameraPositionIndex();
+				int32 NumPositions = FMath::Max(1, Character->GetNumberOfCameraPositions());
+				CameraIndex = FMath::Clamp(CameraIndex, 0, NumPositions - 1);
+				Character->SetCameraPositionIndex(CameraIndex);
+				Character->InitializeCameraPositionFromBlueprint();
+				UE_LOG(LogTemp, Log, TEXT("Set camera position index to %d for spawn point: %s"), CameraIndex, *TargetSpawnPoint->GetSpawnPointTag().ToString());
+			}
 		}
 	}
 	else
@@ -302,7 +329,7 @@ void UPUProjectUmeowmiGameInstance::LoadLevelAfterFade()
 }
 
 // Ingredient Inventory System
-bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& IngredientTag)
+bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& IngredientTag, bool bSilent)
 {
 	if (!IngredientTag.IsValid())
 	{
@@ -319,8 +346,10 @@ bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& Ingredi
 	UnlockedIngredientTags.Add(IngredientTag);
 	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredient - Unlocked ingredient: %s"), *IngredientTag.ToString());
 
-	// Show unlock popup
-	ShowIngredientUnlockPopup(IngredientTag);
+	if (!bSilent)
+	{
+		ShowIngredientUnlockPopup(IngredientTag);
+	}
 
 	// Auto-save when an ingredient is unlocked
 	SaveGame();
@@ -328,7 +357,7 @@ bool UPUProjectUmeowmiGameInstance::UnlockIngredient(const FGameplayTag& Ingredi
 	return true;
 }
 
-int32 UPUProjectUmeowmiGameInstance::UnlockIngredients(const TArray<FGameplayTag>& IngredientTags)
+int32 UPUProjectUmeowmiGameInstance::UnlockIngredients(const TArray<FGameplayTag>& IngredientTags, bool bSilent)
 {
 	int32 UnlockedCount = 0;
 	int32 NewlyUnlockedCount = 0;
@@ -358,25 +387,27 @@ int32 UPUProjectUmeowmiGameInstance::UnlockIngredients(const TArray<FGameplayTag
 	{
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockIngredients - Unlocked %d new ingredients (total: %d)"), 
 			NewlyUnlockedCount, UnlockedCount);
-		
-		// Collect newly unlocked ingredient tags
-		TArray<FGameplayTag> NewlyUnlockedTags;
-		for (const FGameplayTag& Tag : IngredientTags)
-		{
-			if (Tag.IsValid() && UnlockedIngredientTags.Contains(Tag))
-			{
-				NewlyUnlockedTags.Add(Tag);
-			}
-		}
 
-		// Show unlock popup for newly unlocked ingredients
-		if (NewlyUnlockedTags.Num() == 1)
+		if (!bSilent)
 		{
-			ShowIngredientUnlockPopup(NewlyUnlockedTags[0]);
-		}
-		else if (NewlyUnlockedTags.Num() > 1)
-		{
-			ShowIngredientUnlockPopupMultiple(NewlyUnlockedTags);
+			// Collect newly unlocked ingredient tags for popup
+			TArray<FGameplayTag> NewlyUnlockedTags;
+			for (const FGameplayTag& Tag : IngredientTags)
+			{
+				if (Tag.IsValid() && UnlockedIngredientTags.Contains(Tag))
+				{
+					NewlyUnlockedTags.Add(Tag);
+				}
+			}
+
+			if (NewlyUnlockedTags.Num() == 1)
+			{
+				ShowIngredientUnlockPopup(NewlyUnlockedTags[0]);
+			}
+			else if (NewlyUnlockedTags.Num() > 1)
+			{
+				ShowIngredientUnlockPopupMultiple(NewlyUnlockedTags);
+			}
 		}
 		
 		// Auto-save when ingredients are unlocked
@@ -400,6 +431,109 @@ bool UPUProjectUmeowmiGameInstance::IsIngredientUnlocked(const FGameplayTag& Ing
 	return UnlockedIngredientTags.Contains(IngredientTag);
 }
 
+// Recipe Journal System
+bool UPUProjectUmeowmiGameInstance::UnlockDish(const FGameplayTag& DishTag)
+{
+	if (!DishTag.IsValid())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::UnlockDish - Invalid dish tag provided"));
+		return false;
+	}
+
+	if (UnlockedDishTags.Contains(DishTag))
+	{
+		return true;
+	}
+
+	UnlockedDishTags.Add(DishTag);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockDish - Unlocked dish: %s"), *DishTag.ToString());
+	SaveGame();
+	return true;
+}
+
+int32 UPUProjectUmeowmiGameInstance::UnlockDishes(const TArray<FGameplayTag>& DishTags)
+{
+	int32 Count = 0;
+	for (const FGameplayTag& Tag : DishTags)
+	{
+		if (Tag.IsValid() && UnlockDish(Tag))
+		{
+			Count++;
+		}
+	}
+	return Count;
+}
+
+bool UPUProjectUmeowmiGameInstance::IsDishUnlocked(const FGameplayTag& DishTag) const
+{
+	if (!DishTag.IsValid()) return false;
+	return UnlockedDishTags.Contains(DishTag);
+}
+
+void UPUProjectUmeowmiGameInstance::SetCurrentDishTag(const FGameplayTag& DishTag)
+{
+	CurrentDishTag = DishTag;
+}
+
+void UPUProjectUmeowmiGameInstance::ClearCurrentDishTag()
+{
+	CurrentDishTag = FGameplayTag();
+}
+
+TArray<FGameplayTag> UPUProjectUmeowmiGameInstance::GetOrderedUnlockedDishTags() const
+{
+	TArray<FGameplayTag> Ordered;
+	Ordered.Reserve(UnlockedDishTags.Num());
+	for (const FGameplayTag& Tag : UnlockedDishTags)
+	{
+		if (Tag.IsValid())
+		{
+			Ordered.Add(Tag);
+		}
+	}
+	Ordered.Sort([](const FGameplayTag& A, const FGameplayTag& B) { return A.ToString() < B.ToString(); });
+	return Ordered;
+}
+
+FGameplayTag UPUProjectUmeowmiGameInstance::CycleJournalDish(int32 Direction)
+{
+	TArray<FGameplayTag> Ordered = GetOrderedUnlockedDishTags();
+	if (Ordered.Num() == 0)
+	{
+		return FGameplayTag();
+	}
+
+	int32 CurrentIndex = 0;
+	if (CurrentDishTag.IsValid())
+	{
+		const int32 Found = Ordered.Find(CurrentDishTag);
+		if (Found != INDEX_NONE)
+		{
+			CurrentIndex = Found;
+		}
+	}
+
+	int32 NewIndex = CurrentIndex + Direction;
+	if (NewIndex < 0)
+	{
+		NewIndex = Ordered.Num() - 1;
+	}
+	else if (NewIndex >= Ordered.Num())
+	{
+		NewIndex = 0;
+	}
+
+	const FGameplayTag NewTag = Ordered[NewIndex];
+	CurrentDishTag = NewTag;
+	return NewTag;
+}
+
+bool UPUProjectUmeowmiGameInstance::GetDishDataForTag(const FGameplayTag& DishTag, FPUDishBase& OutDish) const
+{
+	if (!DishTag.IsValid() || !DishDataTable) return false;
+	return UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, OutDish);
+}
+
 // Save/Load System
 bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 {
@@ -416,7 +550,15 @@ bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 
 	// Copy current state to save game
 	PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
+	PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 	PlayerSaveGame->CompletedDialogueNames = CompletedDialogueNames;
+	PlayerSaveGame->UnlockedLevelTransitionIDs = UnlockedLevelTransitionIDs;
+	PlayerSaveGame->bUseDialogueTypewriterEffect = bUseDialogueTypewriterEffect;
+	PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
+	PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
+	PlayerSaveGame->DialogueSkipModeCharacterDelay = DialogueSkipModeCharacterDelay;
+	PlayerSaveGame->bTutorialCompleted = bTutorialCompleted;
+	PlayerSaveGame->TutorialStep = TutorialStep;
 
 	// Save to disk
 	if (UGameplayStatics::SaveGameToSlot(PlayerSaveGame, SlotName, 0))
@@ -455,10 +597,25 @@ bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
 
 	// Restore state from save game
 	UnlockedIngredientTags = PlayerSaveGame->UnlockedIngredientTags;
+	UnlockedDishTags = PlayerSaveGame->UnlockedDishTags;
 	CompletedDialogueNames = PlayerSaveGame->CompletedDialogueNames;
+	UnlockedLevelTransitionIDs = PlayerSaveGame->UnlockedLevelTransitionIDs;
+	bUseDialogueTypewriterEffect = PlayerSaveGame->bUseDialogueTypewriterEffect;
+	DialogueTypewriterCharacterDelay = PlayerSaveGame->DialogueTypewriterCharacterDelay;
+	bDialogueTypewriterSkipOnInput = PlayerSaveGame->bDialogueTypewriterSkipOnInput;
+	DialogueSkipModeCharacterDelay = PlayerSaveGame->DialogueSkipModeCharacterDelay;
+	bTutorialCompleted = PlayerSaveGame->bTutorialCompleted;
+	TutorialStep = PlayerSaveGame->TutorialStep;
 
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Successfully loaded game from slot: %s (Unlocked ingredients: %d)"), 
-		*SlotName, UnlockedIngredientTags.Num());
+	// Migration: old saves may not have UnlockedDishTags; initialize from StartingDishTags if empty
+	if (UnlockedDishTags.Num() == 0 && StartingDishTags.Num() > 0)
+	{
+		UnlockedDishTags = StartingDishTags;
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Migrated %d starting dishes to unlocked"), StartingDishTags.Num());
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::LoadGame - Successfully loaded game from slot: %s (Unlocked ingredients: %d, dishes: %d)"), 
+		*SlotName, UnlockedIngredientTags.Num(), UnlockedDishTags.Num());
 
 	return true;
 }
@@ -481,26 +638,39 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Keeping existing save file"));
 	}
 
-	// Clear all unlocked ingredients and dialogue states FIRST
+	// Clear all unlocked ingredients, dishes, dialogue states, level transitions, and tutorial state FIRST
 	UnlockedIngredientTags.Empty();
+	UnlockedDishTags.Empty();
+	CurrentDishTag = FGameplayTag();
 	CompletedDialogueNames.Empty();
+	UnlockedLevelTransitionIDs.Empty();
+	bTutorialCompleted = false;
+	TutorialStep = 0;
 	
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Cleared all unlocked ingredients (was %d, now %d)"), 
-		UnlockedIngredientTags.Num(), 0);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Cleared all unlocked ingredients and dishes"));
 
-	// Unlock starting ingredients
+	// Unlock starting ingredients and dishes
 	UnlockedIngredientTags = StartingIngredientTags;
+	UnlockedDishTags = StartingDishTags;
 	
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Created new game with %d starting ingredients"), 
-		StartingIngredientTags.Num());
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Created new game with %d starting ingredients, %d starting dishes"), 
+		StartingIngredientTags.Num(), StartingDishTags.Num());
 
 	// Create a new save game object
 	PlayerSaveGame = Cast<UPUPlayerSaveGame>(UGameplayStatics::CreateSaveGameObject(UPUPlayerSaveGame::StaticClass()));
 	if (PlayerSaveGame)
 	{
-		// Initialize with starting ingredients
+		// Initialize with starting ingredients and dishes
 		PlayerSaveGame->UnlockedIngredientTags = UnlockedIngredientTags;
+		PlayerSaveGame->UnlockedDishTags = UnlockedDishTags;
 		PlayerSaveGame->CompletedDialogueNames.Empty();
+		PlayerSaveGame->UnlockedLevelTransitionIDs.Empty();
+		PlayerSaveGame->bUseDialogueTypewriterEffect = bUseDialogueTypewriterEffect;
+		PlayerSaveGame->DialogueTypewriterCharacterDelay = DialogueTypewriterCharacterDelay;
+		PlayerSaveGame->bDialogueTypewriterSkipOnInput = bDialogueTypewriterSkipOnInput;
+		PlayerSaveGame->DialogueSkipModeCharacterDelay = DialogueSkipModeCharacterDelay;
+		PlayerSaveGame->bTutorialCompleted = false;
+		PlayerSaveGame->TutorialStep = 0;
 		PlayerSaveGame->SaveVersion = 1;
 
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Save game object created"));
@@ -541,6 +711,44 @@ bool UPUProjectUmeowmiGameInstance::DeleteSaveGame(const FString& SlotName)
 	}
 }
 
+// Tutorial System
+void UPUProjectUmeowmiGameInstance::SetTutorialStep(int32 Step)
+{
+	TutorialStep = FMath::Clamp(Step, 0, 7);
+}
+
+void UPUProjectUmeowmiGameInstance::AdvanceTutorialStep()
+{
+	++TutorialStep;
+	if (TutorialStep >= 7)
+	{
+		TutorialStep = 7;
+		SetTutorialCompleted();
+	}
+	else
+	{
+		SaveGame();
+	}
+}
+
+void UPUProjectUmeowmiGameInstance::SetTutorialCompleted()
+{
+	bTutorialCompleted = true;
+	TutorialStep = 7;
+	SaveGame();
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::SetTutorialCompleted - Tutorial marked as completed"));
+}
+
+FGameplayTag UPUProjectUmeowmiGameInstance::GetTutorialAllowedIngredientTag() const
+{
+	switch (TutorialStep)
+	{
+		case 1: return TutorialStep1IngredientTag;
+		case 2: return TutorialStep2IngredientTag;
+		default: return FGameplayTag();
+	}
+}
+
 // Dialogue State (stubbed for future use)
 void UPUProjectUmeowmiGameInstance::MarkDialogueCompleted(const FName& DialogueName)
 {
@@ -571,6 +779,68 @@ bool UPUProjectUmeowmiGameInstance::IsDialogueCompleted(const FName& DialogueNam
 	}
 
 	return CompletedDialogueNames.Contains(DialogueName);
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterEnabled(bool bEnabled)
+{
+	bUseDialogueTypewriterEffect = bEnabled;
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSpeed(float CharacterDelaySeconds)
+{
+	DialogueTypewriterCharacterDelay = FMath::Max(0.001f, CharacterDelaySeconds);
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSkipOnInput(bool bSkipOnInput)
+{
+	bDialogueTypewriterSkipOnInput = bSkipOnInput;
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueSkipModeSpeed(float CharacterDelaySeconds)
+{
+	DialogueSkipModeCharacterDelay = CharacterDelaySeconds;
+	SaveGame();
+}
+
+void UPUProjectUmeowmiGameInstance::SetDialogueTypewriterSound(USoundBase* Sound)
+{
+	DialogueTypewriterSound = Sound;
+}
+
+// Level Transition Lock System
+bool UPUProjectUmeowmiGameInstance::UnlockLevelTransition(const FName& LockID)
+{
+	if (LockID == NAME_None)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::UnlockLevelTransition - Invalid LockID (NAME_None)"));
+		return false;
+	}
+
+	if (UnlockedLevelTransitionIDs.Contains(LockID))
+	{
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockLevelTransition - Level transition %s is already unlocked"), *LockID.ToString());
+		return true;
+	}
+
+	UnlockedLevelTransitionIDs.Add(LockID);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::UnlockLevelTransition - Unlocked level transition: %s"), *LockID.ToString());
+
+	SaveGame();
+	return true;
+}
+
+bool UPUProjectUmeowmiGameInstance::IsLevelTransitionUnlocked(const FName& LockID) const
+{
+	// No LockID means always unlocked
+	if (LockID == NAME_None)
+	{
+		return true;
+	}
+
+	return UnlockedLevelTransitionIDs.Contains(LockID);
 }
 
 // Popup Manager System
@@ -630,32 +900,42 @@ void UPUProjectUmeowmiGameInstance::ShowPopupWithCallback(const FPopupData& Popu
 	// Store the callback
 	CurrentPopupCallback = OnPopupClosed;
 
-	// Handle modal behavior - block input if modal
-	if (PopupData.bModal && PlayerController)
-	{
-		// Block player movement and look input
-		PlayerController->SetIgnoreMoveInput(true);
-		PlayerController->SetIgnoreLookInput(true);
-		
-		// Set input mode to UI only (mouse visible, can interact with UI)
-		FInputModeUIOnly InputMode;
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		PlayerController->SetInputMode(InputMode);
-		PlayerController->bShowMouseCursor = true;
-		
-		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Modal popup: Input blocked"));
-	}
-
-	// Add to viewport
+	// Add to viewport first so widget hierarchy is built before we set focus
 	PopupWidget->AddToViewport(1000); // High z-order to appear on top
 
 	// Set popup data directly (now we have a proper C++ class!)
 	PopupWidget->SetPopupData(PopupData);
 
+	// Set input mode and focus for ALL popups - required for controller support
+	if (PlayerController)
+	{
+		// Handle modal behavior - block movement/look if modal
+		if (PopupData.bModal)
+		{
+			PlayerController->SetIgnoreMoveInput(true);
+			PlayerController->SetIgnoreLookInput(true);
+		}
+
+		// UI-only input so controller can navigate to popup buttons
+		FInputModeUIOnly InputMode;
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		if (UWidget* FocusTarget = PopupWidget->GetPreferredFocusTarget())
+		{
+			if (TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget())
+			{
+				InputMode.SetWidgetToFocus(SlateWidget);
+			}
+		}
+		PlayerController->SetInputMode(InputMode);
+		PlayerController->bShowMouseCursor = true;
+
+		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Popup shown with focus (Modal: %d)"), PopupData.bModal);
+	}
+
 	// Broadcast event
 	OnPopupClosedEvent.Broadcast(NAME_None);
 
-	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Showing popup: %s (Modal: %d)"), *PopupData.Title.ToString(), PopupData.bModal);
+	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::ShowPopup - Showing popup: %s"), *PopupData.Title.ToString());
 }
 
 void UPUProjectUmeowmiGameInstance::ShowIngredientUnlockPopup(const FGameplayTag& IngredientTag, const FText& IngredientDisplayName)
@@ -694,8 +974,7 @@ void UPUProjectUmeowmiGameInstance::ShowIngredientUnlockPopup(const FGameplayTag
 
 	PopupData.Message = FText::Format(FText::FromString(TEXT("You unlocked: {0}")), DisplayName);
 	PopupData.bModal = false;
-	PopupData.bAutoDismiss = true;
-	PopupData.AutoDismissTime = 3.0f;
+	PopupData.bAutoDismiss = false;
 	PopupData.bShowCloseButton = true;
 	
 	// Add ingredient tag to additional data
@@ -753,8 +1032,7 @@ void UPUProjectUmeowmiGameInstance::ShowIngredientUnlockPopupMultiple(const TArr
 
 	PopupData.Message = FText::FromString(MessageString);
 	PopupData.bModal = false;
-	PopupData.bAutoDismiss = true;
-	PopupData.AutoDismissTime = 4.0f; // Slightly longer for multiple ingredients
+	PopupData.bAutoDismiss = false;
 	PopupData.bShowCloseButton = true;
 	
 	// Add all ingredient tags to additional data
@@ -784,25 +1062,79 @@ void UPUProjectUmeowmiGameInstance::NotifyPopupClosed(FName ButtonID)
 	OnPopupWidgetClosed(ButtonID);
 }
 
+void UPUProjectUmeowmiGameInstance::NotifyDialogueClosed()
+{
+	OnDialogueClosedEvent.Broadcast();
+}
+
 void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 {
-	// Restore input if it was blocked (for modal popups)
+	// Restore input after popup closes - must use GameAndUI with DoNotLock (FInputModeGameOnly
+	// would switch to LockOnCapture/CapturePermanently and break mouse in customization).
 	UWorld* World = GetWorld();
 	if (World)
 	{
 		APlayerController* PlayerController = World->GetFirstPlayerController();
 		if (PlayerController)
 		{
-			// Restore input (safe to call even if not blocked)
-			PlayerController->SetIgnoreMoveInput(false);
-			PlayerController->SetIgnoreLookInput(false);
-			
-			// Restore game input mode
-			FInputModeGameOnly InputMode;
+			// Check if we're in dish customization (cooking/plating) - if so, keep move/look blocked
+			bool bInCustomization = false;
+			for (TActorIterator<AActor> It(World); It; ++It)
+			{
+				if (UPUDishCustomizationComponent* DishComp = It->FindComponentByClass<UPUDishCustomizationComponent>())
+				{
+					if (DishComp->IsCustomizing())
+					{
+						bInCustomization = true;
+						break;
+					}
+				}
+			}
+
+			UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OnPopupWidgetClosed - bInCustomization=%d"), bInCustomization);
+			// Use Reset to clear stacked ignore state; SetIgnore* uses a counter that accumulates across popups
+			PlayerController->ResetIgnoreInputFlags();
+			AProjectUmeowmiCharacter* PlayerChar = nullptr;
+			if (APawn* Pawn = PlayerController->GetPawn())
+			{
+				PlayerChar = Cast<AProjectUmeowmiCharacter>(Pawn);
+			}
+			bool bDialogueVisible = false;
+			UWidget* FocusTarget = nullptr;
+			if (PlayerChar)
+			{
+				if (UPUDialogueBox* DialogueBox = PlayerChar->GetDialogueBox())
+				{
+					bDialogueVisible = (DialogueBox->GetVisibility() == ESlateVisibility::Visible);
+					if (bDialogueVisible)
+					{
+						FocusTarget = DialogueBox->GetFocusTarget();
+					}
+				}
+			}
+			if (bInCustomization || bDialogueVisible)
+			{
+				PlayerController->SetIgnoreMoveInput(true);
+				PlayerController->SetIgnoreLookInput(true);
+			}
+
+			// GameAndUI + DoNotLock: allows free mouse for UI and 3D ingredient interaction
+			FInputModeGameAndUI InputMode;
+			InputMode.SetHideCursorDuringCapture(false);
+			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+			// Restore focus to dialogue if still visible (popup had priority, now hand back to dialogue)
+			if (FocusTarget)
+			{
+				if (TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget())
+				{
+					InputMode.SetWidgetToFocus(SlateWidget);
+				}
+			}
 			PlayerController->SetInputMode(InputMode);
-			// Note: Don't force mouse cursor off - let the game decide
-			
-			UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed - Input restored"));
+			PlayerController->bShowMouseCursor = true;
+
+			UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed - Input restored (focus: %s)"), FocusTarget ? *FocusTarget->GetName() : TEXT("none"));
 		}
 	}
 

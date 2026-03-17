@@ -20,7 +20,8 @@ enum class EDishCustomizationStageType : uint8
 {
     Planning     UMETA(DisplayName = "Planning"),
     Cooking      UMETA(DisplayName = "Cooking"),
-    Plating      UMETA(DisplayName = "Plating")
+    Plating      UMETA(DisplayName = "Plating"),
+    Ending       UMETA(DisplayName = "Ending")
 };
 
 UCLASS(BlueprintType, Blueprintable)
@@ -45,6 +46,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void OnCustomizationEnded();
 
+    /** Called when a popup closes - restores focus to pantry if open (e.g. after tutorial popup dismissed) */
+    UFUNCTION()
+    void OnPopupClosedForFocusRestore(FName ButtonID);
+
+    /** Called when dialogue closes - restores focus to dish customization if active (e.g. opened from dialogue) */
+    UFUNCTION()
+    void OnDialogueClosedForFocusRestore();
+
     // Set the customization component reference (for event subscription only)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     void SetCustomizationComponent(UPUDishCustomizationComponent* Component);
@@ -56,6 +65,13 @@ public:
     // Get current dish data
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
     const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
+
+    /**
+     * Get the ending stage text for the current dish: "You created [dish name]" or "You created Suspicious [dish name]".
+     * Uses Game Instance's GetDishDataForTag to get the base recipe. Returns empty text if base dish cannot be loaded.
+     */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ending")
+    FText GetEndingStageTextForCurrentDish() const;
 
     // GUID-based unique ID generation for ingredient instances
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
@@ -123,12 +139,13 @@ public:
     //   - bUseShelvingWidgets: If true, slots will be organized into shelving widgets (3 slots per shelf). If false, slots added directly to container
     //   - bCreateEmptySlots: If true, creates empty slots up to MaxSlots. If false, only creates slots for existing ingredients
     //   - bEnableDrag: Whether to enable drag functionality on the slots
-    //   - IngredientSource: Array of ingredient instances to use. If empty, uses CurrentDishData.IngredientInstances
+    //   - IngredientSource: Array of ingredient instances to use. If empty, uses CurrentDishData.IngredientInstances (except for Prep location, which always creates empty slots)
     //   - FirstSlotLeftPadding: Left padding to apply to the first slot when added directly to container (not using shelving widgets). Useful for aligning with skewed backgrounds.
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding = 0.0f);
     
-    // Convenience function that uses CurrentDishData.IngredientInstances (no IngredientSource parameter needed)
+    // Convenience function that uses CurrentDishData.IngredientInstances (no IngredientSource parameter needed).
+    // For Prep location, always creates empty slots (player chooses from pantry; dish ingredients are added via EnsureDishIngredientsInPantry).
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots = 12, bool bUseShelvingWidgets = false, bool bCreateEmptySlots = true, bool bEnableDrag = true, float FirstSlotLeftPadding = 0.0f);
     
@@ -297,6 +314,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
     void SetInitialFocusForCookingStage();
 
+    /** True if dialogue box is visible - don't steal focus when dialogue is active (e.g. customization opened from dialogue) */
+    bool IsDialogueVisible() const;
+
 protected:
     // Current dish data
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Data")
@@ -324,6 +344,7 @@ protected:
     // Maximum number of ingredients that can be selected
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Settings", meta = (ClampMin = "1", ClampMax = "20"))
     int32 MaxIngredients = 10;
+
 
     // Store references to ingredient buttons for O(1) lookup
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
@@ -467,6 +488,10 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Plating")
     void OnPlatingStageInitialized(const FPUDishBase& DishData);
 
+    /** Called when an ingredient is dropped on a plating slot during tutorial (step 4). Override in Plating Blueprint to trigger BAO "Look out belowww!" dialogue. */
+    UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Plating|Tutorial")
+    void OnTutorialPlatingDrop();
+
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
     void EnablePlatingSlots();
 
@@ -504,6 +529,10 @@ private:
     // Handle pantry slot clicks
     UFUNCTION()
     void OnPantrySlotClicked(class UPUIngredientSlot* IngredientSlot);
+
+    // Handle plating ingredient dropped (for tutorial "Look out belowww!" step)
+    UFUNCTION()
+    void OnPlatingIngredientDropped(class UPUIngredientSlot* DroppedSlot);
 
     // Helper function to get or create a current shelving widget
     UUserWidget* GetOrCreateCurrentShelvingWidget(UPanelWidget* ContainerToUse);

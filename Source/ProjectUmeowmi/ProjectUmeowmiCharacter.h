@@ -5,18 +5,26 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
+#include "GameplayTagContainer.h"
+#include "Components/WidgetComponent.h"
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "Interfaces/PUInteractableInterface.h"
 #include "DishCustomization/PUOrderBase.h"
+#include "DishCustomization/PUDishPreviewComponent.h"
+#include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
 class UCameraComponent;
+class UStaticMeshComponent;
+class UPUEmoteWidget;
+struct FTimerHandle;
 class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
 class UPUDialogueBox;
+class UPUJournalWidget;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -51,6 +59,26 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** Interact Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* InteractAction;
+
+	/** Cycle between overlapping interact targets (Space bar). Only active when 2+ talking objects overlap. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* CycleInteractTargetAction;
+
+	/** Open/Toggle Journal Input Action (Start button, I key) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* OpenJournalAction;
+
+	/** Cycle to previous dish in journal Recipes tab (LB / Left Bumper). Only active when journal is open on Recipes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleDishPrevAction;
+
+	/** Cycle to next dish in journal Recipes tab (RB / Right Bumper). Only active when journal is open on Recipes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleDishNextAction;
+
+	/** Hold to skip dialogue (fast typewriter, no sound, auto-advance). Only active when in dialogue. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* SkipDialogueAction;
 
 	//Todo: Add input for cancel action
 	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
@@ -150,9 +178,13 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	////////////////////////////////////////////////////////////
 	// Dialogue and Interaction Configuration
 	////////////////////////////////////////////////////////////
-	/** Current talking object that can be interacted with */
+	/** List of talking objects currently in range (overlapping). */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Talking Object", meta = (AllowPrivateAccess = "true"))
-	ATalkingObject* CurrentTalkingObject;
+	TArray<ATalkingObject*> OverlappingTalkingObjects;
+
+	/** Index of the currently selected talking object in OverlappingTalkingObjects. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Talking Object", meta = (AllowPrivateAccess = "true"))
+	int32 SelectedTalkingObjectIndex = 0;
 
 	/** Name of the dialogue participant */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Talking Object", meta = (AllowPrivateAccess = "true"))
@@ -170,10 +202,49 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
 	UPUDialogueBox* DialogueBox;
 
+	/** Reference to the journal widget (assign in Blueprint if journal is in HUD). If unset, we search for it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Journal", meta = (AllowPrivateAccess = "true"))
+	UPUJournalWidget* JournalWidget;
+
 	/** Current interactable object that can be interacted with */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Interactable", meta = (AllowPrivateAccess = "true"))
 	TScriptInterface<IPUInteractableInterface> CurrentInteractable;
 
+
+	////////////////////////////////////////////////////////////
+	// Emote Configuration
+	////////////////////////////////////////////////////////////
+	/** Emote widget rendered above the player character. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true"))
+	UWidgetComponent* EmoteWidget;
+
+	/** Master toggle for showing emotes above the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true"))
+	bool bEnableEmotes = true;
+
+	/** Widget class used to render emotes above the player. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
+	TSubclassOf<UPUEmoteWidget> EmoteWidgetClass;
+
+	/** Space in which the emote widget is rendered (Screen or World). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
+	EWidgetSpace EmoteWidgetSpace = EWidgetSpace::World;
+
+	/** Data table mapping gameplay tags to emote data (icon, duration, etc.). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
+	UDataTable* EmoteDataTable = nullptr;
+
+
+	////////////////////////////////////////////////////////////
+	// Dish Preview (above head when carrying a dish)
+	////////////////////////////////////////////////////////////
+	/** 3D preview of plated dish shown above character when carrying a dish to give. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Preview", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UPUDishPreviewComponent> DishPreviewComponent;
+
+	/** Dish mesh for preview - created here (not in DishPreviewComponent) to avoid template/instance attachment mismatch in Blueprint subclasses. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Preview", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UStaticMeshComponent> DishPreviewMeshComponent;
 
 
     // IDlgDialogueParticipant Interface
@@ -187,6 +258,11 @@ public:
 	void ToggleGridMovement(const FInputActionValue& Value);
 	void ZoomCamera(const FInputActionValue& Value);
 	void Interact(const FInputActionValue& Value);
+	void ToggleJournal(const FInputActionValue& Value);
+	void OnJournalCycleDishPrev(const FInputActionValue& Value);
+	void OnJournalCycleDishNext(const FInputActionValue& Value);
+	void OnSkipDialogueStarted(const FInputActionValue& Value);
+	void OnSkipDialogueCompleted(const FInputActionValue& Value);
 	
 	/** Initialize camera position based on the starting index */
 	void InitializeCameraPosition();
@@ -208,12 +284,14 @@ public:
 	FORCEINLINE UInputAction* GetRotateCameraAction() const { return RotateCameraAction; }
 	FORCEINLINE void SetCameraOffset(float NewOffset) { CameraOffset = NewOffset; }
 	FORCEINLINE void SetCameraPositionIndex(int32 NewIndex) { CameraPositionIndex = NewIndex; }
+	FORCEINLINE int32 GetNumberOfCameraPositions() const { return NumberOfCameraPositions; }
 	
 	// Input action getters
 	FORCEINLINE UInputAction* GetZoomAction() const { return ZoomAction; }
 	FORCEINLINE UInputAction* GetMoveAction() const { return MoveAction; }
 	FORCEINLINE UInputAction* GetLookAction() const { return LookAction; }
 	FORCEINLINE UInputAction* GetInteractAction() const { return InteractAction; }
+	FORCEINLINE UInputAction* GetOpenJournalAction() const { return OpenJournalAction; }
 	FORCEINLINE UInputAction* GetToggleGridMovementAction() const { return ToggleGridMovementAction; }
 	FORCEINLINE UInputMappingContext* GetDefaultMappingContext() const { return DefaultMappingContext; }
 	
@@ -268,15 +346,43 @@ public:
 	
 	/** Check if there's a talking object available for interaction */
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	bool HasTalkingObjectAvailable() const { return CurrentTalkingObject != nullptr; }
+	bool HasTalkingObjectAvailable() const { return GetCurrentTalkingObject() != nullptr; }
+
+	/** Number of overlapping talking objects. Use to show "Press Space to switch" when >= 2. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Interaction")
+	int32 GetOverlappingTalkingObjectCount() const { return OverlappingTalkingObjects.Num(); }
+
+	/** Index of the selected talking object (0-based). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Interaction")
+	int32 GetSelectedTalkingObjectIndex() const { return SelectedTalkingObjectIndex; }
+
+	// Emote API
+	/** Show an emote above the player, using EmoteDataTable to resolve the tag into an icon and optional extras. */
+	UFUNCTION(BlueprintCallable, Category = "Emote")
+	void ShowEmoteByTag(FGameplayTag EmoteTag);
+
+	/** Clear any active emote immediately. */
+	UFUNCTION(BlueprintCallable, Category = "Emote")
+	void ClearEmote();
+
+	/** Returns true if an emote is currently visible. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Emote")
+	bool IsEmoteActive() const;
+
+	/** Get the dish preview component (for showing plated dish above head). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish Preview")
+	UPUDishPreviewComponent* GetDishPreviewComponent() const { return DishPreviewComponent; }
 
 	/** Get the dialogue box widget */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	FORCEINLINE UPUDialogueBox* GetDialogueBox() const { return DialogueBox; }
 
-	/** Get the current talking object */
+	/** Get the current talking object (selected from overlapping list). */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
-	ATalkingObject* GetCurrentTalkingObject() const { return CurrentTalkingObject; }
+	ATalkingObject* GetCurrentTalkingObject() const;
+
+	/** Cycle to the next/previous overlapping talking object. Call when CycleInteractTargetAction is pressed. */
+	void CycleInteractTarget(const FInputActionValue& Value);
 
 	void RegisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
 	void UnregisterInteractable(TScriptInterface<IPUInteractableInterface> Interactable);
@@ -294,6 +400,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	void ClearCurrentOrder();
+
+	/** Reveals a hint for the current order if the player has an active order and the aspect exists in TargetAspects. Call from dialogue (e.g. RevealHint_Salt). */
+	UFUNCTION(BlueprintCallable, Category = "Order System")
+	void RevealHintOnCurrentOrder(FName AspectName);
 
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	void SetOrderResult(bool bCompleted, float SatisfactionScore);
@@ -324,6 +434,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	void OnOrderFailed();
 
+	/** Show the scorecard for the current completed order. Call from dialogue, etc. Returns the widget for chaining (e.g. bind Close to a button). */
+	UFUNCTION(BlueprintCallable, Category = "Order System", meta = (DisplayName = "Show Scorecard"))
+	class UPUScorecardWidget* ShowScorecard(TSubclassOf<class UPUScorecardWidget> ScorecardWidgetClass);
+
 	// Order System Storage
 	UPROPERTY(BlueprintReadWrite, Category = "Order System")
 	FPUOrderBase CurrentOrder;
@@ -340,5 +454,12 @@ public:
 private:
 	// Helper function to clean up UObject references in orders
 	void CleanupOrderUObjectReferences(FPUOrderBase& Order);
+
+	/** Called when emote duration expires; plays fade-out then clears after animation. */
+	void BeginFadeOutEmote();
+
+	FTimerHandle EmoteHideTimerHandle;
+	FTimerHandle EmoteFadeOutTimerHandle;
+	FGameplayTag ActiveEmoteTag;
 
 };

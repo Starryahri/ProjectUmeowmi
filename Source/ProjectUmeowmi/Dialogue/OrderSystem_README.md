@@ -15,9 +15,9 @@ This update prevents players from receiving multiple orders simultaneously. Play
 ### 2. Enhanced Dialogue Conditions
 Added new conditions that can be used in dialogue nodes:
 
-- **`HasActiveOrder`**: Returns `true` if player has an active (incomplete) order
-- **`OrderCompleted`**: Returns `true` if player has a completed order ready for submission
-- **`NoActiveOrder`**: Returns `true` if player has no active order
+- **`HasActiveOrder`**: Returns `true` if player has an active (incomplete) order **from this dish giver** (participant-scoped)
+- **`OrderCompleted`**: Returns `true` if player has a completed order ready for submission **from this dish giver** (participant-scoped)
+- **`NoActiveOrder`**: Returns `true` if player has no active order (global - prevents duplicate orders)
 
 ## Usage in Dialogue System
 
@@ -57,6 +57,7 @@ Text: "Let me see what you've made..."
 
 ### Available Methods for Dialogue Events
 - **`GenerateAndGiveOrderToPlayer()`**: Generates a new order and gives it to the player (only if they don't have an active order)
+- **`RevealHint_Salt`**, **`RevealHint_Sweet`**, **`RevealHint_Crispy`**, etc.: Reveals that aspect as a hint on the player's current order (for radar chart display). Use format `RevealHint_` + aspect name. See `Docs/OrderHintRadarChartSetup.md`.
 
 ## Technical Details
 
@@ -71,6 +72,9 @@ Text: "Let me see what you've made..."
 3. Dialogue system uses conditions to determine appropriate response
 4. If dialogue decides to give order: Calls `GenerateAndGiveOrderToPlayer()` event
 5. If player has completed order: Handle completion during dialogue
+
+## Participant-Scoped Order Conditions
+When multiple dish givers (e.g. Yeoh, Lola) share a dialogue or level, each participant's `HasActiveOrder` and `OrderCompleted` conditions are scoped to that participant. The order stores `OrderGiverParticipantName` when given to the player, so Yeoh only shows "reminder" dialogue when the player has Yeoh's order, and Lola only shows hers when the player has Lola's order. Orders loaded from save without this field (legacy) match any participant for backward compatibility.
 
 ## Benefits
 - Prevents order confusion

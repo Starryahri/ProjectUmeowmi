@@ -2,8 +2,33 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagContainer.h"
 #include "PUDishBase.h"
 #include "PUOrderBase.generated.h"
+
+/** Whether an order aspect requirement is for flavor or texture. */
+UENUM(BlueprintType)
+enum class EOrderAspectType : uint8
+{
+    Flavor,
+    Texture
+};
+
+/** Single aspect requirement: e.g. Salt >= 5, Crispy >= 3. */
+USTRUCT(BlueprintType)
+struct PROJECTUMEOWMI_API FOrderAspectRequirement
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect")
+    FName AspectName;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect", meta = (ClampMin = "0.0", ClampMax = "5.0"))
+    float MinValue = 5.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect")
+    EOrderAspectType AspectType = EOrderAspectType::Flavor;
+};
 
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUOrderBase : public FTableRowBase
@@ -17,6 +42,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Basic")
     FName OrderID;
 
+    /** Participant name of the dish giver who gave this order. Used to scope HasActiveOrder/OrderCompleted dialogue conditions per participant. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Basic")
+    FName OrderGiverParticipantName;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Basic")
     FText OrderDescription;
 
@@ -24,11 +53,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Requirements")
     int32 MinIngredientCount = 3;
 
+    /** One or more aspect requirements (flavor and/or texture). All must be met. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Requirements")
-    FName TargetFlavorProperty = FName(TEXT("Saltiness"));
+    TArray<FOrderAspectRequirement> TargetAspects;
 
+    /** Hints the player has discovered (e.g. from dialogue). Subset of TargetAspects. Use for partial radar chart display. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Requirements")
-    float MinFlavorValue = 5.0f;
+    TArray<FOrderAspectRequirement> DiscoveredHints;
 
     // Dialogue Integration
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Dialogue")
@@ -54,6 +85,9 @@ public:
     void LogOrderDetails() const;
 
     void LogValidationResults(const FPUDishBase& Dish) const;
+
+    /** Returns display text for the order including the dish giver (e.g. "Order from Yeoh: Make me something..."). Use in UI. */
+    FText GetOrderDisplayText() const;
 
     void LogCompletionDetails() const;
 

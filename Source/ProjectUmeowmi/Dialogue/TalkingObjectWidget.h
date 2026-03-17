@@ -22,6 +22,9 @@ public:
     /** Sets the interaction icon */
     void SetInteractionIcon(UTexture2D* Icon);
 
+    /** Sets selection state when multiple targets overlap. bSelected: full opacity; others dimmed. */
+    void SetSelectionState(bool bSelected, int32 Total);
+
 protected:
     virtual void NativeConstruct() override;
 

@@ -103,6 +103,34 @@ struct FPopupData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup")
 	bool bShowCloseButton;
 
+	/**
+	 * Horizontal alignment in viewport (0=left, 0.5=center, 1=right).
+	 * Useful for tutorials - e.g. 0.5 for center, 0 for left-aligned near a UI element.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup|Layout", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1"))
+	float HorizontalAlignment = 0.5f;
+
+	/**
+	 * Vertical alignment in viewport (0=top, 0.5=center, 1=bottom).
+	 * Useful for tutorials - e.g. 0.25 for upper area, 0.75 for lower area.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup|Layout", meta = (ClampMin = "0", ClampMax = "1", UIMin = "0", UIMax = "1"))
+	float VerticalAlignment = 0.5f;
+
+	/**
+	 * Optional position offset from the aligned point (in pixels).
+	 * Use for fine-tuning - e.g. nudge a centered popup up or down.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup|Layout")
+	FVector2D PositionOffset = FVector2D::ZeroVector;
+
+	/**
+	 * Optional size override. If both X and Y are > 0, overrides the popup's desired size.
+	 * Leave at (0,0) to use the Blueprint's default size.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup|Layout")
+	FVector2D SizeOverride = FVector2D::ZeroVector;
+
 	// Additional data for specific popup types (e.g., ingredient tags for unlock popups)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Popup")
 	TArray<FGameplayTag> AdditionalData;

@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "PUDishBase.h"
+#include "PUOrderBase.h"
+#include "../UI/PUScorecardTypes.h"
 
 #include "PUDishBlueprintLibrary.generated.h"
 
@@ -149,4 +151,45 @@ public:
     // Removes "Ingredient." prefix, converts to lowercase, and removes all periods
     // Example: "Ingredient.Noodle.Bihon" -> "noodlebihon"
     static FName GetIngredientRowNameFromTag(const FGameplayTag& IngredientTag);
+
+    /**
+     * Get the loaded journal texture for a dish. Use this instead of Dish.JournalTexture directly,
+     * since JournalTexture is a TSoftObjectPtr and must be explicitly loaded (unlike prep stage
+     * icons which use direct UTexture2D* references). Call this when displaying the recipe
+     * illustration in the journal - no need to open the texture in the editor first.
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Visual", meta = (DisplayName = "Get Loaded Journal Texture"))
+    static UTexture2D* GetLoadedJournalTexture(const FPUDishBase& Dish);
+
+    /**
+     * Get the loaded preview texture for a dish. Same as GetLoadedJournalTexture but for PreviewTexture.
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Visual", meta = (DisplayName = "Get Loaded Preview Texture"))
+    static UTexture2D* GetLoadedPreviewTexture(const FPUDishBase& Dish);
+
+    /**
+     * Check if the completed dish is "suspicious" - i.e. missing any base/recipe ingredients from the original dish.
+     * Use for the Ending stage: if true, show "You created Suspicious [dish name]".
+     * @param CompletedDish - The dish the player actually made (after prep, cooking, plating)
+     * @param BaseRecipeDish - The original recipe from the data table (get via GetDishFromDataTable or GameInstance GetDishDataForTag)
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Ending")
+    static bool IsDishSuspicious(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish);
+
+    /**
+     * Get the ending stage text: "You created [dish name]" or "You created Suspicious [dish name]".
+     * Suspicious when the completed dish is missing base recipe ingredients.
+     * @param CompletedDish - The dish the player actually made
+     * @param BaseRecipeDish - The original recipe (get via GetDishFromDataTable or GameInstance GetDishDataForTag)
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Ending")
+    static FText GetEndingStageText(const FPUDishBase& CompletedDish, const FPUDishBase& BaseRecipeDish);
+
+    /**
+     * Build scorecard data from a completed order. Use when displaying the scorecard after order delivery.
+     * @param Order - The completed order (must have CompletedDish and FinalSatisfactionScore set)
+     * @return Scorecard data with seal tier, base ingredients, flavor profile, texture profile
+     */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Scorecard")
+    static FPUScorecardData GetScorecardData(const FPUOrderBase& Order);
 }; 

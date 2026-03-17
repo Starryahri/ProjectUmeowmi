@@ -1,4 +1,5 @@
 #include "PUPopupWidget.h"
+#include "Blueprint/UserWidget.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "Components/Button.h"
@@ -9,21 +10,28 @@
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "TimerManager.h"
 #include "Blueprint/WidgetTree.h"
 #include "UObject/StructOnScope.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Input/Events.h"
+#include "GameFramework/PlayerController.h"
+#include "Blueprint/GameViewportSubsystem.h"
 
 UPUPopupWidget::UPUPopupWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	// Default to UButton, but can be overridden in Blueprint
 	ButtonWidgetClass = nullptr; // Will be set in Blueprint
+	// Ensure popup can receive focus for controller navigation
+	SetIsFocusable(true);
 }
 
 void UPUPopupWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// Bind close button if it exists
+	// Bind close button if it exists (UButton is focusable by default)
 	if (CloseButton)
 	{
 		CloseButton->OnClicked.AddDynamic(this, &UPUPopupWidget::HandleButtonClick);
@@ -32,8 +40,12 @@ void UPUPopupWidget::NativeConstruct()
 
 void UPUPopupWidget::NativeDestruct()
 {
-	// Stop auto-dismiss timer
+	// Stop timers
 	StopAutoDismissTimer();
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DeferredFocusTimerHandle);
+	}
 
 	// Clear buttons
 	ClearButtons();
@@ -44,6 +56,81 @@ void UPUPopupWidget::NativeDestruct()
 void UPUPopupWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// Deferred focus fallback: apply on first tick if timer hasn't run yet
+	if (!bHasAppliedDeferredFocus)
+	{
+		ApplyDeferredFocus();
+	}
+}
+
+FReply UPUPopupWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	const FKey Key = InKeyEvent.GetKey();
+
+	// F or A (gamepad) or Enter/Space - close/confirm popup (same as clicking primary button)
+	if (Key == EKeys::F || Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
+	{
+		// Trigger primary action: first button, or close button, or Close(NAME_None)
+		if (SpawnedButtons.Num() > 0 && IsValid(SpawnedButtons[0]))
+		{
+			FName ButtonID = GetButtonID(SpawnedButtons[0]);
+			if (ButtonID != NAME_None)
+			{
+				HandleButtonClickWithIDDirect(ButtonID);
+			}
+			else
+			{
+				HandleButtonClick();
+			}
+			return FReply::Handled();
+		}
+		if (SpawnedButtonWidgets.Num() > 0 && CurrentPopupData.Buttons.Num() > 0)
+		{
+			HandleButtonClickWithIDDirect(CurrentPopupData.Buttons[0].ButtonID);
+			return FReply::Handled();
+		}
+		if (CloseButton && CloseButton->GetVisibility() == ESlateVisibility::Visible)
+		{
+			HandleButtonClick();
+			return FReply::Handled();
+		}
+		Close(NAME_None);
+		return FReply::Handled();
+	}
+
+	return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
+}
+
+void UPUPopupWidget::ApplyDeferredFocus()
+{
+	if (bHasAppliedDeferredFocus) return;
+
+	UWidget* FocusTarget = GetPreferredFocusTarget();
+	if (!FocusTarget) return;
+
+	TSharedPtr<SWidget> SlateWidget = FocusTarget->GetCachedWidget();
+	if (!SlateWidget.IsValid()) return;
+
+	// Ensure UserWidget targets are focusable (UButton is focusable by default)
+	if (UUserWidget* UserWidgetTarget = Cast<UUserWidget>(FocusTarget))
+	{
+		UserWidgetTarget->SetIsFocusable(true);
+	}
+
+	// Set keyboard focus (works for both keyboard and gamepad)
+	FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
+
+	// SetUserFocus routes gamepad input to this widget - required for controller
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+		{
+			FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), SlateWidget.ToSharedRef(), EFocusCause::SetDirectly);
+		}
+	}
+
+	bHasAppliedDeferredFocus = true;
 }
 
 void UPUPopupWidget::SetPopupData(const FPopupData& InPopupData)
@@ -93,6 +180,14 @@ void UPUPopupWidget::SetPopupData(const FPopupData& InPopupData)
 	// Create buttons
 	CreateButtons();
 
+	// Schedule deferred focus for next frame - required for controller/gamepad (focus fails if set immediately)
+	bHasAppliedDeferredFocus = false;
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(DeferredFocusTimerHandle);
+		World->GetTimerManager().SetTimer(DeferredFocusTimerHandle, this, &UPUPopupWidget::ApplyDeferredFocus, 0.05f, false);
+	}
+
 	// Start auto-dismiss timer if needed
 	if (InPopupData.bAutoDismiss)
 	{
@@ -105,6 +200,9 @@ void UPUPopupWidget::SetPopupData(const FPopupData& InPopupData)
 
 	// Update popup style based on type
 	UpdatePopupStyle();
+
+	// Apply viewport layout (alignment, position offset, size)
+	ApplyViewportLayout();
 
 	UE_LOG(LogTemp, Log, TEXT("UPUPopupWidget::SetPopupData - Popup data set: %s"), *InPopupData.Title.ToString());
 }
@@ -300,6 +398,9 @@ void UPUPopupWidget::CreateButtons()
 			UE_LOG(LogTemp, Warning, TEXT("UPUPopupWidget::CreateButtons - Could not find TextBlock for button label '%s'. Set ButtonLabelWidgetName on WBP_Popup to your TextBlock's name."), *ButtonData.ButtonLabel.ToString());
 		}
 
+		// Ensure custom button widgets are focusable (UButton is focusable by default)
+		NewButtonWidget->SetIsFocusable(true);
+
 		// Add to container
 		ButtonsContainer->AddChild(NewButtonWidget);
 		
@@ -426,6 +527,42 @@ void UPUPopupWidget::UpdatePopupStyle()
 	}
 }
 
+void UPUPopupWidget::ApplyViewportLayout()
+{
+	if (!IsInViewport())
+	{
+		return;
+	}
+
+	UGameViewportSubsystem* Subsystem = UGameViewportSubsystem::Get(GetWorld());
+	if (!Subsystem)
+	{
+		return;
+	}
+
+	FGameViewportWidgetSlot ViewportSlot = Subsystem->GetWidgetSlot(this);
+
+	// Anchors and alignment: (0,0)=top-left, (0.5,0.5)=center, (1,1)=bottom-right
+	float H = CurrentPopupData.HorizontalAlignment;
+	float V = CurrentPopupData.VerticalAlignment;
+	ViewportSlot.Anchors = FAnchors(H, V, H, V);
+	ViewportSlot.Alignment = FVector2D(H, V);
+
+	// Position offset (pixels) - Left/Top in FMargin
+	if (CurrentPopupData.PositionOffset != FVector2D::ZeroVector)
+	{
+		ViewportSlot.Offsets = FMargin(CurrentPopupData.PositionOffset.X, CurrentPopupData.PositionOffset.Y, 0.0f, 0.0f);
+	}
+
+	Subsystem->SetWidgetSlot(this, ViewportSlot);
+
+	// Size override
+	if (CurrentPopupData.SizeOverride.X > 0 && CurrentPopupData.SizeOverride.Y > 0)
+	{
+		SetDesiredSizeInViewport(CurrentPopupData.SizeOverride);
+	}
+}
+
 FName UPUPopupWidget::GetButtonID(UButton* Button) const
 {
 	if (Button && ButtonIDMap.Contains(Button))
@@ -435,3 +572,23 @@ FName UPUPopupWidget::GetButtonID(UButton* Button) const
 	return NAME_None;
 }
 
+UWidget* UPUPopupWidget::GetPreferredFocusTarget() const
+{
+	// Prefer first button so user can immediately press A to confirm
+	if (SpawnedButtons.Num() > 0 && IsValid(SpawnedButtons[0]))
+	{
+		return SpawnedButtons[0];
+	}
+	// Custom button widgets (no UButton child) - use first widget
+	if (SpawnedButtonWidgets.Num() > 0 && IsValid(SpawnedButtonWidgets[0]))
+	{
+		return SpawnedButtonWidgets[0];
+	}
+	// Fall back to close button if visible
+	if (CloseButton && CloseButton->GetVisibility() == ESlateVisibility::Visible)
+	{
+		return CloseButton;
+	}
+	// Fall back to popup root
+	return const_cast<UPUPopupWidget*>(this);
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
 #include "TalkingObject.h"
 #include "../DishCustomization/PUOrderComponent.h"
 #include "PUDishGiver.generated.h"
@@ -30,6 +31,14 @@ public:
     // Dialogue-controlled order generation
     UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
     void GenerateAndGiveOrderToPlayer();
+
+    /** Generate and give an order for a specific dish tag. Use from dialogue/Blueprint when you want a particular dish. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders", meta = (DisplayName = "Generate And Give Order With Dish"))
+    void GenerateAndGiveOrderToPlayerWithDish(FGameplayTag DishTag);
+
+    /** Reveals an order hint to the player if they have an active order from this dish giver. Use from dialogue event "RevealHint_Salt", etc. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Giver|Orders")
+    void RevealHintToPlayer(FName AspectName);
 
     // Override dialogue participant methods to include order data
     virtual bool CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const override;

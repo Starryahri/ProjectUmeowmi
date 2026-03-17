@@ -35,11 +35,15 @@ void APUDishGiver::StartInteraction()
         }
     }
     
-    // Check if player has a completed order first
+    // Check if player has a completed order FROM THIS dish giver first
     if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
     {
-        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::StartInteraction - Player has completed order, handling completion"));
-        HandleOrderCompletion(PlayerChar);
+        const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+        const FName MyParticipantName = GetTalkingObjectName();
+        if (Order.OrderGiverParticipantName.IsNone() || Order.OrderGiverParticipantName == MyParticipantName)
+        {
+            HandleOrderCompletion(PlayerChar);
+        }
     }
     // Check if player already has an active order
     else if (PlayerChar && PlayerChar->HasCurrentOrder())
@@ -114,20 +118,75 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
     }
     
     // Get the order with validation
-    const FPUOrderBase& Order = OrderComponent->GetCurrentOrder();
+    FPUOrderBase Order = OrderComponent->GetCurrentOrder();
     if (!Order.OrderID.IsValid())
     {
         //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generated order has invalid ID"));
         return;
     }
     
-    // Pass the order to the player character
+    Order.OrderGiverParticipantName = GetTalkingObjectName();
     PlayerChar->SetCurrentOrder(Order);
-    
-    // Set dialogue variables using helper function
     SetDialogueVariablesFromOrder(Order);
-    
-    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order passed to player character: %s"), *Order.OrderID.ToString());
+}
+
+void APUDishGiver::GenerateAndGiveOrderToPlayerWithDish(FGameplayTag DishTag)
+{
+    if (!IsValid(OrderComponent)) return;
+
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (UWorld* World = GetWorld())
+    {
+        if (APlayerController* PC = World->GetFirstPlayerController())
+        {
+            PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+        }
+    }
+    if (!IsValid(PlayerChar) || PlayerChar->HasCurrentOrder()) return;
+
+    OrderComponent->GenerateNewOrderWithDish(DishTag);
+    if (!OrderComponent->HasActiveOrder()) return;
+
+    FPUOrderBase Order = OrderComponent->GetCurrentOrder();
+    if (!Order.OrderID.IsValid()) return;
+
+    Order.OrderGiverParticipantName = GetTalkingObjectName();
+    PlayerChar->SetCurrentOrder(Order);
+    SetDialogueVariablesFromOrder(Order);
+}
+
+void APUDishGiver::RevealHintToPlayer(FName AspectName)
+{
+    UE_LOG(LogTemp, Display, TEXT("[Hint] RevealHintToPlayer(%s) called on %s"), *AspectName.ToString(), *GetName());
+
+    if (!GetWorld() || AspectName.IsNone())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintToPlayer aborted - no world or invalid aspect"));
+        return;
+    }
+
+    AProjectUmeowmiCharacter* PlayerChar = nullptr;
+    if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+    {
+        PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+    }
+
+    if (!IsValid(PlayerChar) || !PlayerChar->HasCurrentOrder())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintToPlayer aborted - player has no active order"));
+        return;
+    }
+
+    const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+    const FName MyParticipantName = GetTalkingObjectName();
+    if (!Order.OrderGiverParticipantName.IsNone() && Order.OrderGiverParticipantName != MyParticipantName)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Hint] RevealHintToPlayer aborted - order is from %s, not %s"), *Order.OrderGiverParticipantName.ToString(), *MyParticipantName.ToString());
+        return;
+    }
+
+    UE_LOG(LogTemp, Display, TEXT("[Hint] Passing hint %s to player character"), *AspectName.ToString());
+    PlayerChar->RevealHintOnCurrentOrder(AspectName);
 }
 
 FText APUDishGiver::GetOrderDialogueText() const
@@ -198,27 +257,29 @@ bool APUDishGiver::CheckCondition_Implementation(const UDlgContext* Context, FNa
     
     switch (ConditionType)
     {
-        case 1: // HasActiveOrder
+        case 1: // HasActiveOrder - true only if player has an active order FROM THIS dish giver
         {
             if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
             {
-                bool bHasOrder = PlayerChar->HasCurrentOrder();
-                //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: %s"), bHasOrder ? TEXT("TRUE") : TEXT("FALSE"));
-                return bHasOrder;
+                if (!PlayerChar->HasCurrentOrder()) return false;
+                const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+                const FName MyParticipantName = GetTalkingObjectName();
+                bool bOrderIsFromMe = Order.OrderGiverParticipantName.IsNone() || Order.OrderGiverParticipantName == MyParticipantName;
+                return bOrderIsFromMe;
             }
-            //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::CheckCondition - HasActiveOrder: Could not find player character, returning FALSE"));
             return false;
         }
         
-        case 2: // OrderCompleted
+        case 2: // OrderCompleted - true only if player has a completed order FROM THIS dish giver
         {
             if (AProjectUmeowmiCharacter* PlayerChar = GetPlayerCharacter())
             {
-                bool bOrderCompleted = PlayerChar->IsCurrentOrderCompleted();
-                //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::CheckCondition - OrderCompleted: %s"), bOrderCompleted ? TEXT("TRUE") : TEXT("FALSE"));
-                return bOrderCompleted;
+                if (!PlayerChar->IsCurrentOrderCompleted()) return false;
+                const FPUOrderBase& Order = PlayerChar->GetCurrentOrder();
+                const FName MyParticipantName = GetTalkingObjectName();
+                bool bOrderIsFromMe = Order.OrderGiverParticipantName.IsNone() || Order.OrderGiverParticipantName == MyParticipantName;
+                return bOrderIsFromMe;
             }
-            //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::CheckCondition - OrderCompleted: Could not find player character, returning FALSE"));
             return false;
         }
         
@@ -453,20 +514,22 @@ void APUDishGiver::ExecuteDelayedOrderClearing()
 
 void APUDishGiver::SetDialogueVariablesFromOrder(const FPUOrderBase& Order)
 {
-    // Set dialogue-accessible class variables from order data
     bHasOrderReady = true;
     OrderDescription = Order.OrderDescription;
     MinIngredientCount = Order.MinIngredientCount;
-    TargetFlavorProperty = FText::FromString(Order.TargetFlavorProperty.ToString());
-    MinFlavorValue = Order.MinFlavorValue;
     OrderDialogueText = Order.OrderDialogueText;
-    
-    //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::SetDialogueVariablesFromOrder - Dialogue variables set: Ready=%s, Desc=%s, MinIng=%d, Flavor=%s, MinVal=%.1f"), 
-        //bHasOrderReady ? TEXT("TRUE") : TEXT("FALSE"), 
-        //*OrderDescription.ToString(), 
-        //MinIngredientCount, 
-        //*TargetFlavorProperty.ToString(), 
-        //MinFlavorValue);
+    // First aspect for backward-compat dialogue vars (TargetFlavorProperty / MinFlavorValue)
+    if (Order.TargetAspects.Num() > 0)
+    {
+        const FOrderAspectRequirement& First = Order.TargetAspects[0];
+        TargetFlavorProperty = FText::FromString(First.AspectName.ToString());
+        MinFlavorValue = First.MinValue;
+    }
+    else
+    {
+        TargetFlavorProperty = FText::FromString(TEXT(""));
+        MinFlavorValue = 0.0f;
+    }
 }
 
 void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
@@ -480,11 +543,23 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
     CompletedDishSatisfaction = CompletedOrder.FinalSatisfactionScore;
     CompletedDishIngredientCount = CompletedDish.IngredientInstances.Num();
     
-    // Flavor analysis
-    float FinalFlavorValue = CompletedDish.GetTotalFlavorAspect(CompletedOrder.TargetFlavorProperty);
-    CompletedDishFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), FinalFlavorValue));
-    CompletedDishTargetFlavor = FText::FromString(CompletedOrder.TargetFlavorProperty.ToString());
-    CompletedDishMinFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), CompletedOrder.MinFlavorValue));
+    // First target aspect for dialogue (flavor/texture value and requirement)
+    if (CompletedOrder.TargetAspects.Num() > 0)
+    {
+        const FOrderAspectRequirement& First = CompletedOrder.TargetAspects[0];
+        float Val = (First.AspectType == EOrderAspectType::Flavor)
+            ? CompletedDish.GetTotalFlavorAspect(First.AspectName)
+            : CompletedDish.GetTotalTextureAspect(First.AspectName);
+        CompletedDishFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), Val));
+        CompletedDishTargetFlavor = FText::FromString(First.AspectName.ToString());
+        CompletedDishMinFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), First.MinValue));
+    }
+    else
+    {
+        CompletedDishFlavorValue = FText::FromString(TEXT("0"));
+        CompletedDishTargetFlavor = FText::FromString(TEXT(""));
+        CompletedDishMinFlavorValue = FText::FromString(TEXT("0"));
+    }
     
     // Find most used ingredient
     TMap<FGameplayTag, int32> IngredientQuantities;
