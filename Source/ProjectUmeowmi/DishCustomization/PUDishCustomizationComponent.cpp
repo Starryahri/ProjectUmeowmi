@@ -27,6 +27,8 @@
 #include "Camera/CameraActor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "TimerManager.h"
+#include "NiagaraComponent.h"
+#include "NiagaraSystem.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -2060,14 +2062,35 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
         return;
     }
 
-    // Check if the ingredient has a mesh
-    UStaticMesh* IngredientMesh = IngredientInstance.IngredientData.IngredientMesh.LoadSynchronous();
-    
+    const FPUIngredientBase& IngredientData = IngredientInstance.IngredientData;
+
+    // Liquid path: spawn Niagara fill system instead of mesh
+    if (IngredientData.bIsLiquid && IngredientData.LiquidParticleSystem.IsValid())
+    {
+        UNiagaraSystem* NiagaraSystem = IngredientData.LiquidParticleSystem.LoadSynchronous();
+        if (NiagaraSystem)
+        {
+            UNiagaraComponent* NiagaraComp = NewObject<UNiagaraComponent>(OwnerActor, UNiagaraComponent::StaticClass(), NAME_None, RF_Transient);
+            if (NiagaraComp)
+            {
+                NiagaraComp->SetAsset(NiagaraSystem);
+                NiagaraComp->SetAutoActivate(true);
+                NiagaraComp->RegisterComponent();
+                NiagaraComp->AttachToComponent(OwnerActor->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+                NiagaraComp->SetWorldLocation(WorldPosition);
+                NiagaraComp->Activate(true);
+
+                SpawnedLiquidComponents.Add(TPair<int32, UNiagaraComponent*>(IngredientInstance.InstanceID, NiagaraComp));
+            }
+        }
+        return;
+    }
+
+    // Solid path: spawn mesh actor
+    UStaticMesh* IngredientMesh = IngredientData.IngredientMesh.LoadSynchronous();
     if (!IngredientMesh)
     {
-        // TEMPORARY: Use a default mesh for testing
         IngredientMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube"));
-        
         if (!IngredientMesh)
         {
             return;
@@ -2077,9 +2100,18 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
     // Use the WorldPosition that was already converted from screen coordinates
     // Add an offset above the surface to ensure ingredients are visible and clickable
     // Scale the offset so larger ingredients spawn higher; smaller ones lower
-    FVector InstanceScale = (IngredientInstance.PlatingScale.SizeSquared() > KINDA_SMALL_NUMBER)
-        ? IngredientInstance.PlatingScale : FVector::OneVector;
-    FVector EffectiveScale = IngredientMeshScale * InstanceScale;
+    // Ingredient data table MeshScale overrides everything when set
+    FVector EffectiveScale;
+    if (IngredientData.MeshScale.SizeSquared() > KINDA_SMALL_NUMBER)
+    {
+        EffectiveScale = IngredientData.MeshScale;
+    }
+    else
+    {
+        FVector InstanceScale = (IngredientInstance.PlatingScale.SizeSquared() > KINDA_SMALL_NUMBER)
+            ? IngredientInstance.PlatingScale : FVector::OneVector;
+        EffectiveScale = IngredientMeshScale * InstanceScale;
+    }
     float ScaleFactor = FMath::Max(EffectiveScale.GetMax(), 0.01f);  // Avoid zero
     FVector SpawnPosition = WorldPosition + FVector(0, 0, 20 * ScaleFactor);
 
@@ -2121,10 +2153,6 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
         
         // Track the spawned mesh for cleanup
         SpawnedIngredientMeshes.Add(SpawnedIngredient);
-        
-        //UE_LOG(LogTemp,Display, TEXT("✅ Spawned interactive ingredient: %s (Total spawned: %d) - Scaled to (%.2f,%.2f,%.2f)"), 
-        //    *IngredientInstance.IngredientData.IngredientTag.ToString(), SpawnedIngredientMeshes.Num(),
-        //    IngredientMeshScale.X, IngredientMeshScale.Y, IngredientMeshScale.Z);
     }
 }
 
@@ -2604,10 +2632,22 @@ void UPUDishCustomizationComponent::ResetPlating()
 
 void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
 {
-    UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - %d meshes to capture"), SpawnedIngredientMeshes.Num());
+    UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - %d meshes, %d liquids to capture"), SpawnedIngredientMeshes.Num(), SpawnedLiquidComponents.Num());
+
+    // Capture dish surface center for consistent ingredient placement when copying to preview
+    float SurfaceHeight;
+    if (GetPlateSurfaceInfo(SurfaceHeight, CurrentDishData.PlatingDishCenter))
+    {
+        UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - dish center (%.1f, %.1f, %.1f)"), CurrentDishData.PlatingDishCenter.X, CurrentDishData.PlatingDishCenter.Y, CurrentDishData.PlatingDishCenter.Z);
+    }
+    else
+    {
+        CurrentDishData.PlatingDishCenter = FVector::ZeroVector;
+    }
 
     CurrentDishData.PlatingEntries.Empty();
     int32 Captured = 0;
+
     for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
     {
         if (!IngredientMesh || !IsValid(IngredientMesh))
@@ -2636,9 +2676,32 @@ void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
         Entry.Position = WorldPos;
         Entry.Rotation = WorldRot;
         Entry.Scale = WorldScale;
+        Entry.bIsLiquid = false;
         CurrentDishData.PlatingEntries.Add(Entry);
         Captured++;
         UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - InstanceID %d at (%.1f, %.1f, %.1f)"), InstanceID, WorldPos.X, WorldPos.Y, WorldPos.Z);
+    }
+
+    for (const TPair<int32, UNiagaraComponent*>& Pair : SpawnedLiquidComponents)
+    {
+        const int32 InstanceID = Pair.Key;
+        UNiagaraComponent* NiagaraComp = Pair.Value;
+        if (!NiagaraComp || !IsValid(NiagaraComp))
+        {
+            continue;
+        }
+
+        const FVector WorldPos = NiagaraComp->GetComponentLocation();
+        CurrentDishData.SetIngredientPlating(InstanceID, WorldPos, FRotator::ZeroRotator, FVector::OneVector);
+        FPUPlatingEntry Entry;
+        Entry.InstanceID = InstanceID;
+        Entry.Position = WorldPos;
+        Entry.Rotation = FRotator::ZeroRotator;
+        Entry.Scale = FVector::OneVector;
+        Entry.bIsLiquid = true;
+        CurrentDishData.PlatingEntries.Add(Entry);
+        Captured++;
+        UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - liquid InstanceID %d at (%.1f, %.1f, %.1f)"), InstanceID, WorldPos.X, WorldPos.Y, WorldPos.Z);
     }
 
     UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - captured %d transforms"), Captured);
@@ -2646,13 +2709,9 @@ void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
 
 void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
 {
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Clearing %d 3D ingredient meshes"), 
-        //SpawnedIngredientMeshes.Num());
-    
     // Stop any active dragging before clearing
     if (bIsDragging && CurrentlyDraggedIngredient)
     {
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Stopping active drag"));
         bIsDragging = false;
         if (IsValid(CurrentlyDraggedIngredient))
         {
@@ -2662,44 +2721,28 @@ void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
     }
     
     // Destroy all tracked ingredient meshes
-    int32 ValidCount = 0;
-    int32 InvalidCount = 0;
-    
     for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
     {
         if (IngredientMesh != nullptr && IsValid(IngredientMesh))
         {
-            // Only try to get the name if the object is in a safe state
-            FString MeshName = TEXT("IngredientMesh");
-            if (IngredientMesh->IsValidLowLevel() && !IngredientMesh->IsUnreachable())
-            {
-                // Safe to get name
-                MeshName = IngredientMesh->GetName();
-            }
-            
-            //UE_LOG(LogTemp,Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Destroying ingredient mesh: %s"), 
-            //    *MeshName);
-            
             IngredientMesh->Destroy();
-            ValidCount++;
-        }
-        else
-        {
-            InvalidCount++;
         }
     }
-    
-    if (InvalidCount > 0)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [CLEANUP] ClearAll3DIngredientMeshes - Found %d invalid ingredient mesh pointers"), InvalidCount);
-    }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - Destroyed %d valid meshes"), ValidCount);
-    
-    // Clear the tracking array
     SpawnedIngredientMeshes.Empty();
     
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ [CLEANUP] ClearAll3DIngredientMeshes - All 3D ingredient meshes cleared"));
+    // Destroy all tracked liquid Niagara components
+    for (const TPair<int32, UNiagaraComponent*>& Pair : SpawnedLiquidComponents)
+    {
+        if (UNiagaraComponent* NiagaraComp = Pair.Value)
+        {
+            if (IsValid(NiagaraComp))
+            {
+                NiagaraComp->Deactivate();
+                NiagaraComp->DestroyComponent();
+            }
+        }
+    }
+    SpawnedLiquidComponents.Empty();
 }
 
 void UPUDishCustomizationComponent::SwapDishContainerMesh(UStaticMesh* NewDishMesh)

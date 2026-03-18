@@ -14,6 +14,7 @@ class UUserWidget;
 class UInputAction;
 class UEnhancedInputComponent;
 class UInputMappingContext;
+class UNiagaraComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomizationEnded);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDishDataUpdated, const FPUDishBase&, NewDishData);
@@ -109,6 +110,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void EndPlatingStage();
+
+    /** Capture ingredient positions/rotations from live meshes into CurrentDishData.PlatingEntries. Call before leaving plating (e.g. in GoToStage). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void CapturePlatingTransformsFromMeshes();
 
     // Ingredient dragging (called from ingredient mesh)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
@@ -396,6 +401,9 @@ private:
     // Track spawned 3D ingredient meshes for cleanup
     TArray<class APUIngredientMesh*> SpawnedIngredientMeshes;
 
+    // Track spawned liquid Niagara components for cleanup (allows multiple per InstanceID when Quantity > 1)
+    TArray<TPair<int32, TObjectPtr<UNiagaraComponent>>> SpawnedLiquidComponents;
+
     // Plating camera transition state
     bool bPlatingCameraTransitioning = false;
     float PlatingCameraTransitionTime = 0.0f;
@@ -457,9 +465,6 @@ private:
     // Clear all 3D ingredient meshes
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ClearAll3DIngredientMeshes();
-
-    // Capture current transforms from live ingredient meshes into CurrentDishData (call before ClearAll3DIngredientMeshes)
-    void CapturePlatingTransformsFromMeshes();
 
     // Store original dish container mesh
     void StoreOriginalDishContainerMesh();

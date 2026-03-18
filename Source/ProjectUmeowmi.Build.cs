@@ -22,7 +22,8 @@ public class ProjectUmeowmi : ModuleRules
 			"SlateCore",
 			"ProceduralMeshComponent",
 		"ActorSequence",
-		"MovieScene"
+		"MovieScene",
+		"Niagara"
 		});
         PrivateDependencyModuleNames.AddRange(new string[] { "DlgSystem" });
     }

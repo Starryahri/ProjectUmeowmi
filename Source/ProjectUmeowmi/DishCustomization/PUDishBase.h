@@ -67,15 +67,22 @@ struct FIngredientInstance
     float TemperatureValue = 0.0f;
 };
 
-/** One entry per mesh on plate - supports multiple meshes per InstanceID (e.g. Quantity > 1). */
+/** One entry per mesh/liquid on plate - supports multiple meshes per InstanceID (e.g. Quantity > 1). */
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUPlatingEntry
 {
     GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     int32 InstanceID = 0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FVector Position = FVector::ZeroVector;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FRotator Rotation = FRotator::ZeroRotator;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FVector Scale = FVector::OneVector;
+    /** If true, this entry is a liquid (Niagara fill) rather than a mesh. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    bool bIsLiquid = false;
 };
 
 USTRUCT(BlueprintType)
@@ -123,6 +130,10 @@ public:
     /** One entry per mesh on plate - supports multiple meshes per InstanceID. Captured from SpawnedIngredientMeshes. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Plating")
     TArray<FPUPlatingEntry> PlatingEntries;
+
+    /** World position of dish surface center when plating was captured. Used as origin for ingredient placement when copying to preview. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Plating")
+    FVector PlatingDishCenter = FVector::ZeroVector;
 
     // Tags associated with this dish
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Tags", meta = (Categories = "Dish"))

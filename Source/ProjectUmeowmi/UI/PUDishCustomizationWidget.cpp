@@ -279,17 +279,15 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
     //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Navigating from %s (Stage: %d) to %s (Stage: %d)"), 
     //    *GetName(), (int32)StageType, *TargetStage->GetName(), (int32)TargetStage->StageType);
 
-    // Get current dish data
-    const FPUDishBase& CurrentData = GetCurrentDishData();
-
-    // Handle cleanup when leaving current stage
+    // Handle cleanup when leaving current stage (capture plating transforms FIRST when leaving plating)
     if (CustomizationComponent)
     {
         switch (StageType)
         {
             case EDishCustomizationStageType::Plating:
+                // CRITICAL: Capture ingredient positions/rotations BEFORE any cleanup - otherwise PlatingEntries stays empty
+                CustomizationComponent->CapturePlatingTransformsFromMeshes();
                 // Clean up plating stage
-                //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Cleaning up plating stage"));
                 CustomizationComponent->SetPlatingMode(false);
                 CustomizationComponent->RestoreOriginalDishContainerMesh();
                 break;
@@ -307,6 +305,9 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
                 break;
         }
     }
+
+    // Get dish data to pass - use component's data (has PlatingEntries after capture when leaving plating)
+    const FPUDishBase& CurrentData = CustomizationComponent ? CustomizationComponent->GetCurrentDishData() : GetCurrentDishData();
 
     // Hide/remove current widget from viewport
     if (IsInViewport())

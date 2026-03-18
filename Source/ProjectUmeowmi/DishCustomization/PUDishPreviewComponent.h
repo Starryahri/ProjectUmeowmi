@@ -10,6 +10,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogDishPreview, Log, All);
 class UStaticMesh;
 class UStaticMeshComponent;
 class APUIngredientMesh;
+class UNiagaraComponent;
 
 /**
  * Displays a 3D clone of a plated dish above the character (or wherever attached).
@@ -69,6 +70,9 @@ protected:
 
     UPROPERTY()
     TArray<APUIngredientMesh*> PreviewIngredientMeshes;
+
+    UPROPERTY()
+    TArray<UNiagaraComponent*> PreviewLiquidComponents;
 
     UPROPERTY()
     bool bHasPreview = false;

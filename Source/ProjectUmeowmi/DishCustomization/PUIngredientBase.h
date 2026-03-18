@@ -10,6 +10,7 @@ class UTexture2D;
 class UMaterialInterface;
 class UDataTable;
 class UStaticMesh;
+class UNiagaraSystem;
 struct FPUPreparationBase;
 
 // Forward declare enums from PUPreparationBase (to avoid circular dependency)
@@ -157,6 +158,18 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UStaticMesh> IngredientMesh;
+
+    /** If true, this ingredient uses a Niagara particle fill system instead of a static mesh when plated. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    bool bIsLiquid = false;
+
+    /** Niagara system for liquid fill effect (used when bIsLiquid is true). Particles should be configured to persist (no kill). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    TSoftObjectPtr<UNiagaraSystem> LiquidParticleSystem;
+
+    /** Per-ingredient mesh scale override. When set (any component > 0), overrides IngredientMeshScale and all other scale sources. Leave at (0,0,0) to use default scaling. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
+    FVector MeshScale = FVector::ZeroVector;
 
     /** Pre-computed average tint color from texture. Used in packaged builds where runtime texture sampling fails.
      *  Set in editor (or leave default white). Run "Bake Average Color" in editor to populate from texture. */
