@@ -80,6 +80,10 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* SkipDialogueAction;
 
+	/** Jump Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JumpAction;
+
 	//Todo: Add input for cancel action
 	// UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	// UInputAction* CancelAction;
@@ -135,6 +139,14 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** Maximum orthographic width (zoomed out) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera Config", meta = (AllowPrivateAccess = "true"))
 	float MaxOrthoWidth = 2000.0f;
+
+	/** When true, zoom/scroll does not change orthographic width. Use to lock the camera zoom. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Config", meta = (AllowPrivateAccess = "true"))
+	bool bLockOrthoWidth = false;
+
+	/** When true, logs orthographic width to Output Log whenever you scroll/zoom. Use to find values for Min/MaxOrthoWidth. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Config", meta = (AllowPrivateAccess = "true"))
+	bool bShowOrthoWidthDebug = false;
 
 	/** Zoom speed for mouse wheel */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera Config", meta = (AllowPrivateAccess = "true"))
@@ -228,7 +240,15 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 
 	/** Space in which the emote widget is rendered (Screen or World). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
-	EWidgetSpace EmoteWidgetSpace = EWidgetSpace::World;
+	EWidgetSpace EmoteWidgetSpace = EWidgetSpace::Screen;
+
+	/** Size of the emote widget in pixels (width x height). Affects both screen and world space. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes", ClampMin = "16", ClampMax = "512"))
+	FVector2D EmoteDrawSize = FVector2D(128.0f, 128.0f);
+
+	/** Scale multiplier for the emote widget (applied to the component). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes", ClampMin = "0.25", ClampMax = "4.0"))
+	float EmoteScale = 1.0f;
 
 	/** Data table mapping gameplay tags to emote data (icon, duration, etc.). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
@@ -293,6 +313,7 @@ public:
 	FORCEINLINE UInputAction* GetInteractAction() const { return InteractAction; }
 	FORCEINLINE UInputAction* GetOpenJournalAction() const { return OpenJournalAction; }
 	FORCEINLINE UInputAction* GetToggleGridMovementAction() const { return ToggleGridMovementAction; }
+	FORCEINLINE UInputAction* GetJumpAction() const { return JumpAction; }
 	FORCEINLINE UInputMappingContext* GetDefaultMappingContext() const { return DefaultMappingContext; }
 	
 	// Mouse visibility control

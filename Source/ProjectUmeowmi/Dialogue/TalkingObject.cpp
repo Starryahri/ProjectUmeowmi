@@ -100,7 +100,7 @@ void ATalkingObject::BeginPlay()
     }
 
     // Configure emote widget (set space after SetWidgetClass - SetWidgetClass can reset space to World).
-    // Do not set visibility false here - constructor already hides it. Otherwise we overwrite ShowEmoteByTag when called from Blueprint BeginPlay.
+    // Draw Size: set on EmoteWidget component in Blueprint. Must set bDrawAtDesiredSize=false or widget's desired size (e.g. 256) overrides it.
     if (EmoteWidget)
     {
         if (EmoteWidgetClass)
@@ -108,6 +108,7 @@ void ATalkingObject::BeginPlay()
             EmoteWidget->SetWidgetClass(EmoteWidgetClass);
         }
         EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+        EmoteWidget->SetDrawAtDesiredSize(false);
     }
 
     // Cache base DrawSize for ortho scaling (used when bScaleWidgetWithOrthoZoom is true)
@@ -1025,6 +1026,7 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
     {
         EmoteWidget->SetWidgetClass(EmoteWidgetClass);
         EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+        EmoteWidget->SetDrawAtDesiredSize(false);
     }
 
     UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
@@ -1036,6 +1038,7 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
         }
         EmoteWidget->SetWidgetClass(EmoteWidgetClass);
         EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+        EmoteWidget->SetDrawAtDesiredSize(false);
         EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
     }
 
@@ -1047,6 +1050,7 @@ void ATalkingObject::ShowEmoteByTag(FGameplayTag EmoteTag)
 
     EmoteUserWidget->SetEmoteIcon(EmoteRow->Icon);
     EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+    EmoteWidget->SetDrawAtDesiredSize(false); // Use component's Draw Size, not widget's desired size (256)
     EmoteWidget->SetVisibility(true);
     EmoteUserWidget->PlayFadeIn();
     ActiveEmoteTag = EmoteTag;

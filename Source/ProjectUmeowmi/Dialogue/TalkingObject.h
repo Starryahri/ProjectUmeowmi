@@ -170,9 +170,9 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
     EWidgetSpace InteractionWidgetSpace = EWidgetSpace::Screen;
 
-    /** When true and using an orthographic camera, scale the interaction widget with zoom (OrthoWidth). Fixes world-space widgets not scaling when zooming. */
+    /** When true and using an orthographic camera, scale the interaction widget with zoom (OrthoWidth). */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config")
-    bool bScaleWidgetWithOrthoZoom = true;
+    bool bScaleWidgetWithOrthoZoom = false;
 
     /** Reference orthographic width at which the widget displays at its base size. Used when bScaleWidgetWithOrthoZoom is true. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "bScaleWidgetWithOrthoZoom"))
@@ -288,6 +288,14 @@ protected:
     /** Space in which the emote widget is rendered (Screen or World). Default: World (overhead bubble). */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
     EWidgetSpace EmoteWidgetSpace = EWidgetSpace::World;
+
+    /** Size of the emote widget in pixels (width x height). Affects both screen and world space. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes", ClampMin = "16", ClampMax = "512"))
+    FVector2D EmoteDrawSize = FVector2D(128.0f, 128.0f);
+
+    /** Scale multiplier for the emote widget (applied to the component). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes", ClampMin = "0.25", ClampMax = "4.0"))
+    float EmoteScale = 1.0f;
 
     /** Data table mapping gameplay tags to emote data (icon, duration, etc.). */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))

@@ -64,12 +64,11 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
-	// Create emote widget (above character head)
+	// Create emote widget (above character head) - do NOT override Space; user sets Screen in Blueprint
 	EmoteWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("EmoteWidget"));
 	EmoteWidget->SetupAttachment(RootComponent);
-	EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
 	EmoteWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 100.0f)); // Above character head
-	EmoteWidget->SetVisibility(false);
+	EmoteWidget->SetVisibility(false); // Hidden until ShowEmoteByTag
 
 	// Create dish preview (above character head when carrying a dish)
 	DishPreviewComponent = CreateDefaultSubobject<UPUDishPreviewComponent>(TEXT("DishPreview"));
@@ -105,14 +104,12 @@ void AProjectUmeowmiCharacter::BeginPlay()
 	// Initialize the camera position based on the starting index
 	InitializeCameraPosition();
 
-	// Configure emote widget
-	if (EmoteWidget && bEnableEmotes)
+	// Configure emote widget - set class; Draw Size comes from component in Blueprint
+	// Must set bDrawAtDesiredSize=false or widget's desired size (e.g. 256) overrides component's Draw Size
+	if (EmoteWidget && bEnableEmotes && EmoteWidgetClass)
 	{
-		if (EmoteWidgetClass)
-		{
-			EmoteWidget->SetWidgetClass(EmoteWidgetClass);
-		}
-		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+		EmoteWidget->SetWidgetClass(EmoteWidgetClass);
+		EmoteWidget->SetDrawAtDesiredSize(false);
 	}
 
 	//UE_LOG(LogTemp,Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
@@ -209,6 +206,13 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 		{
 			EnhancedInputComponent->BindAction(SkipDialogueAction, ETriggerEvent::Started, this, &AProjectUmeowmiCharacter::OnSkipDialogueStarted);
 			EnhancedInputComponent->BindAction(SkipDialogueAction, ETriggerEvent::Completed, this, &AProjectUmeowmiCharacter::OnSkipDialogueCompleted);
+		}
+
+		// Jump
+		if (JumpAction)
+		{
+			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
+			EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 		}
 	}
 	else
@@ -470,6 +474,15 @@ FVector AProjectUmeowmiCharacter::SnapToGrid(const FVector& Location) const
 
 void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 {
+	if (bLockOrthoWidth)
+	{
+		if (bShowOrthoWidthDebug)
+		{
+			UE_LOG(LogTemplateCharacter, Display, TEXT("[OrthoWidth] Locked at %.1f (zoom input ignored)"), FollowCamera->OrthoWidth);
+		}
+		return;
+	}
+
 	// Get the zoom input value
 	float ZoomValue = Value.Get<float>();
 	
@@ -501,6 +514,11 @@ void AProjectUmeowmiCharacter::ZoomCamera(const FInputActionValue& Value)
 	
 	// Apply the new orthographic width
 	FollowCamera->OrthoWidth = NewOrthoWidth;
+
+	if (bShowOrthoWidthDebug)
+	{
+		UE_LOG(LogTemplateCharacter, Display, TEXT("[OrthoWidth] %.1f (range: %.1f - %.1f)"), NewOrthoWidth, MinOrthoWidth, MaxOrthoWidth);
+	}
 }
 
 void AProjectUmeowmiCharacter::ToggleJournal(const FInputActionValue& Value)
@@ -828,18 +846,18 @@ void AProjectUmeowmiCharacter::ShowEmoteByTag(FGameplayTag EmoteTag)
 		return;
 	}
 
-	// Ensure widget is created
+	// Ensure widget is created - do NOT override Space or DrawSize (set on component in Blueprint)
 	if (!EmoteWidget->GetWidget() && EmoteWidgetClass)
 	{
 		EmoteWidget->SetWidgetClass(EmoteWidgetClass);
-		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+		EmoteWidget->SetDrawAtDesiredSize(false);
 	}
 
 	UPUEmoteWidget* EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
 	if (!EmoteUserWidget && EmoteWidgetClass)
 	{
 		EmoteWidget->SetWidgetClass(EmoteWidgetClass);
-		EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+		EmoteWidget->SetDrawAtDesiredSize(false);
 		EmoteUserWidget = Cast<UPUEmoteWidget>(EmoteWidget->GetWidget());
 	}
 
@@ -850,7 +868,7 @@ void AProjectUmeowmiCharacter::ShowEmoteByTag(FGameplayTag EmoteTag)
 	}
 
 	EmoteUserWidget->SetEmoteIcon(EmoteRow->Icon);
-	EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
+	EmoteWidget->SetDrawAtDesiredSize(false); // Use component's Draw Size (128), not widget's desired size (256)
 	EmoteWidget->SetVisibility(true);
 	EmoteUserWidget->PlayFadeIn();
 	ActiveEmoteTag = EmoteTag;
