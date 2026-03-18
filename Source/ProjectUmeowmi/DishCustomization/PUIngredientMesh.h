@@ -26,6 +26,8 @@ public:
     // Called after components are initialized
     virtual void PostInitializeComponents() override;
 
+    virtual void Tick(float DeltaTime) override;
+
     // Setup the mesh with ingredient data
     UFUNCTION(BlueprintCallable, Category = "Ingredient")
     void InitializeWithIngredient(const FPUIngredientBase& IngredientData);
@@ -75,6 +77,14 @@ public:
     void SetPlatingInstanceID(int32 InInstanceID) { PlatingInstanceID = InInstanceID; }
     int32 GetPlatingInstanceID() const { return PlatingInstanceID; }
 
+    /** Returns world transforms of each chopped/minced procedural mesh piece. Empty if not chopped. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    TArray<FTransform> GetChoppedPieceWorldTransforms() const;
+
+    /** Applies world transforms to each chopped/minced piece. Transforms are offset by Offset (e.g. when copying to preview at new location). */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient")
+    void ApplyChoppedPieceTransforms(const TArray<FTransform>& Transforms, FVector Offset);
+
 protected:
     // Components
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -107,6 +117,10 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
     UMaterialInterface* GrabbedMaterial;
+
+    /** When > 0, destroy this ingredient if it falls below this Z level (e.g. hits the ground). 0 = disabled. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction", meta = (ClampMin = "0.0"))
+    float GroundDestroyZThreshold = 50.0f;
 
     // State tracking
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "State")

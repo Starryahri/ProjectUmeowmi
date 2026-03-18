@@ -224,11 +224,20 @@ void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
                 if (UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(Comp))
                 {
                     ProcMesh->SetSimulatePhysics(false);
+                    ProcMesh->SetEnableGravity(false);
                     ProcMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                    ProcMesh->SetMobility(EComponentMobility::Movable);
+                    ProcMesh->DestroyPhysicsState();  // Remove physics body so component follows parent
+                    ProcMesh->AttachToComponent(Spawned->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);  // Re-attach: disabling physics does NOT auto-reattach
                 }
             }
 
             Spawned->SetIngredientScale(EffectiveScale);
+            // Restore per-piece layout for chopped/minced ingredients (captured from plating)
+            if (Entry.ChoppedPieceTransforms.Num() > 0)
+            {
+                Spawned->ApplyChoppedPieceTransforms(Entry.ChoppedPieceTransforms, WorldPos - Entry.Position);
+            }
             Spawned->AttachToComponent(IngredientParent, FAttachmentTransformRules::KeepWorldTransform);
             PreviewIngredientMeshes.Add(Spawned);
             SpawnedCount++;
@@ -317,7 +326,11 @@ void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
                     if (UProceduralMeshComponent* ProcMesh = Cast<UProceduralMeshComponent>(Comp))
                     {
                         ProcMesh->SetSimulatePhysics(false);
+                        ProcMesh->SetEnableGravity(false);
                         ProcMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                        ProcMesh->SetMobility(EComponentMobility::Movable);
+                        ProcMesh->DestroyPhysicsState();  // Remove physics body so component follows parent
+                        ProcMesh->AttachToComponent(Spawned->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);  // Re-attach: disabling physics does NOT auto-reattach
                     }
                 }
 

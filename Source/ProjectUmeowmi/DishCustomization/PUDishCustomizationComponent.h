@@ -115,6 +115,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void CapturePlatingTransformsFromMeshes();
 
+    /** Destroy all spawned ingredient meshes and liquid components. Call before RestoreOriginalDishContainerMesh to avoid physics/collision issues. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
+    void ClearAll3DIngredientMeshes();
+
     // Ingredient dragging (called from ingredient mesh)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void StartDraggingIngredient(class APUIngredientMesh* Ingredient);
@@ -461,10 +465,6 @@ private:
     // Reset all plating (restore original quantities and clear placed ingredients)
     UFUNCTION(BlueprintCallable, Category = "Plating")
     void ResetPlating();
-
-    // Clear all 3D ingredient meshes
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
-    void ClearAll3DIngredientMeshes();
 
     // Store original dish container mesh
     void StoreOriginalDishContainerMesh();

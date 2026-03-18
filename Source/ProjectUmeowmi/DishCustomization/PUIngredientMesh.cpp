@@ -49,6 +49,40 @@ void APUIngredientMesh::PostInitializeComponents()
     }
 }
 
+void APUIngredientMesh::Tick(float DeltaTime)
+{
+    Super::Tick(DeltaTime);
+
+    // Destroy when ingredient falls on the ground (below threshold)
+    if (GroundDestroyZThreshold > 0.0f && !bIsGrabbed && IsValid(this))
+    {
+        bool bHasPhysics = false;
+        if (bIsChopped)
+        {
+            for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+            {
+                if (ProcMesh && ProcMesh->IsSimulatingPhysics()) { bHasPhysics = true; break; }
+            }
+        }
+        else if (MeshComponent && MeshComponent->IsSimulatingPhysics())
+        {
+            bHasPhysics = true;
+        }
+
+        if (bHasPhysics)
+        {
+            FVector Origin;
+            FVector BoxExtent;
+            GetActorBounds(false, Origin, BoxExtent);
+            float LowestZ = Origin.Z - BoxExtent.Z;
+            if (LowestZ < GroundDestroyZThreshold)
+            {
+                Destroy();
+            }
+        }
+    }
+}
+
 void APUIngredientMesh::InitializeWithIngredient(const FPUIngredientBase& InIngredientData)
 {
     IngredientData = InIngredientData;
@@ -315,6 +349,7 @@ void APUIngredientMesh::InitializeWithIngredientInstance(const FIngredientInstan
                 {
                     if (ProcMesh)
                     {
+                        ProcMesh->SetMobility(EComponentMobility::Movable);
                         ProcMesh->bUseComplexAsSimpleCollision = false;
                         if (UBodySetup* BodySetup = ProcMesh->GetBodySetup())
                         {
@@ -383,6 +418,34 @@ void APUIngredientMesh::SetIngredientScale(const FVector& Scale)
     else
     {
         SetActorScale3D(Scale);
+    }
+}
+
+TArray<FTransform> APUIngredientMesh::GetChoppedPieceWorldTransforms() const
+{
+    TArray<FTransform> Transforms;
+    if (!bIsChopped) { return Transforms; }
+    for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+    {
+        if (ProcMesh)
+        {
+            Transforms.Add(ProcMesh->GetComponentToWorld());
+        }
+    }
+    return Transforms;
+}
+
+void APUIngredientMesh::ApplyChoppedPieceTransforms(const TArray<FTransform>& Transforms, FVector Offset)
+{
+    if (!bIsChopped || Transforms.Num() != ChoppedMeshPieces.Num()) { return; }
+    for (int32 i = 0; i < ChoppedMeshPieces.Num(); ++i)
+    {
+        if (UProceduralMeshComponent* ProcMesh = ChoppedMeshPieces[i])
+        {
+            FTransform T = Transforms[i];
+            T.AddToTranslation(Offset);
+            ProcMesh->SetWorldTransform(T);
+        }
     }
 }
 

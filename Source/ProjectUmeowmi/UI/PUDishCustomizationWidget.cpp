@@ -287,7 +287,8 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
             case EDishCustomizationStageType::Plating:
                 // CRITICAL: Capture ingredient positions/rotations BEFORE any cleanup - otherwise PlatingEntries stays empty
                 CustomizationComponent->CapturePlatingTransformsFromMeshes();
-                // Clean up plating stage
+                // Clear ingredient meshes BEFORE restoring dish mesh - otherwise physics/collision blows them apart
+                CustomizationComponent->ClearAll3DIngredientMeshes();
                 CustomizationComponent->SetPlatingMode(false);
                 CustomizationComponent->RestoreOriginalDishContainerMesh();
                 break;

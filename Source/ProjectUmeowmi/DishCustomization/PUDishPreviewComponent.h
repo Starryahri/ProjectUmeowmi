@@ -47,9 +47,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Preview", meta = (ClampMin = "0.0", ClampMax = "300.0"))
     float OffsetAboveHeadZ = 90.0f;
 
-    /** Small Z offset added to ingredients so they sit on the dish surface (preserves relative Z from plating, moves all up slightly). */
+    /** Z offset for ingredients (positive = up). 0 preserves exact captured positions. Tweak in Blueprint if ingredients float or sink into plate. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Preview")
-    float IngredientZOffset = 5.0f;
+    float IngredientZOffset = 0.0f;
 
     /** Fallback dish mesh when dish data has none (e.g. data table row missing DishMesh). Set in character Blueprint. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Preview")

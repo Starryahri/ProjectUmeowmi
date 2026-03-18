@@ -83,6 +83,9 @@ struct PROJECTUMEOWMI_API FPUPlatingEntry
     /** If true, this entry is a liquid (Niagara fill) rather than a mesh. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     bool bIsLiquid = false;
+    /** Per-piece world transforms for chopped/minced ingredients. When non-empty, each procedural mesh piece is placed at these transforms. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    TArray<FTransform> ChoppedPieceTransforms;
 };
 
 USTRUCT(BlueprintType)

@@ -2677,6 +2677,11 @@ void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
         Entry.Rotation = WorldRot;
         Entry.Scale = WorldScale;
         Entry.bIsLiquid = false;
+        // For chopped/minced ingredients, capture each piece's world transform so preview shows broken-apart layout
+        if (IngredientMesh->IsChopped())
+        {
+            Entry.ChoppedPieceTransforms = IngredientMesh->GetChoppedPieceWorldTransforms();
+        }
         CurrentDishData.PlatingEntries.Add(Entry);
         Captured++;
         UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - InstanceID %d at (%.1f, %.1f, %.1f)"), InstanceID, WorldPos.X, WorldPos.Y, WorldPos.Z);
