@@ -947,19 +947,19 @@ void AProjectUmeowmiCharacter::RevealHintOnCurrentOrder(FName AspectName)
 
 	for (const FOrderAspectRequirement& Req : CurrentOrder.TargetAspects)
 	{
-		if (Req.AspectName == AspectName)
+		if (Req.GetAspectName() == AspectName)
 		{
 			// Check if already discovered
 			for (const FOrderAspectRequirement& Discovered : CurrentOrder.DiscoveredHints)
 			{
-				if (Discovered.AspectName == AspectName)
+				if (Discovered.GetAspectName() == AspectName)
 				{
 					UE_LOG(LogTemp, Display, TEXT("[Hint] Hint %s already revealed, skipping"), *AspectName.ToString());
 					return;
 				}
 			}
 			CurrentOrder.DiscoveredHints.Add(Req);
-			UE_LOG(LogTemp, Display, TEXT("[Hint] SUCCESS: Revealed hint %s (target %.1f) - total discovered: %d"), *AspectName.ToString(), Req.MinValue, CurrentOrder.DiscoveredHints.Num());
+			UE_LOG(LogTemp, Display, TEXT("[Hint] SUCCESS: Revealed hint %s (target %.1f) - total discovered: %d"), *AspectName.ToString(), Req.TargetValue, CurrentOrder.DiscoveredHints.Num());
 			return;
 		}
 	}
@@ -1020,21 +1020,21 @@ void AProjectUmeowmiCharacter::DisplayOrderResult()
 	// Orders are always completed - satisfaction score indicates quality
 	// Determine satisfaction level
 	FString SatisfactionLevel;
-	if (CurrentOrderSatisfaction >= 0.9f)
+	if (CurrentOrderSatisfaction >= 0.875f)
 	{
 		SatisfactionLevel = TEXT("Perfect!");
 	}
-	else if (CurrentOrderSatisfaction >= 0.7f)
+	else if (CurrentOrderSatisfaction >= 0.625f)
 	{
 		SatisfactionLevel = TEXT("Great!");
 	}
-	else if (CurrentOrderSatisfaction >= 0.5f)
+	else if (CurrentOrderSatisfaction >= 0.375f)
 	{
-		SatisfactionLevel = TEXT("Good!");
+		SatisfactionLevel = TEXT("Okay!");
 	}
 	else
 	{
-		SatisfactionLevel = TEXT("Okay.");
+		SatisfactionLevel = TEXT("Needs Improvement.");
 	}
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== ORDER COMPLETED ==="));
@@ -1095,21 +1095,21 @@ FText AProjectUmeowmiCharacter::GetOrderResultText() const
 	// Orders are always completed - satisfaction score indicates quality
 	// Determine satisfaction level
 	FString SatisfactionLevel;
-	if (CurrentOrderSatisfaction >= 0.9f)
+	if (CurrentOrderSatisfaction >= 0.875f)
 	{
 		SatisfactionLevel = TEXT("Perfect!");
 	}
-	else if (CurrentOrderSatisfaction >= 0.7f)
+	else if (CurrentOrderSatisfaction >= 0.625f)
 	{
 		SatisfactionLevel = TEXT("Great!");
 	}
-	else if (CurrentOrderSatisfaction >= 0.5f)
+	else if (CurrentOrderSatisfaction >= 0.375f)
 	{
-		SatisfactionLevel = TEXT("Good!");
+		SatisfactionLevel = TEXT("Okay!");
 	}
 	else
 	{
-		SatisfactionLevel = TEXT("Okay.");
+		SatisfactionLevel = TEXT("Needs Improvement.");
 	}
 	
 	FString ResultText = FString::Printf(TEXT("Order Completed!\nSatisfaction: %s (%.1f%%)"), 

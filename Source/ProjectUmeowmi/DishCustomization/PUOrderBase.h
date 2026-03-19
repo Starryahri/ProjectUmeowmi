@@ -14,20 +14,35 @@ enum class EOrderAspectType : uint8
     Texture
 };
 
-/** Single aspect requirement: e.g. Salt >= 5, Crispy >= 3. */
+// EPUFlavorAspect and EPUTextureAspect are defined in PUIngredientBase.h (included via PUDishBase)
+
+/** Single aspect requirement: e.g. Salt >= 5, Crispy >= 3. Use dropdowns to select aspect - no typing. */
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FOrderAspectRequirement
 {
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect")
+    EOrderAspectType AspectType = EOrderAspectType::Flavor;
+
+    /** Flavor aspect to target (when AspectType is Flavor). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect", meta = (EditCondition = "AspectType == EOrderAspectType::Flavor", EditConditionHides))
+    EPUFlavorAspect FlavorAspect = EPUFlavorAspect::Salt;
+
+    /** Texture aspect to target (when AspectType is Texture). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect", meta = (EditCondition = "AspectType == EOrderAspectType::Texture", EditConditionHides))
+    EPUTextureAspect TextureAspect = EPUTextureAspect::Crispy;
+
+    /** Target value for this aspect. Player's dish is scored by ratio: PlayerValue / TargetValue (80-120% = perfect). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect", meta = (DisplayName = "Target Value"))
+    float TargetValue = 5.0f;
+
+    /** Aspect name as FName - kept in sync with FlavorAspect/TextureAspect. For Blueprint Break node compatibility. */
+    UPROPERTY(BlueprintReadOnly, Category = "Order|Aspect", meta = (DisplayName = "Aspect Name"))
     FName AspectName;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect", meta = (ClampMin = "0.0", ClampMax = "5.0"))
-    float MinValue = 5.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order|Aspect")
-    EOrderAspectType AspectType = EOrderAspectType::Flavor;
+    /** Returns the aspect name as FName for use with dish/ingredient APIs. */
+    FName GetAspectName() const;
 };
 
 USTRUCT(BlueprintType)

@@ -20,6 +20,21 @@ void UPUOrderComponent::BeginPlay()
     //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::BeginPlay - Order component initialized"));
 }
 
+#if WITH_EDITOR
+void UPUOrderComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+    const FName PropName = PropertyChangedEvent.GetPropertyName();
+    if (PropName == GET_MEMBER_NAME_CHECKED(UPUOrderComponent, DefaultTargetAspects))
+    {
+        for (FOrderAspectRequirement& Req : DefaultTargetAspects)
+        {
+            Req.AspectName = Req.GetAspectName();
+        }
+    }
+}
+#endif
+
 void UPUOrderComponent::GenerateNewOrder()
 {
     UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateNewOrder - Starting order generation"));
@@ -234,7 +249,7 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
 
     FName OrderID = FName(*FString::Printf(TEXT("Order_%d"), FMath::RandRange(1000, 9999)));
     FString AspectSummary = (DefaultTargetAspects.Num() > 0)
-        ? DefaultTargetAspects[0].AspectName.ToString()
+        ? DefaultTargetAspects[0].GetAspectName().ToString()
         : FString(TEXT("flavorful"));
     FText DialogueText = FText::Format(
         DefaultOrderDescription,
@@ -243,12 +258,17 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
     );
 
     TArray<FOrderAspectRequirement> Aspects = DefaultTargetAspects;
+    for (FOrderAspectRequirement& Req : Aspects)
+    {
+        Req.AspectName = Req.GetAspectName();
+    }
     if (Aspects.Num() == 0)
     {
         FOrderAspectRequirement DefaultReq;
-        DefaultReq.AspectName = FName(TEXT("Salt"));
-        DefaultReq.MinValue = 5.0f;
         DefaultReq.AspectType = EOrderAspectType::Flavor;
+        DefaultReq.FlavorAspect = EPUFlavorAspect::Salt;
+        DefaultReq.TargetValue = 5.0f;
+        DefaultReq.AspectName = DefaultReq.GetAspectName();
         Aspects.Add(DefaultReq);
     }
 

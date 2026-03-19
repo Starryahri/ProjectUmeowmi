@@ -3065,6 +3065,7 @@ void UPUIngredientSlot::OnRadialMenuItemSelected(const FRadialMenuItem& Selected
     if (TagString.StartsWith(TEXT("Prep.")))
     {
         // It's a preparation - toggle it (apply if not applied, remove if applied)
+        UE_LOG(LogTemp, Warning, TEXT("[Prep] OnRadialMenuItemSelected: %s %s (radial menu path)"), *SelectedItem.ActionTag.ToString(), SelectedItem.bIsApplied ? TEXT("REMOVE") : TEXT("ADD"));
         if (SelectedItem.bIsApplied)
         {
             RemovePreparationFromIngredient(SelectedItem.ActionTag);
@@ -3234,9 +3235,12 @@ TArray<FRadialMenuItem> UPUIngredientSlot::BuildActionMenuItems() const
 
 bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& PreparationTag)
 {
+    UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparationToIngredient ENTRY: %s for %s (Instance %d)"),
+        *PreparationTag.ToString(), *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID);
+    
     if (!bHasIngredient || IngredientInstance.InstanceID == 0)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::ApplyPreparationToIngredient - Invalid ingredient instance"));
+        UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparationToIngredient: Invalid - no ingredient or InstanceID 0"));
         return false;
     }
 
@@ -3306,8 +3310,8 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
         
         if (bSuccess)
         {
-            // Update the dish data in the component
-            DishComponent->UpdateCurrentDishData(CurrentDish);
+            // Update dish data and broadcast so OnDishDataChanged fires and radar charts (SetValuesFromOrder*) update
+            DishComponent->BroadcastDishDataUpdate(CurrentDish);
             
             // Update the ingredient instance to reflect the change
             FIngredientInstance UpdatedInstance;
@@ -3348,9 +3352,12 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
 
 bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& PreparationTag)
 {
+    UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparationFromIngredient ENTRY: %s for %s (Instance %d)"),
+        *PreparationTag.ToString(), *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID);
+    
     if (!bHasIngredient || IngredientInstance.InstanceID == 0)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::RemovePreparationFromIngredient - Invalid ingredient instance"));
+        UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparationFromIngredient: Invalid - no ingredient or InstanceID 0"));
         return false;
     }
 
@@ -3421,8 +3428,8 @@ bool UPUIngredientSlot::RemovePreparationFromIngredient(const FGameplayTag& Prep
         
         if (bSuccess)
         {
-            // Update the dish data in the component
-            DishComponent->UpdateCurrentDishData(CurrentDish);
+            // Update dish data and broadcast so OnDishDataChanged fires and radar charts (SetValuesFromOrder*) update
+            DishComponent->BroadcastDishDataUpdate(CurrentDish);
             
             // Update the ingredient instance to reflect the change
             FIngredientInstance UpdatedInstance;

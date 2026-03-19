@@ -91,7 +91,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard", meta = (AllowAbstract = "false"))
 	TSubclassOf<UPUAspectProfileWidget> AspectProfileWidgetClass;
 
-	/** Seal textures for 3 tiers: Perfect, Great, Good */
+	/** Seal textures for 4 grades: Perfect (A), Great (B), Okay (C), Needs Improvement (F) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Seals")
 	TSoftObjectPtr<UTexture2D> SealTexturePerfect;
 
@@ -99,6 +99,13 @@ protected:
 	TSoftObjectPtr<UTexture2D> SealTextureGreat;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Seals")
+	TSoftObjectPtr<UTexture2D> SealTextureOkay;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Seals")
+	TSoftObjectPtr<UTexture2D> SealTextureNeedsImprovement;
+
+	/** @deprecated Use SealTextureOkay. Fallback when SealTextureOkay is unset. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Seals", meta = (DeprecationMessage = "Use SealTextureOkay"))
 	TSoftObjectPtr<UTexture2D> SealTextureGood;
 
 	/** Optional texture for checkmark (obtained ingredient). If unset, falls back to Unicode ✓. */

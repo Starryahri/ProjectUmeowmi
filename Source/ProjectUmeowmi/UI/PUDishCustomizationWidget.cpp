@@ -1,4 +1,5 @@
 #include "PUDishCustomizationWidget.h"
+#include "PURadarChart.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "PUDialogueBox.h"
@@ -187,6 +188,9 @@ void UPUDishCustomizationWidget::OnDishDataUpdated(const FPUDishBase& UpdatedDis
     // Update current dish data
     CurrentDishData = UpdatedDishData;
     
+    // Update radar charts (flavor/texture) when dish changes - e.g. when preparations are applied
+    RefreshRadarChartsFromDishData(UpdatedDishData);
+    
     // Call the Blueprint event
     OnDishDataChanged(UpdatedDishData);
 }
@@ -241,14 +245,16 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
     // Update local data
     CurrentDishData = NewDishData;
     
-    // Sync back to the customization component
+    // Sync back to the customization component (broadcasts OnDishDataUpdated -> radar charts + Blueprint OnDishDataChanged)
     if (CustomizationComponent)
     {
         CustomizationComponent->SyncDishDataFromUI(NewDishData);
     }
     else
     {
-        //UE_LOG(LogTemp,Warning, TEXT("PUDishCustomizationWidget::UpdateDishData - No customization component reference"));
+        // No component - still trigger radar chart update so SetValuesFromOrder* in Blueprint gets the new dish
+        RefreshRadarChartsFromDishData(NewDishData);
+        OnDishDataChanged(NewDishData);
     }
 }
 
@@ -1537,6 +1543,32 @@ void UPUDishCustomizationWidget::ToggleIngredientSelection(const FPUIngredientBa
     
     // Call Blueprint event
     OnIngredientSelectionChanged(IngredientData, !bWasSelected);
+}
+
+void UPUDishCustomizationWidget::RefreshRadarChartsFromDishData(const FPUDishBase& Dish)
+{
+    // Update assigned radar charts (assign in Blueprint Details under "Radar Chart" category)
+    if (FlavorRadarChart)
+    {
+        FlavorRadarChart->SetValuesFromDishFlavorProfile(Dish);
+    }
+    if (TextureRadarChart)
+    {
+        TextureRadarChart->SetValuesFromDishTextureProfile(Dish);
+    }
+    // Fallback: if no charts assigned, search widget tree for PURadarChart and update with texture (Crumbly)
+    if (!FlavorRadarChart && !TextureRadarChart && WidgetTree)
+    {
+        TArray<UWidget*> AllWidgets;
+        WidgetTree->GetAllWidgets(AllWidgets);
+        for (UWidget* W : AllWidgets)
+        {
+            if (UPURadarChart* Chart = Cast<UPURadarChart>(W))
+            {
+                Chart->SetValuesFromDishTextureProfile(Dish);
+            }
+        }
+    }
 }
 
 void UPUDishCustomizationWidget::UpdateRadarChartFromPlanningData()

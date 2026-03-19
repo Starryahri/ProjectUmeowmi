@@ -35,9 +35,13 @@ struct FAspectModifier
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     EAspectType AspectType = EAspectType::Flavor;
 
-    // Name of the aspect to modify (e.g., "Umami", "Sweet", "Rich", "Tender")
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
-    FName AspectName;
+    /** Flavor aspect to modify (when AspectType is Flavor). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier", meta = (EditCondition = "AspectType == EAspectType::Flavor"))
+    EPUFlavorAspect FlavorAspect = EPUFlavorAspect::Salt;
+
+    /** Texture aspect to modify (when AspectType is Texture). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier", meta = (EditCondition = "AspectType == EAspectType::Texture"))
+    EPUTextureAspect TextureAspect = EPUTextureAspect::Crispy;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     EModificationType ModificationType = EModificationType::Additive;
@@ -47,6 +51,9 @@ struct FAspectModifier
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modifier")
     FText Description;
+
+    // Returns the aspect name as FName for use with dish/ingredient APIs
+    FName GetAspectName() const;
 
     // Helper function to apply the modification
     float ApplyModification(float BaseValue) const

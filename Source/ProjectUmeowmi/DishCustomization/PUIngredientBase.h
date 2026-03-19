@@ -37,6 +37,38 @@ enum class ETemperatureState : uint8
     Hot = 3     // 1.0
 };
 
+/** Flavor aspects - select from dropdown. */
+UENUM(BlueprintType)
+enum class EPUFlavorAspect : uint8
+{
+    Umami UMETA(DisplayName = "Umami"),
+    Salt UMETA(DisplayName = "Salt"),
+    Sweet UMETA(DisplayName = "Sweet"),
+    Sour UMETA(DisplayName = "Sour"),
+    Bitter UMETA(DisplayName = "Bitter"),
+    Spicy UMETA(DisplayName = "Spicy")
+};
+
+/** Texture aspects - select from dropdown. */
+UENUM(BlueprintType)
+enum class EPUTextureAspect : uint8
+{
+    Rich UMETA(DisplayName = "Rich"),
+    Juicy UMETA(DisplayName = "Juicy"),
+    Tender UMETA(DisplayName = "Tender"),
+    Chewy UMETA(DisplayName = "Chewy"),
+    Crispy UMETA(DisplayName = "Crispy"),
+    Crumbly UMETA(DisplayName = "Crumbly")
+};
+
+/** Whether modifier affects flavor or texture. */
+UENUM(BlueprintType)
+enum class EPAspectCategory : uint8
+{
+    Flavor,
+    Texture
+};
+
 // Time/Temperature modifier entry - defines how a specific aspect changes at a specific time/temp state
 USTRUCT(BlueprintType)
 struct FTimeTempModifier
@@ -51,13 +83,16 @@ struct FTimeTempModifier
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
     ETemperatureState TemperatureState = ETemperatureState::Raw;
 
-    // Aspect to modify (e.g., "Umami", "Crispy", "Tender")
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
-    FName AspectName;
+    EPAspectCategory AspectCategory = EPAspectCategory::Flavor;
 
-    // Whether this affects flavor or texture (0 = Flavor, 1 = Texture)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
-    uint8 AspectType = 0; // 0 = Flavor, 1 = Texture (matches EAspectType)
+    /** Flavor aspect to modify (when AspectCategory is Flavor). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier", meta = (EditCondition = "AspectCategory == EPAspectCategory::Flavor"))
+    EPUFlavorAspect FlavorAspect = EPUFlavorAspect::Umami;
+
+    /** Texture aspect to modify (when AspectCategory is Texture). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier", meta = (EditCondition = "AspectCategory == EPAspectCategory::Texture"))
+    EPUTextureAspect TextureAspect = EPUTextureAspect::Tender;
 
     // How to apply the modification (0 = Additive, 1 = Multiplicative)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
@@ -66,6 +101,8 @@ struct FTimeTempModifier
     // Modification value
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Time/Temp Modifier")
     float ModificationValue = 0.0f;
+
+    FName GetAspectName() const;
 };
 
 // Flavor aspects - the six basic flavors

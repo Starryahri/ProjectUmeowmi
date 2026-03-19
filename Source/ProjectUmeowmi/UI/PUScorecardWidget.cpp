@@ -232,9 +232,15 @@ void UPUScorecardWidget::UpdateSealImage()
 	case EPUScorecardSealTier::Great:
 		SealTex = SealTextureGreat.LoadSynchronous();
 		break;
-	case EPUScorecardSealTier::Good:
+	case EPUScorecardSealTier::Okay:
+		SealTex = SealTextureOkay.LoadSynchronous();
+		if (!SealTex) SealTex = SealTextureGood.LoadSynchronous(); // Fallback for existing Blueprints
+		break;
+	case EPUScorecardSealTier::NeedsImprovement:
+		SealTex = SealTextureNeedsImprovement.LoadSynchronous();
+		break;
 	default:
-		SealTex = SealTextureGood.LoadSynchronous();
+		SealTex = SealTextureOkay.LoadSynchronous();
 		break;
 	}
 

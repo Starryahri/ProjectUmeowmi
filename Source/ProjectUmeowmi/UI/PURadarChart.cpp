@@ -632,15 +632,13 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     int32 TotalSegments = TOTAL_FLAVOR_ASPECTS;
     
     // CRITICAL: Preserve current RawValues before changing segment count
-    // SetSegmentCount calls UpdateValueLayers() which resets RawValues to zero
-    // We need to preserve them so animation can start from current values, not zero
+    // When chart has 2 layers (hint + player), the visible player data is on layer 1
+    const int32 PlayerLayerIndex = (ValueLayers.Num() >= 2) ? 1 : 0;
     TArray<float> PreservedRawValues;
     bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
-    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    if (!bSegmentCountChanged && ValueLayers.IsValidIndex(PlayerLayerIndex) && ValueLayers[PlayerLayerIndex].RawValues.Num() == GetSegmentCount())
     {
-        // Segment count is the same, preserve current RawValues
-        PreservedRawValues = ValueLayers[0].RawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Preserving %d current RawValues"), PreservedRawValues.Num());
+        PreservedRawValues = ValueLayers[PlayerLayerIndex].RawValues;
     }
     
     // Set the number of segments (this will reset RawValues if count changed)
@@ -651,10 +649,9 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     }
     
     // Restore preserved RawValues if segment count didn't change
-    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.IsValidIndex(PlayerLayerIndex))
     {
-        ValueLayers[0].RawValues = PreservedRawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Restored preserved RawValues"));
+        ValueLayers[PlayerLayerIndex].RawValues = PreservedRawValues;
     }
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Set up %d segments"), TotalSegments);
@@ -710,8 +707,15 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
         return false;
     }
     
-    // Set the values with smooth animation
-    SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
+    // Update the correct layer: when chart has 2 layers (hint + player), layer 1 is the visible player polygon
+    if (ValueLayers.Num() >= 2)
+    {
+        SetValuesAnimatedForLayer(1, Values, 0.5f, 18, EEasingFunc::ExpoOut);
+    }
+    else
+    {
+        SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
+    }
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Completed setup with %d segments"), TotalSegments);
     return true;
@@ -738,15 +742,13 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     int32 TotalSegments = TOTAL_TEXTURE_ASPECTS;
     
     // CRITICAL: Preserve current RawValues before changing segment count
-    // SetSegmentCount calls UpdateValueLayers() which resets RawValues to zero
-    // We need to preserve them so animation can start from current values, not zero
+    // When chart has 2 layers (hint + player), the visible player data is on layer 1
+    const int32 PlayerLayerIndex = (ValueLayers.Num() >= 2) ? 1 : 0;
     TArray<float> PreservedRawValues;
     bool bSegmentCountChanged = (GetSegmentCount() != TotalSegments);
-    if (!bSegmentCountChanged && ValueLayers.Num() > 0 && ValueLayers[0].RawValues.Num() == GetSegmentCount())
+    if (!bSegmentCountChanged && ValueLayers.IsValidIndex(PlayerLayerIndex) && ValueLayers[PlayerLayerIndex].RawValues.Num() == GetSegmentCount())
     {
-        // Segment count is the same, preserve current RawValues
-        PreservedRawValues = ValueLayers[0].RawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Preserving %d current RawValues"), PreservedRawValues.Num());
+        PreservedRawValues = ValueLayers[PlayerLayerIndex].RawValues;
     }
     
     // Set the number of segments (this will reset RawValues if count changed)
@@ -757,10 +759,9 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     }
     
     // Restore preserved RawValues if segment count didn't change
-    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.Num() > 0)
+    if (!bSegmentCountChanged && PreservedRawValues.Num() == TotalSegments && ValueLayers.IsValidIndex(PlayerLayerIndex))
     {
-        ValueLayers[0].RawValues = PreservedRawValues;
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Restored preserved RawValues"));
+        ValueLayers[PlayerLayerIndex].RawValues = PreservedRawValues;
     }
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Set up %d segments"), TotalSegments);
@@ -816,8 +817,15 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
         return false;
     }
     
-    // Set the values with smooth animation
-    SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
+    // Update the correct layer: when chart has 2 layers (hint + player), layer 1 is the visible player polygon
+    if (ValueLayers.Num() >= 2)
+    {
+        SetValuesAnimatedForLayer(1, Values, 0.5f, 18, EEasingFunc::ExpoOut);
+    }
+    else
+    {
+        SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
+    }
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Completed setup with %d segments"), TotalSegments);
     return true;
@@ -902,10 +910,10 @@ TArray<float> UPURadarChart::BuildHintValuesFromDiscoveredHints(const TArray<FOr
         {
             continue;
         }
-        const int32 Idx = AspectNames.IndexOfByKey(Req.AspectName);
+        const int32 Idx = AspectNames.IndexOfByKey(Req.GetAspectName());
         if (Idx != INDEX_NONE)
         {
-            Values[Idx] = FMath::Clamp(Req.MinValue, 0.0f, 5.0f);
+            Values[Idx] = Req.TargetValue;
         }
     }
 
@@ -921,7 +929,7 @@ bool UPURadarChart::SetValuesFromOrderFlavorProfile(const FPUOrderBase& Order, c
         if (H.AspectType == EOrderAspectType::Flavor)
         {
             if (!HintNames.IsEmpty()) HintNames += TEXT(", ");
-            HintNames += FString::Printf(TEXT("%s(%.1f)"), *H.AspectName.ToString(), H.MinValue);
+            HintNames += FString::Printf(TEXT("%s(%.1f)"), *H.GetAspectName().ToString(), H.TargetValue);
             ++FlavorHintCount;
         }
     }
@@ -1014,7 +1022,7 @@ bool UPURadarChart::SetValuesFromOrderTextureProfile(const FPUOrderBase& Order, 
         if (H.AspectType == EOrderAspectType::Texture)
         {
             if (!HintNames.IsEmpty()) HintNames += TEXT(", ");
-            HintNames += FString::Printf(TEXT("%s(%.1f)"), *H.AspectName.ToString(), H.MinValue);
+            HintNames += FString::Printf(TEXT("%s(%.1f)"), *H.GetAspectName().ToString(), H.TargetValue);
             ++TextureHintCount;
         }
     }

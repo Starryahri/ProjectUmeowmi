@@ -7,6 +7,7 @@
 #include "PUIngredientQuantityControl.h"
 #include "PUPreparationCheckbox.h"
 #include "PUIngredientSlot.h"
+#include "PURadarChart.h"
 #include "GameplayTagContainer.h"
 #include "Components/ScrollBox.h"
 #include "PUDishCustomizationWidget.generated.h"
@@ -345,6 +346,13 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Settings", meta = (ClampMin = "1", ClampMax = "20"))
     int32 MaxIngredients = 10;
 
+    /** Optional: Assign in Blueprint to auto-update radar charts when dish data changes (e.g. when adding preparations). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Radar Chart", meta = (DisplayName = "Flavor Radar Chart"))
+    TObjectPtr<UPURadarChart> FlavorRadarChart;
+
+    /** Optional: Assign in Blueprint to auto-update radar charts when dish data changes (e.g. when adding preparations). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Radar Chart", meta = (DisplayName = "Texture Radar Chart"))
+    TObjectPtr<UPURadarChart> TextureRadarChart;
 
     // Store references to ingredient buttons for O(1) lookup
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Buttons")
@@ -520,6 +528,9 @@ private:
     
     // Helper function to update radar chart from planning data
     void UpdateRadarChartFromPlanningData();
+
+    // Update assigned radar charts when dish data changes (e.g. preparations applied)
+    void RefreshRadarChartsFromDishData(const FPUDishBase& Dish);
 
     // Helper functions
     void CreateIngredientInstance(const FPUIngredientBase& IngredientData);

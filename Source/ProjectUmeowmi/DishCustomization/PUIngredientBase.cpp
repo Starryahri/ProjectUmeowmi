@@ -308,6 +308,43 @@ ETemperatureState FPUIngredientBase::MapTemperatureValueToState(float Temperatur
         return ETemperatureState::Hot;
 }
 
+namespace
+{
+    FName FlavorAspectToName(EPUFlavorAspect A)
+    {
+        switch (A)
+        {
+            case EPUFlavorAspect::Umami:  return FName(TEXT("Umami"));
+            case EPUFlavorAspect::Salt:   return FName(TEXT("Salt"));
+            case EPUFlavorAspect::Sweet:  return FName(TEXT("Sweet"));
+            case EPUFlavorAspect::Sour:   return FName(TEXT("Sour"));
+            case EPUFlavorAspect::Bitter: return FName(TEXT("Bitter"));
+            case EPUFlavorAspect::Spicy:  return FName(TEXT("Spicy"));
+            default: return FName(TEXT("Umami"));
+        }
+    }
+    FName TextureAspectToName(EPUTextureAspect A)
+    {
+        switch (A)
+        {
+            case EPUTextureAspect::Rich:    return FName(TEXT("Rich"));
+            case EPUTextureAspect::Juicy:   return FName(TEXT("Juicy"));
+            case EPUTextureAspect::Tender: return FName(TEXT("Tender"));
+            case EPUTextureAspect::Chewy:   return FName(TEXT("Chewy"));
+            case EPUTextureAspect::Crispy:  return FName(TEXT("Crispy"));
+            case EPUTextureAspect::Crumbly: return FName(TEXT("Crumbly"));
+            default: return FName(TEXT("Tender"));
+        }
+    }
+}
+
+FName FTimeTempModifier::GetAspectName() const
+{
+    if (AspectCategory == EPAspectCategory::Flavor)
+        return FlavorAspectToName(FlavorAspect);
+    return TextureAspectToName(TextureAspect);
+}
+
 // Get default time/temperature modifiers (universal rules)
 // These are applied when an ingredient doesn't have custom modifiers
 static TArray<FTimeTempModifier> GetDefaultTimeTempModifiers()
@@ -323,8 +360,8 @@ static TArray<FTimeTempModifier> GetDefaultTimeTempModifiers()
     // Low time + Low temp: slight Umami increase (multiplied by 10 for visibility)
     Mod.TimeState = ETimeState::Low;
     Mod.TemperatureState = ETemperatureState::Low;
-    Mod.AspectName = FName("Umami");
-    Mod.AspectType = 0; // Flavor
+    Mod.AspectCategory = EPAspectCategory::Flavor;
+    Mod.FlavorAspect = EPUFlavorAspect::Umami;
     Mod.ModificationType = 0; // Additive
     Mod.ModificationValue = 3.0f; // 0.3 * 10
     DefaultModifiers.Add(Mod);
@@ -332,36 +369,36 @@ static TArray<FTimeTempModifier> GetDefaultTimeTempModifiers()
     // Mid time + Med temp: moderate Umami increase, Tender increase (multiplied by 10)
     Mod.TimeState = ETimeState::Mid;
     Mod.TemperatureState = ETemperatureState::Med;
-    Mod.AspectName = FName("Umami");
+    Mod.FlavorAspect = EPUFlavorAspect::Umami;
     Mod.ModificationValue = 6.0f; // 0.6 * 10
     DefaultModifiers.Add(Mod);
     
-    Mod.AspectName = FName("Tender");
-    Mod.AspectType = 1; // Texture
+    Mod.AspectCategory = EPAspectCategory::Texture;
+    Mod.TextureAspect = EPUTextureAspect::Tender;
     Mod.ModificationValue = 5.0f; // 0.5 * 10
     DefaultModifiers.Add(Mod);
     
     // Long time + Hot temp: significant Umami increase, Tender increase, Juicy decrease (multiplied by 10)
     Mod.TimeState = ETimeState::Long;
     Mod.TemperatureState = ETemperatureState::Hot;
-    Mod.AspectName = FName("Umami");
-    Mod.AspectType = 0; // Flavor
+    Mod.AspectCategory = EPAspectCategory::Flavor;
+    Mod.FlavorAspect = EPUFlavorAspect::Umami;
     Mod.ModificationValue = 10.0f; // 1.0 * 10
     DefaultModifiers.Add(Mod);
     
-    Mod.AspectName = FName("Tender");
-    Mod.AspectType = 1; // Texture
+    Mod.AspectCategory = EPAspectCategory::Texture;
+    Mod.TextureAspect = EPUTextureAspect::Tender;
     Mod.ModificationValue = 8.0f; // 0.8 * 10
     DefaultModifiers.Add(Mod);
     
-    Mod.AspectName = FName("Juicy");
+    Mod.TextureAspect = EPUTextureAspect::Juicy;
     Mod.ModificationValue = -5.0f; // -0.5 * 10 (Negative = reduction)
     DefaultModifiers.Add(Mod);
     
     // Hot temp increases Crispy (multiplied by 10)
     Mod.TimeState = ETimeState::None; // Any time
     Mod.TemperatureState = ETemperatureState::Hot;
-    Mod.AspectName = FName("Crispy");
+    Mod.TextureAspect = EPUTextureAspect::Crispy;
     Mod.ModificationValue = 7.0f; // 0.7 * 10
     DefaultModifiers.Add(Mod);
     
@@ -406,16 +443,16 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
         ////UE_LOG(LogTemp,Display, TEXT("🔍   Modifier: Time=%d (match: %s), Temp=%d (match: %s), Aspect=%s, Value=%.2f"),
         //    (int32)Modifier.TimeState, bTimeMatches ? TEXT("YES") : TEXT("NO"),
         //    (int32)Modifier.TemperatureState, bTempMatches ? TEXT("YES") : TEXT("NO"),
-        //    *Modifier.AspectName.ToString(), Modifier.ModificationValue);
+        //    *Modifier.GetAspectName().ToString(), Modifier.ModificationValue);
         
         if (bTimeMatches && bTempMatches)
         {
-            FString AspectStr = Modifier.AspectName.ToString().ToLower();
+            FString AspectStr = Modifier.GetAspectName().ToString().ToLower();
             float CurrentValue = 0.0f;
             bool bFound = false;
             
             // Get current aspect value from OutFlavor/OutTexture structs directly (allows chaining modifiers)
-            if (Modifier.AspectType == 0) // Flavor
+            if (Modifier.AspectCategory == EPAspectCategory::Flavor)
             {
                 if (AspectStr == TEXT("umami"))
                     CurrentValue = OutFlavor.Umami;
@@ -431,7 +468,7 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
                     CurrentValue = OutFlavor.Spicy;
                 bFound = true;
             }
-            else if (Modifier.AspectType == 1) // Texture
+            else if (Modifier.AspectCategory == EPAspectCategory::Texture)
             {
                 if (AspectStr == TEXT("rich"))
                     CurrentValue = OutTexture.Rich;
@@ -474,7 +511,7 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
                 ////UE_LOG(LogTemp,Display, TEXT("🔍   After rounding: %f"), ModifiedValue);
                 
                 // Set the modified value directly in output (don't modify const object)
-                if (Modifier.AspectType == 0) // Flavor
+                if (Modifier.AspectCategory == EPAspectCategory::Flavor)
                 {
                     if (AspectStr == TEXT("umami"))
                         OutFlavor.Umami = ModifiedValue;
@@ -489,7 +526,7 @@ void FPUIngredientBase::CalculateTimeTempModifiedAspects(float TimeValue, float 
                     else if (AspectStr == TEXT("spicy"))
                         OutFlavor.Spicy = ModifiedValue;
                 }
-                else if (Modifier.AspectType == 1) // Texture
+                else if (Modifier.AspectCategory == EPAspectCategory::Texture)
                 {
                     if (AspectStr == TEXT("rich"))
                         OutTexture.Rich = ModifiedValue;

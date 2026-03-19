@@ -329,10 +329,11 @@ bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const 
     bool bMeetsAspectRequirements = true;
     for (const FOrderAspectRequirement& Req : Order.TargetAspects)
     {
+        const FName AspectName = Req.GetAspectName();
         float CurrentValue = (Req.AspectType == EOrderAspectType::Flavor)
-            ? Dish.GetTotalFlavorAspect(Req.AspectName)
-            : Dish.GetTotalTextureAspect(Req.AspectName);
-        if (CurrentValue < Req.MinValue)
+            ? Dish.GetTotalFlavorAspect(AspectName)
+            : Dish.GetTotalTextureAspect(AspectName);
+        if (CurrentValue < Req.TargetValue)
         {
             bMeetsAspectRequirements = false;
             break;

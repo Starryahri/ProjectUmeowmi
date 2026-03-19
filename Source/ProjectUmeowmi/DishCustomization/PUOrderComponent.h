@@ -22,6 +22,10 @@ public:
 
     virtual void BeginPlay() override;
 
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
     // Order Management
     /** Generate a new order (dish from AvailableDishTags pool or fallback). */
     UFUNCTION(BlueprintCallable, Category = "Order System")

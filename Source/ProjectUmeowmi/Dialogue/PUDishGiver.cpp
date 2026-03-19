@@ -418,22 +418,23 @@ FText APUDishGiver::GetOrderCompletionFeedback(AProjectUmeowmiCharacter* PlayerC
     
     float SatisfactionScore = PlayerCharacter->GetOrderSatisfaction();
     
+    // 4-grade system: Perfect (1.0), Great (0.75), Okay (0.5), Needs Improvement (0.25)
     FString LocalFeedbackText;
-    if (SatisfactionScore >= 0.9f)
+    if (SatisfactionScore >= 0.875f)
     {
         LocalFeedbackText = TEXT("Wow! This is absolutely perfect! You've exceeded my expectations!");
     }
-    else if (SatisfactionScore >= 0.7f)
+    else if (SatisfactionScore >= 0.625f)
     {
         LocalFeedbackText = TEXT("Excellent work! This is exactly what I was looking for!");
     }
-    else if (SatisfactionScore >= 0.5f)
+    else if (SatisfactionScore >= 0.375f)
     {
         LocalFeedbackText = TEXT("Good job! This meets my requirements nicely.");
     }
     else
     {
-        LocalFeedbackText = TEXT("Well, it's acceptable. Could be better, but I'll take it.");
+        LocalFeedbackText = TEXT("This isn't quite right. You're missing key ingredients or the balance is off.");
     }
     
     // Store the feedback in the class variable (const cast needed since this is a const function)
@@ -522,8 +523,8 @@ void APUDishGiver::SetDialogueVariablesFromOrder(const FPUOrderBase& Order)
     if (Order.TargetAspects.Num() > 0)
     {
         const FOrderAspectRequirement& First = Order.TargetAspects[0];
-        TargetFlavorProperty = FText::FromString(First.AspectName.ToString());
-        MinFlavorValue = First.MinValue;
+        TargetFlavorProperty = FText::FromString(First.GetAspectName().ToString());
+        MinFlavorValue = First.TargetValue;
     }
     else
     {
@@ -547,12 +548,13 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
     if (CompletedOrder.TargetAspects.Num() > 0)
     {
         const FOrderAspectRequirement& First = CompletedOrder.TargetAspects[0];
+        const FName FirstAspectName = First.GetAspectName();
         float Val = (First.AspectType == EOrderAspectType::Flavor)
-            ? CompletedDish.GetTotalFlavorAspect(First.AspectName)
-            : CompletedDish.GetTotalTextureAspect(First.AspectName);
+            ? CompletedDish.GetTotalFlavorAspect(FirstAspectName)
+            : CompletedDish.GetTotalTextureAspect(FirstAspectName);
         CompletedDishFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), Val));
-        CompletedDishTargetFlavor = FText::FromString(First.AspectName.ToString());
-        CompletedDishMinFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), First.MinValue));
+        CompletedDishTargetFlavor = FText::FromString(FirstAspectName.ToString());
+        CompletedDishMinFlavorValue = FText::FromString(FString::Printf(TEXT("%.1f"), First.TargetValue));
     }
     else
     {
@@ -591,11 +593,11 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
         }
     }
     
-    // Determine quality level
-    if (CompletedDishSatisfaction >= 0.9f) QualityLevel = FText::FromString(TEXT("Perfect"));
-    else if (CompletedDishSatisfaction >= 0.7f) QualityLevel = FText::FromString(TEXT("Great"));
-    else if (CompletedDishSatisfaction >= 0.5f) QualityLevel = FText::FromString(TEXT("Good"));
-    else QualityLevel = FText::FromString(TEXT("Okay"));
+    // Determine quality level (4-grade system: Perfect, Great, Okay, Needs Improvement)
+    if (CompletedDishSatisfaction >= 0.875f) QualityLevel = FText::FromString(TEXT("Perfect"));
+    else if (CompletedDishSatisfaction >= 0.625f) QualityLevel = FText::FromString(TEXT("Great"));
+    else if (CompletedDishSatisfaction >= 0.375f) QualityLevel = FText::FromString(TEXT("Okay"));
+    else QualityLevel = FText::FromString(TEXT("Needs Improvement"));
     
     // Generate basic feedback text
     FeedbackText = FText::FromString(FString::Printf(TEXT("Your %s level of %s vs the required %s - %s!"), 
@@ -605,21 +607,21 @@ void APUDishGiver::AnalyzeCompletedDish(const FPUOrderBase& CompletedOrder)
         *QualityLevel.ToString()));
     
     // Generate satisfaction-based feedback text
-    if (CompletedDishSatisfaction >= 0.9f)
+    if (CompletedDishSatisfaction >= 0.875f)
     {
         SatisfactionFeedbackText = FText::FromString(TEXT("Wow! This is absolutely perfect! You've exceeded my expectations!"));
     }
-    else if (CompletedDishSatisfaction >= 0.7f)
+    else if (CompletedDishSatisfaction >= 0.625f)
     {
         SatisfactionFeedbackText = FText::FromString(TEXT("Excellent work! This is exactly what I was looking for!"));
     }
-    else if (CompletedDishSatisfaction >= 0.5f)
+    else if (CompletedDishSatisfaction >= 0.375f)
     {
         SatisfactionFeedbackText = FText::FromString(TEXT("Good job! This meets my requirements nicely."));
     }
     else
     {
-        SatisfactionFeedbackText = FText::FromString(TEXT("Well, it's acceptable. Could be better, but I'll take it."));
+        SatisfactionFeedbackText = FText::FromString(TEXT("This isn't quite right. You're missing key ingredients or the balance is off."));
     }
     
     //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::AnalyzeCompletedDish - Analysis complete:"));

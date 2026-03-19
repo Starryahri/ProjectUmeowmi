@@ -22,13 +22,14 @@ struct PROJECTUMEOWMI_API FPUBaseIngredientEntry
 	bool bObtained = true;
 };
 
-/** Seal of approval tier - 3 tiers for scorecard display. */
+/** Seal of approval tier - 4 grades for scorecard display (A/B/C/F). */
 UENUM(BlueprintType)
 enum class EPUScorecardSealTier : uint8
 {
-	Perfect = 0 UMETA(DisplayName = "Perfect"),
-	Great = 1 UMETA(DisplayName = "Great"),
-	Good = 2 UMETA(DisplayName = "Good")
+	Perfect = 0 UMETA(DisplayName = "Perfect (A)"),
+	Great = 1 UMETA(DisplayName = "Great (B)"),
+	Okay = 2 UMETA(DisplayName = "Okay (C)"),
+	NeedsImprovement = 3 UMETA(DisplayName = "Needs Improvement (F)")
 };
 
 /** Single aspect ranking: aspect name, top 3 contributing ingredients (icons), total value, and 0-5 star rating. */
@@ -78,7 +79,7 @@ struct PROJECTUMEOWMI_API FPUScorecardData
 
 	/** Seal tier based on satisfaction score (Perfect/Great/Good). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")
-	EPUScorecardSealTier SealTier = EPUScorecardSealTier::Good;
+	EPUScorecardSealTier SealTier = EPUScorecardSealTier::Okay;
 
 	/** Base ingredients from the recipe or completed dish (display name + icon). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Scorecard")

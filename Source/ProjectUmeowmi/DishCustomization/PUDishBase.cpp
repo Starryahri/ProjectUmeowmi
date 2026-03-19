@@ -48,7 +48,10 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
         
     if (FPUIngredientBase* FoundIngredient = LoadedIngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredient")))
     {
+        // Preserve caller's ActivePreparations before overwriting (RecalculateAspectsFromBase passes them in)
+        FGameplayTagContainer PreparationsToApply = OutIngredient.ActivePreparations;
         OutIngredient = *FoundIngredient;
+        OutIngredient.ActivePreparations = PreparationsToApply;
         
         // Load preparation data if available
         if (OutIngredient.PreparationDataTable.IsValid())

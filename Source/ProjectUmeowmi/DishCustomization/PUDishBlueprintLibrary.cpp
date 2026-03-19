@@ -2,9 +2,11 @@
 #include "PUDishBase.h"
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
+#include "PUOrderBase.h"
 #include "../UI/PUDishCustomizationWidget.h"
 #include "../UI/PUScorecardTypes.h"
 #include "Engine/Texture2D.h"
+#include "Engine/DataTable.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid startup/on-screen spam).
 namespace
@@ -91,6 +93,8 @@ FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, co
                         
                         if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddIngredient")))
                         {
+                            UE_LOG(LogTemp, Warning, TEXT("[Prep] AddIngredient: Applying %s to %s - %d modifiers"),
+                                *PrepName, *NewInstance.IngredientData.DisplayName.ToString(), Preparation->AspectModifiers.Num());
                             // Apply preparation modifiers
                             Preparation->ApplyModifiers(NewInstance.IngredientData.FlavorAspects, NewInstance.IngredientData.TextureAspects);
                         }
@@ -319,8 +323,34 @@ bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 Instance
     Instance.IngredientData.ActivePreparations.AddTag(PreparationTag);
     Instance.Preparations.AddTag(PreparationTag);
     
-    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::ApplyPreparation - Applied %s to instance %d (now has %d preparations)"), 
-    //    *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
+    // Apply preparation modifiers to aspect values (e.g. chopped adds +6 to Crumbly)
+    if (Instance.IngredientData.PreparationDataTable.IsValid())
+    {
+        if (UDataTable* PrepTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous())
+        {
+            FString PrepFullTag = PreparationTag.ToString();
+            int32 PrepLastPeriodIndex;
+            if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+            {
+                FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                FName PrepRowName = FName(*PrepName);
+                if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("ApplyPreparation")))
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparation (Blueprint): Applying %s to %s (Instance %d) - %d modifiers"),
+                        *PrepName, *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Preparation->AspectModifiers.Num());
+                    Preparation->ApplyModifiers(Instance.IngredientData.FlavorAspects, Instance.IngredientData.TextureAspects);
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparation (Blueprint): Could not find row '%s' for %s"), *PrepName, *Instance.IngredientData.DisplayName.ToString());
+                }
+            }
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparation (Blueprint): No PreparationDataTable on %s"), *Instance.IngredientData.DisplayName.ToString());
+    }
     
     return true;
 }
@@ -344,12 +374,30 @@ bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 Instanc
         return false;
     }
 
+    // Remove preparation modifiers from aspect values BEFORE removing the tag
+    if (Instance.IngredientData.PreparationDataTable.IsValid())
+    {
+        if (UDataTable* PrepTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous())
+        {
+            FString PrepFullTag = PreparationTag.ToString();
+            int32 PrepLastPeriodIndex;
+            if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+            {
+                FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                FName PrepRowName = FName(*PrepName);
+                if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("RemovePreparation")))
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparation (Blueprint): Removing %s from %s (Instance %d) - %d modifiers"),
+                        *PrepName, *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Preparation->AspectModifiers.Num());
+                    Preparation->RemoveModifiers(Instance.IngredientData.FlavorAspects, Instance.IngredientData.TextureAspects);
+                }
+            }
+        }
+    }
+    
     // Remove the preparation from both fields to keep them in sync
     Instance.IngredientData.ActivePreparations.RemoveTag(PreparationTag);
     Instance.Preparations.RemoveTag(PreparationTag);
-    
-    //UE_LOG(LogTemp,Log, TEXT("UPUDishBlueprintLibrary::RemovePreparation - Removed %s from instance %d (now has %d preparations)"), 
-    //    *PreparationTag.ToString(), InstanceIndex, Instance.Preparations.Num());
     
     return true;
 }
@@ -801,6 +849,15 @@ namespace
         TEXT("Rich"), TEXT("Juicy"), TEXT("Tender"), TEXT("Chewy"), TEXT("Crispy"), TEXT("Crumbly")
     };
 
+    /** Map performance ratio (PlayerValue/TargetValue) to 0-5 stars using same bands as scoring. */
+    int32 GetStarsFromRatio(float Ratio)
+    {
+        if (Ratio >= 0.80f && Ratio <= 1.20f) return 5;  // Perfect
+        if (Ratio >= 0.70f && Ratio <= 1.30f) return 4;  // Great
+        if (Ratio >= 0.60f && Ratio <= 1.40f) return 3;  // Okay
+        return 2;  // Needs Improvement
+    }
+
     FPUAspectRanking BuildAspectRanking(const FPUDishBase& Dish, const FName& AspectName, bool bFlavor)
     {
         FPUAspectRanking Ranking;
@@ -898,6 +955,50 @@ namespace
 
         return Profile;
     }
+
+    /** Build profile from order's TargetAspects with performance-based stars (Option 5). Falls back to top 2 by value if no order aspects. */
+    FPUAspectProfileData BuildAspectProfileFromOrder(const FPUOrderBase& Order, const FPUDishBase& CompletedDish, bool bFlavor)
+    {
+        const EOrderAspectType RequiredType = bFlavor ? EOrderAspectType::Flavor : EOrderAspectType::Texture;
+        const TArray<FName>& AspectNames = bFlavor ? FlavorAspectNames : TextureAspectNames;
+
+        TArray<FOrderAspectRequirement> OrderAspects;
+        for (const FOrderAspectRequirement& Req : Order.TargetAspects)
+        {
+            if (Req.AspectType == RequiredType)
+            {
+                OrderAspects.Add(Req);
+            }
+        }
+
+        if (OrderAspects.Num() == 0)
+        {
+            return BuildAspectProfile(CompletedDish, AspectNames, bFlavor);
+        }
+
+        FPUAspectProfileData Profile;
+        int32 StarSum = 0;
+
+        for (const FOrderAspectRequirement& Req : OrderAspects)
+        {
+            FPUAspectRanking Ranking = BuildAspectRanking(CompletedDish, Req.GetAspectName(), bFlavor);
+
+            float PlayerValue = Ranking.TotalValue;
+            float TargetValue = FMath::Max(0.01f, Req.TargetValue);
+            float Ratio = PlayerValue / TargetValue;
+            Ranking.StarRating = GetStarsFromRatio(Ratio);
+
+            Profile.TopAspects.Add(Ranking);
+            StarSum += Ranking.StarRating;
+        }
+
+        if (Profile.TopAspects.Num() > 0)
+        {
+            Profile.StarRating = FMath::Clamp(FMath::RoundToInt(static_cast<float>(StarSum) / Profile.TopAspects.Num()), 0, 5);
+        }
+
+        return Profile;
+    }
 }
 
 FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& Order)
@@ -907,19 +1008,24 @@ FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& O
     // Display name: dish name from completed dish
     Data.DisplayName = GetCurrentDisplayName(Order.GetCompletedDish());
 
-    // Seal tier: 3 tiers (Perfect, Great, Good)
+    // Seal tier: 4 grades (Perfect A, Great B, Okay C, NeedsImprovement F)
+    // Score mapping: 1.0=Perfect, 0.75=Great, 0.5=Okay, 0.25=NeedsImprovement
     const float Score = Order.GetFinalSatisfactionScore();
-    if (Score >= 0.9f)
+    if (Score >= 0.875f)
     {
         Data.SealTier = EPUScorecardSealTier::Perfect;
     }
-    else if (Score >= 0.7f)
+    else if (Score >= 0.625f)
     {
         Data.SealTier = EPUScorecardSealTier::Great;
     }
+    else if (Score >= 0.375f)
+    {
+        Data.SealTier = EPUScorecardSealTier::Okay;
+    }
     else
     {
-        Data.SealTier = EPUScorecardSealTier::Good;
+        Data.SealTier = EPUScorecardSealTier::NeedsImprovement;
     }
 
     // Base ingredients: prefer BaseDish (recipe), fallback to CompletedDish when recipe has none
@@ -944,9 +1050,9 @@ FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& O
         }
     }
 
-    // Flavor and texture profiles from CompletedDish
-    Data.FlavorProfile = BuildAspectProfile(CompletedDish, FlavorAspectNames, true);
-    Data.TextureProfile = BuildAspectProfile(CompletedDish, TextureAspectNames, false);
+    // Flavor and texture profiles: order's TargetAspects with performance-based stars (Option 5)
+    Data.FlavorProfile = BuildAspectProfileFromOrder(Order, CompletedDish, true);
+    Data.TextureProfile = BuildAspectProfileFromOrder(Order, CompletedDish, false);
 
     UE_LOG(LogTemp, Display, TEXT("[Scorecard] GetScorecardData: Score=%.2f, SealTier=%d, BaseIngredients=%d, FlavorTopAspects=%d, TextureTopAspects=%d"),
         Score, (int32)Data.SealTier, Data.BaseIngredients.Num(), Data.FlavorProfile.TopAspects.Num(), Data.TextureProfile.TopAspects.Num());

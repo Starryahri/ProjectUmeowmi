@@ -10,6 +10,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/SlateWrapperTypes.h"
 #include "GameplayTagContainer.h"
+#include "Engine/DataTable.h"
 
 
 UPUIngredientQuantityControl::UPUIngredientQuantityControl(const FObjectInitializer& ObjectInitializer)
@@ -174,6 +175,44 @@ void UPUIngredientQuantityControl::AddPreparation(const FGameplayTag& Preparatio
         // Update the ingredient data with the new preparation
         IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
         
+        // Apply preparation modifiers to aspect values (e.g. chopped adds +6 to Crumbly)
+        if (IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+        {
+            if (UDataTable* PrepTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous())
+            {
+                FString PrepFullTag = PreparationTag.ToString();
+                int32 PrepLastPeriodIndex;
+                if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                {
+                    FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                    FName PrepRowName = FName(*PrepName);
+                    if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddPreparation")))
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Applying %s to %s (Instance %d) - %d modifiers"),
+                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, Preparation->AspectModifiers.Num());
+                        Preparation->ApplyModifiers(IngredientInstance.IngredientData.FlavorAspects, IngredientInstance.IngredientData.TextureAspects);
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Could not find preparation row '%s' in data table for %s"),
+                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString());
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Tag '%s' has no period - cannot extract row name"), *PrepFullTag);
+                }
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Failed to load PreparationDataTable for %s"), *IngredientInstance.IngredientData.DisplayName.ToString());
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: No PreparationDataTable on ingredient %s"), *IngredientInstance.IngredientData.DisplayName.ToString());
+        }
+        
         // Log the current preparation state
         TArray<FGameplayTag> CurrentPreparations;
         IngredientInstance.Preparations.GetGameplayTagArray(CurrentPreparations);
@@ -201,6 +240,32 @@ void UPUIngredientQuantityControl::RemovePreparation(const FGameplayTag& Prepara
     {
         //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::RemovePreparation - Removing preparation: %s"), 
         //    *PreparationTag.ToString());
+        
+        // Remove preparation modifiers from aspect values BEFORE removing the tag
+        if (IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+        {
+            if (UDataTable* PrepTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous())
+            {
+                FString PrepFullTag = PreparationTag.ToString();
+                int32 PrepLastPeriodIndex;
+                if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                {
+                    FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                    FName PrepRowName = FName(*PrepName);
+                    if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("RemovePreparation")))
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparation: Removing %s from %s (Instance %d) - %d modifiers"),
+                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, Preparation->AspectModifiers.Num());
+                        Preparation->RemoveModifiers(IngredientInstance.IngredientData.FlavorAspects, IngredientInstance.IngredientData.TextureAspects);
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparation: Could not find preparation row '%s' in data table for %s"),
+                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString());
+                    }
+                }
+            }
+        }
         
         IngredientInstance.Preparations.RemoveTag(PreparationTag);
         
@@ -308,8 +373,7 @@ void UPUIngredientQuantityControl::OnRemoveButtonClicked()
 
 void UPUIngredientQuantityControl::OnPreparationCheckboxChanged(const FGameplayTag& PreparationTag, bool bIsChecked)
 {
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::OnPreparationCheckboxChanged - Preparation %s %s"), 
-    //    *PreparationTag.ToString(), bIsChecked ? TEXT("added") : TEXT("removed"));
+    UE_LOG(LogTemp, Warning, TEXT("[Prep] OnPreparationCheckboxChanged: %s %s (checkbox path)"), *PreparationTag.ToString(), bIsChecked ? TEXT("ADD") : TEXT("REMOVE"));
     
     if (bIsChecked)
     {

@@ -1,10 +1,84 @@
 #include "PUOrderBase.h"
+#include "PUDishBlueprintLibrary.h"
 #include "Engine/Engine.h"
+
+namespace
+{
+    FName FlavorAspectToName(EPUFlavorAspect A)
+    {
+        switch (A)
+        {
+            case EPUFlavorAspect::Umami:  return FName(TEXT("Umami"));
+            case EPUFlavorAspect::Salt:   return FName(TEXT("Salt"));
+            case EPUFlavorAspect::Sweet:  return FName(TEXT("Sweet"));
+            case EPUFlavorAspect::Sour:   return FName(TEXT("Sour"));
+            case EPUFlavorAspect::Bitter: return FName(TEXT("Bitter"));
+            case EPUFlavorAspect::Spicy:  return FName(TEXT("Spicy"));
+            default: return FName(TEXT("Salt"));
+        }
+    }
+    FName TextureAspectToName(EPUTextureAspect A)
+    {
+        switch (A)
+        {
+            case EPUTextureAspect::Rich:    return FName(TEXT("Rich"));
+            case EPUTextureAspect::Juicy:   return FName(TEXT("Juicy"));
+            case EPUTextureAspect::Tender: return FName(TEXT("Tender"));
+            case EPUTextureAspect::Chewy:   return FName(TEXT("Chewy"));
+            case EPUTextureAspect::Crispy:  return FName(TEXT("Crispy"));
+            case EPUTextureAspect::Crumbly: return FName(TEXT("Crumbly"));
+            default: return FName(TEXT("Crispy"));
+        }
+    }
+}
+
+// Success bands per grade: [low, high] ratio (e.g. 0.80 = 80% of target)
+namespace
+{
+    constexpr float PerfectBandLow = 0.80f;
+    constexpr float PerfectBandHigh = 1.20f;
+    constexpr float GreatBandLow = 0.70f;
+    constexpr float GreatBandHigh = 1.30f;
+    constexpr float OkayBandLow = 0.60f;
+    constexpr float OkayBandHigh = 1.40f;
+    // Outside 60%-140% = Needs Improvement
+
+    // Numeric grades for averaging: Perfect=4, Great=3, Okay=2, NeedsImprovement=1
+    constexpr float GradePerfect = 4.0f;
+    constexpr float GradeGreat = 3.0f;
+    constexpr float GradeOkay = 2.0f;
+    constexpr float GradeNeedsImprovement = 1.0f;
+
+    // Satisfaction score mapping for storage (all > 0 so IsCompleted works)
+    constexpr float ScorePerfect = 1.0f;
+    constexpr float ScoreGreat = 0.75f;
+    constexpr float ScoreOkay = 0.5f;
+    constexpr float ScoreNeedsImprovement = 0.25f;
+
+    float GetAspectGrade(float Ratio)
+    {
+        if (Ratio >= PerfectBandLow && Ratio <= PerfectBandHigh) return GradePerfect;
+        if (Ratio >= GreatBandLow && Ratio <= GreatBandHigh) return GradeGreat;
+        if (Ratio >= OkayBandLow && Ratio <= OkayBandHigh) return GradeOkay;
+        return GradeNeedsImprovement;
+    }
+}
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
 {
     constexpr bool bPU_LogOrderDishDebug = true; // Set to true to see order generation in Output Log
+}
+
+FName FOrderAspectRequirement::GetAspectName() const
+{
+    // Always derive from enums - they are the source of truth. AspectName is only for Blueprint Break compatibility
+    // and can be wrong when empty FName serializes as "None" or when loading old data.
+    if (AspectType == EOrderAspectType::Flavor)
+    {
+        return FlavorAspectToName(FlavorAspect);
+    }
+    return TextureAspectToName(TextureAspect);
 }
 
 FPUOrderBase::FPUOrderBase()
@@ -25,10 +99,11 @@ bool FPUOrderBase::ValidateDish(const FPUDishBase& Dish) const
 
     for (const FOrderAspectRequirement& Req : TargetAspects)
     {
+        const FName AspectName = Req.GetAspectName();
         float CurrentValue = (Req.AspectType == EOrderAspectType::Flavor)
-            ? Dish.GetTotalFlavorAspect(Req.AspectName)
-            : Dish.GetTotalTextureAspect(Req.AspectName);
-        if (CurrentValue < Req.MinValue)
+            ? Dish.GetTotalFlavorAspect(AspectName)
+            : Dish.GetTotalTextureAspect(AspectName);
+        if (CurrentValue < Req.TargetValue)
         {
             return false;
         }
@@ -38,27 +113,52 @@ bool FPUOrderBase::ValidateDish(const FPUDishBase& Dish) const
 
 float FPUOrderBase::GetSatisfactionScore(const FPUDishBase& Dish) const
 {
-    float IngredientScore = 0.5f;
+    // 1. Base ingredient gate: missing any base ingredient = Needs Improvement
+    if (BaseDish.IngredientInstances.Num() > 0)
     {
-        int32 CurrentIngredientCount = Dish.GetTotalIngredientQuantity();
-        IngredientScore = FMath::Clamp(static_cast<float>(CurrentIngredientCount) / static_cast<float>(FMath::Max(1, MinIngredientCount)), 0.0f, 1.0f) * 0.5f;
-    }
-
-    float AspectScore = 0.5f;
-    if (TargetAspects.Num() > 0)
-    {
-        float Sum = 0.0f;
-        for (const FOrderAspectRequirement& Req : TargetAspects)
+        if (UPUDishBlueprintLibrary::IsDishSuspicious(Dish, BaseDish))
         {
-            float CurrentValue = (Req.AspectType == EOrderAspectType::Flavor)
-                ? Dish.GetTotalFlavorAspect(Req.AspectName)
-                : Dish.GetTotalTextureAspect(Req.AspectName);
-            Sum += FMath::Clamp(CurrentValue / FMath::Max(0.01f, Req.MinValue), 0.0f, 1.0f);
+            return ScoreNeedsImprovement;
         }
-        AspectScore = (Sum / static_cast<float>(TargetAspects.Num())) * 0.5f;
     }
 
-    return IngredientScore + AspectScore;
+    // 2. No aspect requirements = default to Okay
+    if (TargetAspects.Num() == 0)
+    {
+        return ScoreOkay;
+    }
+
+    // 3. Per-aspect grade from success bands
+    float GradeSum = 0.0f;
+    bool bAnyNeedsImprovement = false;
+    for (const FOrderAspectRequirement& Req : TargetAspects)
+    {
+        const FName AspectName = Req.GetAspectName();
+        float CurrentValue = (Req.AspectType == EOrderAspectType::Flavor)
+            ? Dish.GetTotalFlavorAspect(AspectName)
+            : Dish.GetTotalTextureAspect(AspectName);
+        float TargetValue = FMath::Max(0.01f, Req.TargetValue);
+        float Ratio = CurrentValue / TargetValue;
+
+        float Grade = GetAspectGrade(Ratio);
+        GradeSum += Grade;
+        if (Grade <= GradeNeedsImprovement)
+        {
+            bAnyNeedsImprovement = true;
+        }
+    }
+
+    // 4. Average of grades
+    float AvgGrade = GradeSum / static_cast<float>(TargetAspects.Num());
+
+    // 5. Floor rule: any Needs Improvement caps overall at Okay
+    float FinalGrade = bAnyNeedsImprovement ? FMath::Min(AvgGrade, GradeOkay) : AvgGrade;
+
+    // 6. Map grade to satisfaction score (0.25-1.0)
+    if (FinalGrade >= 3.5f) return ScorePerfect;
+    if (FinalGrade >= 2.5f) return ScoreGreat;
+    if (FinalGrade >= 1.5f) return ScoreOkay;
+    return ScoreNeedsImprovement;
 }
 
 void FPUOrderBase::LogOrderDetails() const
@@ -76,7 +176,7 @@ void FPUOrderBase::LogOrderDetails() const
     UE_LOG(LogTemp, Display, TEXT("Base Dish: %s (Tag: %s)"), *BaseDish.DisplayName.ToString(), *BaseDish.DishTag.ToString());
     for (const FOrderAspectRequirement& Req : TargetAspects)
     {
-        UE_LOG(LogTemp, Display, TEXT("  Target %s %s: min %.2f"), Req.AspectType == EOrderAspectType::Flavor ? TEXT("Flavor") : TEXT("Texture"), *Req.AspectName.ToString(), Req.MinValue);
+        UE_LOG(LogTemp, Display, TEXT("  Target %s %s: %.2f"), Req.AspectType == EOrderAspectType::Flavor ? TEXT("Flavor") : TEXT("Texture"), *Req.GetAspectName().ToString(), Req.TargetValue);
     }
     UE_LOG(LogTemp, Display, TEXT("Dialogue Text: %s"), *OrderDialogueText.ToString());
     UE_LOG(LogTemp, Display, TEXT("==================="));
@@ -169,9 +269,10 @@ void FPUOrderBase::LogCompletionDetails() const
     // Log final aspect values
     for (const FOrderAspectRequirement& Req : TargetAspects)
     {
+        const FName AspectName = Req.GetAspectName();
         float Val = (Req.AspectType == EOrderAspectType::Flavor)
-            ? CompletedDish.GetTotalFlavorAspect(Req.AspectName)
-            : CompletedDish.GetTotalTextureAspect(Req.AspectName);
+            ? CompletedDish.GetTotalFlavorAspect(AspectName)
+            : CompletedDish.GetTotalTextureAspect(AspectName);
         //UE_LOG(LogTemp,Display, TEXT("Final %s %s: %.2f"), Req.AspectType == EOrderAspectType::Flavor ? TEXT("Flavor") : TEXT("Texture"), *Req.AspectName.ToString(), Val);
     }
     
