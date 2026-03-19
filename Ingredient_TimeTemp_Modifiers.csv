@@ -1,0 +1,318 @@
+Ingredient,Time,Temp,Aspect,Type,Value,Rationale
+BBQ Duck,Low,Low,Umami,Additive,2,Noticeable development
+BBQ Duck,Low,Low,Tender,Additive,2,Softens more
+BBQ Duck,Mid,Med,Umami,Additive,3,Strong Maillard
+BBQ Duck,Mid,Med,Sweet,Additive,2,Caramelization
+BBQ Duck,Mid,Med,Tender,Additive,3,Much more tender
+BBQ Duck,Mid,Med,Chewy,Additive,-2,Breaks down
+BBQ Duck,Long,Hot,Umami,Additive,4,Intense char
+BBQ Duck,Long,Hot,Sweet,Additive,3,Deep caramelization
+BBQ Duck,Long,Hot,Crispy,Additive,3,Skin crisps
+BBQ Duck,Long,Hot,Tender,Additive,4,Very tender
+BBQ Duck,Long,Hot,Chewy,Additive,-3,Breaks down
+BBQ Duck,Long,Hot,Juicy,Additive,-4,Dries out
+Pork Floss,Low,Low,Crispy,Additive,2,Light toasting
+Pork Floss,Mid,Med,Umami,Additive,2,Toasting
+Pork Floss,Mid,Med,Crispy,Additive,3,Much crisper
+Pork Floss,Long,Hot,Crispy,Additive,3,Very crisp
+Pork Floss,Long,Hot,Bitter,Additive,3,Burns easily
+Pork Floss,Long,Hot,Umami,Additive,-2,Charred off-flavor
+Pork Floss,Long,Hot,Sweet,Additive,-2,Burns off
+Shrimp,Low,Low,Umami,Additive,2,Light cooking
+Shrimp,Low,Low,Tender,Additive,2,Softens
+Shrimp,Mid,Med,Umami,Additive,3,Seafood umami
+Shrimp,Mid,Med,Sweet,Additive,2,Natural sweetness
+Shrimp,Mid,Med,Tender,Additive,3,Cooked through
+Shrimp,Mid,Med,Chewy,Additive,-2,Less chewy
+Shrimp,Long,Hot,Umami,Additive,4,Concentrated
+Shrimp,Long,Hot,Tender,Additive,3,Very tender
+Shrimp,Long,Hot,Chewy,Additive,-3,Overcooked soft
+Shrimp,Long,Hot,Juicy,Additive,-4,Dries out
+Shrimp,Long,Hot,Sweet,Additive,-2,Overcooked loss
+Squid,Low,Low,Umami,Additive,2,Light cooking
+Squid,Low,Low,Tender,Additive,2,Slight softening
+Squid,Mid,Med,Umami,Additive,3,Cooked umami
+Squid,Mid,Med,Tender,Additive,3,Properly cooked
+Squid,Mid,Med,Chewy,Additive,-2,Less rubbery
+Squid,Long,Hot,Umami,Additive,-1,Rubberiness masks flavor
+Squid,Long,Hot,Sweet,Additive,-2,Overcooked loss
+Squid,Long,Hot,Tender,Additive,-4,Becomes rubbery
+Squid,Long,Hot,Chewy,Additive,4,Very rubbery
+Squid,Long,Hot,Juicy,Additive,-3,Dries out
+Squid,Long,Hot,Bitter,Additive,2,Char
+Century Egg,Low,Low,Rich,Additive,2,Slightly warmed
+Century Egg,Mid,Med,Tender,Additive,2,Softens
+Century Egg,Long,Hot,Umami,Additive,-1,Heat dulls
+Century Egg,Long,Hot,Bitter,Additive,3,Heat intensifies
+Century Egg,Long,Hot,Rich,Additive,-3,Dries out
+Century Egg,Long,Hot,Tender,Additive,-2,Firms up
+Kimchi,Low,Low,Umami,Additive,2,Light cooking
+Kimchi,Low,Low,Sour,Additive,-1,Slight mellowing
+Kimchi,Mid,Med,Sour,Additive,-3,Mellowing
+Kimchi,Mid,Med,Umami,Additive,3,Cooked umami
+Kimchi,Mid,Med,Crispy,Additive,-3,Wilts
+Kimchi,Mid,Med,Juicy,Additive,-2,Moisture loss
+Kimchi,Long,Hot,Sour,Additive,-5,Strong mellowing
+Kimchi,Long,Hot,Salt,Additive,-2,Concentrates
+Kimchi,Long,Hot,Umami,Additive,4,Concentrated
+Kimchi,Long,Hot,Crispy,Additive,-4,Very soft
+Kimchi,Long,Hot,Juicy,Additive,-4,Dries out
+Kimchi,Long,Hot,Tender,Additive,3,Softened
+Cucumbers,Low,Low,Bitter,Additive,-2,Mellowing
+Cucumbers,Low,Low,Crispy,Additive,-2,Wilting
+Cucumbers,Mid,Med,Sweet,Additive,2,Cooking
+Cucumbers,Mid,Med,Bitter,Additive,-3,Skin bitterness fades
+Cucumbers,Mid,Med,Crispy,Additive,-3,Wilts
+Cucumbers,Mid,Med,Juicy,Additive,-3,Moisture loss
+Cucumbers,Long,Hot,Sweet,Additive,-1,Can cook out
+Cucumbers,Long,Hot,Bitter,Additive,-4,Fully mellowed
+Cucumbers,Long,Hot,Crispy,Additive,-5,Very soft
+Cucumbers,Long,Hot,Juicy,Additive,-5,Dries out
+Cucumbers,Long,Hot,Tender,Additive,4,Softened
+Garlic,Low,Low,Umami,Additive,2,Starts developing
+Garlic,Low,Low,Sweet,Additive,2,Light caramelization
+Garlic,Low,Low,Tender,Additive,2,Softens
+Garlic,Mid,Med,Umami,Additive,3,Cooked umami
+Garlic,Mid,Med,Sweet,Additive,3,Caramelization
+Garlic,Mid,Med,Tender,Additive,3,Soft
+Garlic,Long,Hot,Umami,Additive,4,Strong umami
+Garlic,Long,Hot,Sweet,Additive,4,Deep caramelization
+Garlic,Long,Hot,Tender,Additive,4,Very soft
+Garlic,Long,Hot,Crispy,Additive,3,Fried/roasted crisp
+Garlic,Long,Hot,Rich,Additive,2,Roasted oils
+Garlic,Long,Hot,Bitter,Additive,2,Risk of burn
+Cilantro,Low,Low,Bitter,Additive,-2,Mellowing
+Cilantro,Low,Low,Crispy,Additive,-2,Wilting
+Cilantro,Low,Low,Tender,Additive,2,Softening
+Cilantro,Mid,Med,Bitter,Additive,-3,Mellowed
+Cilantro,Mid,Med,Crispy,Additive,-3,Wilts
+Cilantro,Mid,Med,Juicy,Additive,-2,Moisture loss
+Cilantro,Mid,Med,Tender,Additive,3,Wilted
+Cilantro,Long,Hot,Bitter,Additive,3,Charring
+Cilantro,Long,Hot,Crispy,Additive,-4,Dehydrated
+Cilantro,Long,Hot,Juicy,Additive,-4,Dries out
+Cilantro,Long,Hot,Tender,Additive,4,Very wilted
+Peanuts,Low,Low,Umami,Additive,2,Light toasting
+Peanuts,Mid,Med,Umami,Additive,3,Toasted
+Peanuts,Mid,Med,Sweet,Additive,2,Caramelization
+Peanuts,Mid,Med,Crispy,Additive,2,Crisper
+Peanuts,Long,Hot,Umami,Additive,3,Deep toast
+Peanuts,Long,Hot,Sweet,Additive,-1,Can burn off
+Peanuts,Long,Hot,Crispy,Additive,3,Very crisp
+Peanuts,Long,Hot,Rich,Additive,2,Oils release
+Peanuts,Long,Hot,Bitter,Additive,3,Burns easily
+Seaweed,Low,Low,Chewy,Additive,2,Rehydrating
+Seaweed,Low,Low,Crispy,Additive,-2,Softens when wet
+Seaweed,Mid,Med,Umami,Additive,2,Warming
+Seaweed,Mid,Med,Chewy,Additive,-2,Softens
+Seaweed,Mid,Med,Crispy,Additive,2,Toasting
+Seaweed,Long,Hot,Umami,Additive,-1,Can burn
+Seaweed,Long,Hot,Chewy,Additive,-3,Dries/crisps
+Seaweed,Long,Hot,Crispy,Additive,4,Toasted crisp
+Seaweed,Long,Hot,Juicy,Additive,-3,Moisture loss
+Water,Long,Hot,Juicy,Additive,-2,Evaporation in mixes
+Water,Long,Hot,Sweet,Additive,-1,Minimal change
+Baby Anchovy,Low,Low,Umami,Additive,2,Light toasting
+Baby Anchovy,Low,Low,Crispy,Additive,2,Slight crisp
+Baby Anchovy,Mid,Med,Umami,Additive,3,Toasted
+Baby Anchovy,Mid,Med,Crispy,Additive,3,Crispier
+Baby Anchovy,Mid,Med,Chewy,Additive,-2,Dries out
+Baby Anchovy,Long,Hot,Umami,Additive,3,Concentrated
+Baby Anchovy,Long,Hot,Crispy,Additive,4,Very crisp
+Baby Anchovy,Long,Hot,Chewy,Additive,-3,Dries out
+Baby Anchovy,Long,Hot,Bitter,Additive,3,Burns easily
+Baby Anchovy,Long,Hot,Salt,Additive,-2,Can taste harsh
+Bread,Low,Low,Crispy,Additive,2,Light toast
+Bread,Mid,Med,Sweet,Additive,2,Caramelization
+Bread,Mid,Med,Crispy,Additive,3,Toasted
+Bread,Mid,Med,Juicy,Additive,-2,Dries out
+Bread,Long,Hot,Umami,Additive,2,Maillard
+Bread,Long,Hot,Sweet,Additive,2,Caramelization
+Bread,Long,Hot,Crispy,Additive,4,Very crisp
+Bread,Long,Hot,Tender,Additive,-2,Dries
+Bread,Long,Hot,Juicy,Additive,-4,Dries out
+Bread,Long,Hot,Bitter,Additive,2,Burns
+Butter,Low,Low,Rich,Additive,1,Melts
+Butter,Mid,Med,Rich,Additive,2,Nutty
+Butter,Mid,Med,Umami,Additive,2,Brown butter
+Butter,Mid,Med,Sweet,Additive,1,Caramelization
+Butter,Long,Hot,Rich,Additive,2,Intense
+Butter,Long,Hot,Umami,Additive,3,Brown butter
+Butter,Long,Hot,Bitter,Additive,4,Burns
+Butter,Long,Hot,Sweet,Additive,-2,Burns off
+Coconut,Low,Low,Sweet,Additive,1,Warming
+Coconut,Low,Low,Rich,Additive,1,Oils release
+Coconut,Mid,Med,Sweet,Additive,2,Toasting
+Coconut,Mid,Med,Rich,Additive,2,Oils release
+Coconut,Mid,Med,Crispy,Additive,2,Crisper
+Coconut,Mid,Med,Juicy,Additive,-2,Dries
+Coconut,Long,Hot,Umami,Additive,2,Toasted
+Coconut,Long,Hot,Sweet,Additive,3,Caramelization
+Coconut,Long,Hot,Crispy,Additive,3,Very crisp
+Coconut,Long,Hot,Juicy,Additive,-4,Dries out
+Coconut,Long,Hot,Bitter,Additive,2,Burns
+Egg,Low,Low,Umami,Additive,2,Light cooking
+Egg,Low,Low,Tender,Additive,2,Sets
+Egg,Mid,Med,Umami,Additive,3,Cooked
+Egg,Mid,Med,Rich,Additive,2,Creamy
+Egg,Mid,Med,Tender,Additive,3,Soft set
+Egg,Long,Hot,Umami,Additive,3,Fully cooked
+Egg,Long,Hot,Rich,Additive,-1,Dries
+Egg,Long,Hot,Tender,Additive,-2,Rubberiness
+Egg,Long,Hot,Chewy,Additive,3,Overcooked
+Egg,Long,Hot,Juicy,Additive,-4,Dries out
+Egg,Long,Hot,Bitter,Additive,2,Sulfur/burn
+Flour,Low,Low,Umami,Additive,1,Slight cooking
+Flour,Mid,Med,Umami,Additive,2,Cooks
+Flour,Mid,Med,Sweet,Additive,1,Caramelization
+Flour,Mid,Med,Tender,Additive,2,Softens
+Flour,Long,Hot,Umami,Additive,3,Maillard
+Flour,Long,Hot,Sweet,Additive,2,Caramelization
+Flour,Long,Hot,Crispy,Additive,3,Crisps
+Flour,Long,Hot,Bitter,Additive,3,Burns
+Flour,Long,Hot,Tender,Additive,-2,Dries out
+Gochujang,Low,Low,Umami,Additive,1,Warming
+Gochujang,Mid,Med,Umami,Additive,3,Caramelization
+Gochujang,Mid,Med,Sweet,Additive,2,Concentrates
+Gochujang,Mid,Med,Spicy,Additive,-1,Mellowing
+Gochujang,Mid,Med,Rich,Additive,2,Thickens
+Gochujang,Long,Hot,Umami,Additive,4,Intense
+Gochujang,Long,Hot,Sweet,Additive,3,Deep caramelization
+Gochujang,Long,Hot,Spicy,Additive,-2,Mellowing
+Gochujang,Long,Hot,Rich,Additive,2,Reduced
+Gochujang,Long,Hot,Bitter,Additive,3,Burns
+Gochujang,Long,Hot,Juicy,Additive,-4,Dries out
+Mochi,Low,Low,Tender,Additive,2,Softens
+Mochi,Low,Low,Chewy,Additive,-1,Slight softening
+Mochi,Mid,Med,Sweet,Additive,1,Warming
+Mochi,Mid,Med,Tender,Additive,3,Soft
+Mochi,Mid,Med,Chewy,Additive,-2,Less chewy
+Mochi,Long,Hot,Tender,Additive,4,Very soft
+Mochi,Long,Hot,Chewy,Additive,-3,Melts
+Mochi,Long,Hot,Crispy,Additive,3,Grilled
+Mochi,Long,Hot,Juicy,Additive,-2,Dries out
+Mochi,Long,Hot,Bitter,Additive,2,Burns
+Noodle,Low,Low,Tender,Additive,2,Softens
+Noodle,Low,Low,Chewy,Additive,-1,Slight softening
+Noodle,Mid,Med,Umami,Additive,2,Cooked
+Noodle,Mid,Med,Tender,Additive,3,Al dente
+Noodle,Mid,Med,Chewy,Additive,-2,Less chewy
+Noodle,Long,Hot,Umami,Additive,2,Cooked
+Noodle,Long,Hot,Tender,Additive,-2,Overcooked
+Noodle,Long,Hot,Chewy,Additive,-4,Mushy
+Noodle,Long,Hot,Crispy,Additive,2,Pan-fried
+Noodle,Long,Hot,Juicy,Additive,-3,Dries out
+Noodle Buckwheat,Low,Low,Tender,Additive,2,Softens
+Noodle Buckwheat,Mid,Med,Umami,Additive,2,Cooked
+Noodle Buckwheat,Mid,Med,Bitter,Additive,-2,Mellowing
+Noodle Buckwheat,Mid,Med,Tender,Additive,3,Al dente
+Noodle Buckwheat,Mid,Med,Chewy,Additive,-2,Less chewy
+Noodle Buckwheat,Long,Hot,Bitter,Additive,-3,Fully mellowed
+Noodle Buckwheat,Long,Hot,Tender,Additive,-2,Overcooked
+Noodle Buckwheat,Long,Hot,Chewy,Additive,-4,Mushy
+Noodle Buckwheat,Long,Hot,Crispy,Additive,2,Pan-fried
+Noodle Glass,Low,Low,Tender,Additive,2,Softens
+Noodle Glass,Mid,Med,Umami,Additive,2,Cooked
+Noodle Glass,Mid,Med,Tender,Additive,3,Soft
+Noodle Glass,Mid,Med,Chewy,Additive,-2,Less chewy
+Noodle Glass,Long,Hot,Tender,Additive,-3,Overcooked
+Noodle Glass,Long,Hot,Chewy,Additive,-4,Mushy
+Noodle Glass,Long,Hot,Crispy,Additive,3,Pan-fried
+Noodle Shirataki,Low,Low,Umami,Additive,1,Warming
+Noodle Shirataki,Mid,Med,Umami,Additive,2,Cooked
+Noodle Shirataki,Mid,Med,Chewy,Additive,-2,Softens
+Noodle Shirataki,Mid,Med,Juicy,Additive,-2,Dries out
+Noodle Shirataki,Long,Hot,Umami,Additive,2,Cooked
+Noodle Shirataki,Long,Hot,Chewy,Additive,-3,Softens
+Noodle Shirataki,Long,Hot,Juicy,Additive,-4,Dries out
+Noodle Shirataki,Long,Hot,Crispy,Additive,3,Pan-fried
+Oil,Mid,Med,Rich,Additive,1,Heats
+Oil,Long,Hot,Umami,Additive,1,Infused
+Oil,Long,Hot,Bitter,Additive,4,Smoke/burn
+Oil,Long,Hot,Rich,Additive,-2,Degrades
+Pepper,Low,Low,Umami,Additive,1,Light toast
+Pepper,Mid,Med,Spicy,Additive,2,Intensifies
+Pepper,Mid,Med,Umami,Additive,2,Toasted
+Pepper,Mid,Med,Bitter,Additive,-1,Mellowing
+Pepper,Long,Hot,Spicy,Additive,3,Intense
+Pepper,Long,Hot,Umami,Additive,3,Toasted
+Pepper,Long,Hot,Bitter,Additive,3,Burns
+Pepper Chili,Low,Low,Spicy,Additive,1,Warming
+Pepper Chili,Mid,Med,Spicy,Additive,-2,Mellowing
+Pepper Chili,Mid,Med,Sweet,Additive,2,Roasting
+Pepper Chili,Mid,Med,Umami,Additive,2,Roasted
+Pepper Chili,Long,Hot,Spicy,Additive,-3,Mellowing
+Pepper Chili,Long,Hot,Sweet,Additive,3,Charred sweetness
+Pepper Chili,Long,Hot,Umami,Additive,3,Charred
+Pepper Chili,Long,Hot,Bitter,Additive,3,Burns
+Rice,Low,Low,Tender,Additive,2,Softens
+Rice,Mid,Med,Umami,Additive,2,Cooked
+Rice,Mid,Med,Sweet,Additive,1,Cooked
+Rice,Mid,Med,Tender,Additive,3,Soft
+Rice,Mid,Med,Chewy,Additive,-1,Softens
+Rice,Long,Hot,Umami,Additive,3,Cooked
+Rice,Long,Hot,Tender,Additive,4,Very soft
+Rice,Long,Hot,Chewy,Additive,-2,Soft
+Rice,Long,Hot,Crispy,Additive,3,Bottom crust
+Rice,Long,Hot,Juicy,Additive,-3,Dries out
+Salt,Long,Hot,Salt,Additive,-1,Minimal change
+Soy Sauce,Low,Low,Umami,Additive,1,Warming
+Soy Sauce,Mid,Med,Umami,Additive,3,Caramelization
+Soy Sauce,Mid,Med,Sweet,Additive,2,Concentrates
+Soy Sauce,Mid,Med,Salt,Additive,-1,Concentrates
+Soy Sauce,Long,Hot,Umami,Additive,4,Intense
+Soy Sauce,Long,Hot,Sweet,Additive,2,Caramelization
+Soy Sauce,Long,Hot,Bitter,Additive,3,Burns
+Soy Sauce,Long,Hot,Salt,Additive,-2,Can taste harsh
+Sugar,Low,Low,Sweet,Additive,1,Warming
+Sugar,Mid,Med,Sweet,Additive,2,Caramelization
+Sugar,Mid,Med,Rich,Additive,2,Caramel
+Sugar,Long,Hot,Sweet,Additive,3,Deep caramel
+Sugar,Long,Hot,Rich,Additive,3,Caramel
+Sugar,Long,Hot,Bitter,Additive,4,Burns
+Tamarind,Low,Low,Umami,Additive,1,Warming
+Tamarind,Mid,Med,Sour,Additive,-2,Mellowing
+Tamarind,Mid,Med,Sweet,Additive,2,Concentrates
+Tamarind,Mid,Med,Umami,Additive,2,Cooked
+Tamarind,Long,Hot,Sour,Additive,-4,Mellowing
+Tamarind,Long,Hot,Sweet,Additive,3,Concentrates
+Tamarind,Long,Hot,Umami,Additive,3,Cooked
+Tamarind,Long,Hot,Bitter,Additive,2,Burns
+Spice Cinnamon,Low,Low,Sweet,Additive,1,Warming
+Spice Cinnamon,Mid,Med,Sweet,Additive,2,Toasted
+Spice Cinnamon,Mid,Med,Spicy,Additive,2,Intensifies
+Spice Cinnamon,Long,Hot,Sweet,Additive,3,Intense
+Spice Cinnamon,Long,Hot,Spicy,Additive,3,Intense
+Spice Cinnamon,Long,Hot,Bitter,Additive,3,Burns
+Spice Cloves,Mid,Med,Spicy,Additive,2,Intensifies
+Spice Cloves,Mid,Med,Sweet,Additive,2,Toasted
+Spice Cloves,Long,Hot,Spicy,Additive,3,Intense
+Spice Cloves,Long,Hot,Bitter,Additive,4,Burns
+Spice Ginger,Low,Low,Sweet,Additive,1,Warming
+Spice Ginger,Low,Low,Tender,Additive,1,Softens
+Spice Ginger,Mid,Med,Spicy,Additive,-2,Mellowing
+Spice Ginger,Mid,Med,Sweet,Additive,3,Caramelization
+Spice Ginger,Mid,Med,Umami,Additive,2,Cooked
+Spice Ginger,Mid,Med,Tender,Additive,3,Soft
+Spice Ginger,Long,Hot,Spicy,Additive,-3,Mellowing
+Spice Ginger,Long,Hot,Sweet,Additive,4,Caramelization
+Spice Ginger,Long,Hot,Tender,Additive,4,Very soft
+Spice Ginger,Long,Hot,Bitter,Additive,2,Burns
+Spice Ginger,Long,Hot,Juicy,Additive,-3,Dries out
+Spice Sage,Low,Low,Umami,Additive,1,Warming
+Spice Sage,Mid,Med,Bitter,Additive,-2,Mellowing
+Spice Sage,Mid,Med,Umami,Additive,2,Toasted
+Spice Sage,Long,Hot,Bitter,Additive,3,Burns
+Spice Sage,Long,Hot,Umami,Additive,2,Toasted
+Spice Sage,Long,Hot,Crispy,Additive,2,Fried
+Spice Tumeric,Mid,Med,Bitter,Additive,-1,Mellowing
+Spice Tumeric,Mid,Med,Umami,Additive,2,Toasted
+Spice Tumeric,Long,Hot,Bitter,Additive,3,Burns
+Spice Tumeric,Long,Hot,Umami,Additive,2,Toasted
+Special EggYolkCookie,Low,Low,Crispy,Additive,1,Warming
+Special EggYolkCookie,Mid,Med,Sweet,Additive,1,Warming
+Special EggYolkCookie,Mid,Med,Crispy,Additive,2,Crisper
+Special EggYolkCookie,Long,Hot,Umami,Additive,2,Toasted
+Special EggYolkCookie,Long,Hot,Crispy,Additive,3,Very crisp
+Special EggYolkCookie,Long,Hot,Crumbly,Additive,-2,Softens
+Special EggYolkCookie,Long,Hot,Bitter,Additive,2,Burns
