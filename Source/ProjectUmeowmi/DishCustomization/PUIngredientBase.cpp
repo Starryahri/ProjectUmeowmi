@@ -308,41 +308,13 @@ ETemperatureState FPUIngredientBase::MapTemperatureValueToState(float Temperatur
         return ETemperatureState::Hot;
 }
 
-namespace
-{
-    FName FlavorAspectToName(EPUFlavorAspect A)
-    {
-        switch (A)
-        {
-            case EPUFlavorAspect::Umami:  return FName(TEXT("Umami"));
-            case EPUFlavorAspect::Salt:   return FName(TEXT("Salt"));
-            case EPUFlavorAspect::Sweet:  return FName(TEXT("Sweet"));
-            case EPUFlavorAspect::Sour:   return FName(TEXT("Sour"));
-            case EPUFlavorAspect::Bitter: return FName(TEXT("Bitter"));
-            case EPUFlavorAspect::Spicy:  return FName(TEXT("Spicy"));
-            default: return FName(TEXT("Umami"));
-        }
-    }
-    FName TextureAspectToName(EPUTextureAspect A)
-    {
-        switch (A)
-        {
-            case EPUTextureAspect::Rich:    return FName(TEXT("Rich"));
-            case EPUTextureAspect::Juicy:   return FName(TEXT("Juicy"));
-            case EPUTextureAspect::Tender: return FName(TEXT("Tender"));
-            case EPUTextureAspect::Chewy:   return FName(TEXT("Chewy"));
-            case EPUTextureAspect::Crispy:  return FName(TEXT("Crispy"));
-            case EPUTextureAspect::Crumbly: return FName(TEXT("Crumbly"));
-            default: return FName(TEXT("Tender"));
-        }
-    }
-}
-
 FName FTimeTempModifier::GetAspectName() const
 {
     if (AspectCategory == EPAspectCategory::Flavor)
-        return FlavorAspectToName(FlavorAspect);
-    return TextureAspectToName(TextureAspect);
+    {
+        return PUAspectHelpers::FlavorAspectToName(FlavorAspect);
+    }
+    return PUAspectHelpers::TextureAspectToName(TextureAspect);
 }
 
 // Get default time/temperature modifiers (universal rules)

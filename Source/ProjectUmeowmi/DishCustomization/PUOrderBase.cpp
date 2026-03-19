@@ -2,36 +2,6 @@
 #include "PUDishBlueprintLibrary.h"
 #include "Engine/Engine.h"
 
-namespace
-{
-    FName FlavorAspectToName(EPUFlavorAspect A)
-    {
-        switch (A)
-        {
-            case EPUFlavorAspect::Umami:  return FName(TEXT("Umami"));
-            case EPUFlavorAspect::Salt:   return FName(TEXT("Salt"));
-            case EPUFlavorAspect::Sweet:  return FName(TEXT("Sweet"));
-            case EPUFlavorAspect::Sour:   return FName(TEXT("Sour"));
-            case EPUFlavorAspect::Bitter: return FName(TEXT("Bitter"));
-            case EPUFlavorAspect::Spicy:  return FName(TEXT("Spicy"));
-            default: return FName(TEXT("Salt"));
-        }
-    }
-    FName TextureAspectToName(EPUTextureAspect A)
-    {
-        switch (A)
-        {
-            case EPUTextureAspect::Rich:    return FName(TEXT("Rich"));
-            case EPUTextureAspect::Juicy:   return FName(TEXT("Juicy"));
-            case EPUTextureAspect::Tender: return FName(TEXT("Tender"));
-            case EPUTextureAspect::Chewy:   return FName(TEXT("Chewy"));
-            case EPUTextureAspect::Crispy:  return FName(TEXT("Crispy"));
-            case EPUTextureAspect::Crumbly: return FName(TEXT("Crumbly"));
-            default: return FName(TEXT("Crispy"));
-        }
-    }
-}
-
 // Success bands per grade: [low, high] ratio (e.g. 0.80 = 80% of target)
 namespace
 {
@@ -76,9 +46,9 @@ FName FOrderAspectRequirement::GetAspectName() const
     // and can be wrong when empty FName serializes as "None" or when loading old data.
     if (AspectType == EOrderAspectType::Flavor)
     {
-        return FlavorAspectToName(FlavorAspect);
+        return PUAspectHelpers::FlavorAspectToName(FlavorAspect);
     }
-    return TextureAspectToName(TextureAspect);
+    return PUAspectHelpers::TextureAspectToName(TextureAspect);
 }
 
 FPUOrderBase::FPUOrderBase()

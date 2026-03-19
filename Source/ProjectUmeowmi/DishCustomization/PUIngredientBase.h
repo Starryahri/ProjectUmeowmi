@@ -69,6 +69,37 @@ enum class EPAspectCategory : uint8
     Texture
 };
 
+/** Shared helpers to convert aspect enums to FName. Used by FTimeTempModifier, FAspectModifier, FOrderAspectRequirement. */
+namespace PUAspectHelpers
+{
+    inline FName FlavorAspectToName(EPUFlavorAspect A)
+    {
+        switch (A)
+        {
+            case EPUFlavorAspect::Umami:  return FName(TEXT("Umami"));
+            case EPUFlavorAspect::Salt:   return FName(TEXT("Salt"));
+            case EPUFlavorAspect::Sweet:  return FName(TEXT("Sweet"));
+            case EPUFlavorAspect::Sour:   return FName(TEXT("Sour"));
+            case EPUFlavorAspect::Bitter: return FName(TEXT("Bitter"));
+            case EPUFlavorAspect::Spicy:  return FName(TEXT("Spicy"));
+            default: return FName(TEXT("Umami"));
+        }
+    }
+    inline FName TextureAspectToName(EPUTextureAspect A)
+    {
+        switch (A)
+        {
+            case EPUTextureAspect::Rich:    return FName(TEXT("Rich"));
+            case EPUTextureAspect::Juicy:   return FName(TEXT("Juicy"));
+            case EPUTextureAspect::Tender:  return FName(TEXT("Tender"));
+            case EPUTextureAspect::Chewy:   return FName(TEXT("Chewy"));
+            case EPUTextureAspect::Crispy:  return FName(TEXT("Crispy"));
+            case EPUTextureAspect::Crumbly: return FName(TEXT("Crumbly"));
+            default: return FName(TEXT("Tender"));
+        }
+    }
+}
+
 // Time/Temperature modifier entry - defines how a specific aspect changes at a specific time/temp state
 USTRUCT(BlueprintType)
 struct FTimeTempModifier

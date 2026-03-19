@@ -26,6 +26,7 @@ public class ProjectUmeowmiEditorUtilities : ModuleRules
 			"Slate",
 			"SlateCore",
 			"ToolMenus",
+			"EngineSettings",
 		});
 
 		// ProjectUmeowmi module path for DishCustomization/PUIngredientBase.h
