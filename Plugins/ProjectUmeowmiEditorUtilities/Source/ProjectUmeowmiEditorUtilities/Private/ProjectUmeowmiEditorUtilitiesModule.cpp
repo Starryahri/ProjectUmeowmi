@@ -106,7 +106,7 @@ void FProjectUmeowmiEditorUtilitiesModule::RegisterMenus()
 					{
 						if (UPUProjectUmeowmiGameInstance* CDO = Cast<UPUProjectUmeowmiGameInstance>(GIClass->GetDefaultObject()))
 						{
-							IngredientTable = CDO->IngredientDataTable;
+							IngredientTable = CDO->GetIngredientDataTable();
 						}
 					}
 				}
