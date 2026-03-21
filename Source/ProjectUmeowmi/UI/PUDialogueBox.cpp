@@ -2,6 +2,7 @@
 #include "PUDialogueOption.h"
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "DlgSystem/DlgContext.h"
+#include "DlgSystem/DlgNodeData.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/TextBlock.h"
@@ -15,6 +16,7 @@
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
 #include "ProjectUmeowmi/Interactables/PUCookingStation.h"
+#include "ProjectUmeowmi/Dialogue/PUDialogueNodeData.h"
 #include "Sound/SoundBase.h"
 #include "Engine/GameViewportClient.h"
 #include "Camera/CameraComponent.h"
@@ -489,9 +491,27 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 }
             }
         }
+        UTexture2D* const ParticipantIconTexture = ActiveContext->GetActiveNodeParticipantIcon();
+
+        bool bWantGiantPortrait = false;
+        if (UDlgNodeData* NodeData = ActiveContext->GetActiveNodeData())
+        {
+            if (const UPUDialogueNodeData* PUData = Cast<UPUDialogueNodeData>(NodeData))
+            {
+                bWantGiantPortrait = PUData->bUseGiantPortraitSlot;
+            }
+        }
+
+        // Apply the same icon texture to both slots whenever they exist, then show one (avoids empty giant brush when toggling).
         if (IsValid(ParticipantImage))
         {
-            ParticipantImage->SetBrushFromTexture(ActiveContext->GetActiveNodeParticipantIcon());
+            ParticipantImage->SetBrushFromTexture(ParticipantIconTexture);
+            ParticipantImage->SetVisibility(bWantGiantPortrait ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+        }
+        if (IsValid(GiantParticipantImage))
+        {
+            GiantParticipantImage->SetBrushFromTexture(ParticipantIconTexture);
+            GiantParticipantImage->SetVisibility(bWantGiantPortrait ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
         }
 
         // Update and recurse through the rest of the options if there are any in the options widget

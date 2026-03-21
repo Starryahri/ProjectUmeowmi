@@ -42,6 +42,10 @@ public:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     UImage* ParticipantImage;
 
+    /** Optional larger portrait slot. Shown when the active node's Node Data is UPUDialogueNodeData with bUseGiantPortraitSlot. Widget name in WBP must match exactly. */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
+    UImage* GiantParticipantImage;
+
     /** Widget to contain the dialogue options */
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     UVerticalBox* DialogueOptions;
