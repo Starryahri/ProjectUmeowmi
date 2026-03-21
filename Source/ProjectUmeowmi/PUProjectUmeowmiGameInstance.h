@@ -178,6 +178,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
 	bool GetDishDataForTag(const FGameplayTag& DishTag, FPUDishBase& OutDish) const;
 
+	/** Ingredient data table set on the Game Instance Blueprint (journal, cooking, editor CSV tools). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	class UDataTable* GetIngredientDataTable() const { return IngredientDataTable; }
+
 	// Save/Load System
 	/**
 	 * Save the current game state to disk

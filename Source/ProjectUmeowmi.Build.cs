@@ -25,6 +25,6 @@ public class ProjectUmeowmi : ModuleRules
 		"MovieScene",
 		"Niagara"
 		});
-        PrivateDependencyModuleNames.AddRange(new string[] { "DlgSystem" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "DlgSystem", "RenderCore" });
     }
 }

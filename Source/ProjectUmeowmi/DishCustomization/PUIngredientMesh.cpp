@@ -1,4 +1,5 @@
 #include "PUIngredientMesh.h"
+#include "Math/Box.h"
 #include "Components/StaticMeshComponent.h"
 #include "ProceduralMeshComponent.h"
 #include "Kismet/GameplayStatics.h"

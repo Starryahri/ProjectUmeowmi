@@ -11,6 +11,38 @@
 #include "Components/TextBlock.h"
 #include "Blueprint/WidgetTree.h"
 #include "Engine/Texture2D.h"
+#include "Materials/MaterialInstance.h"
+#include "Materials/MaterialInstanceDynamic.h"
+
+namespace
+{
+	/** Parent for creating a MID: class default, or brush material (resolves instance/MID to parent). */
+	UMaterialInterface* ResolveDishImageParentMaterial(UMaterialInterface* DishImageMaterialFromDefaults, UImage* DishImageWidget)
+	{
+		if (DishImageMaterialFromDefaults)
+		{
+			return DishImageMaterialFromDefaults;
+		}
+		if (!DishImageWidget)
+		{
+			return nullptr;
+		}
+		UMaterialInterface* BrushMat = Cast<UMaterialInterface>(DishImageWidget->GetBrush().GetResourceObject());
+		if (!BrushMat)
+		{
+			return nullptr;
+		}
+		if (UMaterialInstanceDynamic* AsMID = Cast<UMaterialInstanceDynamic>(BrushMat))
+		{
+			return AsMID->GetMaterial();
+		}
+		if (UMaterialInstance* AsMI = Cast<UMaterialInstance>(BrushMat))
+		{
+			return AsMI->GetMaterial();
+		}
+		return BrushMat;
+	}
+}
 
 UPUScorecardWidget::UPUScorecardWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -30,13 +62,13 @@ void UPUScorecardWidget::SetScorecardData(const FPUScorecardData& InData)
 	UpdateDisplay();
 }
 
-void UPUScorecardWidget::SetDishImage(UTexture2D* DishTexture)
+void UPUScorecardWidget::SetDishImage(UTexture* DishTexture)
 {
 	OverrideDishTexture = DishTexture;
 	UpdateDisplay();
 }
 
-void UPUScorecardWidget::ShowFromOrder(const FPUOrderBase& Order, UTexture2D* OptionalDishTexture)
+void UPUScorecardWidget::ShowFromOrder(const FPUOrderBase& Order, UTexture* OptionalDishTexture)
 {
 	UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowFromOrder: Building scorecard data (Satisfaction=%.2f)"), Order.GetFinalSatisfactionScore());
 	ScorecardData = UPUDishBlueprintLibrary::GetScorecardData(Order);
@@ -66,6 +98,28 @@ void UPUScorecardWidget::Close()
 	OnScorecardClosed.Broadcast();
 }
 
+bool UPUScorecardWidget::EnsureDishImageMIDForDish()
+{
+	if (!DishImage)
+	{
+		return false;
+	}
+
+	UMaterialInterface* ParentMat = ResolveDishImageParentMaterial(DishImageMaterial.Get(), DishImage);
+	if (!ParentMat)
+	{
+		return false;
+	}
+
+	if (!DishImageMID || !IsValid(DishImageMID) || DishImageMaterialUsedForMID != ParentMat)
+	{
+		DishImageMID = UMaterialInstanceDynamic::Create(ParentMat, this);
+		DishImageMaterialUsedForMID = ParentMat;
+	}
+
+	return DishImageMID != nullptr;
+}
+
 void UPUScorecardWidget::UpdateDisplay()
 {
 	UE_LOG(LogTemp, Display, TEXT("[Scorecard] UpdateDisplay: DishImage=%s, SealImage=%s, BaseIngredientsContainer=%s, FlavorProfileContainer=%s, TextureProfileContainer=%s, AspectProfileWidgetClass=%s"),
@@ -79,12 +133,25 @@ void UPUScorecardWidget::UpdateDisplay()
 		DishNameText->SetText(ScorecardData.DisplayName);
 	}
 
-	// Dish image: use override or leave for Blueprint to set from CompletedDish
+	// Dish image: material with "DishRender" parameter when possible, else plain texture brush
 	if (DishImage)
 	{
 		if (OverrideDishTexture)
 		{
-			DishImage->SetBrushFromTexture(OverrideDishTexture);
+			if (EnsureDishImageMIDForDish() && DishImageMID)
+			{
+				static const FName DishRenderParam(TEXT("DishRender"));
+				DishImageMID->SetTextureParameterValue(DishRenderParam, OverrideDishTexture);
+				DishImage->SetBrushFromMaterial(DishImageMID);
+			}
+			else if (UTexture2D* Tex2D = Cast<UTexture2D>(OverrideDishTexture))
+			{
+				DishImage->SetBrushFromTexture(Tex2D);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Scorecard] Dish texture is a render target or non-2D texture; assign DishImageMaterial on the scorecard widget class (parent material with DishRender parameter)."));
+			}
 		}
 		// If no override, Blueprint/caller can set from Order.GetCompletedDish().PreviewTexture
 	}

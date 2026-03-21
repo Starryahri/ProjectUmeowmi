@@ -44,6 +44,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     bool IsCustomizing() const { return CurrentCharacter != nullptr; }
 
+	/** Player currently in customization (null if not customizing). */
+	AProjectUmeowmiCharacter* GetCurrentCharacter() const { return CurrentCharacter; }
+
     // Dish data management
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     void UpdateCurrentDishData(const FPUDishBase& NewDishData);
@@ -111,9 +114,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void EndPlatingStage();
 
+	/** Scorecard RT: capture dish on station while primitives still exist. Used by EndPlatingStage and GoToStage (EndCustomization skips EndPlatingStage if bPlatingMode was cleared early). */
+	void CaptureScorecardSnapshotFromPlatingStation();
+
     /** Capture ingredient positions/rotations from live meshes into CurrentDishData.PlatingEntries. Call before leaving plating (e.g. in GoToStage). */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void CapturePlatingTransformsFromMeshes();
+
+    /** Dish container + plated ingredient primitives for scorecard snapshot (while still in plating). */
+    void GatherDishSnapshotPrimitives(TArray<class UPrimitiveComponent*>& OutPrimitives) const;
+
+    /** Plating camera used for framing; scorecard snapshot can match this view. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
+    class UCameraComponent* GetPlatingStationCamera() const { return PlatingStationCamera; }
 
     /** Destroy all spawned ingredient meshes and liquid components. Call before RestoreOriginalDishContainerMesh to avoid physics/collision issues. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")

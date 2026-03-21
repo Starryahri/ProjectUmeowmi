@@ -1,6 +1,7 @@
 #include "PUDishPreviewComponent.h"
 #include "PUIngredientMesh.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "ProceduralMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -386,4 +387,78 @@ void UPUDishPreviewComponent::ClearPreview()
     }
 
     bHasPreview = false;
+}
+
+FBox UPUDishPreviewComponent::ComputePreviewWorldBounds() const
+{
+    FBox Result(ForceInit);
+    bool bAny = false;
+
+    if (DishMeshComponent && DishMeshComponent->GetStaticMesh() && DishMeshComponent->IsVisible())
+    {
+        Result += DishMeshComponent->Bounds.GetBox();
+        bAny = true;
+    }
+
+    for (APUIngredientMesh* IngActor : PreviewIngredientMeshes)
+    {
+        if (!IngActor)
+        {
+            continue;
+        }
+        FVector Origin, Extent;
+        IngActor->GetActorBounds(false, Origin, Extent);
+        Result += FBox(Origin - Extent, Origin + Extent);
+        bAny = true;
+    }
+
+    for (UNiagaraComponent* NiagaraComp : PreviewLiquidComponents)
+    {
+        if (NiagaraComp && NiagaraComp->IsRegistered())
+        {
+            Result += NiagaraComp->Bounds.GetBox();
+            bAny = true;
+        }
+    }
+
+    if (!bAny)
+    {
+        return FBox(ForceInit);
+    }
+    return Result;
+}
+
+void UPUDishPreviewComponent::GatherSnapshotPrimitives(TArray<UPrimitiveComponent*>& OutPrimitives) const
+{
+    OutPrimitives.Reset();
+
+    if (DishMeshComponent && DishMeshComponent->GetStaticMesh() && DishMeshComponent->IsVisible())
+    {
+        OutPrimitives.Add(DishMeshComponent);
+    }
+
+    for (APUIngredientMesh* IngActor : PreviewIngredientMeshes)
+    {
+        if (!IngActor || !IsValid(IngActor))
+        {
+            continue;
+        }
+        TArray<UPrimitiveComponent*> IngPrims;
+        IngActor->GetComponents<UPrimitiveComponent>(IngPrims);
+        for (UPrimitiveComponent* Prim : IngPrims)
+        {
+            if (Prim && Prim->IsVisible())
+            {
+                OutPrimitives.AddUnique(Prim);
+            }
+        }
+    }
+
+    for (UNiagaraComponent* NiagaraComp : PreviewLiquidComponents)
+    {
+        if (NiagaraComp && IsValid(NiagaraComp) && NiagaraComp->IsVisible())
+        {
+            OutPrimitives.AddUnique(NiagaraComp);
+        }
+    }
 }

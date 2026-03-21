@@ -39,6 +39,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Preview")
     bool HasPreview() const { return bHasPreview; }
 
+    /** Union of dish mesh, ingredient actors, and liquid bounds in world space. Invalid (empty) if nothing to frame. */
+    FBox ComputePreviewWorldBounds() const;
+
+    /** Primitives for scene capture show-only list (dish + ingredients + liquids), excluding world/environment. */
+    void GatherSnapshotPrimitives(TArray<class UPrimitiveComponent*>& OutPrimitives) const;
+
     /** Scale factor for the preview (e.g. 0.2 for above-head display). Tweak in Blueprint if too small/large. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Preview", meta = (ClampMin = "0.01", ClampMax = "2.0"))
     float PreviewScale = 0.2f;

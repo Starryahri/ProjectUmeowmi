@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/Texture.h"
+#include "Math/Box.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "GameplayTagContainer.h"
@@ -25,6 +27,8 @@ struct FInputActionValue;
 class ATalkingObject;
 class UPUDialogueBox;
 class UPUJournalWidget;
+class USceneCaptureComponent2D;
+class UTextureRenderTarget2D;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -274,6 +278,123 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 
 public:
 	AProjectUmeowmiCharacter();
+
+	////////////////////////////////////////////////////////////
+	// Dish capture (scorecard: station snapshot first, then head preview fallback)
+	////////////////////////////////////////////////////////////
+	/** When false, scorecard uses the static dish PreviewTexture from data (previous behavior). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture")
+	bool bEnableDishCaptureForScorecard = true;
+
+	/** Pixel size (square) of the baked dish snapshot for the scorecard. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (ClampMin = "128", ClampMax = "2048"))
+	int32 DishCaptureSize = 512;
+
+	/**
+	 * When true: each capture recomputes the Scene Capture transform.
+	 * Plating station: same view direction as the plating camera (ray from dish bounds center through the plating camera) but distance from merged bounds (not the plating camera's world position), and fixed capture FOV 35 — so identical dish bounds give consistent on-screen scale.
+	 * Fallback: frame from actor forward + merged bounds (head preview path).
+	 * When false (default): the Dish Capture (Scene Capture 2D) component is not moved — use its transform and projection as you place it on the character (viewport / Blueprint).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture")
+	bool bUseAutomaticDishCaptureFraming = false;
+
+	/**
+	 * Applied along the capture's view axes after framing (world offsets): X = camera right, Y = view forward, Z = camera up.
+	 * When not using automatic framing, the component is reset to its authored pose first, then this is added.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture")
+	FVector DishCaptureCameraLocalOffset = FVector::ZeroVector;
+
+	/**
+	 * Automatic bounds framing only (ConfigureDishCaptureCameraFromWorldBounds): camera position uses world Up * max(MaxExtent * ExtentScale, MinLiftUU).
+	 * Larger values raise the eye above the dish center so look-at tilts down (more "into the bowl") without pitch-after-aim.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (ClampMin = "0.0"))
+	float DishCaptureCameraVerticalLiftExtentScale = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (ClampMin = "0.0"))
+	float DishCaptureCameraVerticalLiftMinUU = 40.f;
+
+	/**
+	 * Added to each axis of merged world bounds half-extents before snap (absorbs tiny CalcBounds / animation jitter).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (ClampMin = "0.0"))
+	float DishCaptureBoundsPaddingUU = 2.f;
+
+	/**
+	 * If > 0, each axis half-extent (after padding) is ceil-snapped to this grid in uu so camera distance tiers stay stable across captures.
+	 * Set to 0 to disable snapping (only padding applies).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (ClampMin = "0.0"))
+	float DishCaptureBoundsExtentSnapUU = 1.f;
+
+	/**
+	 * When true, the dish scene capture runs the post-processing pipeline (tonemapper / exposure), closer to the main camera.
+	 * When false, PostProcessing is off and SceneColorHDR can look darker than the game view.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture")
+	bool bDishCapturePostProcessingTone = true;
+
+	/** Blend weight for PostProcessSettings during capture (only if bDishCapturePostProcessingTone). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bDishCapturePostProcessingTone"))
+	float DishCapturePostProcessBlendWeightForCapture = 1.f;
+
+	/** Extra exposure compensation (stops) for the capture only. Applied via PostProcessSettings override while capturing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (EditCondition = "bDishCapturePostProcessingTone", ClampMin = "-4.0", ClampMax = "4.0"))
+	float DishCaptureExposureBias = 0.5f;
+
+	/**
+	 * Extra pitch (degrees) applied in camera local space immediately after aim-at-bounds-center.
+	 * Default 0: automatic framing already lifts the camera above the dish (ConfigureDishCaptureCameraFromWorldBounds) so look-at tilts down naturally.
+	 * Use non-zero only if you need more tilt on top of that (e.g. plating-camera match with no lift).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (ClampMin = "-89.0", ClampMax = "89.0"))
+	float DishCaptureCameraPitchAfterAimDegrees = 0.f;
+
+	/**
+	 * Local-space Euler applied after aim-at-dish: world rotation = Quat(current) * Quat(this) (same as multiplying delta in component space after framing).
+	 * Pitch/Yaw/Roll follow the default FRotator → FQuat convention.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture")
+	FRotator DishCaptureCameraLocalRotation = FRotator::ZeroRotator;
+
+	/**
+	 * Rotates the head-preview dish root (DishPreview) only while the scorecard RT is captured, then restores.
+	 * Combined with ComposeRotators(Saved, Offset) — first base pose, then offset (matches Blueprint Combine Rotators).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture")
+	FRotator DishCapturePreviewMeshRotationOffset = FRotator::ZeroRotator;
+
+	/** When true, refreshes the scorecard render target every frame from the head-preview dish. Hold Up/Down to adjust pitch in real time (see below). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture")
+	bool bDishCaptureLivePreview = false;
+
+	/** While live preview is on, hold keyboard Up/Down to change DishCaptureCameraPitchAfterAimDegrees (degrees per second). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (EditCondition = "bDishCaptureLivePreview"))
+	bool bDishCaptureLivePreviewPitchKeys = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (EditCondition = "bDishCaptureLivePreview && bDishCaptureLivePreviewPitchKeys"))
+	float DishCaptureLivePreviewPitchDegreesPerSecond = 45.f;
+
+	/** Draw Pitch/Yaw/Roll in the corner while live preview is active. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Order System|Dish Capture", meta = (EditCondition = "bDishCaptureLivePreview"))
+	bool bDishCaptureLivePreviewShowPitchOnScreen = true;
+
+	/**
+	 * Native scene capture (also listed in the Components panel as "DishCapture", Scene Capture 2D).
+	 * Attached to the capsule root; used only when capturing the head dish for the scorecard.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Order System|Dish Capture", meta = (DisplayName = "Dish Capture (Scorecard)"))
+	TObjectPtr<USceneCaptureComponent2D> DishCaptureComponent;
+
+	/** Captures the live plated dish at the station (show-only) right after plating transforms are saved; used for the scorecard. */
+	void CaptureDishSnapshotFromPlatingStation(class UPUDishCustomizationComponent* CustomizationComponent);
+
+	/** Renders the head-preview dish into DishCaptureRenderTarget (same path as scorecard fallback). Use with bDishCaptureLivePreview or from Blueprint when tweaking offsets/rotation. */
+	UFUNCTION(BlueprintCallable, Category = "Order System|Dish Capture")
+	bool RefreshDishCapturePreviewFromDishPreview();
+
 	void GetCameraPositionIndex(const FInputActionValue& Value);
 	void ToggleGridMovement(const FInputActionValue& Value);
 	void ZoomCamera(const FInputActionValue& Value);
@@ -455,7 +576,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Order System")
 	void OnOrderFailed();
 
-	/** Show the scorecard for the current completed order. Call from dialogue, etc. Returns the widget for chaining (e.g. bind Close to a button). */
+	/**
+	 * Show the scorecard for the current completed order. Call from dialogue, etc.
+	 * When dish capture is enabled and a head preview exists, returns nullptr on the same frame (capture completes next tick); otherwise returns the widget.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Order System", meta = (DisplayName = "Show Scorecard"))
 	class UPUScorecardWidget* ShowScorecard(TSubclassOf<class UPUScorecardWidget> ScorecardWidgetClass);
 
@@ -475,6 +599,38 @@ public:
 private:
 	// Helper function to clean up UObject references in orders
 	void CleanupOrderUObjectReferences(FPUOrderBase& Order);
+
+	void EnsureDishCaptureRenderTarget();
+	void ConfigureDishCaptureCamera();
+	void ConfigureDishCaptureCameraFromWorldBounds(const FBox& InWorldBounds, const FVector& FallbackCenter);
+	void ConfigureDishCaptureCameraToMatchPlatingCamera(class UCameraComponent* PlatingCamera, const FBox& InWorldBoundsFallback, const FVector& FallbackCenter);
+	/** Applies DishCaptureCameraLocalOffset / DishCaptureCameraLocalRotation after base placement.
+	 *  Aims the capture at DishFocusWorld from its current location (after Configure / manual reset), same convention as ConfigureDishCaptureCameraFromWorldBounds,
+	 *  so pitch/yaw/roll tweaks tilt relative to the dish in both manual and automatic framing. */
+	void ApplyDishCaptureCameraTweaks(const FVector& DishFocusWorld);
+	UPUScorecardWidget* InternalShowScorecardWidget(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass, class UTexture* OptionalDishTexture);
+
+	UPROPERTY()
+	TObjectPtr<UTextureRenderTarget2D> DishCaptureRenderTarget;
+
+	/** Last dish texture passed to the scorecard (scene capture RT or preview texture). Keeps GC refs. */
+	UPROPERTY()
+	TObjectPtr<UTexture> LastDishCaptureTexture;
+
+	/** Pending dish for scorecard: usually DishCaptureRenderTarget (live RT for material "DishRender"). Cleared when scorecard opens. */
+	UPROPERTY()
+	TObjectPtr<UTexture> PendingScorecardDishTexture;
+
+	/** True after CaptureDishSnapshotFromPlatingStation succeeds for this order. ShowScorecard reuses DishCaptureRenderTarget instead of RefreshDishCapturePreviewFromDishPreview (different framing). Cleared on new order / clear order. */
+	bool bStationDishCaptureValidForScorecard = false;
+
+	/** First time we use manual Dish Capture framing, we store relative transform so offsets don't accumulate each capture. */
+	UPROPERTY(Transient)
+	bool bDishCaptureRelativeBaseCaptured = false;
+
+	/** Relative transform of DishCapture when manual base was snapshotted (authored placement). */
+	UPROPERTY(Transient)
+	FTransform DishCaptureRelativeBaseAtStart;
 
 	/** Called when emote duration expires; plays fade-out then clears after animation. */
 	void BeginFadeOutEmote();

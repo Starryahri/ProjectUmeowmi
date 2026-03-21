@@ -1,4 +1,5 @@
 #include "PUDishCustomizationComponent.h"
+#include "Math/Box.h"
 #include "PUDishPreviewComponent.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
@@ -23,6 +24,8 @@
 #include "Engine/StaticMeshActor.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "PUIngredientMesh.h"
 #include "Camera/CameraActor.h"
 #include "Framework/Application/SlateApplication.h"
@@ -2007,12 +2010,26 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating stage transition complete"));
 }
 
+void UPUDishCustomizationComponent::CaptureScorecardSnapshotFromPlatingStation()
+{
+	if (AProjectUmeowmiCharacter* Pawn = CurrentCharacter)
+	{
+		if (Pawn->bEnableDishCaptureForScorecard)
+		{
+			Pawn->CaptureDishSnapshotFromPlatingStation(this);
+		}
+	}
+}
+
 void UPUDishCustomizationComponent::EndPlatingStage()
 {
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Ending plating stage"));
 
     // Capture transforms from live ingredient meshes BEFORE any cleanup (widget removal, mesh destruction)
     CapturePlatingTransformsFromMeshes();
+
+    // Scorecard dish photo: live station shot (show-only dish + ingredients) before head preview / mesh cleanup.
+    CaptureScorecardSnapshotFromPlatingStation();
 
     // Set plating mode to false
     SetPlatingMode(false);
@@ -2710,6 +2727,72 @@ void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
     }
 
     UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - captured %d transforms"), Captured);
+}
+
+void UPUDishCustomizationComponent::GatherDishSnapshotPrimitives(TArray<UPrimitiveComponent*>& OutPrimitives) const
+{
+    OutPrimitives.Reset();
+    AActor* DishStation = GetOwner();
+    if (!DishStation)
+    {
+        return;
+    }
+
+    TArray<UStaticMeshComponent*> AllMeshComponents;
+    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents);
+
+    UStaticMeshComponent* DishContainer = nullptr;
+    for (UStaticMeshComponent* MeshComp : AllMeshComponents)
+    {
+        if (MeshComp && MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
+        {
+            DishContainer = MeshComp;
+            break;
+        }
+    }
+
+    if (DishContainer)
+    {
+        OutPrimitives.Add(DishContainer);
+        TArray<USceneComponent*> Descendants;
+        DishContainer->GetChildrenComponents(true, Descendants);
+        for (USceneComponent* Child : Descendants)
+        {
+            if (UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(Child))
+            {
+                if (Prim->IsVisible())
+                {
+                    OutPrimitives.AddUnique(Prim);
+                }
+            }
+        }
+    }
+
+    for (APUIngredientMesh* IngActor : SpawnedIngredientMeshes)
+    {
+        if (!IngActor || !IsValid(IngActor))
+        {
+            continue;
+        }
+        TArray<UPrimitiveComponent*> IngPrims;
+        IngActor->GetComponents<UPrimitiveComponent>(IngPrims);
+        for (UPrimitiveComponent* Prim : IngPrims)
+        {
+            if (Prim && Prim->IsVisible())
+            {
+                OutPrimitives.AddUnique(Prim);
+            }
+        }
+    }
+
+    for (const TPair<int32, TObjectPtr<UNiagaraComponent>>& Pair : SpawnedLiquidComponents)
+    {
+        UNiagaraComponent* NiagaraComp = Pair.Value.Get();
+        if (NiagaraComp && IsValid(NiagaraComp) && NiagaraComp->IsVisible())
+        {
+            OutPrimitives.AddUnique(NiagaraComp);
+        }
+    }
 }
 
 void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/Texture.h"
 #include "PUCommonUserWidget.h"
 #include "PUAspectProfileWidget.h"
 #include "PUScorecardTypes.h"
@@ -12,6 +13,8 @@ class UImage;
 class UTextBlock;
 class UVerticalBox;
 class UPanelWidget;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
 struct FPUOrderBase;
 
 /**
@@ -34,19 +37,16 @@ public:
 	void SetScorecardData(const FPUScorecardData& InData);
 
 	/**
-	 * Set the dish image (capture or preview). Pass nullptr to use CompletedDish.PreviewTexture from order.
-	 * @param DishTexture - Optional captured dish texture; if null, use dish preview from data
+	 * Set the dish image (scene capture render target, baked texture, or preview). Pass nullptr to use CompletedDish.PreviewTexture from order.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Scorecard")
-	void SetDishImage(UTexture2D* DishTexture);
+	void SetDishImage(UTexture* DishTexture);
 
 	/**
-	 * Show the scorecard with optional dish texture. Convenience that builds data from Order.
-	 * @param Order - Completed order (must have CompletedDish and FinalSatisfactionScore)
-	 * @param OptionalDishTexture - Optional capture texture; if null, uses dish preview
+	 * Show the scorecard with optional dish texture (e.g. scene capture RT for material "DishRender"). If null, uses dish preview from data.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Scorecard")
-	void ShowFromOrder(const FPUOrderBase& Order, UTexture2D* OptionalDishTexture = nullptr);
+	void ShowFromOrder(const FPUOrderBase& Order, UTexture* OptionalDishTexture = nullptr);
 
 	/** Play the seal animation (same for all tiers - seal image changes based on tier). */
 	UFUNCTION(BlueprintCallable, Category = "Scorecard")
@@ -91,6 +91,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard", meta = (AllowAbstract = "false"))
 	TSubclassOf<UPUAspectProfileWidget> AspectProfileWidgetClass;
 
+	/**
+	 * Parent material for the dish image (User Interface domain). Must expose a Texture parameter named "DishRender".
+	 * Strongly recommended: assign this on your scorecard widget Blueprint (Class Defaults). If unset, resolves the brush material (or its parent if the brush is an instance/MID).
+	 * Dish capture uses SceneColor (HDR): use Translucent/Additive UI blend as needed; alpha may follow engine "Inv Opacity" — try 1-A on A if the mask looks inverted.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Dish Image")
+	TObjectPtr<UMaterialInterface> DishImageMaterial;
+
+	/** Dynamic instance; "DishRender" is set to OverrideDishTexture (UTextureRenderTarget2D from capture or UTexture2D). */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> DishImageMID;
+
+	/** Material parent the MID was created from (recreate MID if this changes). */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> DishImageMaterialUsedForMID;
+
 	/** Seal textures for 4 grades: Perfect (A), Great (B), Okay (C), Needs Improvement (F) */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Scorecard|Seals")
 	TSoftObjectPtr<UTexture2D> SealTexturePerfect;
@@ -124,8 +140,11 @@ protected:
 	FPUScorecardData ScorecardData;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Scorecard")
-	TObjectPtr<UTexture2D> OverrideDishTexture;
+	TObjectPtr<UTexture> OverrideDishTexture;
 
 	void UpdateDisplay();
 	void UpdateSealImage();
+
+	/** Returns true if a material parent was found and DishImageMID is valid for applying the dish texture. */
+	bool EnsureDishImageMIDForDish();
 };

@@ -293,6 +293,9 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
             case EDishCustomizationStageType::Plating:
                 // CRITICAL: Capture ingredient positions/rotations BEFORE any cleanup - otherwise PlatingEntries stays empty
                 CustomizationComponent->CapturePlatingTransformsFromMeshes();
+                // Scorecard RT: must run while plating meshes still exist. GoToStage clears bPlatingMode before EndCustomization,
+                // so EndPlatingStage() never runs later — same path as EndPlatingStage (before ClearAll3DIngredientMeshes).
+                CustomizationComponent->CaptureScorecardSnapshotFromPlatingStation();
                 // Clear ingredient meshes BEFORE restoring dish mesh - otherwise physics/collision blows them apart
                 CustomizationComponent->ClearAll3DIngredientMeshes();
                 CustomizationComponent->SetPlatingMode(false);

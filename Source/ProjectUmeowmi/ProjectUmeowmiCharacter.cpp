@@ -23,8 +23,140 @@
 #include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Engine/Texture.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Engine/EngineTypes.h"
+#include "Kismet/KismetRenderingLibrary.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "RenderingThread.h"
+#include "Components/SceneCaptureComponent.h"
+#include "Components/PrimitiveComponent.h"
+#include "InputCoreTypes.h"
+#include "Engine/Engine.h"
 
 #include "Interfaces/PUInteractableInterface.h"
+
+namespace
+{
+	/** Scene capture still draws sky/reflections unless these flags are cleared; keeps scorecard shots to dish geometry + lighting only. */
+	void ApplyDishOnlyCaptureShowFlags(USceneCaptureComponent2D* Capture, bool bPostProcessingForTone)
+	{
+		if (!Capture)
+		{
+			return;
+		}
+		FEngineShowFlags& SF = Capture->ShowFlags;
+		SF.SetAtmosphere(false);
+		SF.SetFog(false);
+		SF.SetVolumetricFog(false);
+		SF.SetSkyLighting(false);
+		SF.SetAmbientCubemap(false);
+		SF.SetBloom(false);
+		SF.SetReflectionEnvironment(false);
+		SF.SetScreenSpaceReflections(false);
+		SF.SetLumenReflections(false);
+		SF.SetLumenGlobalIllumination(false);
+		// When true: tonemapper + exposure (matches main view brightness better). When false: raw HDR can look darker.
+		SF.SetPostProcessing(bPostProcessingForTone);
+	}
+
+	struct FDishCaptureSavedPostProcess
+	{
+		float PostProcessBlendWeight = 0.f;
+		bool bOverride_AutoExposureBias = false;
+		float AutoExposureBias = 0.f;
+	};
+
+	FDishCaptureSavedPostProcess SaveDishCapturePostProcess(USceneCaptureComponent2D* Capture)
+	{
+		FDishCaptureSavedPostProcess S;
+		if (Capture)
+		{
+			S.PostProcessBlendWeight = Capture->PostProcessBlendWeight;
+			S.bOverride_AutoExposureBias = Capture->PostProcessSettings.bOverride_AutoExposureBias != 0;
+			S.AutoExposureBias = Capture->PostProcessSettings.AutoExposureBias;
+		}
+		return S;
+	}
+
+	void RestoreDishCapturePostProcess(USceneCaptureComponent2D* Capture, const FDishCaptureSavedPostProcess& S)
+	{
+		if (!Capture)
+		{
+			return;
+		}
+		Capture->PostProcessBlendWeight = S.PostProcessBlendWeight;
+		Capture->PostProcessSettings.bOverride_AutoExposureBias = S.bOverride_AutoExposureBias;
+		Capture->PostProcessSettings.AutoExposureBias = S.AutoExposureBias;
+	}
+
+	void ApplyDishCaptureCapturePostProcess(USceneCaptureComponent2D* Capture, bool bTone, float BlendWeightForCapture, float ExposureBias)
+	{
+		if (!Capture)
+		{
+			return;
+		}
+		if (bTone)
+		{
+			Capture->PostProcessBlendWeight = FMath::Clamp(BlendWeightForCapture, 0.f, 1.f);
+			Capture->PostProcessSettings.bOverride_AutoExposureBias = true;
+			Capture->PostProcessSettings.AutoExposureBias = ExposureBias;
+		}
+		else
+		{
+			Capture->PostProcessBlendWeight = 0.f;
+		}
+	}
+
+	// Same multipliers as ConfigureDishCaptureCameraFromWorldBounds — single source for consistent scale.
+	static constexpr float DishCaptureDistanceExtentMultiplier = 3.5f;
+	static constexpr float DishCaptureMinCameraDistanceUU = 100.f;
+	static constexpr float DishCaptureFallbackExtentUU = 40.f;
+
+	static void GetDishCaptureBoundsCenterAndExtent(const FBox& InWorldBounds, const FVector& FallbackCenter, FVector& OutCenter, FVector& OutExtent)
+	{
+		if (InWorldBounds.IsValid != 0)
+		{
+			InWorldBounds.GetCenterAndExtents(OutCenter, OutExtent);
+		}
+		else
+		{
+			OutCenter = FallbackCenter;
+			OutExtent = FVector(DishCaptureFallbackExtentUU, DishCaptureFallbackExtentUU, DishCaptureFallbackExtentUU);
+		}
+	}
+
+	static void ComputeDishCaptureDistanceAndLift(
+		float MaxExtent,
+		float VerticalLiftExtentScale,
+		float VerticalLiftMinUU,
+		float& OutDistance,
+		float& OutVerticalLift)
+	{
+		OutDistance = FMath::Max(MaxExtent * DishCaptureDistanceExtentMultiplier, DishCaptureMinCameraDistanceUU);
+		OutVerticalLift = FMath::Max(MaxExtent * VerticalLiftExtentScale, VerticalLiftMinUU);
+	}
+
+	/** Stabilizes framing distance: camera uses max extent; tiny bounds jitter maps to the same snap bucket. */
+	static FBox SnapDishCaptureWorldBounds(const FBox& In, float PaddingUU, float SnapUU)
+	{
+		if (In.IsValid == 0)
+		{
+			return In;
+		}
+		FVector Center, Extent;
+		In.GetCenterAndExtents(Center, Extent);
+		const float Px = Extent.X + PaddingUU;
+		const float Py = Extent.Y + PaddingUU;
+		const float Pz = Extent.Z + PaddingUU;
+		const float Sx = SnapUU > KINDA_SMALL_NUMBER ? FMath::CeilToFloat(Px / SnapUU) * SnapUU : Px;
+		const float Sy = SnapUU > KINDA_SMALL_NUMBER ? FMath::CeilToFloat(Py / SnapUU) * SnapUU : Py;
+		const float Sz = SnapUU > KINDA_SMALL_NUMBER ? FMath::CeilToFloat(Pz / SnapUU) * SnapUU : Pz;
+		const FVector ExtentOut(Sx, Sy, Sz);
+		return FBox(Center - ExtentOut, Center + ExtentOut);
+	}
+}
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -82,6 +214,26 @@ AProjectUmeowmiCharacter::AProjectUmeowmiCharacter()
 	DishPreviewMeshComponent->SetCastShadow(true);
 	DishPreviewMeshComponent->SetVisibility(false);
 	DishPreviewComponent->SetDishMeshComponent(DishPreviewMeshComponent);
+
+	DishCaptureComponent = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("DishCapture"));
+	DishCaptureComponent->SetupAttachment(RootComponent);
+	DishCaptureComponent->bCaptureEveryFrame = false;
+	DishCaptureComponent->bCaptureOnMovement = false;
+	DishCaptureComponent->SetAutoActivate(false);
+	DishCaptureComponent->ProjectionType = ECameraProjectionMode::Perspective;
+	DishCaptureComponent->FOVAngle = 35.f;
+	DishCaptureComponent->bAlwaysPersistRenderingState = true;
+	// Default USceneCaptureComponent2D has bAutoCalculateOrthoPlanes=true. With ortho plating cameras, the engine
+	// recomputes near/far from camera tilt + owner view-target (see FMinimalViewInfo::AutoCalculateOrthoPlanes);
+	// that makes pitch/yaw read as sliding the frame (e.g. "moves down") instead of rotating the view.
+	DishCaptureComponent->bAutoCalculateOrthoPlanes = false;
+	// SceneColor (HDR): RGB scene + alpha useful for transparency; pair with RTF_RGBA16f + transparent clear.
+	DishCaptureComponent->CaptureSource = SCS_SceneColorHDR;
+	DishCaptureComponent->PostProcessBlendWeight = 0.f;
+#if WITH_EDITORONLY_DATA
+	// Editor-only: small sprite in viewport (member does not exist in non-editor builds).
+	DishCaptureComponent->bVisualizeComponent = true;
+#endif
 
 	// Initialize target camera rotation
 	TargetCameraRotation = FRotator(-15.0f, 45.0f, 0.0f);
@@ -430,6 +582,42 @@ void AProjectUmeowmiCharacter::Tick(float DeltaTime)
 			SetActorLocation(TargetGridPosition);
 			SetActorRotation(TargetRotation);
 			bIsMovingToGrid = false;
+		}
+	}
+
+	// Live dish capture preview: RT updates every frame; Up/Down adjust pitch (for tuning scorecard framing).
+	// Do not refresh while PendingScorecardDishTexture is set — that uses the same RT as CaptureDishSnapshotFromPlatingStation
+	// and would overwrite the station snapshot with head-preview framing before ShowScorecard consumes it.
+	if (bDishCaptureLivePreview && bEnableDishCaptureForScorecard && DishPreviewComponent && DishPreviewComponent->HasPreview() && DishCaptureComponent
+		&& !PendingScorecardDishTexture)
+	{
+		if (bDishCaptureLivePreviewPitchKeys)
+		{
+			if (APlayerController* PC = Cast<APlayerController>(GetController()))
+			{
+				const float PitchDelta = DishCaptureLivePreviewPitchDegreesPerSecond * DeltaTime;
+				if (PC->IsInputKeyDown(EKeys::Up))
+				{
+					DishCaptureCameraPitchAfterAimDegrees = FMath::Clamp(DishCaptureCameraPitchAfterAimDegrees + PitchDelta, -89.f, 89.f);
+				}
+				if (PC->IsInputKeyDown(EKeys::Down))
+				{
+					DishCaptureCameraPitchAfterAimDegrees = FMath::Clamp(DishCaptureCameraPitchAfterAimDegrees - PitchDelta, -89.f, 89.f);
+				}
+			}
+		}
+		RefreshDishCapturePreviewFromDishPreview();
+		if (bDishCaptureLivePreviewShowPitchOnScreen && GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				91001,
+				0.f,
+				FColor::Green,
+				FString::Printf(
+					TEXT("PitchAfterAim %.1f | mesh P %.1f | cam tweak P %.1f"),
+					DishCaptureCameraPitchAfterAimDegrees,
+					DishCapturePreviewMeshRotationOffset.Pitch,
+					DishCaptureCameraLocalRotation.Pitch));
 		}
 	}
 }
@@ -931,6 +1119,7 @@ void AProjectUmeowmiCharacter::SetCurrentOrder(const FPUOrderBase& Order)
 	bHasCurrentOrder = true;
 	bCurrentOrderCompleted = false;
 	CurrentOrderSatisfaction = 0.0f;
+	bStationDishCaptureValidForScorecard = false;
 	
 	//UE_LOG(LogTemp,Display, TEXT("ProjectUmeowmiCharacter::SetCurrentOrder - Order set successfully"));
 }
@@ -991,6 +1180,8 @@ void AProjectUmeowmiCharacter::ClearCurrentOrder()
 	{
 		DishPreviewComponent->ClearPreview();
 	}
+	PendingScorecardDishTexture = nullptr;
+	bStationDishCaptureValidForScorecard = false;
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== ORDER CLEARED ==="));
 	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
@@ -1077,6 +1268,8 @@ void AProjectUmeowmiCharacter::ClearCompletedOrder()
 	{
 		DishPreviewComponent->ClearPreview();
 	}
+	PendingScorecardDishTexture = nullptr;
+	bStationDishCaptureValidForScorecard = false;
 	
 	//UE_LOG(LogTemp,Display, TEXT("=== COMPLETED ORDER CLEARED ==="));
 	//UE_LOG(LogTemp,Display, TEXT("Has Current Order: %s"), bHasCurrentOrder ? TEXT("TRUE") : TEXT("FALSE"));
@@ -1122,6 +1315,330 @@ void AProjectUmeowmiCharacter::OnOrderCompleted()
 {
 }
 
+void AProjectUmeowmiCharacter::EnsureDishCaptureRenderTarget()
+{
+	const int32 Size = FMath::Clamp(DishCaptureSize, 128, 2048);
+	const bool bNeedsRecreate = !DishCaptureRenderTarget
+		|| DishCaptureRenderTarget->SizeX != Size
+		|| DishCaptureRenderTarget->RenderTargetFormat != RTF_RGBA16f;
+	if (bNeedsRecreate)
+	{
+		// Float RGBA required for SceneColorHDR; alpha channel used for empty / compositing.
+		DishCaptureRenderTarget = UKismetRenderingLibrary::CreateRenderTarget2D(
+			this, Size, Size, RTF_RGBA16f, FLinearColor::Transparent, false);
+	}
+}
+
+void AProjectUmeowmiCharacter::ConfigureDishCaptureCamera()
+{
+	if (!DishPreviewComponent || !DishCaptureComponent)
+	{
+		return;
+	}
+
+	FBox DishPreviewWorldBounds = DishPreviewComponent->ComputePreviewWorldBounds();
+	DishPreviewWorldBounds = SnapDishCaptureWorldBounds(DishPreviewWorldBounds, DishCaptureBoundsPaddingUU, DishCaptureBoundsExtentSnapUU);
+	ConfigureDishCaptureCameraFromWorldBounds(DishPreviewWorldBounds, DishPreviewComponent->GetComponentLocation());
+}
+
+void AProjectUmeowmiCharacter::ApplyDishCaptureCameraTweaks(const FVector& DishFocusWorld)
+{
+	if (!DishCaptureComponent)
+	{
+		return;
+	}
+
+	// Manual framing: reset to authored transform each capture, then apply nudges (otherwise AddLocal accumulates).
+	if (!bUseAutomaticDishCaptureFraming)
+	{
+		if (!bDishCaptureRelativeBaseCaptured)
+		{
+			DishCaptureRelativeBaseAtStart = DishCaptureComponent->GetRelativeTransform();
+			bDishCaptureRelativeBaseCaptured = true;
+		}
+		DishCaptureComponent->SetRelativeTransform(DishCaptureRelativeBaseAtStart);
+	}
+
+	// Aim at dish center from current capture position (automatic: after plating/bounds configure; manual: after authored reset).
+	// Must run in automatic mode too — otherwise plating-camera rotation + ortho keeps tweaks from reading as tilt relative to the food.
+	const FVector CamLoc = DishCaptureComponent->GetComponentLocation();
+	const FVector ToFocus = DishFocusWorld - CamLoc;
+	if (ToFocus.SizeSquared() > FMath::Square(1.f))
+	{
+		// Same as Kismet FindLookAtRotation = FRotationMatrix::MakeFromX(Target - Start).
+		DishCaptureComponent->SetWorldRotation(UKismetMathLibrary::FindLookAtRotation(CamLoc, DishFocusWorld));
+	}
+	// Aim-at-center + camera near the dish plane => horizontal view => rim edge-on. Tilt view down in local space to see into the bowl.
+	if (!FMath::IsNearlyZero(DishCaptureCameraPitchAfterAimDegrees, 0.01f))
+	{
+		const FQuat BaseQ = FQuat(DishCaptureComponent->GetComponentRotation());
+		const FQuat PitchQ = FQuat(FRotator(DishCaptureCameraPitchAfterAimDegrees, 0.f, 0.f));
+		DishCaptureComponent->SetWorldRotation((BaseQ * PitchQ).Rotator());
+	}
+
+	if (!DishCaptureCameraLocalOffset.IsNearlyZero(0.01f))
+	{
+		// Match camera-relative axes: X = right, Y = forward, Z = up (in view space).
+		const FVector Right = DishCaptureComponent->GetRightVector();
+		const FVector Up = DishCaptureComponent->GetUpVector();
+		const FVector Forward = DishCaptureComponent->GetForwardVector();
+		DishCaptureComponent->AddWorldOffset(
+			Right * DishCaptureCameraLocalOffset.X + Forward * DishCaptureCameraLocalOffset.Y + Up * DishCaptureCameraLocalOffset.Z);
+	}
+	// Local Euler after aim: world rotation = Quat(base) * Quat(delta) (delta in component local space after framing).
+	if (!DishCaptureCameraLocalRotation.Equals(FRotator::ZeroRotator, 0.01f))
+	{
+		const FQuat BaseQ = FQuat(DishCaptureComponent->GetComponentRotation());
+		const FQuat DeltaQ = FQuat(DishCaptureCameraLocalRotation);
+		DishCaptureComponent->SetWorldRotation((BaseQ * DeltaQ).Rotator());
+	}
+}
+
+void AProjectUmeowmiCharacter::ConfigureDishCaptureCameraFromWorldBounds(const FBox& InWorldBounds, const FVector& FallbackCenter)
+{
+	if (!DishCaptureComponent)
+	{
+		return;
+	}
+
+	FVector Center;
+	FVector Extent;
+	GetDishCaptureBoundsCenterAndExtent(InWorldBounds, FallbackCenter, Center, Extent);
+
+	const float MaxExtent = FMath::Max3(Extent.X, Extent.Y, Extent.Z);
+	float Distance = 0.f;
+	float VerticalLift = 0.f;
+	ComputeDishCaptureDistanceAndLift(MaxExtent, DishCaptureCameraVerticalLiftExtentScale, DishCaptureCameraVerticalLiftMinUU, Distance, VerticalLift);
+
+	const FVector Forward = GetActorForwardVector();
+	const FVector Up = FVector::UpVector;
+	const FVector CamLoc = Center - Forward * Distance + Up * VerticalLift;
+
+	DishCaptureComponent->ProjectionType = ECameraProjectionMode::Perspective;
+	DishCaptureComponent->FOVAngle = 35.f;
+	DishCaptureComponent->SetWorldLocation(CamLoc);
+	DishCaptureComponent->SetWorldRotation(UKismetMathLibrary::FindLookAtRotation(CamLoc, Center));
+}
+
+void AProjectUmeowmiCharacter::ConfigureDishCaptureCameraToMatchPlatingCamera(UCameraComponent* PlatingCamera, const FBox& InWorldBoundsFallback, const FVector& FallbackCenter)
+{
+	if (!DishCaptureComponent)
+	{
+		return;
+	}
+
+	FVector Center;
+	FVector Extent;
+	GetDishCaptureBoundsCenterAndExtent(InWorldBoundsFallback, FallbackCenter, Center, Extent);
+	const float MaxExtent = FMath::Max3(Extent.X, Extent.Y, Extent.Z);
+	float Distance = 0.f;
+	float VerticalLift = 0.f;
+	ComputeDishCaptureDistanceAndLift(MaxExtent, DishCaptureCameraVerticalLiftExtentScale, DishCaptureCameraVerticalLiftMinUU, Distance, VerticalLift);
+	const FVector Up = FVector::UpVector;
+
+	if (PlatingCamera)
+	{
+		// Do not snap to the plating camera's world position — that distance changes with station layout, zoom, and timing.
+		// Stay on the same view ray (center → plating camera) but use bounds-derived distance so identical dish bounds → identical scale.
+		const FVector PlatingLoc = PlatingCamera->GetComponentLocation();
+		FVector RadialFromCenterToCamera = PlatingLoc - Center;
+		if (!RadialFromCenterToCamera.Normalize())
+		{
+			RadialFromCenterToCamera = -PlatingCamera->GetForwardVector();
+		}
+		const FVector CamLoc = Center + RadialFromCenterToCamera * Distance + Up * VerticalLift;
+
+		DishCaptureComponent->ProjectionType = ECameraProjectionMode::Perspective;
+		// Fixed FOV (same as bounds fallback). Copying plating FOV would change apparent dish size when the plating camera zooms.
+		DishCaptureComponent->FOVAngle = 35.f;
+		DishCaptureComponent->SetWorldLocation(CamLoc);
+		DishCaptureComponent->SetWorldRotation(UKismetMathLibrary::FindLookAtRotation(CamLoc, Center));
+		return;
+	}
+
+	ConfigureDishCaptureCameraFromWorldBounds(InWorldBoundsFallback, FallbackCenter);
+}
+
+void AProjectUmeowmiCharacter::CaptureDishSnapshotFromPlatingStation(UPUDishCustomizationComponent* CustomizationComponent)
+{
+	if (!bEnableDishCaptureForScorecard || !CustomizationComponent || !DishCaptureComponent || !GetWorld())
+	{
+		return;
+	}
+
+	TArray<UPrimitiveComponent*> Prims;
+	CustomizationComponent->GatherDishSnapshotPrimitives(Prims);
+	if (Prims.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] CaptureDishSnapshotFromPlatingStation: no snapshot primitives — scorecard will fall back to head-preview capture at ShowScorecard if needed."));
+		return;
+	}
+
+	FBox MergedWorldBounds(ForceInit);
+	for (UPrimitiveComponent* P : Prims)
+	{
+		if (P && IsValid(P))
+		{
+			MergedWorldBounds += P->CalcBounds(P->GetComponentTransform()).GetBox();
+		}
+	}
+
+	if (MergedWorldBounds.IsValid != 0)
+	{
+		MergedWorldBounds = SnapDishCaptureWorldBounds(MergedWorldBounds, DishCaptureBoundsPaddingUU, DishCaptureBoundsExtentSnapUU);
+	}
+
+	FVector FallbackCenter;
+	if (MergedWorldBounds.IsValid != 0)
+	{
+		FallbackCenter = MergedWorldBounds.GetCenter();
+	}
+	else
+	{
+		FallbackCenter = CustomizationComponent->GetComponentLocation();
+	}
+
+	EnsureDishCaptureRenderTarget();
+	const FEngineShowFlags SavedShowFlags = DishCaptureComponent->ShowFlags;
+	const ESceneCaptureSource SavedCaptureSource = DishCaptureComponent->CaptureSource;
+	const FDishCaptureSavedPostProcess SavedPP = SaveDishCapturePostProcess(DishCaptureComponent);
+	DishCaptureComponent->CaptureSource = SCS_SceneColorHDR;
+	ApplyDishCaptureCapturePostProcess(DishCaptureComponent, bDishCapturePostProcessingTone, DishCapturePostProcessBlendWeightForCapture, DishCaptureExposureBias);
+	DishCaptureComponent->TextureTarget = DishCaptureRenderTarget;
+	DishCaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+	DishCaptureComponent->ShowOnlyComponents.Empty();
+	for (UPrimitiveComponent* P : Prims)
+	{
+		if (P && IsValid(P))
+		{
+			DishCaptureComponent->ShowOnlyComponents.Add(P);
+		}
+	}
+	DishCaptureComponent->ShowOnlyActors.Empty();
+	DishCaptureComponent->HiddenComponents.Empty();
+	DishCaptureComponent->HiddenActors.Empty();
+
+	ApplyDishOnlyCaptureShowFlags(DishCaptureComponent, bDishCapturePostProcessingTone);
+
+	UKismetRenderingLibrary::ClearRenderTarget2D(this, DishCaptureRenderTarget, FLinearColor::Transparent);
+
+	if (bUseAutomaticDishCaptureFraming)
+	{
+		UCameraComponent* PlatingCam = CustomizationComponent->GetPlatingStationCamera();
+		ConfigureDishCaptureCameraToMatchPlatingCamera(PlatingCam, MergedWorldBounds, FallbackCenter);
+	}
+	const FVector DishFocus = (MergedWorldBounds.IsValid != 0) ? MergedWorldBounds.GetCenter() : FallbackCenter;
+	ApplyDishCaptureCameraTweaks(DishFocus);
+
+	DishCaptureComponent->CaptureScene();
+	DishCaptureComponent->CaptureSource = SavedCaptureSource;
+	RestoreDishCapturePostProcess(DishCaptureComponent, SavedPP);
+	DishCaptureComponent->ShowFlags = SavedShowFlags;
+	DishCaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_RenderScenePrimitives;
+	DishCaptureComponent->ShowOnlyComponents.Empty();
+	FlushRenderingCommands();
+
+	// Pass live scene capture RT to scorecard material (DishRender); no CPU bake.
+	PendingScorecardDishTexture = DishCaptureRenderTarget;
+	LastDishCaptureTexture = DishCaptureRenderTarget;
+	bStationDishCaptureValidForScorecard = true;
+	UE_LOG(LogTemp, Display, TEXT("[Scorecard] Captured plating-station dish snapshot (EndPlatingStage): %d primitives -> PendingScorecardDishTexture"), Prims.Num());
+}
+
+UPUScorecardWidget* AProjectUmeowmiCharacter::InternalShowScorecardWidget(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass, UTexture* OptionalDishTexture)
+{
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] InternalShowScorecardWidget aborted: no PlayerController"));
+		return nullptr;
+	}
+
+	UPUScorecardWidget* Widget = CreateWidget<UPUScorecardWidget>(PC, ScorecardWidgetClass);
+	if (!Widget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] InternalShowScorecardWidget aborted: CreateWidget failed"));
+		return nullptr;
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("[Scorecard] AddToViewport + ShowFromOrder (Order has %d base ingredients, %d completed ingredients)"), CurrentOrder.BaseDish.IngredientInstances.Num(), CurrentOrder.GetCompletedDish().IngredientInstances.Num());
+	Widget->AddToViewport();
+	Widget->ShowFromOrder(CurrentOrder, OptionalDishTexture);
+	return Widget;
+}
+
+bool AProjectUmeowmiCharacter::RefreshDishCapturePreviewFromDishPreview()
+{
+	if (!bEnableDishCaptureForScorecard || !DishPreviewComponent || !DishCaptureComponent || !GetWorld())
+	{
+		return false;
+	}
+	if (!DishPreviewComponent->HasPreview())
+	{
+		return false;
+	}
+
+	const FRotator SavedDishPreviewRot = DishPreviewComponent->GetRelativeRotation();
+	if (!DishCapturePreviewMeshRotationOffset.Equals(FRotator::ZeroRotator, KINDA_SMALL_NUMBER))
+	{
+		// ComposeRotators(A,B) = first A then B (implemented as B*A). Wrong order was Saved*Offset; use engine combine.
+		DishPreviewComponent->SetRelativeRotation(
+			UKismetMathLibrary::ComposeRotators(SavedDishPreviewRot, DishCapturePreviewMeshRotationOffset));
+	}
+
+	TArray<UPrimitiveComponent*> PreviewPrims;
+	DishPreviewComponent->GatherSnapshotPrimitives(PreviewPrims);
+	if (PreviewPrims.Num() == 0)
+	{
+		DishPreviewComponent->SetRelativeRotation(SavedDishPreviewRot);
+		return false;
+	}
+
+	EnsureDishCaptureRenderTarget();
+	const FEngineShowFlags SavedShowFlags = DishCaptureComponent->ShowFlags;
+	const ESceneCaptureSource SavedCaptureSource = DishCaptureComponent->CaptureSource;
+	const FDishCaptureSavedPostProcess SavedPP = SaveDishCapturePostProcess(DishCaptureComponent);
+	DishCaptureComponent->CaptureSource = SCS_SceneColorHDR;
+	ApplyDishCaptureCapturePostProcess(DishCaptureComponent, bDishCapturePostProcessingTone, DishCapturePostProcessBlendWeightForCapture, DishCaptureExposureBias);
+	DishCaptureComponent->TextureTarget = DishCaptureRenderTarget;
+	DishCaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+	DishCaptureComponent->ShowOnlyComponents.Empty();
+	for (UPrimitiveComponent* P : PreviewPrims)
+	{
+		if (P && IsValid(P))
+		{
+			DishCaptureComponent->ShowOnlyComponents.Add(P);
+		}
+	}
+	DishCaptureComponent->ShowOnlyActors.Empty();
+	DishCaptureComponent->HiddenComponents.Empty();
+	DishCaptureComponent->HiddenActors.Empty();
+	ApplyDishOnlyCaptureShowFlags(DishCaptureComponent, bDishCapturePostProcessingTone);
+	UKismetRenderingLibrary::ClearRenderTarget2D(this, DishCaptureRenderTarget, FLinearColor::Transparent);
+	FBox PreviewBounds = DishPreviewComponent->ComputePreviewWorldBounds();
+	PreviewBounds = SnapDishCaptureWorldBounds(PreviewBounds, DishCaptureBoundsPaddingUU, DishCaptureBoundsExtentSnapUU);
+	if (bUseAutomaticDishCaptureFraming)
+	{
+		ConfigureDishCaptureCameraFromWorldBounds(PreviewBounds, DishPreviewComponent->GetComponentLocation());
+	}
+	FVector DishFocus = DishPreviewComponent->GetComponentLocation();
+	if (PreviewBounds.IsValid != 0)
+	{
+		DishFocus = PreviewBounds.GetCenter();
+	}
+	ApplyDishCaptureCameraTweaks(DishFocus);
+	DishCaptureComponent->CaptureScene();
+	DishCaptureComponent->CaptureSource = SavedCaptureSource;
+	RestoreDishCapturePostProcess(DishCaptureComponent, SavedPP);
+	DishCaptureComponent->ShowFlags = SavedShowFlags;
+	DishCaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_RenderScenePrimitives;
+	DishCaptureComponent->ShowOnlyComponents.Empty();
+	FlushRenderingCommands();
+	DishPreviewComponent->SetRelativeRotation(SavedDishPreviewRot);
+	LastDishCaptureTexture = DishCaptureRenderTarget;
+	return true;
+}
+
 UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass)
 {
 	UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowScorecard called: bCurrentOrderCompleted=%d, Class=%s"), bCurrentOrderCompleted ? 1 : 0, ScorecardWidgetClass ? *ScorecardWidgetClass->GetName() : TEXT("NULL"));
@@ -1138,17 +1655,56 @@ UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(TSubclassOf<UPUScore
 		return nullptr;
 	}
 
-	UPUScorecardWidget* Widget = CreateWidget<UPUScorecardWidget>(PC, ScorecardWidgetClass);
-	if (!Widget)
+	if (bEnableDishCaptureForScorecard && PendingScorecardDishTexture)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: CreateWidget failed"));
+		UE_LOG(LogTemp, Display, TEXT("[Scorecard] Texture source: pending station snapshot (from EndPlatingStage -> CaptureDishSnapshotFromPlatingStation)"));
+		UTexture* DishTex = PendingScorecardDishTexture;
+		PendingScorecardDishTexture = nullptr;
+		LastDishCaptureTexture = DishTex;
+		return InternalShowScorecardWidget(ScorecardWidgetClass, DishTex);
+	}
+
+	// Pending is cleared after the first ShowScorecard; do not re-capture from head preview (different camera + scale).
+	if (bEnableDishCaptureForScorecard && bStationDishCaptureValidForScorecard && DishCaptureRenderTarget)
+	{
+		UE_LOG(LogTemp, Display, TEXT("[Scorecard] Texture source: reusing station RT (bStationDishCaptureValidForScorecard; not re-capturing)"));
+		LastDishCaptureTexture = DishCaptureRenderTarget;
+		return InternalShowScorecardWidget(ScorecardWidgetClass, DishCaptureRenderTarget);
+	}
+
+	if (bEnableDishCaptureForScorecard && DishPreviewComponent && DishPreviewComponent->HasPreview() && DishCaptureComponent)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] Texture source: FALLBACK — capturing DishPreview (above-head) now; station snapshot was missing or invalid. For plating-station shot, ensure EndPlatingStage ran (exit customization while in plating) and GatherDishSnapshotPrimitives returned prims."));
+		if (!RefreshDishCapturePreviewFromDishPreview())
+		{
+			return InternalShowScorecardWidget(ScorecardWidgetClass, nullptr);
+		}
+
+		TWeakObjectPtr<AProjectUmeowmiCharacter> WeakThis(this);
+		TSubclassOf<UPUScorecardWidget> ScorecardClassCopy = ScorecardWidgetClass;
+		GetWorld()->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis, ScorecardClassCopy]()
+		{
+			if (!WeakThis.IsValid())
+			{
+				return;
+			}
+			AProjectUmeowmiCharacter* Self = WeakThis.Get();
+			if (Self->DishCaptureRenderTarget)
+			{
+				Self->LastDishCaptureTexture = Self->DishCaptureRenderTarget;
+				Self->InternalShowScorecardWidget(ScorecardClassCopy, Self->DishCaptureRenderTarget);
+			}
+			else
+			{
+				Self->InternalShowScorecardWidget(ScorecardClassCopy, nullptr);
+			}
+		}));
+
+		UE_LOG(LogTemp, Display, TEXT("[Scorecard] Dish capture scheduled; scorecard opens next frame (return nullptr this frame)"));
 		return nullptr;
 	}
 
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] AddToViewport + ShowFromOrder (Order has %d base ingredients, %d completed ingredients)"), CurrentOrder.BaseDish.IngredientInstances.Num(), CurrentOrder.GetCompletedDish().IngredientInstances.Num());
-	Widget->AddToViewport();
-	Widget->ShowFromOrder(CurrentOrder, nullptr);
-	return Widget;
+	return InternalShowScorecardWidget(ScorecardWidgetClass, nullptr);
 }
 
 void AProjectUmeowmiCharacter::OnOrderFailed()
@@ -1255,6 +1811,8 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		bHasCurrentOrder = false;
 		bCurrentOrderCompleted = false;
 		CurrentOrderSatisfaction = 0.0f;
+		PendingScorecardDishTexture = nullptr;
+		bStationDishCaptureValidForScorecard = false;
 	}
 	
 	// Clear overlapping talking objects to prevent dangling references
