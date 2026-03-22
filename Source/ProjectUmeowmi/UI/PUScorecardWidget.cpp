@@ -49,10 +49,23 @@ UPUScorecardWidget::UPUScorecardWidget(const FObjectInitializer& ObjectInitializ
 {
 }
 
+void UPUScorecardWidget::AddToViewportScoringStack()
+{
+	if (GetParent())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] AddToViewportScoringStack: widget is embedded under %s — cannot AddToViewport. Toggle visibility in Blueprint instead."),
+			*GetParent()->GetName());
+		return;
+	}
+	AddToViewport(PUScorecardViewportZOrder);
+	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+}
+
 void UPUScorecardWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] NativeConstruct: Bindings (DishImage=%s, SealImage=%s, BaseIngredientsContainer=%s)"), DishImage ? TEXT("OK") : TEXT("NULL"), SealImage ? TEXT("OK") : TEXT("NULL"), BaseIngredientsContainer ? TEXT("OK") : TEXT("NULL"));
+	// Draw above scoring dialogue (viewport Z) but let pointer events fall through to dialogue except where children hit-test (buttons, etc.).
+	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	UpdateDisplay();
 }
 
@@ -70,16 +83,12 @@ void UPUScorecardWidget::SetDishImage(UTexture* DishTexture)
 
 void UPUScorecardWidget::ShowFromOrder(const FPUOrderBase& Order, UTexture* OptionalDishTexture)
 {
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowFromOrder: Building scorecard data (Satisfaction=%.2f)"), Order.GetFinalSatisfactionScore());
 	ScorecardData = UPUDishBlueprintLibrary::GetScorecardData(Order);
 	OverrideDishTexture = OptionalDishTexture;
 	if (!OverrideDishTexture)
 	{
 		OverrideDishTexture = UPUDishBlueprintLibrary::GetLoadedPreviewTexture(Order.GetCompletedDish());
 	}
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowFromOrder: SealTier=%d, BaseIngredients=%d, FlavorAspects=%d, TextureAspects=%d, DishTex=%s"),
-		(int32)ScorecardData.SealTier, ScorecardData.BaseIngredients.Num(), ScorecardData.FlavorProfile.TopAspects.Num(), ScorecardData.TextureProfile.TopAspects.Num(),
-		OverrideDishTexture ? TEXT("OK") : TEXT("NULL"));
 	UpdateDisplay();
 	PlaySealAnimation();
 }
@@ -122,11 +131,6 @@ bool UPUScorecardWidget::EnsureDishImageMIDForDish()
 
 void UPUScorecardWidget::UpdateDisplay()
 {
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] UpdateDisplay: DishImage=%s, SealImage=%s, BaseIngredientsContainer=%s, FlavorProfileContainer=%s, TextureProfileContainer=%s, AspectProfileWidgetClass=%s"),
-		DishImage ? TEXT("OK") : TEXT("NULL"), SealImage ? TEXT("OK") : TEXT("NULL"),
-		BaseIngredientsContainer ? TEXT("OK") : TEXT("NULL"), FlavorProfileContainer ? TEXT("OK") : TEXT("NULL"), TextureProfileContainer ? TEXT("OK") : TEXT("NULL"),
-		AspectProfileWidgetClass ? *AspectProfileWidgetClass->GetName() : TEXT("NULL (using C++ default)"));
-
 	// Dish name text
 	if (DishNameText)
 	{
@@ -162,7 +166,6 @@ void UPUScorecardWidget::UpdateDisplay()
 	if (BaseIngredientsContainer && WidgetTree)
 	{
 		BaseIngredientsContainer->ClearChildren();
-		UE_LOG(LogTemp, Display, TEXT("[Scorecard] UpdateDisplay: Adding %d base ingredients"), ScorecardData.BaseIngredients.Num());
 		for (const FPUBaseIngredientEntry& Entry : ScorecardData.BaseIngredients)
 		{
 			USizeBox* EntrySizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -249,7 +252,6 @@ void UPUScorecardWidget::UpdateDisplay()
 	if (FlavorProfileContainer)
 	{
 		FlavorProfileContainer->ClearChildren();
-		UE_LOG(LogTemp, Display, TEXT("[Scorecard] UpdateDisplay: Flavor profile - spawning %d aspect widgets"), ScorecardData.FlavorProfile.TopAspects.Num());
 		TSubclassOf<UPUAspectProfileWidget> ClassToUse = AspectProfileWidgetClass;
 		if (!ClassToUse)
 		{
@@ -269,7 +271,6 @@ void UPUScorecardWidget::UpdateDisplay()
 	if (TextureProfileContainer)
 	{
 		TextureProfileContainer->ClearChildren();
-		UE_LOG(LogTemp, Display, TEXT("[Scorecard] UpdateDisplay: Texture profile - spawning %d aspect widgets"), ScorecardData.TextureProfile.TopAspects.Num());
 		TSubclassOf<UPUAspectProfileWidget> ClassToUse = AspectProfileWidgetClass;
 		if (!ClassToUse)
 		{
@@ -315,7 +316,6 @@ void UPUScorecardWidget::UpdateSealImage()
 	{
 		SealImage->SetBrushFromTexture(SealTex);
 		SealImage->SetVisibility(ESlateVisibility::HitTestInvisible);
-		UE_LOG(LogTemp, Display, TEXT("[Scorecard] UpdateSealImage: Set seal texture for tier %d"), (int32)ScorecardData.SealTier);
 	}
 	else
 	{

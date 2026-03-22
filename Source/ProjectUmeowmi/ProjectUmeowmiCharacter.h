@@ -14,6 +14,8 @@
 #include "DishCustomization/PUOrderBase.h"
 #include "DishCustomization/PUDishPreviewComponent.h"
 #include "ProjectUmeowmi/UI/PUScorecardWidget.h"
+#include "ProjectUmeowmi/UI/PUDishScoringWidget.h"
+#include "ProjectUmeowmi/UI/PUDialogueBox.h"
 #include "ProjectUmeowmiCharacter.generated.h"
 
 class USpringArmComponent;
@@ -25,7 +27,6 @@ class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
-class UPUDialogueBox;
 class UPUJournalWidget;
 class USceneCaptureComponent2D;
 class UTextureRenderTarget2D;
@@ -217,6 +218,17 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** Reference to the dialogue box widget */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
 	UPUDialogueBox* DialogueBox;
+
+	/** Fallback class when restoring the dialogue box after scoring if no instance was present when entering scoring. Optional if DialogueBox is always set. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UPUDialogueBox> DefaultDialogueBoxWidgetClass;
+
+	/**
+	 * Dialogue box layout used during dish scoring (portrait / scorecard layering). When entering dish scoring mode, the character
+	 * swaps the active DialogueBox to this class if set; EndDishScoringMode restores the previous dialogue widget class.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Dialogue Box", meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UPUDialogueBox> ScoringDialogueBoxWidgetClass;
 
 	/** Reference to the journal widget (assign in Blueprint if journal is in HUD). If unset, we search for it. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue and Interaction|Journal", meta = (AllowPrivateAccess = "true"))
@@ -577,11 +589,46 @@ public:
 	void OnOrderFailed();
 
 	/**
-	 * Show the scorecard for the current completed order. Call from dialogue, etc.
-	 * When dish capture is enabled and a head preview exists, returns nullptr on the same frame (capture completes next tick); otherwise returns the widget.
+	 * Populate the given scorecard with data from the current completed order (dish image, seal, aspects, etc.).
+	 * Does not create the widget or add it to the viewport — create/add your widget first, then call this.
+	 * When dish capture fallback runs, ShowFromOrder may execute on the next tick after capture completes.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Order System", meta = (DisplayName = "Show Scorecard"))
-	class UPUScorecardWidget* ShowScorecard(TSubclassOf<class UPUScorecardWidget> ScorecardWidgetClass);
+	class UPUScorecardWidget* ShowScorecard(class UPUScorecardWidget* ScorecardWidget);
+
+	////////////////////////////////////////////////////////////
+	// Dish scoring mode
+	////////////////////////////////////////////////////////////
+	/** Default dish scoring widget class (set on the character Blueprint). Used by BeginDishScoringModeFromClass / TryBeginDishScoringModeFromClass. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Scoring")
+	TSubclassOf<UPUDishScoringWidget> DishScoringWidgetClass;
+
+	/**
+	 * Creates the widget from DishScoringWidgetClass and enters dish scoring mode.
+	 * Void return so this appears in Dlg "Unreal Function" events (the picker only lists functions with no parameters and no return value).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Dish Scoring")
+	void BeginDishScoringModeFromClass();
+
+	/**
+	 * Same as BeginDishScoringModeFromClass but returns whether scoring mode is now active (false if class unset, no PC, or CreateWidget failed).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Dish Scoring")
+	bool TryBeginDishScoringModeFromClass();
+
+	/**
+	 * Enter dish scoring mode: associates the widget with this character, adds it to the viewport if needed, and calls OnEnteredDishScoringMode on the widget.
+	 * If another scoring widget is already active, it is closed first.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Dish Scoring")
+	bool BeginDishScoringModeWithWidget(UPUDishScoringWidget* DishScoringWidget);
+
+	/** Ends dish scoring: OnExitingDishScoringMode, remove widget, restore default dialogue layout. Dialogue event "EndDishScoring" calls this too. */
+	UFUNCTION(BlueprintCallable, Category = "Dish Scoring")
+	void EndDishScoringMode();
+
+	UFUNCTION(BlueprintCallable, Category = "Dish Scoring")
+	bool IsInDishScoringMode() const;
 
 	// Order System Storage
 	UPROPERTY(BlueprintReadWrite, Category = "Order System")
@@ -608,7 +655,7 @@ private:
 	 *  Aims the capture at DishFocusWorld from its current location (after Configure / manual reset), same convention as ConfigureDishCaptureCameraFromWorldBounds,
 	 *  so pitch/yaw/roll tweaks tilt relative to the dish in both manual and automatic framing. */
 	void ApplyDishCaptureCameraTweaks(const FVector& DishFocusWorld);
-	UPUScorecardWidget* InternalShowScorecardWidget(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass, class UTexture* OptionalDishTexture);
+	void PopulateScorecardWidget(class UPUScorecardWidget* ScorecardWidget, class UTexture* OptionalDishTexture);
 
 	UPROPERTY()
 	TObjectPtr<UTextureRenderTarget2D> DishCaptureRenderTarget;
@@ -631,6 +678,23 @@ private:
 	/** Relative transform of DishCapture when manual base was snapshotted (authored placement). */
 	UPROPERTY(Transient)
 	FTransform DishCaptureRelativeBaseAtStart;
+
+	/** Active dish scoring root widget while in scoring mode (Transient — not saved). */
+	UPROPERTY(Transient)
+	TObjectPtr<UPUDishScoringWidget> ActiveDishScoringWidget;
+
+	/** Dialogue box class to restore after dish scoring (captured when swapping to scoring layout). */
+	UPROPERTY(Transient)
+	TSubclassOf<UPUDialogueBox> CachedNonScoringDialogueBoxClass;
+
+	/** True while DialogueBox is the scoring-layout instance. */
+	bool bUsingScoringDialogueBox = false;
+
+	/** Removes the active dish scoring widget only (does not restore dialogue). Used when replacing one scoring widget with another. */
+	void RemoveActiveDishScoringWidgetFromViewport();
+
+	void SwapToScoringDialogueBox();
+	void RestoreNonScoringDialogueBox();
 
 	/** Called when emote duration expires; plays fade-out then clears after animation. */
 	void BeginFadeOutEmote();

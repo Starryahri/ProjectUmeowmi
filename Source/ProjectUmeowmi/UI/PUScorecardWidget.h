@@ -7,6 +7,18 @@
 #include "PUScorecardTypes.h"
 #include "PUScorecardWidget.generated.h"
 
+/** Scoring dialogue — back of stack (lowest Z among scoring UI). */
+inline constexpr int32 PUScoringDialogueViewportZOrder = 50000;
+/**
+ * Scorecard — between dialogue and dish scoring.
+ * Root uses SelfHitTestInvisible so pointer can reach dialogue through empty areas.
+ */
+inline constexpr int32 PUScorecardViewportZOrder = PUScoringDialogueViewportZOrder + 1;
+/**
+ * Dish scoring widget — front of stack (highest Z). Character sets SelfHitTestInvisible on the root so clicks reach dialogue/scorecard through gaps; interactive children stay hit-testable.
+ */
+inline constexpr int32 PUScoringSceneViewportZOrder = PUScorecardViewportZOrder + 1;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnScorecardClosed);
 
 class UImage;
@@ -28,6 +40,22 @@ class PROJECTUMEOWMI_API UPUScorecardWidget : public UPUCommonUserWidget
 
 public:
 	UPUScorecardWidget(const FObjectInitializer& ObjectInitializer);
+
+	/** Viewport Z for the dish scoring widget (front of scoring stack). */
+	UFUNCTION(BlueprintPure, Category = "UI|Dish Scoring")
+	static int32 GetDishScoringSceneViewportZOrder() { return PUScoringSceneViewportZOrder; }
+
+	/** Viewport Z for the scoring dialogue box (back of scoring stack). */
+	UFUNCTION(BlueprintPure, Category = "UI|Dish Scoring")
+	static int32 GetScoringDialogueViewportZOrder() { return PUScoringDialogueViewportZOrder; }
+
+	/** Viewport Z for the scorecard (between dialogue and dish scoring). */
+	UFUNCTION(BlueprintPure, Category = "UI|Dish Scoring")
+	static int32 GetScorecardLayerViewportZOrder() { return PUScorecardViewportZOrder; }
+
+	/** Add to viewport at GetScorecardLayerViewportZOrder(). */
+	UFUNCTION(BlueprintCallable, Category = "UI|Dish Scoring")
+	void AddToViewportScoringStack();
 
 	/**
 	 * Set scorecard data from a completed order. Call when displaying the scorecard after order delivery.

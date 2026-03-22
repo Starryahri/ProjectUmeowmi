@@ -7,6 +7,7 @@
 #include "DlgSystem/DlgDialogueParticipant.h"
 #include "TalkingObjectWidget.h"
 #include "ProjectUmeowmi/UI/PUScorecardWidget.h"
+#include "ProjectUmeowmi/UI/PUDishScoringWidget.h"
 #include "TalkingObject.generated.h"
 
 // Forward declarations
@@ -271,9 +272,16 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Config", meta = (EditCondition = "ObjectType == ETalkingObjectType::NPC"))
     float NPCFacingRotationSpeed = 360.0f;
 
-    /** Widget class for ShowScorecard dialogue event. Assign WBP_Scorecard. Used when dialogue fires "ShowScorecard" event. */
+    /** Widget class for ShowScorecard dialogue event. Assign WBP_Scorecard. The event creates the widget, adds it to the viewport, then calls ShowScorecard on the player to populate data. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Dialogue")
     TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass;
+
+    /**
+     * Optional override for BeginDishScoring dialogue event. If unset, the player character's DishScoringWidgetClass is used.
+     * Use dialogue custom event EndDishScoring (no properties) to call EndDishScoringMode on the player.
+     */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Dialogue")
+    TSubclassOf<UPUDishScoringWidget> DishScoringWidgetClass;
 
     // Emote configuration
 

@@ -21,8 +21,10 @@
 #include "UI/PUEmoteWidget.h"
 #include "UI/PUJournalWidget.h"
 #include "ProjectUmeowmi/UI/PUScorecardWidget.h"
+#include "ProjectUmeowmi/UI/PUDishScoringWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/Widget.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/Texture.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -1542,29 +1544,17 @@ void AProjectUmeowmiCharacter::CaptureDishSnapshotFromPlatingStation(UPUDishCust
 	PendingScorecardDishTexture = DishCaptureRenderTarget;
 	LastDishCaptureTexture = DishCaptureRenderTarget;
 	bStationDishCaptureValidForScorecard = true;
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] Captured plating-station dish snapshot (EndPlatingStage): %d primitives -> PendingScorecardDishTexture"), Prims.Num());
 }
 
-UPUScorecardWidget* AProjectUmeowmiCharacter::InternalShowScorecardWidget(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass, UTexture* OptionalDishTexture)
+void AProjectUmeowmiCharacter::PopulateScorecardWidget(UPUScorecardWidget* ScorecardWidget, UTexture* OptionalDishTexture)
 {
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (!PC)
+	if (!ScorecardWidget)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] InternalShowScorecardWidget aborted: no PlayerController"));
-		return nullptr;
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] PopulateScorecardWidget aborted: ScorecardWidget is null"));
+		return;
 	}
 
-	UPUScorecardWidget* Widget = CreateWidget<UPUScorecardWidget>(PC, ScorecardWidgetClass);
-	if (!Widget)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] InternalShowScorecardWidget aborted: CreateWidget failed"));
-		return nullptr;
-	}
-
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] AddToViewport + ShowFromOrder (Order has %d base ingredients, %d completed ingredients)"), CurrentOrder.BaseDish.IngredientInstances.Num(), CurrentOrder.GetCompletedDish().IngredientInstances.Num());
-	Widget->AddToViewport();
-	Widget->ShowFromOrder(CurrentOrder, OptionalDishTexture);
-	return Widget;
+	ScorecardWidget->ShowFromOrder(CurrentOrder, OptionalDishTexture);
 }
 
 bool AProjectUmeowmiCharacter::RefreshDishCapturePreviewFromDishPreview()
@@ -1639,37 +1629,39 @@ bool AProjectUmeowmiCharacter::RefreshDishCapturePreviewFromDishPreview()
 	return true;
 }
 
-UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(TSubclassOf<UPUScorecardWidget> ScorecardWidgetClass)
+UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(UPUScorecardWidget* ScorecardWidget)
 {
-	UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowScorecard called: bCurrentOrderCompleted=%d, Class=%s"), bCurrentOrderCompleted ? 1 : 0, ScorecardWidgetClass ? *ScorecardWidgetClass->GetName() : TEXT("NULL"));
-	if (!bCurrentOrderCompleted || !ScorecardWidgetClass)
+	if (!bCurrentOrderCompleted || !ScorecardWidget)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: order not completed or class null"));
+		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: order not completed or widget null"));
 		return nullptr;
 	}
 
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (!PC)
+	// Embedded scorecards cannot AddToViewport (already parented); root-level gets scoring-stack Z.
+	if (ScorecardWidget->GetParent())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard aborted: no PlayerController"));
-		return nullptr;
+		// Populate only.
+	}
+	else
+	{
+		ScorecardWidget->AddToViewport(PUScorecardViewportZOrder);
 	}
 
 	if (bEnableDishCaptureForScorecard && PendingScorecardDishTexture)
 	{
-		UE_LOG(LogTemp, Display, TEXT("[Scorecard] Texture source: pending station snapshot (from EndPlatingStage -> CaptureDishSnapshotFromPlatingStation)"));
 		UTexture* DishTex = PendingScorecardDishTexture;
 		PendingScorecardDishTexture = nullptr;
 		LastDishCaptureTexture = DishTex;
-		return InternalShowScorecardWidget(ScorecardWidgetClass, DishTex);
+		PopulateScorecardWidget(ScorecardWidget, DishTex);
+		return ScorecardWidget;
 	}
 
 	// Pending is cleared after the first ShowScorecard; do not re-capture from head preview (different camera + scale).
 	if (bEnableDishCaptureForScorecard && bStationDishCaptureValidForScorecard && DishCaptureRenderTarget)
 	{
-		UE_LOG(LogTemp, Display, TEXT("[Scorecard] Texture source: reusing station RT (bStationDishCaptureValidForScorecard; not re-capturing)"));
 		LastDishCaptureTexture = DishCaptureRenderTarget;
-		return InternalShowScorecardWidget(ScorecardWidgetClass, DishCaptureRenderTarget);
+		PopulateScorecardWidget(ScorecardWidget, DishCaptureRenderTarget);
+		return ScorecardWidget;
 	}
 
 	if (bEnableDishCaptureForScorecard && DishPreviewComponent && DishPreviewComponent->HasPreview() && DishCaptureComponent)
@@ -1677,34 +1669,218 @@ UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(TSubclassOf<UPUScore
 		UE_LOG(LogTemp, Warning, TEXT("[Scorecard] Texture source: FALLBACK — capturing DishPreview (above-head) now; station snapshot was missing or invalid. For plating-station shot, ensure EndPlatingStage ran (exit customization while in plating) and GatherDishSnapshotPrimitives returned prims."));
 		if (!RefreshDishCapturePreviewFromDishPreview())
 		{
-			return InternalShowScorecardWidget(ScorecardWidgetClass, nullptr);
+			PopulateScorecardWidget(ScorecardWidget, nullptr);
+			return ScorecardWidget;
 		}
 
 		TWeakObjectPtr<AProjectUmeowmiCharacter> WeakThis(this);
-		TSubclassOf<UPUScorecardWidget> ScorecardClassCopy = ScorecardWidgetClass;
-		GetWorld()->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis, ScorecardClassCopy]()
+		TWeakObjectPtr<UPUScorecardWidget> WeakWidget(ScorecardWidget);
+		GetWorld()->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis, WeakWidget]()
 		{
-			if (!WeakThis.IsValid())
+			if (!WeakThis.IsValid() || !WeakWidget.IsValid())
 			{
 				return;
 			}
 			AProjectUmeowmiCharacter* Self = WeakThis.Get();
+			UPUScorecardWidget* Widget = WeakWidget.Get();
 			if (Self->DishCaptureRenderTarget)
 			{
 				Self->LastDishCaptureTexture = Self->DishCaptureRenderTarget;
-				Self->InternalShowScorecardWidget(ScorecardClassCopy, Self->DishCaptureRenderTarget);
+				Self->PopulateScorecardWidget(Widget, Self->DishCaptureRenderTarget);
 			}
 			else
 			{
-				Self->InternalShowScorecardWidget(ScorecardClassCopy, nullptr);
+				Self->PopulateScorecardWidget(Widget, nullptr);
 			}
 		}));
 
-		UE_LOG(LogTemp, Display, TEXT("[Scorecard] Dish capture scheduled; scorecard opens next frame (return nullptr this frame)"));
-		return nullptr;
+		return ScorecardWidget;
 	}
 
-	return InternalShowScorecardWidget(ScorecardWidgetClass, nullptr);
+	PopulateScorecardWidget(ScorecardWidget, nullptr);
+	return ScorecardWidget;
+}
+
+void AProjectUmeowmiCharacter::RemoveActiveDishScoringWidgetFromViewport()
+{
+	if (!ActiveDishScoringWidget)
+	{
+		return;
+	}
+	UPUDishScoringWidget* Widget = ActiveDishScoringWidget;
+	ActiveDishScoringWidget = nullptr;
+	Widget->OnExitingDishScoringMode();
+	Widget->SetDishScoringOwnerCharacter(nullptr);
+	if (Widget->IsInViewport())
+	{
+		Widget->RemoveFromParent();
+	}
+}
+
+void AProjectUmeowmiCharacter::SwapToScoringDialogueBox()
+{
+	if (!ScoringDialogueBoxWidgetClass || bUsingScoringDialogueBox)
+	{
+		return;
+	}
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Dialogue] SwapToScoringDialogueBox: no PlayerController"));
+		return;
+	}
+
+	UPUDialogueBox* NewBox = CreateWidget<UPUDialogueBox>(PC, ScoringDialogueBoxWidgetClass);
+	if (!NewBox)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Dialogue] SwapToScoringDialogueBox: CreateWidget failed for %s"),
+			*ScoringDialogueBoxWidgetClass->GetName());
+		return;
+	}
+
+	if (DialogueBox)
+	{
+		CachedNonScoringDialogueBoxClass = DialogueBox->GetClass();
+		DialogueBox->RemoveFromParent();
+	}
+	else if (DefaultDialogueBoxWidgetClass)
+	{
+		CachedNonScoringDialogueBoxClass = DefaultDialogueBoxWidgetClass;
+	}
+	else
+	{
+		CachedNonScoringDialogueBoxClass = nullptr;
+	}
+
+	DialogueBox = NewBox;
+	bUsingScoringDialogueBox = true;
+
+	// NativeConstruct sets Hidden and AddToViewport at Z=0; dish scoring sits above this layer (PUScoringSceneViewportZOrder).
+	NewBox->SetVisibility(ESlateVisibility::Visible);
+	NewBox->AddToViewport(PUScoringDialogueViewportZOrder);
+}
+
+void AProjectUmeowmiCharacter::RestoreNonScoringDialogueBox()
+{
+	if (!bUsingScoringDialogueBox)
+	{
+		return;
+	}
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Dialogue] RestoreNonScoringDialogueBox: no PlayerController"));
+		bUsingScoringDialogueBox = false;
+		CachedNonScoringDialogueBoxClass = nullptr;
+		return;
+	}
+
+	TSubclassOf<UPUDialogueBox> RestoreClass = CachedNonScoringDialogueBoxClass ? CachedNonScoringDialogueBoxClass : DefaultDialogueBoxWidgetClass;
+	if (!RestoreClass)
+	{
+		if (DialogueBox)
+		{
+			DialogueBox->RemoveFromParent();
+			DialogueBox = nullptr;
+		}
+		bUsingScoringDialogueBox = false;
+		CachedNonScoringDialogueBoxClass = nullptr;
+		UE_LOG(LogTemp, Warning, TEXT("[Dialogue] RestoreNonScoringDialogueBox: no class to restore (set DefaultDialogueBoxWidgetClass or assign DialogueBox before scoring)"));
+		return;
+	}
+
+	UPUDialogueBox* NewBox = CreateWidget<UPUDialogueBox>(PC, RestoreClass);
+	if (!NewBox)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Dialogue] RestoreNonScoringDialogueBox: CreateWidget failed for %s"), *RestoreClass->GetName());
+		return;
+	}
+
+	if (DialogueBox)
+	{
+		DialogueBox->RemoveFromParent();
+	}
+	DialogueBox = NewBox;
+	bUsingScoringDialogueBox = false;
+	CachedNonScoringDialogueBoxClass = nullptr;
+}
+
+void AProjectUmeowmiCharacter::BeginDishScoringModeFromClass()
+{
+	(void)TryBeginDishScoringModeFromClass();
+}
+
+bool AProjectUmeowmiCharacter::TryBeginDishScoringModeFromClass()
+{
+	if (!DishScoringWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[DishScoring] TryBeginDishScoringModeFromClass: DishScoringWidgetClass not set on %s"), *GetName());
+		return false;
+	}
+	APlayerController* PC = Cast<APlayerController>(GetController());
+	if (!PC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[DishScoring] TryBeginDishScoringModeFromClass: no PlayerController"));
+		return false;
+	}
+	UPUDishScoringWidget* Widget = CreateWidget<UPUDishScoringWidget>(PC, DishScoringWidgetClass);
+	if (!Widget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[DishScoring] TryBeginDishScoringModeFromClass: CreateWidget failed for class %s"),
+			*DishScoringWidgetClass->GetName());
+		return false;
+	}
+	return BeginDishScoringModeWithWidget(Widget);
+}
+
+bool AProjectUmeowmiCharacter::BeginDishScoringModeWithWidget(UPUDishScoringWidget* DishScoringWidget)
+{
+	if (!DishScoringWidget)
+	{
+		return false;
+	}
+
+	if (ActiveDishScoringWidget != nullptr && ActiveDishScoringWidget != DishScoringWidget)
+	{
+		RemoveActiveDishScoringWidgetFromViewport();
+	}
+	else if (ActiveDishScoringWidget == DishScoringWidget)
+	{
+		DishScoringWidget->AddToViewport(PUScoringSceneViewportZOrder);
+		// Front layer: pass pointer through empty areas to dialogue/scorecard below (interactive children still hit-test).
+		DishScoringWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		return true;
+	}
+
+	if (!bUsingScoringDialogueBox)
+	{
+		SwapToScoringDialogueBox();
+	}
+
+	ActiveDishScoringWidget = DishScoringWidget;
+	DishScoringWidget->SetDishScoringOwnerCharacter(this);
+	DishScoringWidget->AddToViewport(PUScoringSceneViewportZOrder);
+	DishScoringWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	DishScoringWidget->OnEnteredDishScoringMode();
+	return true;
+}
+
+void AProjectUmeowmiCharacter::EndDishScoringMode()
+{
+	const bool bHadActiveScoringWidget = (ActiveDishScoringWidget != nullptr);
+	if (bHadActiveScoringWidget)
+	{
+		RemoveActiveDishScoringWidgetFromViewport();
+	}
+	if (bHadActiveScoringWidget)
+	{
+		RestoreNonScoringDialogueBox();
+	}
+}
+
+bool AProjectUmeowmiCharacter::IsInDishScoringMode() const
+{
+	return ActiveDishScoringWidget != nullptr;
 }
 
 void AProjectUmeowmiCharacter::OnOrderFailed()

@@ -1,6 +1,8 @@
 #include "TalkingObject.h"
 #include "ProjectUmeowmi/UI/PUScorecardWidget.h"
+#include "ProjectUmeowmi/UI/PUDishScoringWidget.h"
 
+#include "Blueprint/UserWidget.h"
 #include "ActorSequenceComponent.h"
 #include "ActorSequencePlayer.h"
 #include "Camera/CameraComponent.h"
@@ -332,11 +334,82 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
         }
         if (PlayerChar)
         {
-            UE_LOG(LogTemp, Display, TEXT("[Scorecard] ShowScorecard event -> Calling PlayerChar->ShowScorecard (OrderCompleted=%d)"), PlayerChar->IsCurrentOrderCompleted() ? 1 : 0);
-            PlayerChar->ShowScorecard(ScorecardWidgetClass);
+            APlayerController* PC = Cast<APlayerController>(PlayerChar->GetController());
+            if (!PC)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard event -> no PlayerController"));
+                return false;
+            }
+            UPUScorecardWidget* ScorecardWidget = CreateWidget<UPUScorecardWidget>(PC, ScorecardWidgetClass);
+            if (!ScorecardWidget)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard event -> CreateWidget failed"));
+                return false;
+            }
+            ScorecardWidget->AddToViewport(PUScorecardViewportZOrder);
+            PlayerChar->ShowScorecard(ScorecardWidget);
             return true;
         }
         UE_LOG(LogTemp, Warning, TEXT("[Scorecard] ShowScorecard event -> PlayerChar not found"));
+        return false;
+    }
+
+    if (EventName == TEXT("EndDishScoring"))
+    {
+        AProjectUmeowmiCharacter* PlayerChar = nullptr;
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+            }
+        }
+        if (!PlayerChar)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[DishScoring] EndDishScoring event -> PlayerChar not found"));
+            return false;
+        }
+        PlayerChar->EndDishScoringMode();
+        return true;
+    }
+
+    if (EventName == TEXT("BeginDishScoring"))
+    {
+        AProjectUmeowmiCharacter* PlayerChar = nullptr;
+        if (UWorld* World = GetWorld())
+        {
+            if (APlayerController* PC = World->GetFirstPlayerController())
+            {
+                PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
+            }
+        }
+        if (!PlayerChar)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[DishScoring] BeginDishScoring event -> PlayerChar not found"));
+            return false;
+        }
+        if (DishScoringWidgetClass)
+        {
+            APlayerController* PC = Cast<APlayerController>(PlayerChar->GetController());
+            if (!PC)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[DishScoring] BeginDishScoring event -> no PlayerController"));
+                return false;
+            }
+            UPUDishScoringWidget* ScoringWidget = CreateWidget<UPUDishScoringWidget>(PC, DishScoringWidgetClass);
+            if (!ScoringWidget)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[DishScoring] BeginDishScoring event -> CreateWidget failed"));
+                return false;
+            }
+            return PlayerChar->BeginDishScoringModeWithWidget(ScoringWidget);
+        }
+        if (PlayerChar->DishScoringWidgetClass)
+        {
+            return PlayerChar->TryBeginDishScoringModeFromClass();
+        }
+        UE_LOG(LogTemp, Warning, TEXT("[DishScoring] BeginDishScoring: set DishScoringWidgetClass on player character %s or override on %s"),
+            PlayerChar ? *PlayerChar->GetName() : TEXT("?"), *GetName());
         return false;
     }
     
