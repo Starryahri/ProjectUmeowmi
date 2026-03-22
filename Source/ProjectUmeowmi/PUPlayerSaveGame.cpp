@@ -2,6 +2,6 @@
 
 UPUPlayerSaveGame::UPUPlayerSaveGame()
 {
-	SaveVersion = 1;
+	SaveVersion = 2;
 }
 

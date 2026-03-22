@@ -45,6 +45,11 @@ void UPUProjectUmeowmiGameInstance::Init()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UPUProjectUmeowmiGameInstance::Init - bAlwaysStartNewGame is enabled, creating new game (ignoring existing save)"));
 		CreateNewGame();
+		if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+		{
+			Q->EnsureQuestRootTagDefault();
+			Q->BroadcastQuestObjectiveChanged();
+		}
 		return;
 	}
 	
@@ -52,6 +57,12 @@ void UPUProjectUmeowmiGameInstance::Init()
 	if (!LoadGame())
 	{
 		CreateNewGame();
+	}
+
+	if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+	{
+		Q->EnsureQuestRootTagDefault();
+		Q->BroadcastQuestObjectiveChanged();
 	}
 }
 
@@ -560,6 +571,12 @@ bool UPUProjectUmeowmiGameInstance::SaveGame(const FString& SlotName)
 	PlayerSaveGame->bTutorialCompleted = bTutorialCompleted;
 	PlayerSaveGame->TutorialStep = TutorialStep;
 
+	if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+	{
+		Q->ExportToSave(PlayerSaveGame);
+	}
+	PlayerSaveGame->SaveVersion = 2;
+
 	// Save to disk
 	if (UGameplayStatics::SaveGameToSlot(PlayerSaveGame, SlotName, 0))
 	{
@@ -607,6 +624,15 @@ bool UPUProjectUmeowmiGameInstance::LoadGame(const FString& SlotName)
 	bTutorialCompleted = PlayerSaveGame->bTutorialCompleted;
 	TutorialStep = PlayerSaveGame->TutorialStep;
 
+	if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+	{
+		Q->ImportFromSave(PlayerSaveGame);
+		if (Q->MigrateQuestSaveIfNeeded(PlayerSaveGame))
+		{
+			SaveGame();
+		}
+	}
+
 	// Migration: old saves may not have UnlockedDishTags; initialize from StartingDishTags if empty
 	if (UnlockedDishTags.Num() == 0 && StartingDishTags.Num() > 0)
 	{
@@ -646,6 +672,11 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 	UnlockedLevelTransitionIDs.Empty();
 	bTutorialCompleted = false;
 	TutorialStep = 0;
+
+	if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+	{
+		Q->ResetQuestStateForNewGame();
+	}
 	
 	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Cleared all unlocked ingredients and dishes"));
 
@@ -671,7 +702,11 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 		PlayerSaveGame->DialogueSkipModeCharacterDelay = DialogueSkipModeCharacterDelay;
 		PlayerSaveGame->bTutorialCompleted = false;
 		PlayerSaveGame->TutorialStep = 0;
-		PlayerSaveGame->SaveVersion = 1;
+		if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+		{
+			Q->ExportToSave(PlayerSaveGame);
+		}
+		PlayerSaveGame->SaveVersion = 2;
 
 		UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Save game object created"));
 	}
@@ -1190,5 +1225,131 @@ void UPUProjectUmeowmiGameInstance::HandlePostLoadMap(UWorld* LoadedWorld)
 		FTimerHandle LevelLoadedTimerHandle;
 		LoadedWorld->GetTimerManager().SetTimer(LevelLoadedTimerHandle, this, &UPUProjectUmeowmiGameInstance::OnLevelLoaded, 0.1f, false);
 	}
+}
+
+// --- Quest (forwards to UPUQuestSubsystem) ---
+FGameplayTag UPUProjectUmeowmiGameInstance::GetQuestRootTag() const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->QuestRootTag : FGameplayTag();
+}
+
+void UPUProjectUmeowmiGameInstance::SetQuestRootTag(const FGameplayTag& Tag)
+{
+	if (UPUQuestSubsystem* Q = GetQuestSubsystem())
+	{
+		Q->QuestRootTag = Tag;
+	}
+}
+
+bool UPUProjectUmeowmiGameInstance::StartQuest(const FGameplayTag& QuestTag, const FGameplayTag& FirstObjectiveTag, bool bSave)
+{
+	return GetQuestSubsystem() ? GetQuestSubsystem()->StartQuest(QuestTag, FirstObjectiveTag, bSave) : false;
+}
+
+void UPUProjectUmeowmiGameInstance::SetActiveObjective(const FGameplayTag& ObjectiveTag, bool bSave)
+{
+	if (UPUQuestSubsystem* Q = GetQuestSubsystem())
+	{
+		Q->SetActiveObjective(ObjectiveTag, bSave);
+	}
+}
+
+bool UPUProjectUmeowmiGameInstance::CompleteObjective(const FGameplayTag& ObjectiveTag, bool bSave)
+{
+	return GetQuestSubsystem() ? GetQuestSubsystem()->CompleteObjective(ObjectiveTag, bSave) : false;
+}
+
+bool UPUProjectUmeowmiGameInstance::CompleteQuest(const FGameplayTag& QuestTag, bool bSave)
+{
+	return GetQuestSubsystem() ? GetQuestSubsystem()->CompleteQuest(QuestTag, bSave) : false;
+}
+
+bool UPUProjectUmeowmiGameInstance::IsObjectiveCompleted(const FGameplayTag& ObjectiveTag) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q && Q->IsObjectiveCompleted(ObjectiveTag);
+}
+
+bool UPUProjectUmeowmiGameInstance::IsQuestCompleted(const FGameplayTag& QuestTag) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q && Q->IsQuestCompleted(QuestTag);
+}
+
+bool UPUProjectUmeowmiGameInstance::IsObjectiveActive(const FGameplayTag& ObjectiveTag) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q && Q->IsObjectiveActive(ObjectiveTag);
+}
+
+bool UPUProjectUmeowmiGameInstance::IsQuestActive(const FGameplayTag& QuestTag) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q && Q->IsQuestActive(QuestTag);
+}
+
+FGameplayTag UPUProjectUmeowmiGameInstance::GetActiveQuestTag() const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetActiveQuestTag() : FGameplayTag();
+}
+
+FGameplayTag UPUProjectUmeowmiGameInstance::GetActiveObjectiveTag() const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetActiveObjectiveTag() : FGameplayTag();
+}
+
+TSet<FGameplayTag> UPUProjectUmeowmiGameInstance::GetCompletedObjectiveTags() const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetCompletedObjectiveTags() : TSet<FGameplayTag>();
+}
+
+TSet<FGameplayTag> UPUProjectUmeowmiGameInstance::GetCompletedQuestTags() const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetCompletedQuestTags() : TSet<FGameplayTag>();
+}
+
+void UPUProjectUmeowmiGameInstance::AddObjectiveProgress(const FGameplayTag& ObjectiveTag, int32 Delta, bool bSave)
+{
+	if (UPUQuestSubsystem* Q = GetQuestSubsystem())
+	{
+		Q->AddObjectiveProgress(ObjectiveTag, Delta, bSave);
+	}
+}
+
+int32 UPUProjectUmeowmiGameInstance::GetObjectiveProgress(const FGameplayTag& ObjectiveTag) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetObjectiveProgress(ObjectiveTag) : 0;
+}
+
+void UPUProjectUmeowmiGameInstance::ClearActiveQuestState(bool bSave)
+{
+	if (UPUQuestSubsystem* Q = GetQuestSubsystem())
+	{
+		Q->ClearActiveQuestState(bSave);
+	}
+}
+
+bool UPUProjectUmeowmiGameInstance::GetObjectiveDisplayInfo(const FGameplayTag& ObjectiveTag, FPUQuestObjectiveDisplayInfo& OutInfo) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetObjectiveDisplayInfo(ObjectiveTag, OutInfo) : false;
+}
+
+bool UPUProjectUmeowmiGameInstance::GetActiveObjectiveDisplayInfo(FPUQuestObjectiveDisplayInfo& OutInfo) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetActiveObjectiveDisplayInfo(OutInfo) : false;
+}
+
+bool UPUProjectUmeowmiGameInstance::GetQuestDisplayInfo(const FGameplayTag& QuestTag, FText& OutQuestTitle, FText& OutFirstObjectiveTitle) const
+{
+	const UPUQuestSubsystem* Q = GetQuestSubsystem();
+	return Q ? Q->GetQuestDisplayInfo(QuestTag, OutQuestTitle, OutFirstObjectiveTitle) : false;
 }
 

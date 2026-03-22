@@ -17,6 +17,7 @@ class UDlgDialogue;
 class UDlgContext;
 class UDataTable;
 class UPUEmoteWidget;
+class UUserWidget;
 struct FTimerHandle;
 
 // Delegate for when a player enters the interaction sphere
@@ -309,11 +310,43 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
     UDataTable* EmoteDataTable = nullptr;
 
+    /** World/screen widget shown when QuestObjectiveTag matches the active objective on the Game Instance. */
+    UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
+    UWidgetComponent* QuestMarkerWidget = nullptr;
+
+    /** When true and QuestObjectiveTag is set, toggles quest marker visibility from quest state. */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Quest")
+    bool bEnableQuestMarker = true;
+
+    /** Objective tag this actor represents (must match an active objective to show the marker). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Quest", meta = (EditCondition = "bEnableQuestMarker", Categories = "Quest"))
+    FGameplayTag QuestObjectiveTag;
+
+    /** Widget class for the overhead quest marker (e.g. icon). */
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Quest", meta = (EditCondition = "bEnableQuestMarker"))
+    TSubclassOf<UUserWidget> QuestMarkerWidgetClass;
+
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Quest", meta = (EditCondition = "bEnableQuestMarker"))
+    EWidgetSpace QuestMarkerWidgetSpace = EWidgetSpace::Screen;
+
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Quest", meta = (EditCondition = "bEnableQuestMarker"))
+    FVector QuestMarkerRelativeLocation = FVector(0.f, 0.f, 140.f);
+
+    UPROPERTY(EditAnywhere, Category = "Talking Object|Quest", meta = (EditCondition = "bEnableQuestMarker"))
+    FVector2D QuestMarkerDrawSize = FVector2D(64.f, 64.f);
+
+    /** Refresh quest marker visibility from the Game Instance (also called when quest state changes). */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Quest")
+    void RefreshQuestMarkerFromGameInstance();
+
     // Dialogue context
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
     
 protected:
+    UFUNCTION()
+    void OnQuestObjectiveChangedHandler(FGameplayTag QuestTag, FGameplayTag ObjectiveTag);
+
     // Protected helper for derived classes to check if player is in range
     bool IsPlayerInRange() const;
 

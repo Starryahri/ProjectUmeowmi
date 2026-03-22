@@ -6,6 +6,7 @@
 #include "DishCustomization/PUDishBase.h"
 #include "GameplayTagContainer.h"
 #include "UI/PUPopupData.h"
+#include "ProjectUmeowmi/Quest/PUQuestSubsystem.h"
 #include "PUProjectUmeowmiGameInstance.generated.h"
 
 class AProjectUmeowmiCharacter;
@@ -335,6 +336,74 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
 	TSet<FName> GetUnlockedLevelTransitions() const { return UnlockedLevelTransitionIDs; }
+
+	// --- Quest / objectives (state lives in UPUQuestSubsystem; these forward for Blueprint convenience) ---
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	UPUQuestSubsystem* GetQuestSubsystem() const { return GetSubsystem<UPUQuestSubsystem>(); }
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	FGameplayTag GetQuestRootTag() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Quest")
+	void SetQuestRootTag(const FGameplayTag& Tag);
+
+	UFUNCTION(BlueprintCallable, Category = "Quest")
+	bool StartQuest(const FGameplayTag& QuestTag, const FGameplayTag& FirstObjectiveTag, bool bSave = true);
+
+	UFUNCTION(BlueprintCallable, Category = "Quest")
+	void SetActiveObjective(const FGameplayTag& ObjectiveTag, bool bSave = true);
+
+	UFUNCTION(BlueprintCallable, Category = "Quest")
+	bool CompleteObjective(const FGameplayTag& ObjectiveTag, bool bSave = true);
+
+	UFUNCTION(BlueprintCallable, Category = "Quest")
+	bool CompleteQuest(const FGameplayTag& QuestTag, bool bSave = true);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	bool IsObjectiveCompleted(const FGameplayTag& ObjectiveTag) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	bool IsQuestCompleted(const FGameplayTag& QuestTag) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	bool IsObjectiveActive(const FGameplayTag& ObjectiveTag) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	bool IsQuestActive(const FGameplayTag& QuestTag) const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	FGameplayTag GetActiveQuestTag() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	FGameplayTag GetActiveObjectiveTag() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	TSet<FGameplayTag> GetCompletedObjectiveTags() const;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	TSet<FGameplayTag> GetCompletedQuestTags() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Quest")
+	void AddObjectiveProgress(const FGameplayTag& ObjectiveTag, int32 Delta, bool bSave = true);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Quest")
+	int32 GetObjectiveProgress(const FGameplayTag& ObjectiveTag) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Quest")
+	void ClearActiveQuestState(bool bSave = true);
+
+	/** Authoring: titles, descriptions, icons for objectives. Row names should match objective gameplay tags (e.g. Quest.Sample.Talk). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest|Content")
+	TObjectPtr<class UDataTable> QuestObjectiveContentTable;
+
+	UFUNCTION(BlueprintCallable, Category = "Quest|Content")
+	bool GetObjectiveDisplayInfo(const FGameplayTag& ObjectiveTag, FPUQuestObjectiveDisplayInfo& OutInfo) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Quest|Content")
+	bool GetActiveObjectiveDisplayInfo(FPUQuestObjectiveDisplayInfo& OutInfo) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Quest|Content")
+	bool GetQuestDisplayInfo(const FGameplayTag& QuestTag, FText& OutQuestTitle, FText& OutFirstObjectiveTitle) const;
 
 	// Popup Manager System
 	// Delegate for popup button callbacks (declared before use)

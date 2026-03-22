@@ -11,7 +11,9 @@
 #include "DlgSystem/DlgContext.h"
 #include "DlgSystem/DlgDialogue.h"
 #include "DlgSystem/DlgManager.h"
+#include "GameplayTagsManager.h"
 #include "Engine/DataTable.h"
+#include "Engine/GameInstance.h"
 #include "Engine/Engine.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
@@ -19,6 +21,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
 #include "ProjectUmeowmi/PUProjectUmeowmiGameInstance.h"
+#include "ProjectUmeowmi/Quest/PUQuestSubsystem.h"
 #include "ProjectUmeowmi/UI/PUDialogueBox.h"
 #include "ProjectUmeowmi/UI/PUEmoteData.h"
 #include "ProjectUmeowmi/UI/PUEmoteWidget.h"
@@ -52,6 +55,12 @@ ATalkingObject::ATalkingObject()
     EmoteWidget->SetupAttachment(RootComponent);
     EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
     EmoteWidget->SetVisibility(false);
+
+    QuestMarkerWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("QuestMarkerWidget"));
+    QuestMarkerWidget->SetupAttachment(RootComponent);
+    QuestMarkerWidget->SetWidgetSpace(QuestMarkerWidgetSpace);
+    QuestMarkerWidget->SetVisibility(false);
+    QuestMarkerWidget->SetDrawAtDesiredSize(true);
 }
 
 void ATalkingObject::PostInitializeComponents()
@@ -112,6 +121,29 @@ void ATalkingObject::BeginPlay()
         EmoteWidget->SetWidgetSpace(EmoteWidgetSpace);
         EmoteWidget->SetDrawAtDesiredSize(false);
     }
+
+    if (QuestMarkerWidget)
+    {
+        QuestMarkerWidget->SetRelativeLocation(QuestMarkerRelativeLocation);
+        QuestMarkerWidget->SetDrawSize(QuestMarkerDrawSize);
+        QuestMarkerWidget->SetWidgetSpace(QuestMarkerWidgetSpace);
+        if (QuestMarkerWidgetClass)
+        {
+            QuestMarkerWidget->SetWidgetClass(QuestMarkerWidgetClass);
+        }
+    }
+
+    if (bEnableQuestMarker)
+    {
+        if (UGameInstance* GI = GetGameInstance())
+        {
+            if (UPUQuestSubsystem* Quest = GI->GetSubsystem<UPUQuestSubsystem>())
+            {
+                Quest->OnQuestObjectiveChanged.AddDynamic(this, &ATalkingObject::OnQuestObjectiveChangedHandler);
+            }
+        }
+    }
+    RefreshQuestMarkerFromGameInstance();
 
     // Cache base DrawSize for ortho scaling (used when bScaleWidgetWithOrthoZoom is true)
     if (InteractionWidget)
@@ -227,11 +259,23 @@ void ATalkingObject::TickFacePlayerLerp(float DeltaTime)
 
 bool ATalkingObject::CheckCondition_Implementation(const UDlgContext* Context, FName ConditionName) const
 {
-    UE_LOG(LogTemp, Display, TEXT("=== TalkingObject::CheckCondition CALLED ==="));
-    UE_LOG(LogTemp, Display, TEXT("Condition Name: %s"), *ConditionName.ToString());
-    UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
-    UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
-    UE_LOG(LogTemp, Display, TEXT("TalkingObject::CheckCondition - Returning FALSE (default behavior)"));
+    const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(ConditionName, false);
+    if (Tag.IsValid())
+    {
+        if (const UWorld* World = GetWorld())
+        {
+            if (const UGameInstance* GI = World->GetGameInstance())
+            {
+                if (const UPUQuestSubsystem* Quest = GI->GetSubsystem<UPUQuestSubsystem>())
+                {
+                    if (Quest->QuestRootTag.IsValid() && Tag.MatchesTag(Quest->QuestRootTag))
+                    {
+                        return Quest->IsObjectiveCompleted(Tag);
+                    }
+                }
+            }
+        }
+    }
     return false;
 }
 
@@ -247,6 +291,23 @@ int32 ATalkingObject::GetIntValue_Implementation(FName ValueName) const
 
 bool ATalkingObject::GetBoolValue_Implementation(FName ValueName) const
 {
+    const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(ValueName, false);
+    if (Tag.IsValid())
+    {
+        if (const UWorld* World = GetWorld())
+        {
+            if (const UGameInstance* GI = World->GetGameInstance())
+            {
+                if (const UPUQuestSubsystem* Quest = GI->GetSubsystem<UPUQuestSubsystem>())
+                {
+                    if (Quest->QuestRootTag.IsValid() && Tag.MatchesTag(Quest->QuestRootTag))
+                    {
+                        return Quest->IsObjectiveActive(Tag);
+                    }
+                }
+            }
+        }
+    }
     return false;
 }
 
@@ -261,6 +322,22 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
     UE_LOG(LogTemp, Display, TEXT("Event Name: %s"), *EventName.ToString());
     UE_LOG(LogTemp, Display, TEXT("Context: %s"), Context ? TEXT("VALID") : TEXT("NULL"));
     UE_LOG(LogTemp, Display, TEXT("This Object: %s"), *GetName());
+
+    const FGameplayTag EventTag = UGameplayTagsManager::Get().RequestGameplayTag(EventName, false);
+    if (EventTag.IsValid())
+    {
+        if (UGameInstance* GI = GetGameInstance())
+        {
+            if (UPUQuestSubsystem* Quest = GI->GetSubsystem<UPUQuestSubsystem>())
+            {
+                if (Quest->QuestRootTag.IsValid() && EventTag.MatchesTag(Quest->QuestRootTag))
+                {
+                    Quest->CompleteObjective(EventTag);
+                    return true;
+                }
+            }
+        }
+    }
 
     // Handle generic unlock events using ParticipantName as the LockID in the GameInstance.
     // This allows doors (and other talking objects) to participate in the global lock system.
@@ -1320,6 +1397,14 @@ void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
     bIsLerpingToFacePlayer = false;
     bIsLerpingBackToOriginal = false;
 
+    if (UGameInstance* GI = GetGameInstance())
+    {
+        if (UPUQuestSubsystem* Quest = GI->GetSubsystem<UPUQuestSubsystem>())
+        {
+            Quest->OnQuestObjectiveChanged.RemoveDynamic(this, &ATalkingObject::OnQuestObjectiveChangedHandler);
+        }
+    }
+
     // Clear dialogue context to prevent dangling references
     if (CurrentDialogueContext)
     {
@@ -1351,4 +1436,37 @@ void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
     }
     
     Super::EndPlay(EndPlayReason);
-} 
+}
+
+void ATalkingObject::OnQuestObjectiveChangedHandler(FGameplayTag QuestTag, FGameplayTag ObjectiveTag)
+{
+    RefreshQuestMarkerFromGameInstance();
+}
+
+void ATalkingObject::RefreshQuestMarkerFromGameInstance()
+{
+    if (!QuestMarkerWidget)
+    {
+        return;
+    }
+    if (!bEnableQuestMarker || !QuestObjectiveTag.IsValid())
+    {
+        QuestMarkerWidget->SetVisibility(false);
+        return;
+    }
+
+    UGameInstance* GI = GetGameInstance();
+    if (!GI)
+    {
+        QuestMarkerWidget->SetVisibility(false);
+        return;
+    }
+    UPUQuestSubsystem* Quest = GI->GetSubsystem<UPUQuestSubsystem>();
+    if (!Quest)
+    {
+        QuestMarkerWidget->SetVisibility(false);
+        return;
+    }
+
+    QuestMarkerWidget->SetVisibility(Quest->IsObjectiveActive(QuestObjectiveTag));
+}

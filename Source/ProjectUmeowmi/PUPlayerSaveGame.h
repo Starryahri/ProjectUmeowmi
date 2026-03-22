@@ -61,8 +61,29 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
 	int32 TutorialStep = 0;
 
+	// --- Quest system (SaveVersion >= 2) ---
+	/** Objectives that have been completed at least once. */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data|Quest")
+	TSet<FGameplayTag> CompletedQuestObjectiveTags;
+
+	/** Quests marked fully complete. */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data|Quest")
+	TSet<FGameplayTag> CompletedQuestTags;
+
+	/** Currently tracked quest (invalid if none). */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data|Quest")
+	FGameplayTag ActiveQuestTag;
+
+	/** Current objective the player should pursue (invalid if none). */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data|Quest")
+	FGameplayTag ActiveObjectiveTag;
+
+	/** Optional per-objective counters (e.g. 3/5 interactions). */
+	UPROPERTY(VisibleAnywhere, Category = "Save Data|Quest")
+	TMap<FGameplayTag, int32> ObjectiveProgressCounters;
+
 	// Save version for future migration support
 	UPROPERTY(VisibleAnywhere, Category = "Save Data")
-	int32 SaveVersion = 1;
+	int32 SaveVersion = 2;
 };
 
