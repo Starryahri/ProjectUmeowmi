@@ -396,6 +396,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest|Content")
 	TObjectPtr<class UDataTable> QuestObjectiveContentTable;
 
+	/** When true, CreateNewGame sets active quest/objective from InitialQuestTag / InitialObjectiveTag (after quest reset). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest|New Game")
+	bool bAutoStartInitialQuestOnNewGame = true;
+
+	/** Quest tag applied when starting a new game (requires valid InitialObjectiveTag if bAutoStartInitialQuestOnNewGame). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest|New Game", meta = (Categories = "Quest"))
+	FGameplayTag InitialQuestTag;
+
+	/** First objective tag when starting a new game. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quest|New Game", meta = (Categories = "Quest"))
+	FGameplayTag InitialObjectiveTag;
+
 	UFUNCTION(BlueprintCallable, Category = "Quest|Content")
 	bool GetObjectiveDisplayInfo(const FGameplayTag& ObjectiveTag, FPUQuestObjectiveDisplayInfo& OutInfo) const;
 

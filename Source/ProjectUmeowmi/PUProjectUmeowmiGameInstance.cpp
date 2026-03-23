@@ -692,6 +692,14 @@ void UPUProjectUmeowmiGameInstance::CreateNewGame(bool bClearSaveFile)
 	UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::CreateNewGame - Created new game with %d starting ingredients, %d starting dishes"), 
 		StartingIngredientTags.Num(), StartingDishTags.Num());
 
+	if (bAutoStartInitialQuestOnNewGame && InitialQuestTag.IsValid() && InitialObjectiveTag.IsValid())
+	{
+		if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+		{
+			Q->StartQuest(InitialQuestTag, InitialObjectiveTag, false);
+		}
+	}
+
 	// Create a new save game object
 	PlayerSaveGame = Cast<UPUPlayerSaveGame>(UGameplayStatics::CreateSaveGameObject(UPUPlayerSaveGame::StaticClass()));
 	if (PlayerSaveGame)
