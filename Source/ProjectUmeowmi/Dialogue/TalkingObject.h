@@ -17,6 +17,7 @@ class UDlgDialogue;
 class UDlgContext;
 class UDataTable;
 class UPUEmoteWidget;
+class UPUQuestObjectiveOffscreenIndicatorWidget;
 class UUserWidget;
 struct FTimerHandle;
 
@@ -351,6 +352,8 @@ protected:
     bool IsPlayerInRange() const;
 
 private:
+    friend class UPUQuestObjectiveOffscreenIndicatorWidget;
+
     // Internal state
     bool bIsInteracting = false;
 

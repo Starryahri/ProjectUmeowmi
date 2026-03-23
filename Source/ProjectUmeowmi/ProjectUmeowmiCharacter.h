@@ -28,6 +28,7 @@ class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
 class UPUJournalWidget;
+class UPUQuestObjectiveOffscreenIndicatorWidget;
 class USceneCaptureComponent2D;
 class UTextureRenderTarget2D;
 
@@ -270,6 +271,17 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Emote", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableEmotes"))
 	UDataTable* EmoteDataTable = nullptr;
 
+	/** When true, spawns a full-screen overlay that draws the active objective icon at the viewport edge when the target is off-screen. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Quest|Markers", meta = (AllowPrivateAccess = "true"))
+	bool bEnableQuestObjectiveOffscreenIndicator = true;
+
+	/** Optional subclass to style the edge marker (defaults to C++ built-in root + image). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Quest|Markers", meta = (AllowPrivateAccess = "true", EditCondition = "bEnableQuestObjectiveOffscreenIndicator"))
+	TSubclassOf<UPUQuestObjectiveOffscreenIndicatorWidget> QuestObjectiveOffscreenIndicatorClass;
+
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Quest|Markers", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UPUQuestObjectiveOffscreenIndicatorWidget> QuestObjectiveOffscreenIndicator = nullptr;
+
 
 	////////////////////////////////////////////////////////////
 	// Dish Preview (above head when carrying a dish)
@@ -469,6 +481,9 @@ protected:
 	virtual void BeginPlay() override;
 	
 	virtual void NotifyControllerChanged() override;
+
+	/** Spawns the quest objective screen-edge indicator when enabled and a player controller exists. */
+	void TryCreateQuestObjectiveOffscreenIndicator();
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 

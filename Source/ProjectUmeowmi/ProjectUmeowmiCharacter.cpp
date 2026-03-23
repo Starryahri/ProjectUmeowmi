@@ -20,6 +20,7 @@
 #include "UI/PUEmoteData.h"
 #include "UI/PUEmoteWidget.h"
 #include "UI/PUJournalWidget.h"
+#include "UI/PUQuestObjectiveOffscreenIndicatorWidget.h"
 #include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "ProjectUmeowmi/UI/PUDishScoringWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
@@ -266,7 +267,27 @@ void AProjectUmeowmiCharacter::BeginPlay()
 		EmoteWidget->SetDrawAtDesiredSize(false);
 	}
 
+	TryCreateQuestObjectiveOffscreenIndicator();
+
 	//UE_LOG(LogTemp,Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
+}
+
+void AProjectUmeowmiCharacter::TryCreateQuestObjectiveOffscreenIndicator()
+{
+	if (!bEnableQuestObjectiveOffscreenIndicator || QuestObjectiveOffscreenIndicator)
+	{
+		return;
+	}
+	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	{
+		const TSubclassOf<UPUQuestObjectiveOffscreenIndicatorWidget> WidgetClass =
+			QuestObjectiveOffscreenIndicatorClass ? QuestObjectiveOffscreenIndicatorClass.Get() : UPUQuestObjectiveOffscreenIndicatorWidget::StaticClass();
+		QuestObjectiveOffscreenIndicator = CreateWidget<UPUQuestObjectiveOffscreenIndicatorWidget>(PC, WidgetClass);
+		if (QuestObjectiveOffscreenIndicator)
+		{
+			QuestObjectiveOffscreenIndicator->AddToViewport(25);
+		}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -275,6 +296,8 @@ void AProjectUmeowmiCharacter::BeginPlay()
 void AProjectUmeowmiCharacter::NotifyControllerChanged()
 {
 	Super::NotifyControllerChanged();
+
+	TryCreateQuestObjectiveOffscreenIndicator();
 
 	// Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
@@ -2020,6 +2043,12 @@ void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	{
 		World->GetTimerManager().ClearTimer(EmoteHideTimerHandle);
 		World->GetTimerManager().ClearTimer(EmoteFadeOutTimerHandle);
+	}
+
+	if (QuestObjectiveOffscreenIndicator)
+	{
+		QuestObjectiveOffscreenIndicator->RemoveFromParent();
+		QuestObjectiveOffscreenIndicator = nullptr;
 	}
 	
 	Super::EndPlay(EndPlayReason);

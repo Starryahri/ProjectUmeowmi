@@ -7,6 +7,7 @@
 #include "PUQuestSubsystem.generated.h"
 
 class UPUPlayerSaveGame;
+class UDataTable;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnQuestObjectiveChanged, FGameplayTag, QuestTag, FGameplayTag, ObjectiveTag);
 
@@ -121,4 +122,15 @@ protected:
 	TMap<FGameplayTag, int32> ObjectiveProgressCounters;
 
 	void RequestSave(bool bSave);
+
+	/** Cached from UPUProjectUmeowmiGameInstance::Init; used if Game Instance is not the C++ class but table was set at startup. */
+	UPROPERTY()
+	TObjectPtr<UDataTable> CachedQuestObjectiveContentTable = nullptr;
+
+	const UDataTable* ResolveQuestObjectiveContentTable() const;
+
+public:
+	/** Optional: call from Blueprint if your Game Instance does not inherit UPUProjectUmeowmiGameInstance but you need quest content lookup. */
+	UFUNCTION(BlueprintCallable, Category = "Quest|Content")
+	void SetCachedQuestObjectiveContentTable(UDataTable* Table);
 };

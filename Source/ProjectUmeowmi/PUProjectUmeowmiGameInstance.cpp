@@ -35,6 +35,11 @@ UPUProjectUmeowmiGameInstance::UPUProjectUmeowmiGameInstance(const FObjectInitia
 void UPUProjectUmeowmiGameInstance::Init()
 {
 	Super::Init();
+
+	if (UPUQuestSubsystem* Q = GetSubsystem<UPUQuestSubsystem>())
+	{
+		Q->SetCachedQuestObjectiveContentTable(QuestObjectiveContentTable);
+	}
 	
 	// Bind to PostLoadMapWithWorld delegate to detect when levels finish loading
 	// This is more reliable than relying on GameMode::StartPlay() in packaged builds

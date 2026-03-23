@@ -5,6 +5,7 @@
 #include "GameplayTagsManager.h"
 #include "Engine/DataTable.h"
 #include "Engine/Texture2D.h"
+#include "UObject/UObjectGlobals.h"
 
 namespace
 {
@@ -213,11 +214,7 @@ void UPUQuestSubsystem::ClearActiveQuestState(bool bSave)
 bool UPUQuestSubsystem::GetObjectiveDisplayInfo(const FGameplayTag& ObjectiveTag, FPUQuestObjectiveDisplayInfo& OutInfo) const
 {
 	OutInfo = FPUQuestObjectiveDisplayInfo();
-	const UDataTable* Table = nullptr;
-	if (const UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(GetGameInstance()))
-	{
-		Table = GI->QuestObjectiveContentTable;
-	}
+	const UDataTable* Table = ResolveQuestObjectiveContentTable();
 	if (!Table)
 	{
 		return false;
@@ -233,7 +230,23 @@ bool UPUQuestSubsystem::GetObjectiveDisplayInfo(const FGameplayTag& ObjectiveTag
 	OutInfo.QuestTitle = Row->QuestTitle;
 	OutInfo.ObjectiveTitle = Row->ObjectiveTitle;
 	OutInfo.ObjectiveDescription = Row->ObjectiveDescription;
-	OutInfo.Icon = Row->Icon.IsValid() ? Row->Icon.LoadSynchronous() : nullptr;
+	// Resolve icon: IsValid() can be false for valid soft paths before load; try load + static fallback.
+	if (!Row->Icon.IsNull())
+	{
+		OutInfo.Icon = Row->Icon.LoadSynchronous();
+		if (!OutInfo.Icon)
+		{
+			OutInfo.Icon = Row->Icon.Get();
+		}
+		if (!OutInfo.Icon)
+		{
+			const FSoftObjectPath IconPath = Row->Icon.ToSoftObjectPath();
+			if (IconPath.IsValid())
+			{
+				OutInfo.Icon = Cast<UTexture2D>(StaticLoadObject(UTexture2D::StaticClass(), nullptr, *IconPath.ToString()));
+			}
+		}
+	}
 	return true;
 }
 
@@ -246,11 +259,7 @@ bool UPUQuestSubsystem::GetQuestDisplayInfo(const FGameplayTag& QuestTag, FText&
 {
 	OutQuestTitle = FText::GetEmpty();
 	OutFirstObjectiveTitle = FText::GetEmpty();
-	const UDataTable* Table = nullptr;
-	if (const UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(GetGameInstance()))
-	{
-		Table = GI->QuestObjectiveContentTable;
-	}
+	const UDataTable* Table = ResolveQuestObjectiveContentTable();
 	if (!Table || !QuestTag.IsValid())
 	{
 		return false;
@@ -268,4 +277,26 @@ bool UPUQuestSubsystem::GetQuestDisplayInfo(const FGameplayTag& QuestTag, FText&
 		}
 	}
 	return false;
+}
+
+void UPUQuestSubsystem::SetCachedQuestObjectiveContentTable(UDataTable* Table)
+{
+	CachedQuestObjectiveContentTable = Table;
+}
+
+const UDataTable* UPUQuestSubsystem::ResolveQuestObjectiveContentTable() const
+{
+	const UGameInstance* GI = GetGameInstance();
+	if (!GI)
+	{
+		return nullptr;
+	}
+	if (const UPUProjectUmeowmiGameInstance* PUGI = Cast<UPUProjectUmeowmiGameInstance>(GI))
+	{
+		if (PUGI->QuestObjectiveContentTable)
+		{
+			return PUGI->QuestObjectiveContentTable;
+		}
+	}
+	return CachedQuestObjectiveContentTable;
 }
