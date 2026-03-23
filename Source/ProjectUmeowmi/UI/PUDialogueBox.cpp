@@ -234,6 +234,14 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
     }
 
     Update(ActiveContext);
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+		{
+			GI->NotifyDialogueOpened();
+		}
+	}
 }
 
 void UPUDialogueBox::SetSkipMode(bool bEnabled)
@@ -346,15 +354,6 @@ void UPUDialogueBox::Close_Implementation()
     {
         //UE_LOG(LogTemp,Log, TEXT("Found player controller: %p"), PC);
 
-        // Notify GameInstance so dish customization etc. can restore focus
-        if (UWorld* World = GetWorld())
-        {
-            if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
-            {
-                GI->NotifyDialogueClosed();
-            }
-        }
-        
         // Re-enable player movement and input
         PC->SetIgnoreMoveInput(false);
         PC->SetIgnoreLookInput(false);
@@ -375,6 +374,14 @@ void UPUDialogueBox::Close_Implementation()
     {
         //UE_LOG(LogTemp,Warning, TEXT("Could not find player controller!"));
     }
+
+	if (UWorld* World = GetWorld())
+	{
+		if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+		{
+			GI->NotifyDialogueClosed();
+		}
+	}
 }
 
 void UPUDialogueBox::SetVignetteMaterial(UMaterialInterface* NewVignetteMaterial)

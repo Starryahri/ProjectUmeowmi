@@ -1110,8 +1110,15 @@ void UPUProjectUmeowmiGameInstance::NotifyPopupClosed(FName ButtonID)
 	OnPopupWidgetClosed(ButtonID);
 }
 
+void UPUProjectUmeowmiGameInstance::NotifyDialogueOpened()
+{
+	bDialogueOpen = true;
+	OnDialogueOpenedEvent.Broadcast();
+}
+
 void UPUProjectUmeowmiGameInstance::NotifyDialogueClosed()
 {
+	bDialogueOpen = false;
 	OnDialogueClosedEvent.Broadcast();
 }
 

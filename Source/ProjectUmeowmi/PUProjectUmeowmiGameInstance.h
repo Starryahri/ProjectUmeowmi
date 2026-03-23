@@ -481,16 +481,32 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Popup Manager|Events", meta = (DisplayName = "On Popup Closed"))
 	FOnPopupClosedEvent OnPopupClosedEvent;
 
+	/** Broadcast when dialogue box opens (after visible, viewport, Update). Bind HUD to hide objective UI / play reverse anim. */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueOpenedEvent);
+	UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events", meta = (DisplayName = "On Dialogue Opened"))
+	FOnDialogueOpenedEvent OnDialogueOpenedEvent;
+
 	/** Broadcast when dialogue box closes. Use to restore focus (e.g. dish customization opened from dialogue). */
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDialogueClosedEvent);
 	UPROPERTY(BlueprintAssignable, Category = "Dialogue|Events", meta = (DisplayName = "On Dialogue Closed"))
 	FOnDialogueClosedEvent OnDialogueClosedEvent;
+
+	/** True while the dialogue box is open (set between NotifyDialogueOpened / NotifyDialogueClosed). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue")
+	bool IsDialogueOpen() const { return bDialogueOpen; }
+
+	/** Called by dialogue box when it opens (internal use) */
+	UFUNCTION(BlueprintCallable, Category = "Dialogue")
+	void NotifyDialogueOpened();
 
 	/** Called by dialogue box when it closes (internal use) */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	void NotifyDialogueClosed();
 
 protected:
+	/** Set true in NotifyDialogueOpened, false in NotifyDialogueClosed. */
+	bool bDialogueOpen = false;
+
 	// Saved player state
 	UPROPERTY(BlueprintReadWrite, Category = "Level Transition")
 	FPUOrderBase SavedPlayerOrder;
