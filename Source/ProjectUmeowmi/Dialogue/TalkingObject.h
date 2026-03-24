@@ -311,16 +311,26 @@ protected:
     UPROPERTY(EditAnywhere, Category = "Talking Object|Emote", meta = (EditCondition = "bEnableEmotes"))
     UDataTable* EmoteDataTable = nullptr;
 
-    /** World/screen widget shown when QuestObjectiveTag matches the active objective on the Game Instance. */
+    /** World/screen widget shown when the active objective tag is in QuestObjectiveTags. */
     UPROPERTY(VisibleAnywhere, Category = "Talking Object|Components")
     UWidgetComponent* QuestMarkerWidget = nullptr;
 
-    /** When true and QuestObjectiveTag is set, toggles quest marker visibility from quest state. */
+    /** When true and QuestObjectiveTags is set, toggles quest marker visibility from quest state. */
     UPROPERTY(EditAnywhere, Category = "Talking Object|Quest")
     bool bEnableQuestMarker = true;
 
-    /** Objective tag this actor represents (must match an active objective to show the marker). */
-    UPROPERTY(EditAnywhere, Category = "Talking Object|Quest", meta = (EditCondition = "bEnableQuestMarker", Categories = "Quest"))
+    /**
+     * Objective tags this actor is a target for (any one may be active at a time).
+     * Marker shows when GetActiveObjectiveTag() matches any tag here.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Talking Object|Quest", meta = (EditCondition = "bEnableQuestMarker", Categories = "Quest"))
+    FGameplayTagContainer QuestObjectiveTags;
+
+    /**
+     * Deprecated: single-tag authoring. Merged into QuestObjectiveTags on load / BeginPlay.
+     * Kept for existing assets; prefer filling QuestObjectiveTags in the editor.
+     */
+    UPROPERTY()
     FGameplayTag QuestObjectiveTag;
 
     /** Widget class for the overhead quest marker (e.g. icon). */
@@ -340,11 +350,17 @@ protected:
     UFUNCTION(BlueprintCallable, Category = "Talking Object|Quest")
     void RefreshQuestMarkerFromGameInstance();
 
+    /** Merges legacy QuestObjectiveTag into QuestObjectiveTags if needed (safe to call multiple times). */
+    UFUNCTION(BlueprintCallable, Category = "Talking Object|Quest")
+    void MigrateDeprecatedQuestObjectiveTagIfNeeded();
+
     // Dialogue context
     UPROPERTY(BlueprintReadWrite, Category = Dialogue)
     UDlgContext* CurrentDialogueContext = nullptr;
     
 protected:
+    virtual void PostLoad() override;
+
     UFUNCTION()
     void OnQuestObjectiveChangedHandler(FGameplayTag QuestTag, FGameplayTag ObjectiveTag);
 

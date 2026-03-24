@@ -95,6 +95,8 @@ void ATalkingObject::BeginPlay()
 {
     Super::BeginPlay();
 
+    MigrateDeprecatedQuestObjectiveTagIfNeeded();
+
     // Sync sphere radius and widget position to InteractionRange (handles Blueprint overrides and derived class values)
     SyncInteractionSphereToRange();
 
@@ -1438,6 +1440,20 @@ void ATalkingObject::EndPlay(const EEndPlayReason::Type EndPlayReason)
     Super::EndPlay(EndPlayReason);
 }
 
+void ATalkingObject::PostLoad()
+{
+    Super::PostLoad();
+    MigrateDeprecatedQuestObjectiveTagIfNeeded();
+}
+
+void ATalkingObject::MigrateDeprecatedQuestObjectiveTagIfNeeded()
+{
+    if (QuestObjectiveTag.IsValid() && !QuestObjectiveTags.HasTagExact(QuestObjectiveTag))
+    {
+        QuestObjectiveTags.AddTag(QuestObjectiveTag);
+    }
+}
+
 void ATalkingObject::OnQuestObjectiveChangedHandler(FGameplayTag QuestTag, FGameplayTag ObjectiveTag)
 {
     RefreshQuestMarkerFromGameInstance();
@@ -1449,7 +1465,9 @@ void ATalkingObject::RefreshQuestMarkerFromGameInstance()
     {
         return;
     }
-    if (!bEnableQuestMarker || !QuestObjectiveTag.IsValid())
+    MigrateDeprecatedQuestObjectiveTagIfNeeded();
+
+    if (!bEnableQuestMarker || QuestObjectiveTags.IsEmpty())
     {
         QuestMarkerWidget->SetVisibility(false);
         return;
@@ -1468,5 +1486,7 @@ void ATalkingObject::RefreshQuestMarkerFromGameInstance()
         return;
     }
 
-    QuestMarkerWidget->SetVisibility(Quest->IsObjectiveActive(QuestObjectiveTag));
+    const FGameplayTag ActiveObjective = Quest->GetActiveObjectiveTag();
+    const bool bShow = ActiveObjective.IsValid() && QuestObjectiveTags.HasTagExact(ActiveObjective);
+    QuestMarkerWidget->SetVisibility(bShow);
 }

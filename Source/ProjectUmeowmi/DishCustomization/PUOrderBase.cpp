@@ -34,10 +34,10 @@ namespace
     }
 }
 
-// Debug output toggles (kept in code, but disabled by default to avoid log spam).
+// Debug: order detail dumps (LogOrderDetails, validation/completion helpers). Off = no spam.
 namespace
 {
-    constexpr bool bPU_LogOrderDishDebug = true; // Set to true to see order generation in Output Log
+    constexpr bool bPU_LogOrderDishDebug = true;
 }
 
 FName FOrderAspectRequirement::GetAspectName() const

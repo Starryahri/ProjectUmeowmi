@@ -2733,7 +2733,7 @@ void UPUDishCustomizationComponent::GatherDishSnapshotPrimitives(TArray<UPrimiti
 {
     OutPrimitives.Reset();
     AActor* DishStation = GetOwner();
-    if (!DishStation)
+    if (!IsValid(DishStation))
     {
         return;
     }

@@ -73,6 +73,11 @@ void UPUProjectUmeowmiGameInstance::Init()
 
 void UPUProjectUmeowmiGameInstance::Shutdown()
 {
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(LevelTransitionUIShowTimerHandle);
+	}
+
 	// Unbind the delegate to prevent memory leaks
 	if (PostLoadMapDelegateHandle.IsValid())
 	{
@@ -119,6 +124,9 @@ void UPUProjectUmeowmiGameInstance::TransitionToLevel(const FString& TargetLevel
 		bTransitionInProgress = false;
 		return;
 	}
+
+	World->GetTimerManager().ClearTimer(LevelTransitionUIShowTimerHandle);
+	OnLevelTransitionUIHide.Broadcast();
 
 	// Hide all interaction UI elements before fade/transition
 	TArray<AActor*> FoundActors;
@@ -194,9 +202,10 @@ void UPUProjectUmeowmiGameInstance::OnLevelLoaded()
 	RestorePlayerState();
 
 	// Fade in: FadeAlpha (X=start, Y=end), so 1 to 0 means opaque (black) to transparent
+	constexpr float FadeInDuration = 1.5f;
 	if (APlayerController* PlayerController = GetWorld()->GetFirstPlayerController())
 	{
-		PlayerController->ClientSetCameraFade(true, FColor::Black, FVector2D(1.0f, 0.0f), 1.5f, true, false);
+		PlayerController->ClientSetCameraFade(true, FColor::Black, FVector2D(1.0f, 0.0f), FadeInDuration, true, false);
 	}
 
 	// Clear transition state
@@ -205,6 +214,22 @@ void UPUProjectUmeowmiGameInstance::OnLevelLoaded()
 
 	// Call Blueprint event
 	OnTransitionCompleted();
+
+	// Restore HUD after fade-in completes (avoids objective/HUD visible while screen still black)
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			LevelTransitionUIShowTimerHandle,
+			this,
+			&UPUProjectUmeowmiGameInstance::BroadcastLevelTransitionUIShow,
+			FadeInDuration,
+			false);
+	}
+}
+
+void UPUProjectUmeowmiGameInstance::BroadcastLevelTransitionUIShow()
+{
+	OnLevelTransitionUIShow.Broadcast();
 }
 
 void UPUProjectUmeowmiGameInstance::SavePlayerState()

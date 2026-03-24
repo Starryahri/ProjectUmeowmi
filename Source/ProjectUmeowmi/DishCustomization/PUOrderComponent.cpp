@@ -16,8 +16,8 @@ UPUOrderComponent::UPUOrderComponent()
 void UPUOrderComponent::BeginPlay()
 {
     Super::BeginPlay();
-    
-    //UE_LOG(LogTemp,Log, TEXT("UPUOrderComponent::BeginPlay - Order component initialized"));
+
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] UPUOrderComponent::BeginPlay - owner=%s"), GetOwner() ? *GetOwner()->GetName() : TEXT("(none)"));
 }
 
 #if WITH_EDITOR
@@ -37,7 +37,7 @@ void UPUOrderComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 
 void UPUOrderComponent::GenerateNewOrder()
 {
-    UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateNewOrder - Starting order generation"));
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateNewOrder - Starting order generation"));
 
     // Validate the world first
     if (!GetWorld())
@@ -65,14 +65,14 @@ void UPUOrderComponent::GenerateNewOrder()
     // Clear any existing order (only if no completed order)
     if (bHasActiveOrder)
     {
-        UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateNewOrder - Clearing existing order"));
+        UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateNewOrder - Clearing existing order"));
         ClearCurrentOrder();
     }
 
     GenerateSimpleOrder(FGameplayTag()); // invalid = use pool or fallback
     bHasActiveOrder = true;
 
-    UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateNewOrder - Order generated successfully"));
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateNewOrder - Order generated successfully"));
     CurrentOrder.LogOrderDetails();
     
     // Broadcast the event
@@ -181,18 +181,35 @@ float UPUOrderComponent::GetSatisfactionScore(const FPUDishBase& Dish) const
 
 void UPUOrderComponent::GenerateNewOrderWithDish(FGameplayTag DishTag)
 {
-    if (!GetWorld()) return;
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateNewOrderWithDish - Starting (dish tag: %s)"),
+        DishTag.IsValid() ? *DishTag.ToString() : TEXT("(invalid — will use pool/fallback)"));
+
+    if (!GetWorld())
+    {
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] GenerateNewOrderWithDish - No valid world!"));
+        return;
+    }
 
     AProjectUmeowmiCharacter* PlayerChar = nullptr;
     if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
     {
         PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
     }
-    if (PlayerChar && PlayerChar->IsCurrentOrderCompleted()) return;
-    if (bHasActiveOrder) ClearCurrentOrder();
+    if (PlayerChar && PlayerChar->IsCurrentOrderCompleted())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[OrderGen] GenerateNewOrderWithDish - Player has completed order, refusing"));
+        return;
+    }
+    if (bHasActiveOrder)
+    {
+        UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateNewOrderWithDish - Clearing existing order"));
+        ClearCurrentOrder();
+    }
 
     GenerateSimpleOrder(DishTag);
     bHasActiveOrder = true;
+
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateNewOrderWithDish - Order generated successfully"));
     CurrentOrder.LogOrderDetails();
     OnOrderGenerated.Broadcast(CurrentOrder);
 }
@@ -203,7 +220,7 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
     if (OptionalDishTag.IsValid())
     {
         DishTag = OptionalDishTag;
-        UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Using override dish tag: %s"), *DishTag.ToString());
+        UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateSimpleOrder - Using override dish tag: %s"), *DishTag.ToString());
     }
     else if (AvailableDishTags.Num() > 0)
     {
@@ -215,7 +232,7 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
         if (Valid.Num() > 0)
         {
             DishTag = Valid[FMath::RandRange(0, Valid.Num() - 1)];
-            UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Picked from pool (%d tags): %s"), Valid.Num(), *DishTag.ToString());
+            UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateSimpleOrder - Picked from pool (%d tags): %s"), Valid.Num(), *DishTag.ToString());
         }
     }
     if (!DishTag.IsValid())
@@ -223,13 +240,13 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
         DishTag = UPUDishBlueprintLibrary::GetRandomDishTag();
         if (DishTag.IsValid())
         {
-            UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - From GetRandomDishTag: %s"), *DishTag.ToString());
+            UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateSimpleOrder - From GetRandomDishTag: %s"), *DishTag.ToString());
         }
     }
     if (!DishTag.IsValid())
     {
         DishTag = FGameplayTag::RequestGameplayTag(TEXT("Dish.Congee"));
-        UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Fallback dish: Dish.Congee"));
+        UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateSimpleOrder - Fallback dish: Dish.Congee"));
     }
 
     FPUDishBase BaseDish;
@@ -238,7 +255,7 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
     {
         bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, BaseDish);
     }
-    UE_LOG(LogTemp, Log, TEXT("[OrderGen] GenerateSimpleOrder - Base dish from data table: %s (ingredients: %d)"), bGotBaseDish ? TEXT("yes") : TEXT("no"), BaseDish.IngredientInstances.Num());
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateSimpleOrder - Base dish from data table: %s (ingredients: %d)"), bGotBaseDish ? TEXT("yes") : TEXT("no"), BaseDish.IngredientInstances.Num());
     if (!bGotBaseDish)
     {
         BaseDish.DishTag = DishTag;

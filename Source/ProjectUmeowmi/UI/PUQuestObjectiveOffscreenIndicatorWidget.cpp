@@ -336,7 +336,12 @@ void UPUQuestObjectiveOffscreenIndicatorWidget::UpdateIndicator(const FGeometry&
 	for (TActorIterator<ATalkingObject> It(World); It; ++It)
 	{
 		ATalkingObject* T = *It;
-		if (T && T->bEnableQuestMarker && T->QuestObjectiveTag == ActiveObjective)
+		if (!T || !T->bEnableQuestMarker)
+		{
+			continue;
+		}
+		T->MigrateDeprecatedQuestObjectiveTagIfNeeded();
+		if (ActiveObjective.IsValid() && T->QuestObjectiveTags.HasTagExact(ActiveObjective))
 		{
 			Target = T;
 			break;

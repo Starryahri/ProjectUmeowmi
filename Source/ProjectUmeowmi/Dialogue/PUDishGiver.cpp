@@ -4,6 +4,13 @@
 
 APUDishGiver::APUDishGiver()
 {
+    // Dish giver emotes use screen space (match player / dialogue UX); TalkingObject defaults to World.
+    EmoteWidgetSpace = EWidgetSpace::Screen;
+    if (EmoteWidget)
+    {
+        EmoteWidget->SetWidgetSpace(EWidgetSpace::Screen);
+    }
+
     // Set the object type to NPC since dish givers are characters
     ObjectType = ETalkingObjectType::NPC;
     
@@ -16,6 +23,12 @@ APUDishGiver::APUDishGiver()
 
 void APUDishGiver::BeginPlay()
 {
+    EmoteWidgetSpace = EWidgetSpace::Screen;
+    if (EmoteWidget)
+    {
+        EmoteWidget->SetWidgetSpace(EWidgetSpace::Screen);
+    }
+
     Super::BeginPlay();
     
     //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::BeginPlay - Dish giver initialized: %s"), *GetTalkingObjectDisplayName().ToString());
@@ -59,30 +72,31 @@ void APUDishGiver::StartInteraction()
 
 void APUDishGiver::GenerateOrderForDialogue()
 {
-    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Generating order for dialogue"));
-    
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateOrderForDialogue - %s"), *GetName());
+
     // Generate the order
     if (!IsValid(OrderComponent))
     {
-        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateOrderForDialogue - Order component is not valid!"));
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] APUDishGiver::GenerateOrderForDialogue - Order component is not valid! (%s)"), *GetName());
         return;
     }
-    
+
     OrderComponent->GenerateNewOrder();
-    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateOrderForDialogue - Order generated successfully"));
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateOrderForDialogue - Done hasActive=%d (%s)"),
+        OrderComponent->HasActiveOrder() ? 1 : 0, *GetName());
 }
 
 void APUDishGiver::GenerateAndGiveOrderToPlayer()
 {
-    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generating and giving order to player"));
-    
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayer - Start (%s)"), *GetName());
+
     // Validate the order component first
     if (!IsValid(OrderComponent))
     {
-        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order component is not valid!"));
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayer - Order component is not valid! (%s)"), *GetName());
         return;
     }
-    
+
     // Find the player character
     AProjectUmeowmiCharacter* PlayerChar = nullptr;
     if (UWorld* World = GetWorld())
@@ -92,47 +106,56 @@ void APUDishGiver::GenerateAndGiveOrderToPlayer()
             PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
         }
     }
-    
+
     if (!IsValid(PlayerChar))
     {
-        //UE_LOG(LogTemp,Warning, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Could not find valid player character"));
+        UE_LOG(LogTemp, Warning, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayer - No valid player character (%s)"), *GetName());
         return;
     }
-    
+
     // Check if player already has an active order
     if (PlayerChar->HasCurrentOrder())
     {
-        //UE_LOG(LogTemp,Display, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Player already has an active order, not generating new one"));
+        UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayer - Player already has order %s, skipping"),
+            *PlayerChar->GetCurrentOrder().OrderID.ToString());
         return;
     }
-    
-    // Generate the order with safety checks
-    //UE_LOG(LogTemp,Log, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Calling GenerateOrderForDialogue"));
+
     GenerateOrderForDialogue();
-    
+
     // Validate that the order was generated successfully
     if (!OrderComponent->HasActiveOrder())
     {
-        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Order generation failed - no active order"));
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayer - Generation failed, no active order (%s)"), *GetName());
         return;
     }
-    
+
     // Get the order with validation
     FPUOrderBase Order = OrderComponent->GetCurrentOrder();
     if (!Order.OrderID.IsValid())
     {
-        //UE_LOG(LogTemp,Error, TEXT("APUDishGiver::GenerateAndGiveOrderToPlayer - Generated order has invalid ID"));
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayer - Invalid order ID (%s)"), *GetName());
         return;
     }
-    
+
     Order.OrderGiverParticipantName = GetTalkingObjectName();
     PlayerChar->SetCurrentOrder(Order);
     SetDialogueVariablesFromOrder(Order);
+
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayer - Gave order %s to player (%s)"),
+        *Order.OrderID.ToString(), *GetName());
 }
 
 void APUDishGiver::GenerateAndGiveOrderToPlayerWithDish(FGameplayTag DishTag)
 {
-    if (!IsValid(OrderComponent)) return;
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayerWithDish - dish=%s (%s)"),
+        *DishTag.ToString(), *GetName());
+
+    if (!IsValid(OrderComponent))
+    {
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayerWithDish - No order component (%s)"), *GetName());
+        return;
+    }
 
     AProjectUmeowmiCharacter* PlayerChar = nullptr;
     if (UWorld* World = GetWorld())
@@ -142,17 +165,36 @@ void APUDishGiver::GenerateAndGiveOrderToPlayerWithDish(FGameplayTag DishTag)
             PlayerChar = Cast<AProjectUmeowmiCharacter>(PC->GetPawn());
         }
     }
-    if (!IsValid(PlayerChar) || PlayerChar->HasCurrentOrder()) return;
+    if (!IsValid(PlayerChar))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayerWithDish - No player (%s)"), *GetName());
+        return;
+    }
+    if (PlayerChar->HasCurrentOrder())
+    {
+        UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayerWithDish - Player already has order, skipping"));
+        return;
+    }
 
     OrderComponent->GenerateNewOrderWithDish(DishTag);
-    if (!OrderComponent->HasActiveOrder()) return;
+    if (!OrderComponent->HasActiveOrder())
+    {
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayerWithDish - No active order after generate (%s)"), *GetName());
+        return;
+    }
 
     FPUOrderBase Order = OrderComponent->GetCurrentOrder();
-    if (!Order.OrderID.IsValid()) return;
+    if (!Order.OrderID.IsValid())
+    {
+        UE_LOG(LogTemp, Error, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayerWithDish - Invalid order ID (%s)"), *GetName());
+        return;
+    }
 
     Order.OrderGiverParticipantName = GetTalkingObjectName();
     PlayerChar->SetCurrentOrder(Order);
     SetDialogueVariablesFromOrder(Order);
+
+    UE_LOG(LogTemp, Display, TEXT("[OrderGen] APUDishGiver::GenerateAndGiveOrderToPlayerWithDish - Gave order %s"), *Order.OrderID.ToString());
 }
 
 void APUDishGiver::RevealHintToPlayer(FName AspectName)

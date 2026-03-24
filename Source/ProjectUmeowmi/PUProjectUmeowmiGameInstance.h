@@ -76,6 +76,19 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Level Transition")
 	bool IsLevelTransitionInProgress() const { return bTransitionInProgress; }
 
+	/** Fired once the transition is valid: hide HUD / objective / overlays during fade and load. */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLevelTransitionUIHide);
+	UPROPERTY(BlueprintAssignable, Category = "Level Transition|UI", meta = (DisplayName = "On Level Transition UI Hide"))
+	FOnLevelTransitionUIHide OnLevelTransitionUIHide;
+
+	/**
+	 * Fired after the new level is ready and the camera fade-in duration has elapsed (matches fade-in in OnLevelLoaded).
+	 * Restore HUD visibility here.
+	 */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLevelTransitionUIShow);
+	UPROPERTY(BlueprintAssignable, Category = "Level Transition|UI", meta = (DisplayName = "On Level Transition UI Show"))
+	FOnLevelTransitionUIShow OnLevelTransitionUIShow;
+
 	// Ingredient Inventory System
 	/**
 	 * Unlock an ingredient (adds it to the unlocked set)
@@ -520,6 +533,11 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, Category = "Level Transition")
 	bool bTransitionInProgress = false;
+
+	FTimerHandle LevelTransitionUIShowTimerHandle;
+
+	UFUNCTION()
+	void BroadcastLevelTransitionUIShow();
 
 	// Ingredient Inventory
 	UPROPERTY(BlueprintReadOnly, Category = "Ingredient Inventory")
