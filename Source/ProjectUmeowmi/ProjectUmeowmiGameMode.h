@@ -29,6 +29,10 @@ protected:
 	// Cutscene dialogue asset
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cutscene")
 	UDlgDialogue* LevelCutsceneDialogue = nullptr;
+
+	/** Extra Dlg participants (NPCs, etc.) for the level cutscene. The player is always included first. Duplicates and invalid entries are skipped. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cutscene")
+	TArray<AActor*> LevelCutsceneAdditionalParticipants;
 	
 	// Whether to automatically start cutscene when level begins
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cutscene")

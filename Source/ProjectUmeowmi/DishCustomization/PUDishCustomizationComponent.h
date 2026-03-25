@@ -10,6 +10,7 @@
 #include "PUDishCustomizationComponent.generated.h"
 
 // Forward declarations
+class APUIngredientMesh;
 class UUserWidget;
 class UInputAction;
 class UEnhancedInputComponent;
@@ -415,8 +416,8 @@ private:
     // Plating placement tracking
     TMap<int32, int32> PlacedIngredientQuantities; // InstanceID -> Placed Quantity
 
-    // Track spawned 3D ingredient meshes for cleanup
-    TArray<class APUIngredientMesh*> SpawnedIngredientMeshes;
+    // Track spawned 3D ingredient meshes for cleanup (weak: actors can self-Destroy e.g. GroundDestroyZThreshold in Tick)
+    TArray<TWeakObjectPtr<APUIngredientMesh>> SpawnedIngredientMeshes;
 
     // Track spawned liquid Niagara components for cleanup (allows multiple per InstanceID when Quantity > 1)
     TArray<TPair<int32, TObjectPtr<UNiagaraComponent>>> SpawnedLiquidComponents;

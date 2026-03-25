@@ -1,5 +1,6 @@
 #include "PUIngredientMesh.h"
 #include "Math/Box.h"
+#include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "ProceduralMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -447,6 +448,24 @@ void APUIngredientMesh::ApplyChoppedPieceTransforms(const TArray<FTransform>& Tr
             T.AddToTranslation(Offset);
             ProcMesh->SetWorldTransform(T);
         }
+    }
+}
+
+void APUIngredientMesh::GatherSnapshotPrimitiveComponents(TArray<UPrimitiveComponent*>& OutPrimitives) const
+{
+    if (bIsChopped)
+    {
+        for (UProceduralMeshComponent* ProcMesh : ChoppedMeshPieces)
+        {
+            if (IsValid(ProcMesh) && ProcMesh->IsVisible())
+            {
+                OutPrimitives.Add(ProcMesh);
+            }
+        }
+    }
+    else if (IsValid(MeshComponent) && MeshComponent->IsVisible())
+    {
+        OutPrimitives.Add(MeshComponent);
     }
 }
 

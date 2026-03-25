@@ -2665,9 +2665,10 @@ void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
     CurrentDishData.PlatingEntries.Empty();
     int32 Captured = 0;
 
-    for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
+    for (const TWeakObjectPtr<APUIngredientMesh>& WeakMesh : SpawnedIngredientMeshes)
     {
-        if (!IngredientMesh || !IsValid(IngredientMesh))
+        APUIngredientMesh* IngredientMesh = WeakMesh.Get();
+        if (!IngredientMesh)
         {
             continue;
         }
@@ -2744,23 +2745,31 @@ void UPUDishCustomizationComponent::GatherDishSnapshotPrimitives(TArray<UPrimiti
     UStaticMeshComponent* DishContainer = nullptr;
     for (UStaticMeshComponent* MeshComp : AllMeshComponents)
     {
-        if (MeshComp && MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
+        if (!IsValid(MeshComp))
+        {
+            continue;
+        }
+        if (MeshComp->GetName().Contains(TEXT("DishContainer"), ESearchCase::IgnoreCase))
         {
             DishContainer = MeshComp;
             break;
         }
     }
 
-    if (DishContainer)
+    if (IsValid(DishContainer))
     {
         OutPrimitives.Add(DishContainer);
         TArray<USceneComponent*> Descendants;
         DishContainer->GetChildrenComponents(true, Descendants);
         for (USceneComponent* Child : Descendants)
         {
+            if (!IsValid(Child))
+            {
+                continue;
+            }
             if (UPrimitiveComponent* Prim = Cast<UPrimitiveComponent>(Child))
             {
-                if (Prim->IsVisible())
+                if (IsValid(Prim) && Prim->IsVisible())
                 {
                     OutPrimitives.AddUnique(Prim);
                 }
@@ -2768,17 +2777,23 @@ void UPUDishCustomizationComponent::GatherDishSnapshotPrimitives(TArray<UPrimiti
         }
     }
 
-    for (APUIngredientMesh* IngActor : SpawnedIngredientMeshes)
+    for (const TWeakObjectPtr<APUIngredientMesh>& WeakActor : SpawnedIngredientMeshes)
     {
-        if (!IngActor || !IsValid(IngActor))
+        APUIngredientMesh* IngActor = WeakActor.Get();
+        if (!IngActor)
+        {
+            continue;
+        }
+        // Same rule as CapturePlatingTransformsFromMeshes — invalid IDs correlate with broken/chopped state that can confuse component walks
+        if (IngActor->GetPlatingInstanceID() < 0)
         {
             continue;
         }
         TArray<UPrimitiveComponent*> IngPrims;
-        IngActor->GetComponents<UPrimitiveComponent>(IngPrims);
+        IngActor->GatherSnapshotPrimitiveComponents(IngPrims);
         for (UPrimitiveComponent* Prim : IngPrims)
         {
-            if (Prim && Prim->IsVisible())
+            if (IsValid(Prim) && Prim->IsVisible())
             {
                 OutPrimitives.AddUnique(Prim);
             }
@@ -2808,10 +2823,10 @@ void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
         CurrentlyDraggedIngredient = nullptr;
     }
     
-    // Destroy all tracked ingredient meshes
-    for (APUIngredientMesh* IngredientMesh : SpawnedIngredientMeshes)
+    // Destroy all tracked ingredient meshes (Weak.Get skips meshes already destroyed out-of-band, e.g. fall-through Tick)
+    for (const TWeakObjectPtr<APUIngredientMesh>& WeakMesh : SpawnedIngredientMeshes)
     {
-        if (IngredientMesh != nullptr && IsValid(IngredientMesh))
+        if (APUIngredientMesh* IngredientMesh = WeakMesh.Get())
         {
             IngredientMesh->Destroy();
         }

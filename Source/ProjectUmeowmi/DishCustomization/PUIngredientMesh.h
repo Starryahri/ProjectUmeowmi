@@ -85,6 +85,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient")
     void ApplyChoppedPieceTransforms(const TArray<FTransform>& Transforms, FVector Offset);
 
+    /**
+     * Visible primitives for scorecard / scene-capture (static mesh, or chopped procedural pieces only).
+     * Prefer this over GetComponents<UPrimitiveComponent> — procedural slice state can leave components in a bad order for generic walks.
+     */
+    void GatherSnapshotPrimitiveComponents(TArray<class UPrimitiveComponent*>& OutPrimitives) const;
+
 protected:
     // Components
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")

@@ -78,10 +78,17 @@ void AProjectUmeowmiGameMode::StartLevelCutscene(UDlgDialogue* CutsceneDialogue)
 		return;
 	}
 	
-	// Create participants array (just the player character for cutscenes)
 	TArray<UObject*> Participants;
+	Participants.Reserve(1 + LevelCutsceneAdditionalParticipants.Num());
 	Participants.Add(ProjectCharacter);
-	
+	for (AActor* Extra : LevelCutsceneAdditionalParticipants)
+	{
+		if (Extra && IsValid(Extra) && Extra != ProjectCharacter && !Participants.Contains(Extra))
+		{
+			Participants.Add(Extra);
+		}
+	}
+
 	// Start the dialogue
 	CutsceneDialogueContext = UDlgManager::StartDialogue(CutsceneDialogue, Participants);
 	if (CutsceneDialogueContext)
