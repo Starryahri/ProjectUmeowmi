@@ -18,6 +18,8 @@
 #include "Misc/Paths.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/DataTable.h"
+#include "ProjectUmeowmi/Dialogue/PUDialogueLineContentRow.h"
+#include "GameplayTagsManager.h"
 #include "UObject/StructOnScope.h"
 #include "Components/Button.h"
 #include "UObject/UObjectGlobals.h"
@@ -1396,5 +1398,63 @@ bool UPUProjectUmeowmiGameInstance::GetQuestDisplayInfo(const FGameplayTag& Ques
 {
 	const UPUQuestSubsystem* Q = GetQuestSubsystem();
 	return Q ? Q->GetQuestDisplayInfo(QuestTag, OutQuestTitle, OutFirstObjectiveTitle) : false;
+}
+
+FText UPUProjectUmeowmiGameInstance::ResolveDialogueLineDisplayText(const FText& RawFromDlg) const
+{
+	if (RawFromDlg.IsEmpty())
+	{
+		return RawFromDlg;
+	}
+
+	const FString Trimmed = RawFromDlg.ToString().TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
+	{
+		return RawFromDlg;
+	}
+
+	const FGameplayTag LineTag = UGameplayTagsManager::Get().RequestGameplayTag(FName(*Trimmed), false);
+	if (!LineTag.IsValid())
+	{
+		return RawFromDlg;
+	}
+
+	FGameplayTag RootTag = DialogueLineRootTag;
+	if (!RootTag.IsValid())
+	{
+		RootTag = UGameplayTagsManager::Get().RequestGameplayTag(FName(TEXT("D")), false);
+	}
+	if (RootTag.IsValid() && !LineTag.MatchesTag(RootTag))
+	{
+		return RawFromDlg;
+	}
+
+	const UDataTable* Table = DialogueLineContentTable;
+	if (!Table)
+	{
+		return RawFromDlg;
+	}
+
+	const FName RowName(*LineTag.ToString());
+	if (const FPUDialogueLineContentRow* Row = Table->FindRow<FPUDialogueLineContentRow>(RowName, TEXT("ResolveDialogueLineDisplayText"), false))
+	{
+		if (!Row->Line.IsEmpty())
+		{
+			return Row->Line;
+		}
+	}
+
+	for (const FName& Key : Table->GetRowNames())
+	{
+		if (const FPUDialogueLineContentRow* Row = Table->FindRow<FPUDialogueLineContentRow>(Key, TEXT("ResolveDialogueLineDisplayText"), false))
+		{
+			if (Row->LineTag.IsValid() && Row->LineTag == LineTag && !Row->Line.IsEmpty())
+			{
+				return Row->Line;
+			}
+		}
+	}
+
+	return RawFromDlg;
 }
 

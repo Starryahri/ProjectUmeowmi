@@ -442,6 +442,10 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
     {
         FText ParticipantDisplayName = ActiveContext->GetActiveNodeParticipantDisplayName();
         FText NodeText = ActiveContext->GetActiveNodeText();
+        if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+        {
+            NodeText = GI->ResolveDialogueLineDisplayText(NodeText);
+        }
 
         if (IsValid(ParticipantNameText))
         {

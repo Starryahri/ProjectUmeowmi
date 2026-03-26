@@ -516,6 +516,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	void NotifyDialogueClosed();
 
+	/** Authoring: line body text. Row names should match tag strings (e.g. D.Sample.Hello). Set on Game Instance. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue|Content")
+	TObjectPtr<class UDataTable> DialogueLineContentTable;
+
+	/** Only tag ids under this root are resolved from the table; default is tag D if unset. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue|Content", meta = (Categories = "D"))
+	FGameplayTag DialogueLineRootTag;
+
+	/** If RawFromDlg is a registered dialogue line tag and a row exists, returns row Line; else returns RawFromDlg (inline legacy text). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue|Content")
+	FText ResolveDialogueLineDisplayText(const FText& RawFromDlg) const;
+
 protected:
 	/** Set true in NotifyDialogueOpened, false in NotifyDialogueClosed. */
 	bool bDialogueOpen = false;
