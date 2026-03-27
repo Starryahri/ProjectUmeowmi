@@ -116,9 +116,10 @@ void UPUAspectProfileWidget::UpdateDisplay()
 	}
 
 	// Aspect border color from Rich Text Style data table (row name = aspect name)
-	if (AspectBorder && AspectColorDataTable && AspectData.AspectName.IsValid())
+	if (AspectBorder && AspectColorDataTable && !AspectData.AspectName.IsNone())
 	{
-		if (const FRichTextStyleRow* StyleRow = AspectColorDataTable->FindRow<FRichTextStyleRow>(AspectData.AspectName, TEXT("AspectColor")))
+		// bWarnIfRowMissing=false: valid aspects may have no row; NAME_None must never call FindRow (engine logs a warning).
+		if (const FRichTextStyleRow* StyleRow = AspectColorDataTable->FindRow<FRichTextStyleRow>(AspectData.AspectName, TEXT("AspectColor"), false))
 		{
 			FLinearColor Color = StyleRow->TextStyle.ColorAndOpacity.GetSpecifiedColor();
 			AspectBorder->SetBrushColor(Color);

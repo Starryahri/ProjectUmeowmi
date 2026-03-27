@@ -14,6 +14,11 @@
 #include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
+namespace PUDialogueScoringLog
+{
+	static constexpr const TCHAR* Tag = TEXT("[PUDialogueScoring]");
+}
+
 namespace
 {
 	/** Parent for creating a MID: class default, or brush material (resolves instance/MID to parent). */
@@ -67,6 +72,7 @@ void UPUScorecardWidget::NativeConstruct()
 	// Draw above scoring dialogue (viewport Z) but let pointer events fall through to dialogue except where children hit-test (buttons, etc.).
 	SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	UpdateDisplay();
+	LogScorecardVisualDebug(TEXT("NativeConstruct"));
 }
 
 void UPUScorecardWidget::SetScorecardData(const FPUScorecardData& InData)
@@ -259,6 +265,10 @@ void UPUScorecardWidget::UpdateDisplay()
 		}
 		for (const FPUAspectRanking& Aspect : ScorecardData.FlavorProfile.TopAspects)
 		{
+			if (Aspect.AspectName.IsNone())
+			{
+				continue;
+			}
 			if (UPUAspectProfileWidget* AspectWidget = CreateWidget<UPUAspectProfileWidget>(this, ClassToUse))
 			{
 				AspectWidget->SetAspectData(Aspect);
@@ -278,6 +288,10 @@ void UPUScorecardWidget::UpdateDisplay()
 		}
 		for (const FPUAspectRanking& Aspect : ScorecardData.TextureProfile.TopAspects)
 		{
+			if (Aspect.AspectName.IsNone())
+			{
+				continue;
+			}
 			if (UPUAspectProfileWidget* AspectWidget = CreateWidget<UPUAspectProfileWidget>(this, ClassToUse))
 			{
 				AspectWidget->SetAspectData(Aspect);
@@ -285,6 +299,68 @@ void UPUScorecardWidget::UpdateDisplay()
 			}
 		}
 	}
+
+	LogScorecardVisualDebug(TEXT("UpdateDisplay"));
+}
+
+void UPUScorecardWidget::LogScorecardVisualDebug(const TCHAR* Phase) const
+{
+	auto VisTag = [](ESlateVisibility V) -> const TCHAR*
+	{
+		switch (V)
+		{
+		case ESlateVisibility::Visible: return TEXT("Vis");
+		case ESlateVisibility::Collapsed: return TEXT("Col");
+		case ESlateVisibility::Hidden: return TEXT("Hid");
+		case ESlateVisibility::HitTestInvisible: return TEXT("HTI");
+		case ESlateVisibility::SelfHitTestInvisible: return TEXT("SHTI");
+		default: return TEXT("?");
+		}
+	};
+	auto LogW = [&](const TCHAR* Label, const UWidget* W)
+	{
+		if (!IsValid(W))
+		{
+			UE_LOG(LogTemp, Display, TEXT("%s [DBG/ScorecardVisual] %s %s=NULL (not bound in WBP or wrong name)"), PUDialogueScoringLog::Tag, Phase, Label);
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("%s [DBG/ScorecardVisual] %s %s name=%s Vis=%s(%d) Op=%.3f"),
+			PUDialogueScoringLog::Tag,
+			Phase,
+			Label,
+			*W->GetName(),
+			VisTag(W->GetVisibility()),
+			(int32)W->GetVisibility(),
+			W->GetRenderOpacity());
+	};
+
+	UE_LOG(LogTemp, Display, TEXT("%s [DBG/ScorecardVisual] %s root class=%s Vis=%s(%d) Op=%.3f InViewport=%d parent=%s"),
+		PUDialogueScoringLog::Tag,
+		Phase,
+		*GetClass()->GetName(),
+		VisTag(GetVisibility()),
+		(int32)GetVisibility(),
+		GetRenderOpacity(),
+		IsInViewport() ? 1 : 0,
+		GetParent() ? *GetParent()->GetName() : TEXT("null"));
+
+	LogW(TEXT("DishNameText"), DishNameText);
+	LogW(TEXT("DishImage"), DishImage);
+	LogW(TEXT("SealImage"), SealImage);
+	LogW(TEXT("BaseIngredientsContainer"), BaseIngredientsContainer);
+	LogW(TEXT("FlavorProfileContainer"), FlavorProfileContainer);
+	LogW(TEXT("TextureProfileContainer"), TextureProfileContainer);
+
+	UE_LOG(LogTemp, Display, TEXT("%s [DBG/ScorecardVisual] %s data: DisplayName=\"%s\" BaseIngredients=%d FlavorAspects=%d TextureAspects=%d SealTier=%d OverrideDishTex=%s MID=%s"),
+		PUDialogueScoringLog::Tag,
+		Phase,
+		*ScorecardData.DisplayName.ToString(),
+		ScorecardData.BaseIngredients.Num(),
+		ScorecardData.FlavorProfile.TopAspects.Num(),
+		ScorecardData.TextureProfile.TopAspects.Num(),
+		(int32)ScorecardData.SealTier,
+		OverrideDishTexture ? TEXT("set") : TEXT("null"),
+		IsValid(DishImageMID) ? TEXT("ok") : TEXT("null"));
 }
 
 void UPUScorecardWidget::UpdateSealImage()
@@ -306,6 +382,18 @@ void UPUScorecardWidget::UpdateSealImage()
 		break;
 	case EPUScorecardSealTier::NeedsImprovement:
 		SealTex = SealTextureNeedsImprovement.LoadSynchronous();
+		if (!SealTex)
+		{
+			SealTex = SealTextureOkay.LoadSynchronous();
+		}
+		if (!SealTex)
+		{
+			SealTex = SealTextureGreat.LoadSynchronous();
+		}
+		if (!SealTex)
+		{
+			SealTex = SealTexturePerfect.LoadSynchronous();
+		}
 		break;
 	default:
 		SealTex = SealTextureOkay.LoadSynchronous();

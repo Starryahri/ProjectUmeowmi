@@ -79,6 +79,10 @@ public:
     /** Start a specific dialogue and set interacting state. Use when triggering dialogue outside of StartRandomDialogue (e.g. locked level transition). */
     void StartDialogueAndSetInteracting(UDlgDialogue* Dialogue);
 
+    /** Active Dlg context after StartSpecificDialogue / StartRandomDialogue; null when not in dialogue. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Talking Object|Dialogue")
+    UDlgContext* GetCurrentDialogueContext() const { return CurrentDialogueContext; }
+
     // Collision events
     UFUNCTION()
     void OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);

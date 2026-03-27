@@ -6,6 +6,14 @@
 #include "Components/Button.h"
 #include "PUDialogueBox.h"
 #include "../PUProjectUmeowmiGameInstance.h"
+#include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+
+namespace PUDialogueScoringLog
+{
+	static constexpr const TCHAR* Tag = TEXT("[PUDialogueScoring]");
+}
 
 void UPUDialogueOption::NativeConstruct()
 {
@@ -87,18 +95,59 @@ void UPUDialogueOption::SelectOption()
 	}
 
 	// Select the option and move to the next node
+	const bool bEndedBefore = CurrentContext->HasDialogueEnded();
+	UE_LOG(LogTemp, Display, TEXT("%s [Option/SelectOption] idx=%d ctx=%p HasEnded(before)=%d OptionsNum=%d parentBox=%p"),
+		PUDialogueScoringLog::Tag, OptionIndex, CurrentContext, bEndedBefore ? 1 : 0, CurrentContext->GetOptionsNum(), ParentDialogueBox);
 	bool bSuccess = CurrentContext->ChooseOption(OptionIndex);
-	//UE_LOG(LogTemp,Log, TEXT("PUDialogueOption::SelectOption - ChooseOption returned %s"), bSuccess ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogTemp, Display, TEXT("%s [Option/SelectOption] ChooseOption(%d) => %s HasEnded(after)=%d"),
+		PUDialogueScoringLog::Tag, OptionIndex, bSuccess ? TEXT("true") : TEXT("false"), CurrentContext->HasDialogueEnded() ? 1 : 0);
 
-	// Update the parent dialogue box if we have one
-	if (IsValid(ParentDialogueBox))
+	// ChooseOption can run Dlg enter events (e.g. BeginDishScoring) that SwapToScoringDialogueBox on the character.
+	// ParentDialogueBox still points at the old widget — Update must target the character's current DialogueBox.
+	UPUDialogueBox* BoxToUpdate = ParentDialogueBox;
+	APlayerController* PC = GetOwningPlayer();
+	if (!PC && IsValid(ParentDialogueBox))
 	{
-		//UE_LOG(LogTemp,Log, TEXT("PUDialogueOption::SelectOption - Updating parent dialogue box"));
-		ParentDialogueBox->Update(CurrentContext);
+		PC = ParentDialogueBox->GetOwningPlayer();
+	}
+	if (!PC)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			PC = World->GetFirstPlayerController();
+		}
+	}
+	if (PC)
+	{
+		if (APawn* Pawn = PC->GetPawn())
+		{
+			if (AProjectUmeowmiCharacter* PlayerChar = Cast<AProjectUmeowmiCharacter>(Pawn))
+			{
+				if (UPUDialogueBox* CharBox = PlayerChar->GetDialogueBox())
+				{
+					BoxToUpdate = CharBox;
+				}
+			}
+		}
 	}
 	else
 	{
-		//UE_LOG(LogTemp,Warning, TEXT("PUDialogueOption::SelectOption - No parent dialogue box set"));
+		UE_LOG(LogTemp, Warning, TEXT("%s [Option/SelectOption] no PlayerController (this=%p parentBox=%p) — cannot resolve character DialogueBox"),
+			PUDialogueScoringLog::Tag, this, ParentDialogueBox);
+	}
+	if (BoxToUpdate != ParentDialogueBox)
+	{
+		UE_LOG(LogTemp, Display, TEXT("%s [Option/SelectOption] post-ChooseOption: dialogue box replaced (parent=%p -> character=%p %s) — updating character box"),
+			PUDialogueScoringLog::Tag, ParentDialogueBox, BoxToUpdate, BoxToUpdate ? *BoxToUpdate->GetClass()->GetName() : TEXT("null"));
+		SetParentDialogueBox(BoxToUpdate);
+	}
+	if (IsValid(BoxToUpdate))
+	{
+		BoxToUpdate->Update(CurrentContext);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("%s [Option/SelectOption] No dialogue box to Update after ChooseOption"), PUDialogueScoringLog::Tag);
 	}
 }
 

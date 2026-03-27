@@ -78,6 +78,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void Update(UDlgContext* ActiveContext);
 
+    /**
+     * Full Open pipeline (vignette, visibility, input lock, focus) plus Update, but does not NotifyDialogueOpened.
+     * Call when this widget instance replaced another mid-conversation (e.g. scoring layout swap) — Update alone leaves the new widget never "opened".
+     */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    void OpenFromContextResync(UDlgContext* ActiveContext);
+
     /** Set the vignette material at runtime (if not set in Blueprint) */
     UFUNCTION(BlueprintCallable, Category = "Vignette")
     void SetVignetteMaterial(UMaterialInterface* NewVignetteMaterial);
@@ -97,6 +104,10 @@ public:
     /** Advance dialogue (skip typewriter or go to next line). Call when player presses Interact during dialogue. */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void AdvanceDialogue();
+
+    /** After swapping dialogue layout mid-conversation, restore keyboard focus so Interact advances the visible box. */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    void SetDialogueInputFocus();
 
     /** Request focus (e.g. when popup closes and dialogue is still visible). Returns the widget to focus, or nullptr. */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
@@ -195,6 +206,15 @@ private:
 
     /** Advance typewriter by one character (called by timer) */
     void AdvanceTypewriter();
+
+    /** Vignette, visibility, viewport, movement lock, Slate focus — shared by Open and OpenFromContextResync. */
+    void OpenVisualAndInputPipeline();
+
+    /** Scorecard layout BPs may hide dialogue branches in the designer; uncollapse ancestors so the line and options render after swap. */
+    void EnsureDialogueLineVisible();
+
+    /** Debug: Slate visibility, render opacity, vignette/camera state — filter log on [PUDialogueScoring] [DBG/DialogueBoxVisual]. */
+    void LogDialogueBoxVisualForDebug(const TCHAR* Phase) const;
 
     /** Returns substring of InText up to TargetVisibleCount visible characters. Skips markup tags when counting so tags never appear as raw text. Supports <TagName>content</> format. */
     static FString GetSubstringUpToVisibleCharacter(const FString& InText, int32 TargetVisibleCount);

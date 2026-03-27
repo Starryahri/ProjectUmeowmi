@@ -413,6 +413,11 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
         }
         if (PlayerChar)
         {
+            // Scorecard sits above the scoring dialogue layer; without this swap + refresh, dialogue stays on the default
+            // viewport Z and the scorecard can cover it — no clicks advance dialogue (softlock).
+            UE_LOG(LogTemp, Display, TEXT("[PUDialogueScoring] OnDialogueEvent ShowScorecard: SyncDialogueBoxToScoringLayer Context=%p"), Context);
+            PlayerChar->SyncDialogueBoxToScoringLayer(Context);
+
             APlayerController* PC = Cast<APlayerController>(PlayerChar->GetController());
             if (!PC)
             {
@@ -454,6 +459,14 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
 
     if (EventName == TEXT("BeginDishScoring"))
     {
+        UDlgContext* const TOCtx = GetCurrentDialogueContext();
+        const bool bCtxMatches = (Context == TOCtx);
+        UE_LOG(LogTemp, Display, TEXT("[PUDialogueScoring] [0/BeginDishScoring event] actor=%s eventCtx=%p TO->CurrentDialogueContext=%p samePtr=%d eventHasEnded=%d eventOpts=%d"),
+            *GetName(), Context, TOCtx, bCtxMatches ? 1 : 0, Context && Context->HasDialogueEnded() ? 1 : 0, Context ? Context->GetOptionsNum() : -1);
+        if (Context)
+        {
+            UE_LOG(LogTemp, Display, TEXT("[PUDialogueScoring] [0/BeginDishScoring event] DlgContextString: %s"), *Context->GetContextString());
+        }
         AProjectUmeowmiCharacter* PlayerChar = nullptr;
         if (UWorld* World = GetWorld())
         {
@@ -481,11 +494,32 @@ bool ATalkingObject::OnDialogueEvent_Implementation(UDlgContext* Context, FName 
                 UE_LOG(LogTemp, Warning, TEXT("[DishScoring] BeginDishScoring event -> CreateWidget failed"));
                 return false;
             }
-            return PlayerChar->BeginDishScoringModeWithWidget(ScoringWidget);
+            const bool bOk = PlayerChar->BeginDishScoringModeWithWidget(ScoringWidget);
+            if (bOk)
+            {
+                UE_LOG(LogTemp, Display, TEXT("[PUDialogueScoring] [0/BeginDishScoring] calling RefreshDialogueBoxFromContext (ctx=%p OptionsNum=%d HasEnded=%d)"),
+                    Context, Context ? Context->GetOptionsNum() : -1, Context && Context->HasDialogueEnded() ? 1 : 0);
+                PlayerChar->RefreshDialogueBoxFromContext(Context);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[PUDialogueScoring] BeginDishScoring: BeginDishScoringModeWithWidget failed"));
+            }
+            return bOk;
         }
         if (PlayerChar->DishScoringWidgetClass)
         {
-            return PlayerChar->TryBeginDishScoringModeFromClass();
+            const bool bOk = PlayerChar->TryBeginDishScoringModeFromClass();
+            if (bOk)
+            {
+                UE_LOG(LogTemp, Display, TEXT("[PUDialogueScoring] BeginDishScoring: RefreshDialogueBoxFromContext after TryBeginDishScoringModeFromClass"));
+                PlayerChar->RefreshDialogueBoxFromContext(Context);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[PUDialogueScoring] BeginDishScoring: TryBeginDishScoringModeFromClass failed"));
+            }
+            return bOk;
         }
         UE_LOG(LogTemp, Warning, TEXT("[DishScoring] BeginDishScoring: set DishScoringWidgetClass on player character %s or override on %s"),
             PlayerChar ? *PlayerChar->GetName() : TEXT("?"), *GetName());

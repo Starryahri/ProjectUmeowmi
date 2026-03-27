@@ -27,6 +27,7 @@ class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
 class ATalkingObject;
+class UDlgContext;
 class UPUJournalWidget;
 class UPUQuestObjectiveOffscreenIndicatorWidget;
 class USceneCaptureComponent2D;
@@ -645,6 +646,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dish Scoring")
 	bool IsInDishScoringMode() const;
 
+	/**
+	 * Reapplies the active dialogue node to the current DialogueBox widget.
+	 * Required after SwapToScoringDialogueBox / RestoreNonScoringDialogueBox replace the widget instance mid-conversation.
+	 */
+	void RefreshDialogueBoxFromContext(UDlgContext* Context);
+
+	/** Puts dialogue on the scoring viewport layer (Z stack with scorecard) if configured, then RefreshDialogueBoxFromContext. */
+	void SyncDialogueBoxToScoringLayer(UDlgContext* Context);
+
 	// Order System Storage
 	UPROPERTY(BlueprintReadWrite, Category = "Order System")
 	FPUOrderBase CurrentOrder;
@@ -698,6 +708,13 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UPUDishScoringWidget> ActiveDishScoringWidget;
 
+	/**
+	 * When WBP_DishScoringMode embeds UPUScorecardWidget under the dish layer (Z 50000), the scoring dialogue box (Z 50001)
+	 * paints on top and hides the scorecard. We detach that widget and add it at PUScorecardViewportZOrder (50002) while scoring.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UPUScorecardWidget> ElevatedDishScoringScorecard;
+
 	/** Dialogue box class to restore after dish scoring (captured when swapping to scoring layout). */
 	UPROPERTY(Transient)
 	TSubclassOf<UPUDialogueBox> CachedNonScoringDialogueBoxClass;
@@ -705,9 +722,19 @@ private:
 	/** True while DialogueBox is the scoring-layout instance. */
 	bool bUsingScoringDialogueBox = false;
 
+	/** True when DialogueBox was moved to the scoring viewport Z without swapping class (ScoringDialogueBoxWidgetClass unset). */
+	bool bDialogueBoxRelayeredToScoringStackOnly = false;
+
 	/** Removes the active dish scoring widget only (does not restore dialogue). Used when replacing one scoring widget with another. */
 	void RemoveActiveDishScoringWidgetFromViewport();
 
+	/** Detaches embedded scorecard from the dish widget tree and adds it above the scoring dialogue viewport layer. */
+	void ElevateEmbeddedDishScoringScorecardAboveDialogue();
+
+	/** Removes viewport-only scorecard added by ElevateEmbeddedDishScoringScorecardAboveDialogue (before tearing down dish UI). */
+	void TearDownElevatedDishScoringScorecard();
+
+	void ApplyScoringDialogueViewportLayer();
 	void SwapToScoringDialogueBox();
 	void RestoreNonScoringDialogueBox();
 

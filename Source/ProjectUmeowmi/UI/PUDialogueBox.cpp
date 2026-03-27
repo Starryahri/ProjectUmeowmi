@@ -1,5 +1,12 @@
 #include "PUDialogueBox.h"
 #include "PUDialogueOption.h"
+
+// Match ProjectUmeowmiCharacter — filter Output Log for [PUDialogueScoring]
+namespace PUDialogueScoringLog
+{
+	static constexpr const TCHAR* Tag = TEXT("[PUDialogueScoring]");
+}
+
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "DlgSystem/DlgContext.h"
 #include "DlgSystem/DlgNodeData.h"
@@ -23,6 +30,39 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "TimerManager.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Engine/LocalPlayer.h"
+
+namespace
+{
+	/** Single-line log: newlines -> space, cap length so Output Log stays readable. */
+	FString SanitizeForOneLineLog(const FString& S)
+	{
+		FString Out = S;
+		Out.ReplaceInline(TEXT("\r\n"), TEXT(" "));
+		Out.ReplaceInline(TEXT("\n"), TEXT(" "));
+		Out.ReplaceInline(TEXT("\r"), TEXT(" "));
+		if (Out.Len() > 2048)
+		{
+			Out.LeftInline(2048);
+			Out += TEXT(" ...[truncated]");
+		}
+		return Out;
+	}
+
+	/** WBP_ScorecardDialogueBox and similar may leave dialogue under Collapsed/Hidden panels; restore Visible up the chain. */
+	void UnhideCollapsedAncestors(UWidget* Leaf)
+	{
+		for (UWidget* W = Leaf; W; W = Cast<UWidget>(W->GetParent()))
+		{
+			const ESlateVisibility Vis = W->GetVisibility();
+			if (Vis == ESlateVisibility::Collapsed || Vis == ESlateVisibility::Hidden)
+			{
+				W->SetVisibility(ESlateVisibility::Visible);
+			}
+		}
+	}
+}
 
 UPUDialogueBox::UPUDialogueBox(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -122,35 +162,24 @@ void UPUDialogueBox::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
     }
 }
 
-void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
+void UPUDialogueBox::OpenVisualAndInputPipeline()
 {
-    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Open_Implementation called"));
-    // Debug logging for widget state
-    //UE_LOG(LogTemp,Log, TEXT("DialogueBox pointer: %p"), this);
-    //UE_LOG(LogTemp,Log, TEXT("Current visibility: %d"), (int32)GetVisibility());
-    //UE_LOG(LogTemp,Log, TEXT("Is in viewport: %d"), IsInViewport());
-    //UE_LOG(LogTemp,Log, TEXT("Parent widget: %p"), GetParent());
-
-    // Initialize and animate vignette in
-    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Open_Implementation - Starting vignette animation (Target Intensity: %.2f)"), VignetteIntensityTarget);
+    UE_LOG(LogTemp, Display, TEXT("%s [5/OpenVisualAndInputPipeline] ENTER widget=%p %s Vis=%d InViewport=%d"),
+        PUDialogueScoringLog::Tag, this, *GetClass()->GetName(), (int32)GetVisibility(), IsInViewport() ? 1 : 0);
     InitializeVignetteMaterial();
     AnimateVignetteToTarget(VignetteIntensityTarget);
 
-    // Make sure we're visible and can receive focus
     SetVisibility(ESlateVisibility::Visible);
     SetIsFocusable(true);
 
-    // Ensure we're in the viewport
     if (!IsInViewport())
     {
         AddToViewport();
     }
 
-    // Try to get the player controller
     APlayerController* PC = GetOwningPlayer();
     if (!PC)
     {
-        // If we don't have a player controller yet, try to get it from the game instance
         if (UWorld* World = GetWorld())
         {
             PC = World->GetFirstPlayerController();
@@ -159,24 +188,12 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
 
     if (PC)
     {
-        //UE_LOG(LogTemp,Log, TEXT("PlayerController found: %p"), PC);
-        
-        // Get the local player
         ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
-        if (!LocalPlayer)
+        if (LocalPlayer && GetWorld() && GetWorld()->GetGameViewport())
         {
-            //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::Open_Implementation - No local player found!"));
-            return;
-        }
-
-        // Get the game viewport
-        if (UGameViewportClient* ViewportClient = GetWorld()->GetGameViewport())
-        {
-            // Disable player movement and input
             PC->SetIgnoreMoveInput(true);
             PC->SetIgnoreLookInput(true);
 
-            // Disable player movement
             if (APawn* Pawn = PC->GetPawn())
             {
                 if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
@@ -188,32 +205,25 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
                     }
                 }
             }
-            
-            // Set focus immediately
+
             if (IsValid(this) && IsValid(PC) && IsValid(LocalPlayer))
             {
-                // Make sure we're still in the viewport
                 if (!IsInViewport())
                 {
                     AddToViewport();
                 }
 
-                // Get the widget's slate widget
-                TSharedPtr<SWidget> SlateWidget = GetCachedWidget();
-                if (SlateWidget.IsValid())
+                if (TSharedPtr<SWidget> SlateWidget = GetCachedWidget(); SlateWidget.IsValid())
                 {
-                    // Set focus to this widget
                     FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
-                    
-                    // If we have dialogue options, set focus to the first option
+
                     if (IsValid(DialogueOptions) && DialogueOptions->GetChildrenCount() > 0)
                     {
                         if (UPUDialogueOption* FirstOption = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(0)))
                         {
                             if (FirstOption->OptionButton)
                             {
-                                TSharedPtr<SWidget> ButtonSlateWidget = FirstOption->OptionButton->GetCachedWidget();
-                                if (ButtonSlateWidget.IsValid())
+                                if (TSharedPtr<SWidget> ButtonSlateWidget = FirstOption->OptionButton->GetCachedWidget(); ButtonSlateWidget.IsValid())
                                 {
                                     FSlateApplication::Get().SetKeyboardFocus(ButtonSlateWidget);
                                 }
@@ -223,16 +233,26 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
                 }
             }
         }
-        else
-        {
-            //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::Open_Implementation - No game viewport found!"));
-        }
     }
     else
     {
-        //UE_LOG(LogTemp,Warning, TEXT("No PlayerController found!"));
+        UE_LOG(LogTemp, Warning, TEXT("%s [5/OpenVisualAndInputPipeline] no PC — movement/focus not applied"), PUDialogueScoringLog::Tag);
     }
+    const int32 OptSlots = (IsValid(DialogueOptions) ? DialogueOptions->GetChildrenCount() : -1);
+    const bool bSlateOk = GetCachedWidget().IsValid();
+    UE_LOG(LogTemp, Display, TEXT("%s [5/OpenVisualAndInputPipeline] EXIT widget=%p Vis=%d InViewport=%d DialogueText=%s DialogueOptionsSlots=%d SlateCached=%d"),
+        PUDialogueScoringLog::Tag,
+        this,
+        (int32)GetVisibility(),
+        IsInViewport() ? 1 : 0,
+        IsValid(DialogueText) ? TEXT("ok") : TEXT("NULL"),
+        OptSlots,
+        bSlateOk ? 1 : 0);
+}
 
+void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
+{
+    OpenVisualAndInputPipeline();
     Update(ActiveContext);
 
 	if (UWorld* World = GetWorld())
@@ -242,6 +262,27 @@ void UPUDialogueBox::Open_Implementation(UDlgContext* ActiveContext)
 			GI->NotifyDialogueOpened();
 		}
 	}
+}
+
+void UPUDialogueBox::OpenFromContextResync(UDlgContext* ActiveContext)
+{
+    UE_LOG(LogTemp, Display, TEXT("%s [6/OpenFromContextResync] ENTER widget=%p ctx=%p HasEnded=%d OptionsNum=%d ActiveIdx=%d"),
+        PUDialogueScoringLog::Tag,
+        this,
+        ActiveContext,
+        ActiveContext && ActiveContext->HasDialogueEnded() ? 1 : 0,
+        ActiveContext ? ActiveContext->GetOptionsNum() : -1,
+        ActiveContext ? ActiveContext->GetActiveNodeIndex() : -1);
+    OpenVisualAndInputPipeline();
+    if (ActiveContext)
+    {
+        Update(ActiveContext);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s [6/OpenFromContextResync] ctx NULL — Update skipped"), PUDialogueScoringLog::Tag);
+    }
+    UE_LOG(LogTemp, Display, TEXT("%s [6/OpenFromContextResync] EXIT"), PUDialogueScoringLog::Tag);
 }
 
 void UPUDialogueBox::SetSkipMode(bool bEnabled)
@@ -312,8 +353,7 @@ FReply UPUDialogueBox::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEven
 
 void UPUDialogueBox::Close_Implementation()
 {
-    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Close_Implementation called"));
-    //UE_LOG(LogTemp,Log, TEXT("Current visibility state: %d"), (int32)GetVisibility());
+    UE_LOG(LogTemp, Display, TEXT("%s [Close] widget=%p %s Vis=%d bTypewriterActive=%d"), PUDialogueScoringLog::Tag, this, *GetClass()->GetName(), (int32)GetVisibility(), bTypewriterActive ? 1 : 0);
 
     // Reset skip mode when dialogue closes
     bSkipMode = false;
@@ -418,6 +458,93 @@ void UPUDialogueBox::SetVignetteMaterial(UMaterialInterface* NewVignetteMaterial
     }
 }
 
+void UPUDialogueBox::EnsureDialogueLineVisible()
+{
+	// WBP_ScorecardDialogueBox et al. often default the root UserWidget to Hidden; children can still read Vis/SHTI but nothing draws.
+	if (GetVisibility() == ESlateVisibility::Hidden || GetVisibility() == ESlateVisibility::Collapsed)
+	{
+		SetVisibility(ESlateVisibility::Visible);
+	}
+
+	auto ApplyToLeaf = [](UWidget* Leaf)
+	{
+		if (!IsValid(Leaf))
+		{
+			return;
+		}
+		UnhideCollapsedAncestors(Leaf);
+	};
+
+	ApplyToLeaf(DialogueText);
+	ApplyToLeaf(ParticipantNameText);
+	ApplyToLeaf(DialogueOptions);
+
+	LogDialogueBoxVisualForDebug(TEXT("postEnsure"));
+}
+
+void UPUDialogueBox::LogDialogueBoxVisualForDebug(const TCHAR* Phase) const
+{
+	auto VisTag = [](ESlateVisibility V) -> const TCHAR*
+	{
+		switch (V)
+		{
+		case ESlateVisibility::Visible: return TEXT("Vis");
+		case ESlateVisibility::Collapsed: return TEXT("Col");
+		case ESlateVisibility::Hidden: return TEXT("Hid");
+		case ESlateVisibility::HitTestInvisible: return TEXT("HTI");
+		case ESlateVisibility::SelfHitTestInvisible: return TEXT("SHTI");
+		default: return TEXT("?");
+		}
+	};
+	auto LogOne = [&](const TCHAR* Label, const UWidget* W)
+	{
+		if (!IsValid(W))
+		{
+			UE_LOG(LogTemp, Display, TEXT("%s [DBG/DialogueBoxVisual] %s %s=NULL"), PUDialogueScoringLog::Tag, Phase, Label);
+			return;
+		}
+		UE_LOG(LogTemp, Display, TEXT("%s [DBG/DialogueBoxVisual] %s %s name=%s Vis=%s(%d) RenderOp=%.3f"),
+			PUDialogueScoringLog::Tag,
+			Phase,
+			Label,
+			*W->GetName(),
+			VisTag(W->GetVisibility()),
+			(int32)W->GetVisibility(),
+			W->GetRenderOpacity());
+	};
+
+	UE_LOG(LogTemp, Display, TEXT("%s [DBG/DialogueBoxVisual] %s root name=%s class=%s Vis=%s(%d) RenderOp=%.3f InViewport=%d SlateCached=%d"),
+		PUDialogueScoringLog::Tag,
+		Phase,
+		*GetName(),
+		*GetClass()->GetName(),
+		VisTag(GetVisibility()),
+		(int32)GetVisibility(),
+		GetRenderOpacity(),
+		IsInViewport() ? 1 : 0,
+		GetCachedWidget().IsValid() ? 1 : 0);
+
+	const UCameraComponent* Cam = GetPlayerCamera();
+	UE_LOG(LogTemp, Display, TEXT("%s [DBG/DialogueBoxVisual] %s vignette: MID=%s currentIntensity=%.2f targetIntensity=%.2f playerCamera=%s"),
+		PUDialogueScoringLog::Tag,
+		Phase,
+		IsValid(VignetteDynamicMaterial) ? TEXT("ok") : TEXT("NULL"),
+		CurrentVignetteIntensity,
+		TargetVignetteIntensity,
+		IsValid(Cam) ? *Cam->GetName() : TEXT("NULL"));
+
+	LogOne(TEXT("ParticipantNameText"), ParticipantNameText);
+	LogOne(TEXT("DialogueText"), DialogueText);
+	LogOne(TEXT("DialogueOptions"), DialogueOptions);
+
+	if (IsValid(DialogueText))
+	{
+		const FString Shown = SanitizeForOneLineLog(DialogueText->GetText().ToString());
+		UE_LOG(LogTemp, Display, TEXT("%s [DBG/DialogueBoxVisual] %s dialogueTextWidgetContent=\"%s\" (len=%d)"),
+			PUDialogueScoringLog::Tag, Phase, *Shown, Shown.Len());
+	}
+}
+
 void UPUDialogueBox::DebugVignetteMaterial() const
 {
     //UE_LOG(LogTemp,Warning, TEXT("=== VIGNETTE MATERIAL DEBUG ==="));
@@ -433,19 +560,37 @@ void UPUDialogueBox::DebugVignetteMaterial() const
 
 void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
 {
-    //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update_Implementation called"));
-    
     // Store the context for reference
     CurrentContext = ActiveContext;
     
     if (IsValid(ActiveContext))
     {
+        const bool bEnded = ActiveContext->HasDialogueEnded();
+        const int32 OptNum = ActiveContext->GetOptionsNum();
+
         FText ParticipantDisplayName = ActiveContext->GetActiveNodeParticipantDisplayName();
         FText NodeText = ActiveContext->GetActiveNodeText();
         if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
         {
             NodeText = GI->ResolveDialogueLineDisplayText(NodeText);
         }
+        const FString LinePreview = NodeText.ToString().Left(100);
+        const FString FullLineForLog = SanitizeForOneLineLog(NodeText.ToString());
+        const FString ParticipantForLog = SanitizeForOneLineLog(ParticipantDisplayName.ToString());
+        UE_LOG(LogTemp, Display, TEXT("%s [7/Update] widget=%p ctx=%p HasEnded=%d OptionsNum=%d ActiveIdx=%d DialogueTextWidget=%s linePreview=\"%s\""),
+            PUDialogueScoringLog::Tag,
+            this,
+            ActiveContext,
+            bEnded ? 1 : 0,
+            OptNum,
+            ActiveContext->GetActiveNodeIndex(),
+            IsValid(DialogueText) ? TEXT("ok") : TEXT("NULL"),
+            *LinePreview);
+        UE_LOG(LogTemp, Display, TEXT("%s [7/Update] dialogueFullText=\"%s\" (len=%d) participantName=\"%s\""),
+            PUDialogueScoringLog::Tag,
+            *FullLineForLog,
+            FullLineForLog.Len(),
+            *ParticipantForLog);
 
         if (IsValid(ParticipantNameText))
         {
@@ -473,10 +618,12 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
                 {
                     DialogueText->SetText(FText::FromString(FString()));
                     bTypewriterActive = true;
+                    UE_LOG(LogTemp, Display, TEXT("%s [7/Update] typewriter START visibleChars=%d bSkipMode=%d"), PUDialogueScoringLog::Tag, TypewriterTotalVisibleChars, bSkipMode ? 1 : 0);
                     AdvanceTypewriter();
                 }
                 else
                 {
+                    UE_LOG(LogTemp, Display, TEXT("%s [7/Update] typewriter SKIP (0 visible chars) — set full text"), PUDialogueScoringLog::Tag);
                     DialogueText->SetText(NodeText);
                     if (bSkipMode)
                     {
@@ -486,6 +633,7 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
             }
             else
             {
+                UE_LOG(LogTemp, Display, TEXT("%s [7/Update] typewriter disabled by GI — full text"), PUDialogueScoringLog::Tag);
                 DialogueText->SetText(NodeText);
                 // Typewriter disabled + skip mode: schedule auto-advance after brief delay
                 if (bSkipMode)
@@ -539,10 +687,12 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
             }
         }
 
+        EnsureDialogueLineVisible();
+
         // Check if dialogue has ended
         if (ActiveContext->HasDialogueEnded())
         {
-            //UE_LOG(LogTemp,Log, TEXT("PUDialogueBox::Update - Dialogue has ended, closing dialogue box"));
+            UE_LOG(LogTemp, Warning, TEXT("%s [7/Update] HasDialogueEnded=TRUE — will Close() and EndInteraction"), PUDialogueScoringLog::Tag);
             
             // Get the player character and find the current talking object
             if (ACharacter* PlayerCharacter = UGameplayStatics::GetPlayerCharacter(this, 0))
@@ -578,8 +728,7 @@ void UPUDialogueBox::Update_Implementation(UDlgContext* ActiveContext)
     }
     else
     {
-        //UE_LOG(LogTemp,Error, TEXT("PUDialogueBox::Update_Implementation called with invalid context"));
-        
+        UE_LOG(LogTemp, Warning, TEXT("%s [7/Update] ActiveContext INVALID — Close()"), PUDialogueScoringLog::Tag);
         // Clear the context reference
         CurrentContext = nullptr;
         
@@ -707,6 +856,11 @@ void UPUDialogueBox::AdvanceTypewriter()
 
     TypewriterCurrentIndex++;
 
+    if (TypewriterCurrentIndex == 1)
+    {
+        UE_LOG(LogTemp, Display, TEXT("%s [8/AdvanceTypewriter] first tick totalVisible=%d bSkipMode=%d"), PUDialogueScoringLog::Tag, TypewriterTotalVisibleChars, bSkipMode ? 1 : 0);
+    }
+
     if (TypewriterCurrentIndex <= TypewriterTotalVisibleChars)
     {
         FString VisibleText = GetSubstringUpToVisibleCharacter(FullDialogueText, TypewriterCurrentIndex);
@@ -785,7 +939,9 @@ void UPUDialogueBox::OnTypewriterCompleteAutoAdvance()
     // Advance via DlgContext directly - bypasses UI, works regardless of dialogue box layout
     if (IsValid(CurrentContext) && !CurrentContext->HasDialogueEnded() && CurrentContext->GetOptionsNum() > 0)
     {
-        CurrentContext->ChooseOption(0);
+        UE_LOG(LogTemp, Display, TEXT("%s [SkipAutoAdvance] ChooseOption(0) OptionsNum=%d"), PUDialogueScoringLog::Tag, CurrentContext->GetOptionsNum());
+        const bool bChose = CurrentContext->ChooseOption(0);
+        UE_LOG(LogTemp, Display, TEXT("%s [SkipAutoAdvance] ChooseOption(0) => %s HasEnded=%d"), PUDialogueScoringLog::Tag, bChose ? TEXT("true") : TEXT("false"), CurrentContext->HasDialogueEnded() ? 1 : 0);
         Update(CurrentContext);  // Refresh UI and handle dialogue end
     }
     else
@@ -832,10 +988,87 @@ UWidget* UPUDialogueBox::GetFocusTarget() const
     return const_cast<UPUDialogueBox*>(this);
 }
 
+void UPUDialogueBox::SetDialogueInputFocus()
+{
+    SetVisibility(ESlateVisibility::Visible);
+    SetIsFocusable(true);
+    const int32 OptionSlots = (IsValid(DialogueOptions) ? DialogueOptions->GetChildrenCount() : 0);
+    if (APlayerController* PC = GetOwningPlayer())
+    {
+        if (PC->GetLocalPlayer())
+        {
+            if (TSharedPtr<SWidget> SlateWidget = GetCachedWidget(); SlateWidget.IsValid())
+            {
+                FSlateApplication::Get().SetKeyboardFocus(SlateWidget);
+                if (IsValid(DialogueOptions) && DialogueOptions->GetChildrenCount() > 0)
+                {
+                    if (UPUDialogueOption* FirstOption = Cast<UPUDialogueOption>(DialogueOptions->GetChildAt(0)))
+                    {
+                        if (FirstOption->OptionButton)
+                        {
+                            if (TSharedPtr<SWidget> ButtonSlate = FirstOption->OptionButton->GetCachedWidget(); ButtonSlate.IsValid())
+                            {
+                                FSlateApplication::Get().SetKeyboardFocus(ButtonSlate);
+                            }
+                        }
+                    }
+                }
+                UE_LOG(LogTemp, Verbose, TEXT("%s SetDialogueInputFocus: widget=%s optionSlots=%d"),
+                    PUDialogueScoringLog::Tag, *GetClass()->GetName(), OptionSlots);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("%s SetDialogueInputFocus: no cached Slate widget (widget=%s)"), PUDialogueScoringLog::Tag, *GetClass()->GetName());
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("%s SetDialogueInputFocus: no LocalPlayer"), PUDialogueScoringLog::Tag);
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s SetDialogueInputFocus: no OwningPlayer"), PUDialogueScoringLog::Tag);
+    }
+}
+
 void UPUDialogueBox::AdvanceDialogue()
 {
+    UE_LOG(LogTemp, Display, TEXT("%s [AdvanceDialogue] widget=%p ctx=%p HasEnded=%d OptionsNum=%d optChildren=%d typewriter=%d"),
+        PUDialogueScoringLog::Tag,
+        this,
+        CurrentContext,
+        CurrentContext && CurrentContext->HasDialogueEnded() ? 1 : 0,
+        CurrentContext ? CurrentContext->GetOptionsNum() : -1,
+        (IsValid(DialogueOptions) ? DialogueOptions->GetChildrenCount() : -1),
+        bTypewriterActive ? 1 : 0);
+    // No pre-placed option rows (e.g. alternate dialogue layout): advance through Dlg directly — same idea as OnTypewriterCompleteAutoAdvance.
+    if (IsValid(CurrentContext) && !CurrentContext->HasDialogueEnded() && CurrentContext->GetOptionsNum() > 0)
+    {
+        if (!IsValid(DialogueOptions) || DialogueOptions->GetChildrenCount() == 0)
+        {
+            if (IsTypewriterActive())
+            {
+                UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
+                const bool bSkipOnInput = GI ? GI->GetDialogueTypewriterSkipOnInput() : true;
+                if (bSkipOnInput)
+                {
+                    CompleteTypewriter();
+                }
+                return;
+            }
+            UE_LOG(LogTemp, Display, TEXT("%s AdvanceDialogue: fallback ChooseOption(0) (no option widgets; OptionsNum=%d)"), PUDialogueScoringLog::Tag, CurrentContext->GetOptionsNum());
+            CurrentContext->ChooseOption(0);
+            Update(CurrentContext);
+            return;
+        }
+    }
+
     if (!IsValid(DialogueOptions) || DialogueOptions->GetChildrenCount() == 0)
     {
+        UE_LOG(LogTemp, Display, TEXT("%s AdvanceDialogue: no DialogueOptions children and no Dlg fallback (Context=%s)"),
+            PUDialogueScoringLog::Tag,
+            IsValid(CurrentContext) ? TEXT("valid") : TEXT("null"));
         return;
     }
 
@@ -846,11 +1079,13 @@ void UPUDialogueBox::AdvanceDialogue()
         {
             if (Option->GetVisibility() == ESlateVisibility::Visible)
             {
+                UE_LOG(LogTemp, Verbose, TEXT("%s AdvanceDialogue: SelectOption on slot %d"), PUDialogueScoringLog::Tag, i);
                 Option->SelectOption();
                 return;
             }
         }
     }
+    UE_LOG(LogTemp, Display, TEXT("%s AdvanceDialogue: no visible option row"), PUDialogueScoringLog::Tag);
 }
 
 void UPUDialogueBox::InitializeVignetteMaterial()

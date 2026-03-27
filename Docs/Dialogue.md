@@ -62,7 +62,7 @@ Base interactable for NPCs, props, doors, and systems. Provides interaction rang
 | `DisplayName` | `FText` | EditAnywhere | Shown in UI. |
 | `ParticipantIcon` | `UTexture2D*` | EditAnywhere | Default portrait for Dlg. |
 | `AllowedParticipantNames` | `TArray<FName>` | EditAnywhere | Filters which participants are passed into dialogue when building the active list. |
-| `CurrentDialogueContext` | `UDlgContext*` | BlueprintReadWrite | Active context while talking. |
+| `CurrentDialogueContext` | `UDlgContext*` | Protected (`UPROPERTY` BlueprintReadWrite on class) | Active context while talking. **Other C++ types** (e.g. player character) use **`GetCurrentDialogueContext()`** — the member is not publicly accessible outside **`ATalkingObject`**. |
 
 **Properties — components**
 
@@ -106,6 +106,7 @@ Base interactable for NPCs, props, doors, and systems. Provides interaction rang
 |--------|-------------|
 | `StartInteraction` / `EndInteraction` | Begin/end interact state; may start dialogue. |
 | `StartRandomDialogue` / `StartSpecificDialogue` / `StartDialogueAndSetInteracting` | Entry points for Dlg. |
+| `GetCurrentDialogueContext` | Public **`UDlgContext*`** accessor (BlueprintCallable / BlueprintPure); use instead of reading **`CurrentDialogueContext`** from outside the class. |
 | `CanInteract` | Range, door lock, dialogue availability. |
 | `SetInteractionWidgetClass` / `SetInteractionKey` / `SetInteractionIcon` / `RefreshInteractionWidget` | Runtime prompt updates. |
 | `HideInteractionWidgetForTransition` | Hides prompt during level transition. |
@@ -146,11 +147,27 @@ Dlg System, `UPUProjectUmeowmiGameInstance`, `UPUQuestSubsystem`, `APUDishGiver`
 | `UnlockDoor`, `UnlockLevelTransition`, `UnlockTransition` | `UPUProjectUmeowmiGameInstance::UnlockLevelTransition(ParticipantName)` — **`ParticipantName` must be the LockID** |
 | `GenerateOrder` | `APUDishGiver::GenerateAndGiveOrderToPlayer` (only if actor is `APUDishGiver`) |
 | `RevealHint_<Aspect>` | e.g. `RevealHint_Salt` → aspect `Salt`; `APUDishGiver::RevealHintToPlayer` |
-| `ShowScorecard` | Creates `ScorecardWidgetClass`, adds to viewport, `AProjectUmeowmiCharacter::ShowScorecard` |
-| `EndDishScoring` | `AProjectUmeowmiCharacter::EndDishScoringMode` |
-| `BeginDishScoring` | Creates scoring widget from `DishScoringWidgetClass` (talking object or player) and `BeginDishScoringModeWithWidget`, or `TryBeginDishScoringModeFromClass` on player |
+| `ShowScorecard` | Ensures the dialogue box is on the **scoring viewport stack** (`SyncDialogueBoxToScoringLayer` with the active `UDlgContext`), then creates `ScorecardWidgetClass`, adds to viewport, `AProjectUmeowmiCharacter::ShowScorecard` — see **Scoring dialogue layout** below. |
+| `EndDishScoring` | `AProjectUmeowmiCharacter::EndDishScoringMode` (restores non-scoring dialogue box and **re-applies** the current node to the restored widget when dialogue is still active). |
+| `BeginDishScoring` | Creates scoring widget from `DishScoringWidgetClass` (talking object or player) and `BeginDishScoringModeWithWidget`, or `TryBeginDishScoringModeFromClass` on player; then **`RefreshDialogueBoxFromContext`** with the event context so the **new** scoring-layout dialogue box shows the current line/options. **You can fire this on any node** — it does not need to be the first node of the dialogue. |
 
 Unknown events log and return false.
+
+### Scoring dialogue layout (`ShowScorecard` / `BeginDishScoring`)
+
+Entering **dish scoring mode** swaps the player’s **`DialogueBox`** to **`ScoringDialogueBoxWidgetClass`** (higher viewport Z, same stack as the scorecard — see **`Scorecard.md`**). That **replaces the widget instance** that received **`Open`** when the conversation started. Without re-binding, **`UDlgContext`** would still drive the **old** (removed) widget, leaving the visible box empty and blocking progression.
+
+**C++ behavior (summary):**
+
+- **`AProjectUmeowmiCharacter::ApplyScoringDialogueViewportLayer()`** — if **`ScoringDialogueBoxWidgetClass`** is set, **`SwapToScoringDialogueBox()`** (new scoring-layout widget). If it is **not** set, **reparents** the current **`DialogueBox`** to **`PUScoringDialogueViewportZOrder`** so it sits in the same stack as scorecard/dish scoring (logged as a warning — prefer assigning **`ScoringDialogueBoxWidgetClass`** on the character for a proper layout).
+- **`AProjectUmeowmiCharacter::RefreshDialogueBoxFromContext(UDlgContext*)`** — calls **`Update`** on the current **`DialogueBox`**, then **`SetDialogueInputFocus()`** so Interact / advance still targets the visible widget after a swap.
+- **`AProjectUmeowmiCharacter::SyncDialogueBoxToScoringLayer(UDlgContext*)`** — **`ApplyScoringDialogueViewportLayer`**, then **`RefreshDialogueBoxFromContext`**.
+- **`UPUDialogueBox::AdvanceDialogue()`** — if Dlg reports options but **`DialogueOptions`** has **no** pre-placed **`UPUDialogueOption`** children (alternate Blueprint layout), advances via **`ChooseOption(0)`** + **`Update`** so dialogue does not softlock.
+- **`BeginDishScoring`** (dialogue event): after entering scoring mode, **`RefreshDialogueBoxFromContext(Context)`** uses the event’s context (reliable when multiple **`ATalkingObject`**s overlap).
+- **`ShowScorecard`** (dialogue event): **`SyncDialogueBoxToScoringLayer(Context)`** before creating the scorecard so dialogue stays **above** the default HUD layer and remains interactive relative to the scorecard stack.
+- **`EndDishScoringMode`**: after **`RestoreNonScoringDialogueBox`** (swapped layout) **or** reparenting the dialogue box back to default viewport Z (relayer-only path), refreshes from **`GetCurrentTalkingObject()->GetCurrentDialogueContext()`** when still in range.
+
+**Authoring:** Keep **`ScoringDialogueBoxWidgetClass`** (and scorecard/dish scoring classes) configured on the player Blueprint so **`ShowScorecard`** alone can still move dialogue into the correct layer.
 
 ---
 
@@ -217,7 +234,8 @@ Dlg-driven dialogue panel: binds **Common Rich Text** for styled body text, name
 | `SetVignetteMaterial` | Runtime vignette swap. | `void` |
 | `IsTypewriterActive` | Typewriter running. | `bool` |
 | `CompleteTypewriter` | Reveal full line immediately. | `void` |
-| `AdvanceDialogue` | Skip typewriter or advance line. | `void` |
+| `AdvanceDialogue` | Skip typewriter or advance line; if there are Dlg options but no option widgets, uses **`ChooseOption(0)`**. | `void` |
+| `SetDialogueInputFocus` | Restore Slate keyboard focus after swapping dialogue layout mid-conversation. | `void` |
 | `GetFocusTarget` | Widget to focus after popups. | `UWidget*` |
 | `IsSkipMode` / `SetSkipMode` | Skip mode. | `bool` / `void` |
 | `DebugVignetteMaterial` | Debug vignette setup. | `void` |
@@ -290,6 +308,7 @@ Prompt above interactables: **`SetInteractionKey`**, **`SetInteractionIcon`**, *
 | `DialogueBox` | Reference to active `UPUDialogueBox` (often set in HUD). |
 | `DefaultDialogueBoxWidgetClass` | Fallback class when restoring after scoring. |
 | `ScoringDialogueBoxWidgetClass` | Alternate layout during dish scoring; swap/restore with `SwapToScoringDialogueBox` / `RestoreNonScoringDialogueBox`. |
+| `ApplyScoringDialogueViewportLayer` / `RefreshDialogueBoxFromContext` / `SyncDialogueBoxToScoringLayer` | Scoring stack: swap widget class **or** reparent current box to scoring Z; rebind + refocus — see **Scoring dialogue layout** above. |
 | `SkipDialogueAction` | Hold to enable skip mode on dialogue box. |
 | `GetDialogueBox` / `GetCurrentTalkingObject` | Accessors. |
 | Overlap list | Tracks `ATalkingObject`s; **CycleInteractTarget** switches selection. |
@@ -328,3 +347,6 @@ Order/scorecard/dish scoring APIs tie into dialogue events listed above.
 |---------|------|--------|-------------|
 | 1.0.0 | 2025-03-25 | Documentation | Initial dialogue system API documentation for ProjectUmeowmi. |
 | 1.1.0 | 2026-03-25 | Documentation | Intro cross-references to **`Orders.md`** and **`GameInstance.md`**. |
+| 1.2.0 | 2026-03-26 | Documentation | **`ShowScorecard`** / **`BeginDishScoring`**: document scoring dialogue layout swap, **`RefreshDialogueBoxFromContext`**, **`SyncDialogueBoxToScoringLayer`**, and that **`BeginDishScoring`** may run on any node. |
+| 1.3.0 | 2026-03-26 | Documentation | **`ATalkingObject::GetCurrentDialogueContext()`** public accessor; **`CurrentDialogueContext`** documented as protected for external C++ access; **`EndDishScoringMode`** doc uses getter. |
+| 1.4.0 | 2026-03-26 | Documentation | **`ApplyScoringDialogueViewportLayer`**, relayer when **`ScoringDialogueBoxWidgetClass`** unset, **`SetDialogueInputFocus`**, **`AdvanceDialogue`** fallback without option slots. |

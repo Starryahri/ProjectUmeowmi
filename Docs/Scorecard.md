@@ -146,7 +146,16 @@ Root widget for **dish scoring mode**. The character calls **`BeginDishScoringMo
 | `RequestEndDishScoringMode` | Calls **`EndDishScoringMode`** on owner. |
 | `OnEnteredDishScoringMode` / `OnExitingDishScoringMode` | BlueprintNativeEvents. |
 
-**Character integration:** **`BeginDishScoringModeWithWidget`** may call **`SwapToScoringDialogueBox`** (scoring **`UPUDialogueBox`** at dialogue Z). **`EndDishScoringMode`** removes the active scoring widget and **`RestoreNonScoringDialogueBox`**. Default widget class: **`DishScoringWidgetClass`** on the character; dialogue can override via **`TalkingObject`** — **`Dialogue.md`**.
+**Character integration:** **`BeginDishScoringModeWithWidget`** may call **`SwapToScoringDialogueBox`** (scoring **`UPUDialogueBox`** at dialogue Z). **`EndDishScoringMode`** removes the active scoring widget and **`RestoreNonScoringDialogueBox`**, then re-syncs the active dialogue node to the **restored** default dialogue widget using **`GetCurrentTalkingObject()->GetCurrentDialogueContext()`** when the player is still in range.
+
+Swapping the dialogue box **replaces the widget instance** that **`Open`** was called on at dialogue start. The project therefore uses:
+
+- **`AProjectUmeowmiCharacter::RefreshDialogueBoxFromContext(UDlgContext*)`** — **`Update`** on the current **`DialogueBox`** so text/options match **`UDlgContext`** (required after swap/restore mid-conversation).
+- **`AProjectUmeowmiCharacter::SyncDialogueBoxToScoringLayer(UDlgContext*)`** — swaps to **`ScoringDialogueBoxWidgetClass`** when needed, then refresh (used by the **`ShowScorecard`** dialogue event so the scorecard and dialogue share the scoring stack).
+
+Dialogue events **`BeginDishScoring`** and **`ShowScorecard`** call these from **`ATalkingObject`**; **`BeginDishScoring`** does **not** need to be on the first node — see **`Dialogue.md`**.
+
+Default widget class: **`DishScoringWidgetClass`** on the character; dialogue can override via **`TalkingObject`** — **`Dialogue.md`**.
 
 ---
 
@@ -187,3 +196,5 @@ Used from **dish scoring** Blueprint layouts (not wired in core C++ scorecard wi
 | Version | Date | Author | Description |
 |---------|------|--------|-------------|
 | 1.0.0 | 2025-03-25 | Documentation | Initial scorecard and dish scoring documentation for ProjectUmeowmi. |
+| 1.1.0 | 2026-03-26 | Documentation | Document **`RefreshDialogueBoxFromContext`**, **`SyncDialogueBoxToScoringLayer`**, post-**`EndDishScoringMode`** restore sync, and dialogue event behavior — see **`Dialogue.md`**. |
+| 1.2.0 | 2026-03-26 | Documentation | **`EndDishScoringMode`** restore path: **`GetCurrentTalkingObject()->GetCurrentDialogueContext()`** (see **`Dialogue.md`**). |

@@ -7,17 +7,16 @@
 #include "PUScorecardTypes.h"
 #include "PUScorecardWidget.generated.h"
 
-/** Scoring dialogue — back of stack (lowest Z among scoring UI). */
-inline constexpr int32 PUScoringDialogueViewportZOrder = 50000;
 /**
- * Scorecard — between dialogue and dish scoring.
- * Root uses SelfHitTestInvisible so pointer can reach dialogue through empty areas.
+ * Dish scoring (3D capture / frame) — lowest Z. Must be below the scoring dialogue or the
+ * UMG layer draws on top and you hear typewriter (logic + sound) but do not see the line.
+ * SelfHitTestInvisible does not change paint order.
  */
+inline constexpr int32 PUScoringSceneViewportZOrder = 50000;
+/** Scoring dialogue box — above dish scene so text and typewriter are visible. */
+inline constexpr int32 PUScoringDialogueViewportZOrder = PUScoringSceneViewportZOrder + 1;
+/** Scorecard — above dialogue when shown (modal). */
 inline constexpr int32 PUScorecardViewportZOrder = PUScoringDialogueViewportZOrder + 1;
-/**
- * Dish scoring widget — front of stack (highest Z). Character sets SelfHitTestInvisible on the root so clicks reach dialogue/scorecard through gaps; interactive children stay hit-testable.
- */
-inline constexpr int32 PUScoringSceneViewportZOrder = PUScorecardViewportZOrder + 1;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnScorecardClosed);
 
@@ -41,15 +40,15 @@ class PROJECTUMEOWMI_API UPUScorecardWidget : public UPUCommonUserWidget
 public:
 	UPUScorecardWidget(const FObjectInitializer& ObjectInitializer);
 
-	/** Viewport Z for the dish scoring widget (front of scoring stack). */
+	/** Viewport Z for the dish scoring widget (lowest among scoring layers). */
 	UFUNCTION(BlueprintPure, Category = "UI|Dish Scoring")
 	static int32 GetDishScoringSceneViewportZOrder() { return PUScoringSceneViewportZOrder; }
 
-	/** Viewport Z for the scoring dialogue box (back of scoring stack). */
+	/** Viewport Z for the scoring dialogue box (above dish scene). */
 	UFUNCTION(BlueprintPure, Category = "UI|Dish Scoring")
 	static int32 GetScoringDialogueViewportZOrder() { return PUScoringDialogueViewportZOrder; }
 
-	/** Viewport Z for the scorecard (between dialogue and dish scoring). */
+	/** Viewport Z for the scorecard (top of scoring stack). */
 	UFUNCTION(BlueprintPure, Category = "UI|Dish Scoring")
 	static int32 GetScorecardLayerViewportZOrder() { return PUScorecardViewportZOrder; }
 
@@ -175,4 +174,7 @@ protected:
 
 	/** Returns true if a material parent was found and DishImageMID is valid for applying the dish texture. */
 	bool EnsureDishImageMIDForDish();
+
+	/** Debug: bind state + Slate visibility — filter [PUDialogueScoring] [DBG/ScorecardVisual]. */
+	void LogScorecardVisualDebug(const TCHAR* Phase) const;
 };
