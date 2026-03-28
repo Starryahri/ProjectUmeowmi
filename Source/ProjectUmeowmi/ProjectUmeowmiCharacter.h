@@ -715,6 +715,14 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UPUScorecardWidget> ElevatedDishScoringScorecard;
 
+	/**
+	 * Scorecard created by dialogue event ShowScorecard (TalkingObject) and added at PUScorecardViewportZOrder.
+	 * Not the same as ElevatedDishScoringScorecard (embedded dish UI). Must be removed when leaving scoring layer
+	 * or it stays above the restored dialogue and blocks click-to-advance.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<UPUScorecardWidget> ActiveDialogueShowScorecardWidget;
+
 	/** Dialogue box class to restore after dish scoring (captured when swapping to scoring layout). */
 	UPROPERTY(Transient)
 	TSubclassOf<UPUDialogueBox> CachedNonScoringDialogueBoxClass;
@@ -733,6 +741,12 @@ private:
 
 	/** Removes viewport-only scorecard added by ElevateEmbeddedDishScoringScorecardAboveDialogue (before tearing down dish UI). */
 	void TearDownElevatedDishScoringScorecard();
+
+	/** Removes scorecard from dialogue event ShowScorecard (TalkingObject), if still in viewport. */
+	void TearDownDialogueShowScorecardWidget();
+
+	/** Any UPUDishScoringWidget / UPUScorecardWidget still in the viewport after tracked teardown (Z 50000+ blocks dialogue at default 0). */
+	void RemoveOrphanScoringStackViewportWidgets();
 
 	void ApplyScoringDialogueViewportLayer();
 	void SwapToScoringDialogueBox();

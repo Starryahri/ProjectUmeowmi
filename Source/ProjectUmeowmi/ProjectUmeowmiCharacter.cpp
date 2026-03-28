@@ -833,7 +833,7 @@ void AProjectUmeowmiCharacter::OnJournalCycleDishPrev(const FInputActionValue& V
 
 void AProjectUmeowmiCharacter::OnSkipDialogueStarted(const FInputActionValue& Value)
 {
-	if (DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+	if (DialogueBox && DialogueBox->IsDialogueInteractive())
 	{
 		DialogueBox->SetSkipMode(true);
 	}
@@ -874,7 +874,7 @@ void AProjectUmeowmiCharacter::Interact(const FInputActionValue& Value)
 	ATalkingObject* CurrentTalking = GetCurrentTalkingObject();
 
 	// When in dialogue, Interact advances the dialogue (skip typewriter or next line)
-	if (CurrentTalking && DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+	if (CurrentTalking && DialogueBox && DialogueBox->IsDialogueInteractive())
 	{
 		DialogueBox->AdvanceDialogue();
 		return;
@@ -964,7 +964,7 @@ void AProjectUmeowmiCharacter::UnregisterTalkingObject(ATalkingObject* TalkingOb
 void AProjectUmeowmiCharacter::CycleInteractTarget(const FInputActionValue& Value)
 {
 	// Don't cycle during active dialogue
-	if (DialogueBox && DialogueBox->GetVisibility() == ESlateVisibility::Visible) return;
+	if (DialogueBox && DialogueBox->IsDialogueInteractive()) return;
 	if (OverlappingTalkingObjects.Num() < 2) return;
 
 	// Cycle forward (Space = next)
@@ -1703,6 +1703,16 @@ UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(UPUScorecardWidget* 
 		return nullptr;
 	}
 
+	// Replace previous dialogue ShowScorecard overlay (same Z as elevated embedded scorecard).
+	if (ActiveDialogueShowScorecardWidget && ActiveDialogueShowScorecardWidget != ScorecardWidget)
+	{
+		if (ActiveDialogueShowScorecardWidget->IsInViewport())
+		{
+			ActiveDialogueShowScorecardWidget->RemoveFromParent();
+		}
+		ActiveDialogueShowScorecardWidget = nullptr;
+	}
+
 	// Embedded scorecards cannot AddToViewport (already parented); root-level gets scoring-stack Z.
 	if (ScorecardWidget->GetParent())
 	{
@@ -1719,6 +1729,7 @@ UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(UPUScorecardWidget* 
 		PendingScorecardDishTexture = nullptr;
 		LastDishCaptureTexture = DishTex;
 		PopulateScorecardWidget(ScorecardWidget, DishTex);
+		ActiveDialogueShowScorecardWidget = ScorecardWidget;
 		return ScorecardWidget;
 	}
 
@@ -1727,6 +1738,7 @@ UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(UPUScorecardWidget* 
 	{
 		LastDishCaptureTexture = DishCaptureRenderTarget;
 		PopulateScorecardWidget(ScorecardWidget, DishCaptureRenderTarget);
+		ActiveDialogueShowScorecardWidget = ScorecardWidget;
 		return ScorecardWidget;
 	}
 
@@ -1736,6 +1748,7 @@ UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(UPUScorecardWidget* 
 		if (!RefreshDishCapturePreviewFromDishPreview())
 		{
 			PopulateScorecardWidget(ScorecardWidget, nullptr);
+			ActiveDialogueShowScorecardWidget = ScorecardWidget;
 			return ScorecardWidget;
 		}
 
@@ -1760,10 +1773,12 @@ UPUScorecardWidget* AProjectUmeowmiCharacter::ShowScorecard(UPUScorecardWidget* 
 			}
 		}));
 
+		ActiveDialogueShowScorecardWidget = ScorecardWidget;
 		return ScorecardWidget;
 	}
 
 	PopulateScorecardWidget(ScorecardWidget, nullptr);
+	ActiveDialogueShowScorecardWidget = ScorecardWidget;
 	return ScorecardWidget;
 }
 
@@ -1778,6 +1793,66 @@ void AProjectUmeowmiCharacter::TearDownElevatedDishScoringScorecard()
 		ElevatedDishScoringScorecard->RemoveFromParent();
 	}
 	ElevatedDishScoringScorecard = nullptr;
+}
+
+void AProjectUmeowmiCharacter::TearDownDialogueShowScorecardWidget()
+{
+	if (!ActiveDialogueShowScorecardWidget)
+	{
+		return;
+	}
+	if (ActiveDialogueShowScorecardWidget->IsInViewport())
+	{
+		ActiveDialogueShowScorecardWidget->RemoveFromParent();
+	}
+	ActiveDialogueShowScorecardWidget = nullptr;
+}
+
+void AProjectUmeowmiCharacter::RemoveOrphanScoringStackViewportWidgets()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	TArray<UUserWidget*> Found;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Found, UPUDishScoringWidget::StaticClass(), false);
+	for (UUserWidget* W : Found)
+	{
+		UPUDishScoringWidget* D = Cast<UPUDishScoringWidget>(W);
+		if (!D || !D->IsInViewport())
+		{
+			continue;
+		}
+		UE_LOG(LogTemp, Display, TEXT("%s RemoveOrphanScoringStackViewportWidgets: removing stray UPUDishScoringWidget %s"), PUDialogueScoringLog::Tag, *D->GetClass()->GetName());
+		D->RemoveFromParent();
+		if (ActiveDishScoringWidget == D)
+		{
+			ActiveDishScoringWidget = nullptr;
+		}
+	}
+
+	Found.Reset();
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Found, UPUScorecardWidget::StaticClass(), false);
+	for (UUserWidget* W : Found)
+	{
+		UPUScorecardWidget* S = Cast<UPUScorecardWidget>(W);
+		if (!S || !S->IsInViewport())
+		{
+			continue;
+		}
+		UE_LOG(LogTemp, Display, TEXT("%s RemoveOrphanScoringStackViewportWidgets: removing stray UPUScorecardWidget %s"), PUDialogueScoringLog::Tag, *S->GetClass()->GetName());
+		S->RemoveFromParent();
+		if (ElevatedDishScoringScorecard == S)
+		{
+			ElevatedDishScoringScorecard = nullptr;
+		}
+		if (ActiveDialogueShowScorecardWidget == S)
+		{
+			ActiveDialogueShowScorecardWidget = nullptr;
+		}
+	}
 }
 
 void AProjectUmeowmiCharacter::ElevateEmbeddedDishScoringScorecardAboveDialogue()
@@ -2073,48 +2148,63 @@ bool AProjectUmeowmiCharacter::BeginDishScoringModeWithWidget(UPUDishScoringWidg
 
 void AProjectUmeowmiCharacter::EndDishScoringMode()
 {
+	// Always remove elevated scorecard from viewport (Z 50002). If ActiveDishScoringWidget was already cleared,
+	// RemoveActiveDishScoringWidgetFromViewport never ran and the scorecard could still steal mouse hits above dialogue.
+	TearDownElevatedDishScoringScorecard();
+	// ShowScorecard dialogue event creates a separate widget at the same Z — it is not ElevatedDishScoringScorecard.
+	TearDownDialogueShowScorecardWidget();
+
 	const bool bHadActiveScoringWidget = (ActiveDishScoringWidget != nullptr);
-	UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: hadActiveScoringWidget=%d"), PUDialogueScoringLog::Tag, bHadActiveScoringWidget);
+	UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: hadActiveScoringWidget=%d bUsingScoringDialogueBox=%d bRelayeredOnly=%d"),
+		PUDialogueScoringLog::Tag,
+		bHadActiveScoringWidget ? 1 : 0,
+		bUsingScoringDialogueBox ? 1 : 0,
+		bDialogueBoxRelayeredToScoringStackOnly ? 1 : 0);
+
 	if (bHadActiveScoringWidget)
 	{
 		RemoveActiveDishScoringWidgetFromViewport();
 	}
-	if (bHadActiveScoringWidget)
+	RemoveOrphanScoringStackViewportWidgets();
+
+	// Restore default dialogue layout whenever we were on the scoring stack — independent of ActiveDishScoringWidget.
+	// Otherwise: ShowScorecard/SyncDialogueBoxToScoringLayer can swap to WBP_ScorecardDialogueBox without BeginDishScoring
+	// (ActiveDishScoringWidget still null). EndDishScoring would skip restore + refresh and leave the scoring dialogue
+	// (or wrong Z) so click-to-advance on the "original" widget never comes back.
+	if (bUsingScoringDialogueBox)
 	{
-		if (bUsingScoringDialogueBox)
-		{
-			UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: restoring non-scoring dialogue box (swap path)"), PUDialogueScoringLog::Tag);
-			RestoreNonScoringDialogueBox();
-		}
-		else if (bDialogueBoxRelayeredToScoringStackOnly && DialogueBox)
-		{
-			UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: restoring dialogue viewport Z from relayer-only path"), PUDialogueScoringLog::Tag);
-			DialogueBox->RemoveFromParent();
-			DialogueBox->AddToViewport(0);
+		UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: restoring non-scoring dialogue box (swap path)"), PUDialogueScoringLog::Tag);
+		RestoreNonScoringDialogueBox();
+	}
+	else if (bDialogueBoxRelayeredToScoringStackOnly && DialogueBox)
+	{
+		UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: restoring dialogue viewport Z from relayer-only path"), PUDialogueScoringLog::Tag);
+		DialogueBox->RemoveFromParent();
+			DialogueBox->AddToViewport(PUScoringDialogueViewportZOrder);
 			DialogueBox->SetVisibility(ESlateVisibility::Visible);
-			bDialogueBoxRelayeredToScoringStackOnly = false;
+		bDialogueBoxRelayeredToScoringStackOnly = false;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: no dialogue layout restore (bUsingScoringDialogueBox=%d bRelayeredOnly=%d)"),
+			PUDialogueScoringLog::Tag, bUsingScoringDialogueBox, bDialogueBoxRelayeredToScoringStackOnly);
+	}
+
+	if (ATalkingObject* TO = GetCurrentTalkingObject())
+	{
+		if (UDlgContext* DialogueCtx = TO->GetCurrentDialogueContext())
+		{
+			UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: RefreshDialogueBoxFromContext talkingObject=%s"), PUDialogueScoringLog::Tag, *TO->GetName());
+			RefreshDialogueBoxFromContext(DialogueCtx);
 		}
 		else
 		{
-			UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: no dialogue layout restore (bUsingScoringDialogueBox=%d bRelayeredOnly=%d)"),
-				PUDialogueScoringLog::Tag, bUsingScoringDialogueBox, bDialogueBoxRelayeredToScoringStackOnly);
+			UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: no GetCurrentDialogueContext on %s — skip refresh"), PUDialogueScoringLog::Tag, *TO->GetName());
 		}
-		if (ATalkingObject* TO = GetCurrentTalkingObject())
-		{
-			if (UDlgContext* DialogueCtx = TO->GetCurrentDialogueContext())
-			{
-				UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: RefreshDialogueBoxFromContext talkingObject=%s"), PUDialogueScoringLog::Tag, *TO->GetName());
-				RefreshDialogueBoxFromContext(DialogueCtx);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: no GetCurrentDialogueContext on %s — skip refresh"), PUDialogueScoringLog::Tag, *TO->GetName());
-			}
-		}
-		else
-		{
-			UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: GetCurrentTalkingObject() null — skip refresh"), PUDialogueScoringLog::Tag);
-		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Display, TEXT("%s EndDishScoringMode: GetCurrentTalkingObject() null — skip refresh"), PUDialogueScoringLog::Tag);
 	}
 }
 

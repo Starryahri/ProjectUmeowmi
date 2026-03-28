@@ -105,6 +105,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void AdvanceDialogue();
 
+    /** True when the box is on-screen for input (Visible / SelfHitTestInvisible / HitTestInvisible — not Hidden/Collapsed). */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue")
+    bool IsDialogueInteractive() const;
+
     /** After swapping dialogue layout mid-conversation, restore keyboard focus so Interact advances the visible box. */
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     void SetDialogueInputFocus();

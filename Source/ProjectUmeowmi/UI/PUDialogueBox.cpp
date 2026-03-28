@@ -21,6 +21,7 @@ namespace PUDialogueScoringLog
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "ProjectUmeowmi/ProjectUmeowmiCharacter.h"
+#include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
 #include "ProjectUmeowmi/Interactables/PUCookingStation.h"
 #include "ProjectUmeowmi/Dialogue/PUDialogueNodeData.h"
@@ -98,10 +99,10 @@ void UPUDialogueBox::NativeConstruct()
         SkipButton->OnClicked.AddDynamic(this, &UPUDialogueBox::OnSkipButtonClicked);
     }
 
-    // Add to viewport if not already there
+    // Same layer as scoring dialogue (50001) so we stay above dish/scene overlays at 50000 if any are left in the viewport.
     if (!IsInViewport())
     {
-        AddToViewport();
+        AddToViewport(PUScoringDialogueViewportZOrder);
     }
 
     // Initialize vignette intensity
@@ -174,7 +175,7 @@ void UPUDialogueBox::OpenVisualAndInputPipeline()
 
     if (!IsInViewport())
     {
-        AddToViewport();
+        AddToViewport(PUScoringDialogueViewportZOrder);
     }
 
     APlayerController* PC = GetOwningPlayer();
@@ -210,7 +211,7 @@ void UPUDialogueBox::OpenVisualAndInputPipeline()
             {
                 if (!IsInViewport())
                 {
-                    AddToViewport();
+                    AddToViewport(PUScoringDialogueViewportZOrder);
                 }
 
                 if (TSharedPtr<SWidget> SlateWidget = GetCachedWidget(); SlateWidget.IsValid())
@@ -298,11 +299,17 @@ void UPUDialogueBox::OnSkipButtonClicked()
     SetSkipMode(!bSkipMode);
 }
 
+bool UPUDialogueBox::IsDialogueInteractive() const
+{
+    const ESlateVisibility V = GetVisibility();
+    return V == ESlateVisibility::Visible || V == ESlateVisibility::SelfHitTestInvisible || V == ESlateVisibility::HitTestInvisible;
+}
+
 FReply UPUDialogueBox::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
     FReply Reply = Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
 
-    if (GetVisibility() == ESlateVisibility::Visible &&
+    if (IsDialogueInteractive() &&
         InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
         AdvanceDialogue();
@@ -314,7 +321,7 @@ FReply UPUDialogueBox::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometr
 
 FReply UPUDialogueBox::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
-    if (GetVisibility() != ESlateVisibility::Visible)
+    if (!IsDialogueInteractive())
     {
         return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
     }
@@ -334,7 +341,7 @@ FReply UPUDialogueBox::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEv
 
 FReply UPUDialogueBox::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
-    if (GetVisibility() != ESlateVisibility::Visible)
+    if (!IsDialogueInteractive())
     {
         return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
     }
@@ -974,7 +981,7 @@ void UPUDialogueBox::CompleteTypewriter()
 
 UWidget* UPUDialogueBox::GetFocusTarget() const
 {
-    if (GetVisibility() != ESlateVisibility::Visible)
+    if (!IsDialogueInteractive())
     {
         return nullptr;
     }
