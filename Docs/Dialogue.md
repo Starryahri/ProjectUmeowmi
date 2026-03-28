@@ -160,12 +160,13 @@ Entering **dish scoring mode** swaps the player’s **`DialogueBox`** to **`Scor
 **C++ behavior (summary):**
 
 - **`AProjectUmeowmiCharacter::ApplyScoringDialogueViewportLayer()`** — if **`ScoringDialogueBoxWidgetClass`** is set, **`SwapToScoringDialogueBox()`** (new scoring-layout widget). If it is **not** set, **reparents** the current **`DialogueBox`** to **`PUScoringDialogueViewportZOrder`** so it sits in the same stack as scorecard/dish scoring (logged as a warning — prefer assigning **`ScoringDialogueBoxWidgetClass`** on the character for a proper layout).
-- **`AProjectUmeowmiCharacter::RefreshDialogueBoxFromContext(UDlgContext*)`** — calls **`Update`** on the current **`DialogueBox`**, then **`SetDialogueInputFocus()`** so Interact / advance still targets the visible widget after a swap.
+- **`AProjectUmeowmiCharacter::RefreshDialogueBoxFromContext(UDlgContext*)`** — defers **`OpenFromContextResync`** to the next tick so Dlg node data is consistent; skips queue / **`Close()`** if dialogue has already ended (avoids blank box). Then **`SetDialogueInputFocus()`** so Interact / advance still targets the visible widget after a swap.
 - **`AProjectUmeowmiCharacter::SyncDialogueBoxToScoringLayer(UDlgContext*)`** — **`ApplyScoringDialogueViewportLayer`**, then **`RefreshDialogueBoxFromContext`**.
 - **`UPUDialogueBox::AdvanceDialogue()`** — if Dlg reports options but **`DialogueOptions`** has **no** pre-placed **`UPUDialogueOption`** children (alternate Blueprint layout), advances via **`ChooseOption(0)`** + **`Update`** so dialogue does not softlock.
 - **`BeginDishScoring`** (dialogue event): after entering scoring mode, **`RefreshDialogueBoxFromContext(Context)`** uses the event’s context (reliable when multiple **`ATalkingObject`**s overlap).
-- **`ShowScorecard`** (dialogue event): **`SyncDialogueBoxToScoringLayer(Context)`** before creating the scorecard so dialogue stays **above** the default HUD layer and remains interactive relative to the scorecard stack.
-- **`EndDishScoringMode`**: after **`RestoreNonScoringDialogueBox`** (swapped layout) **or** reparenting the dialogue box back to default viewport Z (relayer-only path), refreshes from **`GetCurrentTalkingObject()->GetCurrentDialogueContext()`** when still in range.
+- **`ShowScorecard`** (dialogue event): **`SyncDialogueBoxToScoringLayer(Context)`** before creating the scorecard so dialogue sits on the **scoring stack** (see **`Scorecard.md`** for Z-order). The event also creates a scorecard widget and calls **`ShowScorecard`** on the player; that instance is tracked separately from the **elevated** embedded scorecard used during dish scoring.
+- **Viewport Z and click-to-advance:** **`UPUDialogueBox`** adds to the viewport at **`PUScoringDialogueViewportZOrder` (50001)**, not default Z 0. The dish layer is **50000** and scorecard overlays **50002**; dialogue at **0** would draw **under** those layers and **lose mouse hits** to any leftover scoring UI.
+- **`EndDishScoringMode`**: tears down tracked scorecard layers, **`RemoveOrphanScoringStackViewportWidgets()`**, then **`RestoreNonScoringDialogueBox`** (swap path) **or** relayers the dialogue box to **`PUScoringDialogueViewportZOrder`** (relayer-only path) — **even when** **`ActiveDishScoringWidget`** is already **null**. **`RefreshDialogueBoxFromContext`** runs when a talking object and context exist, same rule. See **`Scorecard.md`** for the full teardown list.
 
 **Authoring:** Keep **`ScoringDialogueBoxWidgetClass`** (and scorecard/dish scoring classes) configured on the player Blueprint so **`ShowScorecard`** alone can still move dialogue into the correct layer.
 
@@ -235,6 +236,7 @@ Dlg-driven dialogue panel: binds **Common Rich Text** for styled body text, name
 | `IsTypewriterActive` | Typewriter running. | `bool` |
 | `CompleteTypewriter` | Reveal full line immediately. | `void` |
 | `AdvanceDialogue` | Skip typewriter or advance line; if there are Dlg options but no option widgets, uses **`ChooseOption(0)`**. | `void` |
+| `IsDialogueInteractive` | **`true`** when visibility is **`Visible`**, **`SelfHitTestInvisible`**, or **`HitTestInvisible`** (not **`Hidden`** / **`Collapsed`**) — used for click / key advance and character **`Interact`** gating. | `bool` |
 | `SetDialogueInputFocus` | Restore Slate keyboard focus after swapping dialogue layout mid-conversation. | `void` |
 | `GetFocusTarget` | Widget to focus after popups. | `UWidget*` |
 | `IsSkipMode` / `SetSkipMode` | Skip mode. | `bool` / `void` |
@@ -309,6 +311,7 @@ Prompt above interactables: **`SetInteractionKey`**, **`SetInteractionIcon`**, *
 | `DefaultDialogueBoxWidgetClass` | Fallback class when restoring after scoring. |
 | `ScoringDialogueBoxWidgetClass` | Alternate layout during dish scoring; swap/restore with `SwapToScoringDialogueBox` / `RestoreNonScoringDialogueBox`. |
 | `ApplyScoringDialogueViewportLayer` / `RefreshDialogueBoxFromContext` / `SyncDialogueBoxToScoringLayer` | Scoring stack: swap widget class **or** reparent current box to scoring Z; rebind + refocus — see **Scoring dialogue layout** above. |
+| `EndDishScoringMode` / `RemoveOrphanScoringStackViewportWidgets` | End scoring: tear down scorecard layers, sweep stray **`UPUDishScoringWidget`** / **`UPUScorecardWidget`**, restore dialogue class / Z, **`RefreshDialogueBoxFromContext`** — see **`Scorecard.md`**. |
 | `SkipDialogueAction` | Hold to enable skip mode on dialogue box. |
 | `GetDialogueBox` / `GetCurrentTalkingObject` | Accessors. |
 | Overlap list | Tracks `ATalkingObject`s; **CycleInteractTarget** switches selection. |
@@ -350,3 +353,4 @@ Order/scorecard/dish scoring APIs tie into dialogue events listed above.
 | 1.2.0 | 2026-03-26 | Documentation | **`ShowScorecard`** / **`BeginDishScoring`**: document scoring dialogue layout swap, **`RefreshDialogueBoxFromContext`**, **`SyncDialogueBoxToScoringLayer`**, and that **`BeginDishScoring`** may run on any node. |
 | 1.3.0 | 2026-03-26 | Documentation | **`ATalkingObject::GetCurrentDialogueContext()`** public accessor; **`CurrentDialogueContext`** documented as protected for external C++ access; **`EndDishScoringMode`** doc uses getter. |
 | 1.4.0 | 2026-03-26 | Documentation | **`ApplyScoringDialogueViewportLayer`**, relayer when **`ScoringDialogueBoxWidgetClass`** unset, **`SetDialogueInputFocus`**, **`AdvanceDialogue`** fallback without option slots. |
+| 1.5.0 | 2026-03-28 | Documentation | Scoring stack: **`PUScoringDialogueViewportZOrder`** for **`UPUDialogueBox`** **`AddToViewport`**, **`EndDishScoringMode`** restore/refresh independent of **`ActiveDishScoringWidget`**, orphan viewport sweep, tracked **`ShowScorecard`** scorecard, **`IsDialogueInteractive`**, **`RefreshDialogueBoxFromContext`** ended-dialogue guard — cross-ref **`Scorecard.md`**. |

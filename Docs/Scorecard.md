@@ -20,15 +20,19 @@ These are **separate widgets**. Dialogue can show the scorecard via the **`ShowS
 
 ## Viewport Z-order (scoring stack)
 
-Defined in `PUScorecardWidget.h` (back → front):
+Defined in `PUScorecardWidget.h` (**back → front**, higher Z draws on top and receives pointer hits first):
 
-| Constant | Approx. role |
-|----------|----------------|
-| `PUScoringDialogueViewportZOrder` | Scoring **`UPUDialogueBox`** (lowest). |
-| `PUScorecardViewportZOrder` | **`UPUScorecardWidget`** (middle). |
-| `PUScoringSceneViewportZOrder` | **`UPUDishScoringWidget`** (front). |
+| Constant | Value | Role |
+|----------|------|------|
+| `PUScoringSceneViewportZOrder` | 50000 | **`UPUDishScoringWidget`** (dish scene / capture). |
+| `PUScoringDialogueViewportZOrder` | 50001 | **`UPUDialogueBox`** — **all** dialogue boxes add to the viewport at this Z (same layer used during scoring and after). |
+| `PUScorecardViewportZOrder` | 50002 | **`UPUScorecardWidget`** when added as a root viewport widget (scorecard above dialogue). |
 
-Static accessors: **`GetScoringDialogueViewportZOrder`**, **`GetScorecardLayerViewportZOrder`**, **`GetDishScoringSceneViewportZOrder`**. The dish scoring root uses **`SelfHitTestInvisible`** so pointer input can reach dialogue/scorecard through empty areas; interactive children remain hit-testable.
+Static accessors: **`GetDishScoringSceneViewportZOrder`**, **`GetScoringDialogueViewportZOrder`**, **`GetScorecardLayerViewportZOrder`**.
+
+**Why the numbers matter:** If **`UPUDialogueBox`** used the default **`AddToViewport()`** Z (0), it would sit **below** the 50000–50002 stack. Any leftover dish/scorecard widget would **still receive mouse clicks** and block click-to-advance on dialogue. C++ now always adds **`UPUDialogueBox`** at **`PUScoringDialogueViewportZOrder`**.
+
+The dish scoring root uses **`SelfHitTestInvisible`** so pointer input can pass through empty areas; interactive children remain hit-testable. See **`Dialogue.md`** for **`EndDishScoringMode`** cleanup (orphan sweep).
 
 ---
 
@@ -146,7 +150,15 @@ Root widget for **dish scoring mode**. The character calls **`BeginDishScoringMo
 | `RequestEndDishScoringMode` | Calls **`EndDishScoringMode`** on owner. |
 | `OnEnteredDishScoringMode` / `OnExitingDishScoringMode` | BlueprintNativeEvents. |
 
-**Character integration:** **`BeginDishScoringModeWithWidget`** may call **`SwapToScoringDialogueBox`** (scoring **`UPUDialogueBox`** at dialogue Z). **`EndDishScoringMode`** removes the active scoring widget and **`RestoreNonScoringDialogueBox`**, then re-syncs the active dialogue node to the **restored** default dialogue widget using **`GetCurrentTalkingObject()->GetCurrentDialogueContext()`** when the player is still in range.
+**Character integration:** **`BeginDishScoringModeWithWidget`** may call **`SwapToScoringDialogueBox`** (scoring **`UPUDialogueBox`** at **`PUScoringDialogueViewportZOrder`**). **`EndDishScoringMode`**:
+
+- Tears down **elevated** embedded scorecard (**`ElevatedDishScoringScorecard`**) and the **`ShowScorecard`** dialogue-event scorecard (**`ActiveDialogueShowScorecardWidget`**) if still in the viewport.
+- Removes the active **`UPUDishScoringWidget`** when **`ActiveDishScoringWidget`** is set.
+- **`RemoveOrphanScoringStackViewportWidgets()`** — walks **`GetAllWidgetsOfClass`** for **`UPUDishScoringWidget`** and **`UPUScorecardWidget`** still **`IsInViewport()`** and **`RemoveFromParent`** (handles stray instances when the tracked pointer was already cleared).
+- **`RestoreNonScoringDialogueBox`** and/or relayer **`AddToViewport(PUScoringDialogueViewportZOrder)`** (not Z 0) when **`bUsingScoringDialogueBox`** / **`bDialogueBoxRelayeredToScoringStackOnly`** — **independent of** whether **`ActiveDishScoringWidget`** is **null** (e.g. **`ShowScorecard`** / **`SyncDialogueBoxToScoringLayer`** without **`BeginDishScoring`**).
+- **`RefreshDialogueBoxFromContext`** when **`GetCurrentTalkingObject()->GetCurrentDialogueContext()`** is valid (same independence from the dish widget pointer).
+
+Then re-syncs the active dialogue node to the **restored** default dialogue widget when the player is still in range.
 
 Swapping the dialogue box **replaces the widget instance** that **`Open`** was called on at dialogue start. The project therefore uses:
 
@@ -198,3 +210,4 @@ Used from **dish scoring** Blueprint layouts (not wired in core C++ scorecard wi
 | 1.0.0 | 2025-03-25 | Documentation | Initial scorecard and dish scoring documentation for ProjectUmeowmi. |
 | 1.1.0 | 2026-03-26 | Documentation | Document **`RefreshDialogueBoxFromContext`**, **`SyncDialogueBoxToScoringLayer`**, post-**`EndDishScoringMode`** restore sync, and dialogue event behavior — see **`Dialogue.md`**. |
 | 1.2.0 | 2026-03-26 | Documentation | **`EndDishScoringMode`** restore path: **`GetCurrentTalkingObject()->GetCurrentDialogueContext()`** (see **`Dialogue.md`**). |
+| 1.3.0 | 2026-03-28 | Documentation | **Corrected** viewport Z table (50000 dish → 50001 dialogue → 50002 scorecard). Documented **`PUScoringDialogueViewportZOrder`** for all **`UPUDialogueBox`**, **`RemoveOrphanScoringStackViewportWidgets`**, tracked scorecard pointers, and **`EndDishScoringMode`** restore/refresh **without** requiring **`ActiveDishScoringWidget`**. |

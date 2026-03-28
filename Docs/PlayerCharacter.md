@@ -16,7 +16,7 @@
 | **Dialogue** | `DialogueBox`, `DefaultDialogueBoxWidgetClass`, `ScoringDialogueBoxWidgetClass`; `GetDialogueBox`, `GetCurrentTalkingObject`, talking object list / cycle; **`ATalkingObject::GetCurrentDialogueContext`** (read active `UDlgContext` from the selected NPC); `RefreshDialogueBoxFromContext`, `SyncDialogueBoxToScoringLayer` (scoring layout + context rebind) | `Dialogue.md` |
 | **Orders** | `CurrentOrder`, `bHasCurrentOrder`, `bCurrentOrderCompleted`, `SetCurrentOrder`, `ClearCurrentOrder`, `RevealHintOnCurrentOrder`, `SetOrderResult`, `ShowScorecard` | `Orders.md`, `Scorecard.md` |
 | **Dish capture (scorecard)** | `DishCaptureComponent`, `CaptureDishSnapshotFromPlatingStation`, `RefreshDishCapturePreviewFromDishPreview`, many tuning properties | `Scorecard.md`, `DishCustomization.md` |
-| **Dish scoring mode** | `DishScoringWidgetClass`, `BeginDishScoringModeWithWidget`, `EndDishScoringMode`, `IsInDishScoringMode`; with scorecard stack: `RefreshDialogueBoxFromContext`, `SyncDialogueBoxToScoringLayer` | `Scorecard.md`, `Dialogue.md` |
+| **Dish scoring mode** | `DishScoringWidgetClass`, `BeginDishScoringModeWithWidget`, `EndDishScoringMode`, `IsInDishScoringMode`; scorecard stack: `RefreshDialogueBoxFromContext`, `SyncDialogueBoxToScoringLayer`, `RemoveOrphanScoringStackViewportWidgets`, tracked `ElevatedDishScoringScorecard` / `ActiveDialogueShowScorecardWidget` | `Scorecard.md`, `Dialogue.md` |
 | **Journal** | `JournalWidget` ref, `ToggleJournal` (input), bumper cycle when Recipes active | `Journal.md` |
 | **Emotes** | `EmoteWidget` component, `EmoteDataTable`, `ShowEmoteByTag`, `ClearEmote` | `Emotes.md` |
 | **Quest HUD** | Optional `QuestObjectiveOffscreenIndicator` | `QuestSystem.md` |
@@ -64,3 +64,4 @@ Implements **`ParticipantName`**, **`DisplayName`**, **`ParticipantIcon`** for t
 | 1.0.0 | 2026-03-25 | Documentation | Initial player character hub documentation for ProjectUmeowmi. |
 | 1.1.0 | 2026-03-26 | Documentation | Listed **`RefreshDialogueBoxFromContext`** and **`SyncDialogueBoxToScoringLayer`** under dialogue / dish scoring — see **`Dialogue.md`**. |
 | 1.2.0 | 2026-03-26 | Documentation | Dialogue row: **`ATalkingObject::GetCurrentDialogueContext`** for reading the active context from the overlap target — see **`Dialogue.md`**. |
+| 1.3.0 | 2026-03-28 | Documentation | Dish scoring row: **`RemoveOrphanScoringStackViewportWidgets`** and tracked scorecard pointers — see **`Scorecard.md`** / **`Dialogue.md`** (viewport Z and **`EndDishScoringMode`**). |

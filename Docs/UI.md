@@ -26,7 +26,7 @@ Representative headers under `Source/ProjectUmeowmi/UI/`:
 
 | Area | Widgets / types |
 |------|-------------------|
-| **Dialogue** | `UPUDialogueBox`, `UPUDialogueOption` |
+| **Dialogue** | `UPUDialogueBox` (adds to viewport at **`PUScoringDialogueViewportZOrder`** — see **`Scorecard.md`**), `UPUDialogueOption` |
 | **Dish customization** | `UPUDishCustomizationWidget`, `PUPlatingWidget`, `PUIngredientSlot`, `PUIngredientButton`, `PURadialMenu`, `PUPreparationCheckbox`, `PUIngredientQuantityControl`, … |
 | **Journal** | `UPUJournalWidget`, `PUJournalTabListWidget`, `PURecipesSectionWidget`, `PUIngredientsSectionWidget`, `PUJournalSectionWidget`, `PUTownSectionWidget`, `PUPeopleSectionWidget`, `PUSettingsSectionWidget`, `PUJournalTypes` — see **`Journal.md`** |
 | **Orders / scoring** | `UPUScorecardWidget`, `PUScorecardTypes`, `UPUDishScoringWidget`, `PURadarChart`, `PUAspectProfileWidget` — see **`Scorecard.md`** |
@@ -67,3 +67,4 @@ Representative headers under `Source/ProjectUmeowmi/UI/`:
 | 1.2.0 | 2025-03-25 | Documentation | Linked **`Scorecard.md`** for orders/scoring UI. |
 | 1.3.0 | 2026-03-25 | Documentation | Linked hub docs (`Architecture`, `GameInstance`, `PlayerCharacter`, `Orders`, `Emotes`, `README`). |
 | 1.4.0 | 2026-03-25 | Documentation | All developer docs moved under **`Docs/`**; index is **`Docs/README.md`**. |
+| 1.5.0 | 2026-03-28 | Documentation | Dialogue row: viewport Z for **`UPUDialogueBox`** per **`Scorecard.md`**. |
