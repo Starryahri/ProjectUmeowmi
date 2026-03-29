@@ -119,6 +119,8 @@ void UPUDishCustomizationComponent::SetHUDVisible(bool bShouldBeVisible)
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
     PrimaryComponentTick.bCanEverTick = true; // Enable tick for camera transitions
+    QuantityIncreaseBindingHandle = 0;
+    QuantityDecreaseBindingHandle = 0;
 }
 
 void UPUDishCustomizationComponent::BeginPlay()
@@ -198,8 +200,10 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     CurrentCharacter = Character;
     bWasMouseDown = false;  // Reset for clean state when entering customization
 
-    // Hide HUD while customizing (WBP_HUD).
-    SetHUDVisible(false);
+    if (bHideHUDDuringCustomization)
+    {
+        SetHUDVisible(false);
+    }
 
     // Get the player controller
     APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
@@ -233,33 +237,12 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
 
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Input mode set, viewport size: %dx%d"), ViewportSizeX, ViewportSizeY);
 
-    // Handle mapping contexts
+    // Layer customization IMC above DefaultMappingContext (priority 0) — do not remove default so journal can stack (e.g. Default 0, Dish 1, Journal 2).
     if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
     {
-        //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Found Enhanced Input Subsystem"));
-        
-        // Store the original mapping context
-        OriginalMappingContext = Character->GetDefaultMappingContext();
-        //UE_LOG(LogTemp,Display, TEXT("📋 UPUDishCustomizationComponent::StartCustomization - Original mapping context: %s"), 
-        //    OriginalMappingContext ? *OriginalMappingContext->GetName() : TEXT("None"));
-        
-        // Remove the original mapping context
-        if (OriginalMappingContext)
-        {
-            Subsystem->RemoveMappingContext(OriginalMappingContext);
-            //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Removed original mapping context"));
-        }
-
-        // Add the customization mapping context
         if (CustomizationMappingContext)
         {
-            //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Adding customization mapping context: %s"), *CustomizationMappingContext->GetName());
-            Subsystem->AddMappingContext(CustomizationMappingContext, 0);
-            //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Added customization mapping context"));
-        }
-        else
-        {
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartCustomization - No CustomizationMappingContext set"));
+            Subsystem->AddMappingContext(CustomizationMappingContext, CustomizationMappingContextPriority);
         }
     }
     else
@@ -343,6 +326,17 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         {
             UE_LOG(LogTemp, Error, TEXT("🔙 PreviousStageAction is NULL!"));
         }
+
+        if (QuantityIncreaseAction)
+        {
+            EnhancedInputComponent->RemoveBindingByHandle(QuantityIncreaseBindingHandle);
+            QuantityIncreaseBindingHandle = EnhancedInputComponent->BindAction(QuantityIncreaseAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleQuantityIncrease).GetHandle();
+        }
+        if (QuantityDecreaseAction)
+        {
+            EnhancedInputComponent->RemoveBindingByHandle(QuantityDecreaseBindingHandle);
+            QuantityDecreaseBindingHandle = EnhancedInputComponent->BindAction(QuantityDecreaseAction, ETriggerEvent::Triggered, this, &UPUDishCustomizationComponent::HandleQuantityDecrease).GetHandle();
+        }
     }
     else
     {
@@ -394,21 +388,24 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
             CustomizationWidget->AddToViewport(250);
             //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget added to viewport successfully with Z-Order -100"));
             
-            // Re-hide HUD after AddToViewport - viewport updates can cause HUD to reappear (e.g. Slate invalidation, widget tree rebuild)
-            SetHUDVisible(false);
-            
-            // Defer HUD hide to next frame - catches HUD created lazily or shown by Blueprint/animations after our frame
-            if (UWorld* WorldForTimer = GetWorld())
+            if (bHideHUDDuringCustomization)
             {
-                TWeakObjectPtr<UPUDishCustomizationComponent> WeakThis(this);
-                WorldForTimer->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis]()
+                // Re-hide HUD after AddToViewport - viewport updates can cause HUD to reappear (e.g. Slate invalidation, widget tree rebuild)
+                SetHUDVisible(false);
+
+                // Defer HUD hide to next frame - catches HUD created lazily or shown by Blueprint/animations after our frame
+                if (UWorld* WorldForTimer = GetWorld())
                 {
-                    UPUDishCustomizationComponent* Comp = WeakThis.Get();
-                    if (Comp && Comp->IsCustomizing())
+                    TWeakObjectPtr<UPUDishCustomizationComponent> WeakThis(this);
+                    WorldForTimer->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis]()
                     {
-                        Comp->SetHUDVisible(false);
-                    }
-                }));
+                        UPUDishCustomizationComponent* Comp = WeakThis.Get();
+                        if (Comp && Comp->IsCustomizing())
+                        {
+                            Comp->SetHUDVisible(false);
+                        }
+                    }));
+                }
             }
             
             // Check if widget is visible
@@ -543,34 +540,22 @@ void UPUDishCustomizationComponent::EndCustomization()
             {
                 EnhancedInputComponent->RemoveBindingByHandle(PreviousStageBindingHandle);
             }
+            if (QuantityIncreaseAction)
+            {
+                EnhancedInputComponent->RemoveBindingByHandle(QuantityIncreaseBindingHandle);
+            }
+            if (QuantityDecreaseAction)
+            {
+                EnhancedInputComponent->RemoveBindingByHandle(QuantityDecreaseBindingHandle);
+            }
         }
 
-        // Get the enhanced input subsystem
+        // Remove only the customization layer; DefaultMappingContext was never removed.
         if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
         {
-            // Remove the customization mapping context
             if (CustomizationMappingContext)
             {
                 Subsystem->RemoveMappingContext(CustomizationMappingContext);
-                //UE_LOG(LogTemp,Log, TEXT("Removed customization mapping context"));
-            }
-
-            // Restore the original mapping context (contains Move, Look, etc.)
-            UInputMappingContext* ContextToRestore = OriginalMappingContext;
-            if (!ContextToRestore && CurrentCharacter)
-            {
-                ContextToRestore = CurrentCharacter->GetDefaultMappingContext();
-                if (bPU_LogMovementRestore && ContextToRestore)
-                    UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OriginalMappingContext was NULL - using Character->GetDefaultMappingContext()"));
-            }
-            if (ContextToRestore)
-            {
-                Subsystem->AddMappingContext(ContextToRestore, 0);
-                //UE_LOG(LogTemp,Log, TEXT("Restored original mapping context"));
-            }
-            else if (bPU_LogMovementRestore)
-            {
-                UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] WARNING: No mapping context to restore! Move/Look input may not work."));
             }
         }
 
@@ -595,7 +580,10 @@ void UPUDishCustomizationComponent::EndCustomization()
         if (bPU_LogMovementRestore)
         {
             LogMovementState(PlayerController, TEXT("MAIN after restore"));
-            UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OriginalMappingContext=%s"), OriginalMappingContext ? *OriginalMappingContext->GetName() : TEXT("NULL"));
+            if (CurrentCharacter && CurrentCharacter->GetDefaultMappingContext())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] DefaultMappingContext still active (layered): %s"), *CurrentCharacter->GetDefaultMappingContext()->GetName());
+            }
         }
 
         // Set input mode back to game and UI (mouse visible, no specific widget focus)
@@ -1167,6 +1155,30 @@ void UPUDishCustomizationComponent::HandlePreviousStage()
     else
     {
         UE_LOG(LogTemp, Error, TEXT("🔙 CustomizationWidget is NULL!"));
+    }
+}
+
+void UPUDishCustomizationComponent::HandleQuantityIncrease(const FInputActionValue& Value)
+{
+    (void)Value;
+    if (CustomizationWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            DishWidget->TryApplyQuantityInputFromEnhancedInput(1);
+        }
+    }
+}
+
+void UPUDishCustomizationComponent::HandleQuantityDecrease(const FInputActionValue& Value)
+{
+    (void)Value;
+    if (CustomizationWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            DishWidget->TryApplyQuantityInputFromEnhancedInput(-1);
+        }
     }
 }
 

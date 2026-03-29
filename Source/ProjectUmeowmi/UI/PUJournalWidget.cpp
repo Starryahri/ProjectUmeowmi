@@ -4,7 +4,11 @@
 #include "PUJournalTabListWidget.h"
 #include "PUJournalSectionWidget.h"
 #include "PURecipesSectionWidget.h"
+#include "../ProjectUmeowmiCharacter.h"
+#include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../PUProjectUmeowmiGameInstance.h"
+#include "UObject/UObjectIterator.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "CommonActivatableWidgetSwitcher.h"
 #include "CommonAnimatedSwitcher.h"
@@ -14,6 +18,78 @@
 #include "Components/TextBlock.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/Widget.h"
+
+namespace
+{
+	/** WBP_HUD may be Collapsed during dish customization; restore visibility up the parent chain so the journal can draw. */
+	void UnhideCollapsedAncestors(UWidget* Leaf)
+	{
+		for (UWidget* W = Leaf; W; W = Cast<UWidget>(W->GetParent()))
+		{
+			const ESlateVisibility Vis = W->GetVisibility();
+			if (Vis == ESlateVisibility::Collapsed || Vis == ESlateVisibility::Hidden)
+			{
+				W->SetVisibility(ESlateVisibility::Visible);
+			}
+		}
+	}
+
+	/** True when this player's pawn is the character in an active dish customization session. */
+	bool IsLocalPlayerInActiveDishCustomization(UWorld* World, APlayerController* PC)
+	{
+		if (!World || !PC)
+		{
+			return false;
+		}
+		APawn* Pawn = PC->GetPawn();
+		if (!Pawn)
+		{
+			return false;
+		}
+		for (TObjectIterator<UPUDishCustomizationComponent> It; It; ++It)
+		{
+			UPUDishCustomizationComponent* Comp = *It;
+			if (!IsValid(Comp) || Comp->GetWorld() != World)
+			{
+				continue;
+			}
+			if (!Comp->IsCustomizing())
+			{
+				continue;
+			}
+			if (Comp->GetCurrentCharacter() == Pawn)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void ApplyJournalInputLayerForWidget(const UUserWidget* Widget, bool bPush)
+	{
+		if (!Widget)
+		{
+			return;
+		}
+		APlayerController* PC = Widget->GetOwningPlayer();
+		if (!PC)
+		{
+			return;
+		}
+		if (AProjectUmeowmiCharacter* Char = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+		{
+			if (bPush)
+			{
+				Char->PushJournalInputMappingLayer();
+			}
+			else
+			{
+				Char->PopJournalInputMappingLayer();
+			}
+		}
+	}
+}
 
 UPUJournalWidget::UPUJournalWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -29,6 +105,7 @@ void UPUJournalWidget::NativeConstruct()
 
 void UPUJournalWidget::NativeDestruct()
 {
+	ApplyJournalInputLayerForWidget(this, false);
 	if (TabList)
 	{
 		TabList->OnTabButtonCreation.RemoveDynamic(this, &UPUJournalWidget::OnTabButtonCreated);
@@ -39,7 +116,17 @@ void UPUJournalWidget::NativeDestruct()
 
 void UPUJournalWidget::OpenJournal()
 {
+	ApplyJournalInputLayerForWidget(this, true);
 	SetVisibility(ESlateVisibility::Visible);
+	UnhideCollapsedAncestors(this);
+	// During dish customization the HUD is collapsed and the dish widget is ~Z 250 — bring journal to the foreground only then.
+	if (APlayerController* PC = GetOwningPlayer())
+	{
+		if (IsLocalPlayerInActiveDishCustomization(GetWorld(), PC))
+		{
+			AddToViewport(JournalViewportZOrderWhenOpen);
+		}
+	}
 
 	if (TabList && bRestoreLastTabOnOpen && LastSelectedTabID != NAME_None)
 	{
@@ -58,6 +145,7 @@ void UPUJournalWidget::CloseJournal()
 		LastSelectedTabID = TabList->GetActiveTab();
 	}
 	SetVisibility(ESlateVisibility::Collapsed);
+	ApplyJournalInputLayerForWidget(this, false);
 }
 
 void UPUJournalWidget::SwitchToSection(EJournalSectionType SectionType)

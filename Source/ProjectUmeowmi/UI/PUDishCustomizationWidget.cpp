@@ -21,6 +21,7 @@
 #include "Components/WrapBoxSlot.h"
 #include "Blueprint/WidgetTree.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Slate/SObjectWidget.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/LocalPlayer.h"
 #include "Input/Events.h"
@@ -30,6 +31,69 @@ namespace
 {
     // Enables verbose logging for dish/ingredient data reception and slot population.
     constexpr bool bPU_LogDishDataReceiveDebug = false;
+
+    static UWidget* GetWidgetObjectFromSlate(const TSharedPtr<SWidget>& SlateWidget)
+    {
+        for (TSharedPtr<SWidget> Current = SlateWidget; Current.IsValid(); Current = Current->GetParentWidget())
+        {
+            if (Current->GetType() == FName(TEXT("SObjectWidget")))
+            {
+                return static_cast<SObjectWidget*>(Current.Get())->GetWidgetObject();
+            }
+        }
+        return nullptr;
+    }
+
+    static bool IsWidgetDescendantOf(UWidget* Widget, UWidget* PotentialAncestor)
+    {
+        for (UWidget* W = Widget; W; W = W->GetParent())
+        {
+            if (W == PotentialAncestor)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static UPUIngredientQuantityControl* FindQuantityControlFromLeaf(UWidget* Leaf)
+    {
+        for (UWidget* W = Leaf; W; W = W->GetParent())
+        {
+            if (UPUIngredientQuantityControl* QC = Cast<UPUIngredientQuantityControl>(W))
+            {
+                return QC;
+            }
+            if (UPUIngredientSlot* Slot = Cast<UPUIngredientSlot>(W))
+            {
+                return Slot->GetQuantityControl();
+            }
+        }
+        return nullptr;
+    }
+
+    /** Gamepad UI navigation sets user focus; keyboard sets keyboard focus — use both. */
+    static TSharedPtr<SWidget> GetBestFocusedSlateForOwner(const UWidget* OwnerWidget)
+    {
+        if (!FSlateApplication::IsInitialized())
+        {
+            return nullptr;
+        }
+        uint32 UserIndex = 0;
+        if (OwnerWidget)
+        {
+            if (const ULocalPlayer* LP = OwnerWidget->GetOwningLocalPlayer())
+            {
+                UserIndex = static_cast<uint32>(FMath::Max(0, LP->GetLocalPlayerIndex()));
+            }
+        }
+        TSharedPtr<SWidget> W = FSlateApplication::Get().GetUserFocusedWidget(UserIndex);
+        if (W.IsValid())
+        {
+            return W;
+        }
+        return FSlateApplication::Get().GetKeyboardFocusedWidget();
+    }
 }
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
@@ -2393,6 +2457,98 @@ void UPUDishCustomizationWidget::FindQuantityControlsRecursive(UWidget* ParentWi
             FindQuantityControlsRecursive(ChildWidget, OutQuantityControls);
         }
     }
+}
+
+bool UPUDishCustomizationWidget::TryApplyQuantityInputFromEnhancedInput(int32 Delta)
+{
+    if (Delta == 0)
+    {
+        return false;
+    }
+    if (bInPlanningMode)
+    {
+        return false;
+    }
+    if (IsDialogueVisible())
+    {
+        return false;
+    }
+    if (UPUDishCustomizationComponent* Comp = GetCustomizationComponent())
+    {
+        if (Comp->IsPlatingMode())
+        {
+            return false;
+        }
+    }
+    if (!FSlateApplication::IsInitialized())
+    {
+        return false;
+    }
+
+    UPUIngredientQuantityControl* QC = nullptr;
+
+    const TSharedPtr<SWidget> Focused = GetBestFocusedSlateForOwner(this);
+    if (Focused.IsValid())
+    {
+        if (UWidget* LeafWidget = GetWidgetObjectFromSlate(Focused))
+        {
+            if (IsWidgetDescendantOf(LeafWidget, this))
+            {
+                QC = FindQuantityControlFromLeaf(LeafWidget);
+            }
+        }
+    }
+
+    // Controller navigation often keeps user focus on the slot, but Slate→UMG resolution can still fail; fall back to focused slot.
+    if (!QC)
+    {
+        APlayerController* const PC = GetOwningPlayer();
+        auto TrySlots = [this, PC, &QC](const TArray<UPUIngredientSlot*>& Slots)
+        {
+            for (UPUIngredientSlot* Slot : Slots)
+            {
+                if (!Slot || !Slot->IsVisible() || Slot->IsEmpty())
+                {
+                    continue;
+                }
+                const EPUIngredientSlotLocation Loc = Slot->GetLocation();
+                if (Loc != EPUIngredientSlotLocation::ActiveIngredientArea && Loc != EPUIngredientSlotLocation::Prep
+                    && Loc != EPUIngredientSlotLocation::Prepped)
+                {
+                    continue;
+                }
+                if (Slot->HasKeyboardFocus() || (PC && (Slot->HasUserFocus(PC) || Slot->HasUserFocusedDescendants(PC))))
+                {
+                    UPUIngredientQuantityControl* Q = Slot->GetQuantityControl();
+                    if (Q && Q->IsVisible())
+                    {
+                        QC = Q;
+                        return;
+                    }
+                }
+            }
+        };
+        TrySlots(CreatedIngredientSlots);
+        if (!QC)
+        {
+            TrySlots(CreatedPreppedSlots);
+        }
+    }
+
+    if (!QC || !QC->IsVisible())
+    {
+        return false;
+    }
+
+    if (Delta > 0)
+    {
+        QC->IncreaseQuantity();
+    }
+    else
+    {
+        QC->DecreaseQuantity();
+    }
+    return true;
 }
 
 FGameplayTagContainer UPUDishCustomizationWidget::GetPreparationTagsForImplement(int32 ImplementIndex) const

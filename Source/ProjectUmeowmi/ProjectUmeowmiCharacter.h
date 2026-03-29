@@ -47,6 +47,31 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
 
+	// --- Journal (Input Actions + layered IMC) ---
+	/**
+	 * Layered while the journal is open (higher priority than base IMC at 0).
+	 * Keeps IMC_Default or IMC_DishCustomization active underneath so dish customization + journal works.
+	 * Create an IMC (e.g. IMC_Journal) with bindings for journal navigation / confirm / back and assign here.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
+	UInputMappingContext* JournalMappingContext;
+
+	/** Priority for JournalMappingContext. Default 2 — above Default (0) and dish customization layer (1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true", ClampMin = "1", UIMin = "1"))
+	int32 JournalMappingContextPriority = 2;
+
+	/** Open / toggle journal (e.g. Start, I). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
+	UInputAction* OpenJournalAction;
+
+	/** Recipes tab: previous dish (e.g. LB). Only when journal is open on Recipes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleDishPrevAction;
+
+	/** Recipes tab: next dish (e.g. RB). Only when journal is open on Recipes. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleDishNextAction;
+
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* MoveAction;
@@ -70,18 +95,6 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** Cycle between overlapping interact targets (Space bar). Only active when 2+ talking objects overlap. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
 	UInputAction* CycleInteractTargetAction;
-
-	/** Open/Toggle Journal Input Action (Start button, I key) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
-	UInputAction* OpenJournalAction;
-
-	/** Cycle to previous dish in journal Recipes tab (LB / Left Bumper). Only active when journal is open on Recipes. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
-	UInputAction* JournalCycleDishPrevAction;
-
-	/** Cycle to next dish in journal Recipes tab (RB / Right Bumper). Only active when journal is open on Recipes. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
-	UInputAction* JournalCycleDishNextAction;
 
 	/** Hold to skip dialogue (fast typewriter, no sound, auto-advance). Only active when in dialogue. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
@@ -461,6 +474,14 @@ public:
 	FORCEINLINE UInputAction* GetToggleGridMovementAction() const { return ToggleGridMovementAction; }
 	FORCEINLINE UInputAction* GetJumpAction() const { return JumpAction; }
 	FORCEINLINE UInputMappingContext* GetDefaultMappingContext() const { return DefaultMappingContext; }
+
+	/** Add journal IMC on top of current base (explore or dish customization). */
+	UFUNCTION(BlueprintCallable, Category = "Input Config|Journal")
+	void PushJournalInputMappingLayer();
+
+	/** Remove journal IMC only. Call when closing journal. */
+	UFUNCTION(BlueprintCallable, Category = "Input Config|Journal")
+	void PopJournalInputMappingLayer();
 	
 	// Mouse visibility control
 	void ShowMouseCursor();
@@ -758,5 +779,8 @@ private:
 	FTimerHandle EmoteHideTimerHandle;
 	FTimerHandle EmoteFadeOutTimerHandle;
 	FGameplayTag ActiveEmoteTag;
+
+	/** Tracks whether PushJournalInputMappingLayer added JournalMappingContext (for balanced Pop). */
+	bool bJournalInputLayerActive = false;
 
 };

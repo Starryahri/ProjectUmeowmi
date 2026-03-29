@@ -10,9 +10,10 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
-namespace PUDialogueScoringLog
+namespace
 {
-	static constexpr const TCHAR* Tag = TEXT("[PUDialogueScoring]");
+	// File-local tag (avoid duplicate namespace with PUDialogueBox.cpp in unity builds).
+	constexpr const TCHAR* DialogueScoringLogTag = TEXT("[PUDialogueScoring]");
 }
 
 void UPUDialogueOption::NativeConstruct()
@@ -97,10 +98,10 @@ void UPUDialogueOption::SelectOption()
 	// Select the option and move to the next node
 	const bool bEndedBefore = CurrentContext->HasDialogueEnded();
 	UE_LOG(LogTemp, Display, TEXT("%s [Option/SelectOption] idx=%d ctx=%p HasEnded(before)=%d OptionsNum=%d parentBox=%p"),
-		PUDialogueScoringLog::Tag, OptionIndex, CurrentContext, bEndedBefore ? 1 : 0, CurrentContext->GetOptionsNum(), ParentDialogueBox);
+		DialogueScoringLogTag, OptionIndex, CurrentContext, bEndedBefore ? 1 : 0, CurrentContext->GetOptionsNum(), ParentDialogueBox);
 	bool bSuccess = CurrentContext->ChooseOption(OptionIndex);
 	UE_LOG(LogTemp, Display, TEXT("%s [Option/SelectOption] ChooseOption(%d) => %s HasEnded(after)=%d"),
-		PUDialogueScoringLog::Tag, OptionIndex, bSuccess ? TEXT("true") : TEXT("false"), CurrentContext->HasDialogueEnded() ? 1 : 0);
+		DialogueScoringLogTag, OptionIndex, bSuccess ? TEXT("true") : TEXT("false"), CurrentContext->HasDialogueEnded() ? 1 : 0);
 
 	// ChooseOption can run Dlg enter events (e.g. BeginDishScoring) that SwapToScoringDialogueBox on the character.
 	// ParentDialogueBox still points at the old widget — Update must target the character's current DialogueBox.
@@ -133,12 +134,12 @@ void UPUDialogueOption::SelectOption()
 	else
 	{
 		UE_LOG(LogTemp, Warning, TEXT("%s [Option/SelectOption] no PlayerController (this=%p parentBox=%p) — cannot resolve character DialogueBox"),
-			PUDialogueScoringLog::Tag, this, ParentDialogueBox);
+			DialogueScoringLogTag, this, ParentDialogueBox);
 	}
 	if (BoxToUpdate != ParentDialogueBox)
 	{
 		UE_LOG(LogTemp, Display, TEXT("%s [Option/SelectOption] post-ChooseOption: dialogue box replaced (parent=%p -> character=%p %s) — updating character box"),
-			PUDialogueScoringLog::Tag, ParentDialogueBox, BoxToUpdate, BoxToUpdate ? *BoxToUpdate->GetClass()->GetName() : TEXT("null"));
+			DialogueScoringLogTag, ParentDialogueBox, BoxToUpdate, BoxToUpdate ? *BoxToUpdate->GetClass()->GetName() : TEXT("null"));
 		SetParentDialogueBox(BoxToUpdate);
 	}
 	if (IsValid(BoxToUpdate))
@@ -147,7 +148,7 @@ void UPUDialogueOption::SelectOption()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("%s [Option/SelectOption] No dialogue box to Update after ChooseOption"), PUDialogueScoringLog::Tag);
+		UE_LOG(LogTemp, Warning, TEXT("%s [Option/SelectOption] No dialogue box to Update after ChooseOption"), DialogueScoringLogTag);
 	}
 }
 

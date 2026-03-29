@@ -376,6 +376,38 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 	}
 }
 
+void AProjectUmeowmiCharacter::PushJournalInputMappingLayer()
+{
+	if (!JournalMappingContext || bJournalInputLayerActive)
+	{
+		return;
+	}
+	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
+		{
+			Subsystem->AddMappingContext(JournalMappingContext, JournalMappingContextPriority);
+			bJournalInputLayerActive = true;
+		}
+	}
+}
+
+void AProjectUmeowmiCharacter::PopJournalInputMappingLayer()
+{
+	if (!JournalMappingContext || !bJournalInputLayerActive)
+	{
+		return;
+	}
+	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
+		{
+			Subsystem->RemoveMappingContext(JournalMappingContext);
+		}
+	}
+	bJournalInputLayerActive = false;
+}
+
 void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
@@ -2411,6 +2443,8 @@ void AProjectUmeowmiCharacter::HideMouseCursor()
 void AProjectUmeowmiCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	//UE_LOG(LogTemp,Log, TEXT("ProjectUmeowmiCharacter::EndPlay - Cleaning up character: %s"), *GetName());
+
+	PopJournalInputMappingLayer();
 	
 	// Clear order UObject references to prevent garbage collection issues
 	if (bHasCurrentOrder || bCurrentOrderCompleted)

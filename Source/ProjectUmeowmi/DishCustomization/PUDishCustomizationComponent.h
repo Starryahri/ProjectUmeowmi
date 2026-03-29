@@ -16,6 +16,7 @@ class UInputAction;
 class UEnhancedInputComponent;
 class UInputMappingContext;
 class UNiagaraComponent;
+struct FInputActionValue;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnCustomizationEnded);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDishDataUpdated, const FPUDishBase&, NewDishData);
@@ -198,6 +199,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
 	TSubclassOf<UUserWidget> HUDWidgetClass;
 
+	// If true, StartCustomization collapses/hides the HUD widget (see HUDWidgetClass). Default false keeps HUD visible while customizing.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
+	bool bHideHUDDuringCustomization = false;
+
 	// Which visibility to use when hiding the HUD during customization.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
 	ESlateVisibility HUDHiddenVisibility = ESlateVisibility::Collapsed;
@@ -231,9 +236,21 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     class UInputAction* PreviousStageAction;
 
-    // Input Mapping Context for customization mode
+    /** Increase/decrease quantity on the focused prep/active ingredient slot (bind in IMC_DishCustomization). */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputAction* QuantityIncreaseAction;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
+    class UInputAction* QuantityDecreaseAction;
+
+    // Input Mapping Context for customization mode (layered on top of the character's DefaultMappingContext; does not remove it).
+    // Map IA_OpenJournal here too if it shares a key with another binding (e.g. Exit); higher-priority context wins for that key.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     class UInputMappingContext* CustomizationMappingContext;
+
+    /** Priority for CustomizationMappingContext. Default 1 — keep character JournalMappingContext at a higher priority (e.g. 2) so journal overlays customization. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization", meta = (ClampMin = "1", UIMin = "1"))
+    int32 CustomizationMappingContextPriority = 1;
 
     // Controller Mouse Settings
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Controller Mouse")
@@ -355,10 +372,6 @@ protected:
     UPROPERTY()
     TWeakObjectPtr<AProjectUmeowmiCharacter> CameraTransitionCharacter;
 
-    // Input context management
-    UPROPERTY()
-    UInputMappingContext* OriginalMappingContext;
-
     // Input binding handles
     uint32 ExitActionBindingHandle;
     uint32 ControllerMouseBindingHandle;
@@ -366,6 +379,8 @@ protected:
     FDelegateHandle PreInputMouseDownHandle;  // Slate pre-input listener (bypasses widget consumption)
     uint32 NextStageBindingHandle;
     uint32 PreviousStageBindingHandle;
+    uint32 QuantityIncreaseBindingHandle;
+    uint32 QuantityDecreaseBindingHandle;
 
     // Mouse interaction state
     bool bIsDragging = false;
@@ -441,6 +456,8 @@ private:
     void HandleMouseRelease(const FInputActionValue& Value);
     void HandleNextStage();
     void HandlePreviousStage();
+    void HandleQuantityIncrease(const FInputActionValue& Value);
+    void HandleQuantityDecrease(const FInputActionValue& Value);
     void UpdateMouseDrag();
 
     // Camera handling

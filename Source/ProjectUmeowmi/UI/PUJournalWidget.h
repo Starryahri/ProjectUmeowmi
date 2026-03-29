@@ -122,6 +122,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs")
 	FMargin TabSlotPadding = FMargin(0.f, 0.f, 0.f, 8.f);
 
+	/**
+	 * Viewport Z when opening (dish customization UI uses ~250). Ensures the journal paints on top after UnhideCollapsedAncestors / AddToViewport.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Viewport")
+	int32 JournalViewportZOrderWhenOpen = 300;
+
 	/** Restore the last selected tab when opening the journal */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Behavior")
 	bool bRestoreLastTabOnOpen = true;

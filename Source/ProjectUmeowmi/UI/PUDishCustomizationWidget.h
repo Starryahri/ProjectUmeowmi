@@ -258,6 +258,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void FindQuantityControlsInHierarchy(TArray<UPUIngredientQuantityControl*>& OutQuantityControls);
 
+    /** Apply +/-1 quantity on the quantity control for the focused ingredient slot (or focused quantity control). Uses Slate keyboard focus; returns false if not applicable. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    bool TryApplyQuantityInputFromEnhancedInput(int32 Delta);
+
     // Pantry Functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
     void PopulatePantrySlots();

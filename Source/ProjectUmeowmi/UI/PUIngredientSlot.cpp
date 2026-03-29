@@ -4093,32 +4093,26 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
         UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, blocking navigation input"));
         return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
     }
-    
-    // Handle quantity controls with left/right shoulder buttons
-    // Left bumper = decrease, Right bumper = increase
+
+    // Gamepad shoulders: while a slot has Slate focus, keys are routed through NativeOnKeyDown first; Enhanced Input often does not receive them (Game and UI mode).
+    // Keyboard / alternate bindings can still use QuantityIncreaseAction / QuantityDecreaseAction on the dish component.
     if (Key == EKeys::Gamepad_LeftShoulder)
     {
-        // Only handle if slot has focus, has an ingredient, and has a quantity control
         if (HasKeyboardFocus() && bHasIngredient && QuantityControlWidget && QuantityControlWidget->IsVisible())
         {
-            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Left bumper pressed, decreasing quantity"));
-            // DecreaseQuantity() handles min/max limits internally
             QuantityControlWidget->DecreaseQuantity();
             return FReply::Handled();
         }
     }
     else if (Key == EKeys::Gamepad_RightShoulder)
     {
-        // Only handle if slot has focus, has an ingredient, and has a quantity control
         if (HasKeyboardFocus() && bHasIngredient && QuantityControlWidget && QuantityControlWidget->IsVisible())
         {
-            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Right bumper pressed, increasing quantity"));
-            // IncreaseQuantity() handles min/max limits internally
             QuantityControlWidget->IncreaseQuantity();
             return FReply::Handled();
         }
     }
-    
+
     // Handle D-pad and left stick navigation
     if (Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Gamepad_LeftStick_Up || Key == EKeys::Up)
     {
