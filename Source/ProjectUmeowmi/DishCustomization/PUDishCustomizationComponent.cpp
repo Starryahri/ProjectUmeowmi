@@ -98,6 +98,14 @@ namespace
         return true;
     }
 
+    /** ProcessMouseButtonDownEvent re-broadcasts OnApplicationMousePreInputButtonDownListener; guard OnPreInputMouseButtonDown against re-entering HandleMouseClick. */
+    struct FPUScopedSyntheticSlateMouseDispatch
+    {
+        bool& bFlag;
+        explicit FPUScopedSyntheticSlateMouseDispatch(bool& InFlag) : bFlag(InFlag) { bFlag = true; }
+        ~FPUScopedSyntheticSlateMouseDispatch() { bFlag = false; }
+    };
+
     /** Match FAnalogCursor: move Slate's pointer + ProcessMouseMoveEvent so UMG hover (e.g. ingredient slots) tracks the virtual position. */
     void ApplyVirtualCursorSlateHover(const FVector2D& VirtualViewportPixels, APlayerController* PC, int32 VSX, int32 VSY)
     {
@@ -1396,6 +1404,10 @@ void UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup()
 void UPUDishCustomizationComponent::OnPreInputMouseButtonDown(const FPointerEvent& MouseEvent)
 {
     // Fires BEFORE Slate widgets consume the click - bypasses widget blocking
+    if (bInsideSyntheticSlateMouseDispatch)
+    {
+        return;
+    }
     if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !CanSpawnIngredientsIn3D() || !CurrentCharacter)
     {
         return;
@@ -1485,7 +1497,10 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
                         0.f,
                         bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
                     TSharedPtr<FGenericWindow> GenWindow;
-                    SlateApp.ProcessMouseButtonDownEvent(GenWindow, MouseEvent);
+                    {
+                        FPUScopedSyntheticSlateMouseDispatch GuardSyntheticDispatch(bInsideSyntheticSlateMouseDispatch);
+                        SlateApp.ProcessMouseButtonDownEvent(GenWindow, MouseEvent);
+                    }
                     bVirtualClickConsumedBySlateUI = true;
                     if (bPU_LogVirtualCursorClick)
                     {

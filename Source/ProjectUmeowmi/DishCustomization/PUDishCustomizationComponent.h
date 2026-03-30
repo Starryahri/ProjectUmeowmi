@@ -482,6 +482,9 @@ private:
     /** Last MouseClickAction (Started) was routed to Slate as a synthetic LMB down (UMG under virtual cursor); release must send synthetic LMB up. */
     bool bVirtualClickConsumedBySlateUI = false;
 
+    /** True while we're inside ProcessMouseButtonDownEvent for a synthetic virtual-cursor click — that call re-fires pre-input listeners; without this, OnPreInputMouseButtonDown -> HandleMouseClick recurses until stack overflow. */
+    bool bInsideSyntheticSlateMouseDispatch = false;
+
     /** Virtual cursor in Slate "virtual desktop" pixels (from SceneViewport::ViewportToVirtualDesktopPixel). FSlateUser::GetCursorPosition can be invalid when OS cursor is hidden. */
     FVector2D LastVirtualCursorDesktopAbs = FVector2D::ZeroVector;
     bool bLastVirtualCursorDesktopValid = false;
