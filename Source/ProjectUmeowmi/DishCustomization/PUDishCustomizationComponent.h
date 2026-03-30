@@ -7,6 +7,7 @@
 #include "../ProjectUmeowmiCharacter.h"
 #include "../UI/PUDishCustomizationWidget.h"
 #include "Components/SlateWrapperTypes.h"
+#include "Engine/EngineBaseTypes.h"
 #include "PUDishCustomizationComponent.generated.h"
 
 // Forward declarations
@@ -253,11 +254,29 @@ public:
     int32 CustomizationMappingContextPriority = 1;
 
     // Controller Mouse Settings
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Controller Mouse")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor")
     float ControllerMouseSensitivity = 50.0f;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Controller Mouse")
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor")
     float ControllerMouseDeadzone = 0.2f;
+
+    /** UMG widget for the on-screen pointer (e.g. Image with your texture). Positioned in viewport; no OS mouse movement. Assign on the component / BP defaults. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor")
+    TSubclassOf<UUserWidget> VirtualCursorWidgetClass;
+
+    /** Draw above the dish UI (CustomizationWidget often uses ~250). */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor", meta = (ClampMin = "0"))
+    int32 VirtualCursorZOrder = 10000;
+
+    /**
+     * Hotspot offset in viewport pixels: distance from the widget's top-left to the point that should sit on the logical cursor (clicks, hover, traces).
+     * Example: 32×32 crosshair — use (16, 16) to center. Arrow with tip 8px from left, 4px from top — use (8, 4). Default (0,0) = widget top-left = hotspot.
+     */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor")
+    FVector2D VirtualCursorHotspotOffset = FVector2D::ZeroVector;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UUserWidget> VirtualCursorWidgetInstance = nullptr;
 
     // Camera Management
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
@@ -385,6 +404,10 @@ protected:
     // Mouse interaction state
     bool bIsDragging = false;
     bool bWasMouseDown = false;  // For Tick-based click fallback when widget blocks Enhanced Input
+
+    /** DefaultViewportMouseCaptureMode is often CapturePermanently_* — that requires a click before the OS cursor tracks; controller virtual cursor needs NoCapture. */
+    bool bHasSavedViewportMouseCaptureForCustomization = false;
+    EMouseCaptureMode SavedViewportMouseCaptureModeForCustomization = EMouseCaptureMode::NoCapture;
     class APUIngredientMesh* CurrentlyDraggedIngredient = nullptr;
     FVector DragStartPosition;
     FVector DragStartMousePosition;
@@ -451,6 +474,30 @@ private:
     // Input handling
     void HandleExitInput();
     void HandleControllerMouse(const FInputActionValue& Value);
+
+    /** Right-stick cursor in viewport pixels; sole source of truth during customization (not GetMousePosition / hardware mouse). */
+    FVector2D VirtualCursorViewport = FVector2D::ZeroVector;
+    bool bVirtualCursorInitialized = false;
+
+    /** Last MouseClickAction (Started) was routed to Slate as a synthetic LMB down (UMG under virtual cursor); release must send synthetic LMB up. */
+    bool bVirtualClickConsumedBySlateUI = false;
+
+    /** Virtual cursor in Slate "virtual desktop" pixels (from SceneViewport::ViewportToVirtualDesktopPixel). FSlateUser::GetCursorPosition can be invalid when OS cursor is hidden. */
+    FVector2D LastVirtualCursorDesktopAbs = FVector2D::ZeroVector;
+    bool bLastVirtualCursorDesktopValid = false;
+
+    /** Last extents used for virtual cursor clamp (see TryGetVirtualCursorViewportPixelExtents); detect resize without stick input. */
+    int32 CachedVirtualCursorViewportExtentsX = 0;
+    int32 CachedVirtualCursorViewportExtentsY = 0;
+
+    bool TryComputeVirtualCursorDesktopAbsolute(APlayerController* PC, FVector2D& OutDesktopAbs) const;
+
+    /** Use FSceneViewport size when available — matches ViewportToVirtualDesktopPixel and stays consistent across PIE / selected viewport / resize. Falls back to GetViewportSize. */
+    bool TryGetVirtualCursorViewportPixelExtents(APlayerController* PC, int32& OutW, int32& OutH) const;
+
+    void ApplyVirtualCursorVisual(APlayerController* PC);
+    FVector2D GetVirtualCursorScreenPosition(APlayerController* PC) const;
+    void OnCustomizationViewportDeferredSetup();
     void OnPreInputMouseButtonDown(const struct FPointerEvent& MouseEvent);  // Slate pre-input (before widgets consume)
     void HandleMouseClick(const FInputActionValue& Value);
     void HandleMouseRelease(const FInputActionValue& Value);

@@ -13,6 +13,7 @@
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/World.h"
+#include "Engine/EngineBaseTypes.h"
 #include "EngineUtils.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
@@ -29,6 +30,11 @@
 #include "PUIngredientMesh.h"
 #include "Camera/CameraActor.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/SlateUser.h"
+#include "Engine/LocalPlayer.h"
+#include "Slate/SceneViewport.h"
+#include "Layout/WidgetPath.h"
+#include "Input/Events.h"
 #include "TimerManager.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
@@ -45,6 +51,12 @@ namespace
     // Enables logging for movement restoration when exiting customization (to debug "can look but not move").
     constexpr bool bPU_LogMovementRestore = true;
 
+    /** Right-stick virtual cursor: StartCustomization, HandleControllerMouse (throttled), deferred sync. Set false after debugging. */
+    constexpr bool bPU_LogVirtualCursor = true;
+
+    /** Synthetic Interact → Slate LMB down/up over virtual cursor (ingredient slots). Set false after debugging. */
+    constexpr bool bPU_LogVirtualCursorClick = true;
+
     void LogMovementState(APlayerController* PC, const TCHAR* Context)
     {
         if (!bPU_LogMovementRestore || !PC) return;
@@ -60,6 +72,100 @@ namespace
             }
         }
         UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] %s - IgnoreMove=%d IgnoreLook=%d MovementMode=%d"), Context, bIgnoreMove, bIgnoreLook, (int32)MoveMode);
+    }
+
+    /**
+     * Match FSceneViewport::SetMouse: norm = pixel / GetSizeXY(), local = norm * CachedGeometry.GetLocalSize(), then LocalToAbsolute.
+     * ViewportToVirtualDesktopPixel uses norm * SizeX instead of GetLocalSize — when those differ (editor viewport, DPI, mid-resize), hover/clamp no longer match the real scene viewport widget.
+     */
+    bool VirtualViewportPixelsToSlateCursorAbsolute(FSceneViewport* SceneViewport, const FVector2D& VirtualViewportPixels, int32 VSX, int32 VSY, FVector2D& OutAbsolute)
+    {
+        if (!SceneViewport || VSX <= 0 || VSY <= 0)
+        {
+            return false;
+        }
+        const FVector2D Norm(
+            VirtualViewportPixels.X / static_cast<float>(VSX),
+            VirtualViewportPixels.Y / static_cast<float>(VSY));
+        const FGeometry& Geo = SceneViewport->GetCachedGeometry();
+        const FVector2D LocalSize = Geo.GetLocalSize();
+        if (LocalSize.X <= KINDA_SMALL_NUMBER || LocalSize.Y <= KINDA_SMALL_NUMBER)
+        {
+            return false;
+        }
+        const FVector2D LocalInViewport = Norm * LocalSize;
+        OutAbsolute = Geo.LocalToAbsolute(LocalInViewport);
+        return true;
+    }
+
+    /** Match FAnalogCursor: move Slate's pointer + ProcessMouseMoveEvent so UMG hover (e.g. ingredient slots) tracks the virtual position. */
+    void ApplyVirtualCursorSlateHover(const FVector2D& VirtualViewportPixels, APlayerController* PC, int32 VSX, int32 VSY)
+    {
+        if (!PC || !FSlateApplication::IsInitialized() || VSX <= 0 || VSY <= 0)
+        {
+            return;
+        }
+        ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+        if (!LocalPlayer || !LocalPlayer->ViewportClient)
+        {
+            return;
+        }
+        FSceneViewport* SceneViewport = LocalPlayer->ViewportClient->GetGameViewport();
+        if (!SceneViewport)
+        {
+            return;
+        }
+        FVector2D NewAbs;
+        if (!VirtualViewportPixelsToSlateCursorAbsolute(SceneViewport, VirtualViewportPixels, VSX, VSY, NewAbs))
+        {
+            return;
+        }
+
+        FSlateApplication& SlateApp = FSlateApplication::Get();
+        TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
+        if (!SlateUser.IsValid())
+        {
+            SlateUser = SlateApp.GetCursorUser();
+        }
+        if (!SlateUser.IsValid())
+        {
+            return;
+        }
+
+        const FVector2D OldAbs = SlateUser->GetCursorPosition();
+        const FVector2D NewAbsRounded = NewAbs.RoundToVector();
+        SlateUser->SetCursorPosition(static_cast<int32>(NewAbsRounded.X), static_cast<int32>(NewAbsRounded.Y));
+        const FVector2D UpdatedAbs = SlateUser->GetCursorPosition();
+
+        const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
+        const FPointerEvent MouseEvent(
+            SlateUser->GetUserIndex(),
+            FSlateApplication::CursorPointerIndex,
+            UpdatedAbs,
+            OldAbs,
+            bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
+            EKeys::Invalid,
+            0.f,
+            bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
+        SlateApp.ProcessMouseMoveEvent(MouseEvent);
+    }
+
+    /** True if the hit path includes UMG (SObjectWidget) — synthetic click should go to Slate, not world trace only. */
+    bool WidgetPathContainsSObjectWidget(const FWidgetPath& Path)
+    {
+        if (!Path.IsValid())
+        {
+            return false;
+        }
+        for (int32 i = Path.Widgets.Num() - 1; i >= 0; --i)
+        {
+            const FString TypeStr = Path.Widgets[i].Widget->GetTypeAsString();
+            if (TypeStr.Contains(TEXT("SObjectWidget")))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -157,6 +263,23 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
         UpdatePlatingCameraTransition(DeltaTime);
     }
 
+    // PIE / selected viewport / window resize: extents can change without right-stick input — re-clamp and sync.
+    if (bVirtualCursorInitialized && CurrentCharacter)
+    {
+        if (APlayerController* VPC = Cast<APlayerController>(CurrentCharacter->GetController()))
+        {
+            int32 nw = 0;
+            int32 nh = 0;
+            if (TryGetVirtualCursorViewportPixelExtents(VPC, nw, nh))
+            {
+                if (nw != CachedVirtualCursorViewportExtentsX || nh != CachedVirtualCursorViewportExtentsY)
+                {
+                    ApplyVirtualCursorVisual(VPC);
+                }
+            }
+        }
+    }
+
     // Update mouse dragging if active
     if (bIsDragging)
     {
@@ -199,6 +322,10 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     CameraTransitionCharacter = nullptr;
     CurrentCharacter = Character;
     bWasMouseDown = false;  // Reset for clean state when entering customization
+    bVirtualClickConsumedBySlateUI = false;
+    bLastVirtualCursorDesktopValid = false;
+    CachedVirtualCursorViewportExtentsX = 0;
+    CachedVirtualCursorViewportExtentsY = 0;
 
     if (bHideHUDDuringCustomization)
     {
@@ -222,18 +349,61 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
     PlayerController->SetInputMode(InputMode);
 
-    // Enable mouse cursor and input
+    // Project DefaultInput often uses CapturePermanently_IncludingInitialMouseDown — the viewport won't track a controller-moved cursor until the user clicks. NoCapture fixes virtual cursor (right stick → SetMouseLocation).
+    SavedViewportMouseCaptureModeForCustomization = UGameplayStatics::GetViewportMouseCaptureMode(PlayerController);
+    bHasSavedViewportMouseCaptureForCustomization = true;
+    UGameplayStatics::SetViewportMouseCaptureMode(PlayerController, EMouseCaptureMode::NoCapture);
+
+    // Enable click/over for world traces at virtual screen position (UMG widget draws the pointer; OS cursor optional).
     PlayerController->SetIgnoreMoveInput(true);
     PlayerController->SetIgnoreLookInput(true);
-    PlayerController->bShowMouseCursor = true;
-    PlayerController->CurrentMouseCursor = EMouseCursor::Default;
     PlayerController->bEnableClickEvents = true;
     PlayerController->bEnableMouseOverEvents = true;
 
-    // Center the mouse cursor
-    int32 ViewportSizeX, ViewportSizeY;
-    PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
-    PlayerController->SetMouseLocation(ViewportSizeX / 2, ViewportSizeY / 2);
+    // Virtual cursor: viewport position is owned only by the right stick + this component (never GetMousePosition for movement).
+    int32 ViewportSizeX = 0;
+    int32 ViewportSizeY = 0;
+    TryGetVirtualCursorViewportPixelExtents(PlayerController, ViewportSizeX, ViewportSizeY);
+    if (ViewportSizeX > 0 && ViewportSizeY > 0)
+    {
+        VirtualCursorViewport.X = static_cast<float>(ViewportSizeX) * 0.5f;
+        VirtualCursorViewport.Y = static_cast<float>(ViewportSizeY) * 0.5f;
+        bVirtualCursorInitialized = true;
+
+        if (VirtualCursorWidgetClass)
+        {
+            if (IsValid(VirtualCursorWidgetInstance))
+            {
+                VirtualCursorWidgetInstance->RemoveFromParent();
+                VirtualCursorWidgetInstance = nullptr;
+            }
+            VirtualCursorWidgetInstance = CreateWidget<UUserWidget>(PlayerController, VirtualCursorWidgetClass);
+            if (VirtualCursorWidgetInstance)
+            {
+                VirtualCursorWidgetInstance->SetVisibility(ESlateVisibility::HitTestInvisible);
+                VirtualCursorWidgetInstance->AddToViewport(VirtualCursorZOrder);
+            }
+            PlayerController->SetShowMouseCursor(false);
+            PlayerController->CurrentMouseCursor = EMouseCursor::None;
+        }
+        else
+        {
+            PlayerController->SetShowMouseCursor(true);
+            PlayerController->CurrentMouseCursor = EMouseCursor::Default;
+        }
+
+        ApplyVirtualCursorVisual(PlayerController);
+        if (bPU_LogVirtualCursor)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[VirtualCursor] StartCustomization: viewport %dx%d, initial (%.1f, %.1f) widget=%s"),
+                ViewportSizeX, ViewportSizeY, VirtualCursorViewport.X, VirtualCursorViewport.Y,
+                VirtualCursorWidgetClass ? *VirtualCursorWidgetClass->GetName() : TEXT("(none)"));
+        }
+    }
+    else if (bPU_LogVirtualCursor)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursor] StartCustomization: viewport size invalid (%d x %d), virtual cursor not initialized"), ViewportSizeX, ViewportSizeY);
+    }
 
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Input mode set, viewport size: %dx%d"), ViewportSizeX, ViewportSizeY);
 
@@ -444,6 +614,12 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     // Start camera transition to customization view
     //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::StartCustomization - Starting camera transition"));
     StartCameraTransition(true);
+
+    // Re-apply capture after layout; re-sync virtual cursor once FSceneViewport CachedGeometry has ticked (no SetFocusToGameViewport — keeps Game+UI widget focus).
+    if (UWorld* WorldForCapture = GetWorld())
+    {
+        WorldForCapture->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(this, &UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup));
+    }
     
     //UE_LOG(LogTemp,Display, TEXT("🎉 UPUDishCustomizationComponent::StartCustomization - CUSTOMIZATION STARTED SUCCESSFULLY"));
 }
@@ -458,11 +634,17 @@ void UPUDishCustomizationComponent::EndCustomization()
 
     if (!CurrentCharacter)
     {
+        bVirtualCursorInitialized = false;
         if (bPU_LogMovementRestore)
             UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] EndCustomization EARLY RETURN (no CurrentCharacter) - restoring via WorldPC"));
         // Still restore movement so player can move (e.g. component ref mismatch or already cleared)
         if (WorldPC)
         {
+            if (bHasSavedViewportMouseCaptureForCustomization)
+            {
+                UGameplayStatics::SetViewportMouseCaptureMode(WorldPC, SavedViewportMouseCaptureModeForCustomization);
+                bHasSavedViewportMouseCaptureForCustomization = false;
+            }
             LogMovementState(WorldPC, TEXT("EARLY before restore"));
             WorldPC->ResetIgnoreMoveInput();
             WorldPC->ResetIgnoreLookInput();
@@ -595,6 +777,18 @@ void UPUDishCustomizationComponent::EndCustomization()
 
         // Return focus to the game viewport so controller/gamepad works again (was stuck after closing customization UI)
         UWidgetBlueprintLibrary::SetFocusToGameViewport();
+
+        if (bHasSavedViewportMouseCaptureForCustomization)
+        {
+            UGameplayStatics::SetViewportMouseCaptureMode(PlayerController, SavedViewportMouseCaptureModeForCustomization);
+            bHasSavedViewportMouseCaptureForCustomization = false;
+        }
+    }
+
+    if (IsValid(VirtualCursorWidgetInstance))
+    {
+        VirtualCursorWidgetInstance->RemoveFromParent();
+        VirtualCursorWidgetInstance = nullptr;
     }
 
     // Clean up the customization widget
@@ -624,6 +818,11 @@ void UPUDishCustomizationComponent::EndCustomization()
     // popup closes) see IsCustomizing() true and re-apply ignore move/look, taking control away again.
     // UpdateCameraTransition uses CameraTransitionCharacter when CurrentCharacter is null.
     CameraTransitionCharacter = CurrentCharacter;
+    bVirtualCursorInitialized = false;
+    bVirtualClickConsumedBySlateUI = false;
+    bLastVirtualCursorDesktopValid = false;
+    CachedVirtualCursorViewportExtentsX = 0;
+    CachedVirtualCursorViewportExtentsY = 0;
     CurrentCharacter = nullptr;
 
     // Always re-enable movement on the world's player controller so keyboard/joystick move works no matter what.
@@ -920,6 +1119,7 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             SetHUDVisible(true);
 
             CameraTransitionCharacter = nullptr;
+            bVirtualCursorInitialized = false;
             CurrentCharacter = nullptr;
 
             UWorld* World = GetWorld();
@@ -1002,41 +1202,195 @@ void UPUDishCustomizationComponent::HandleControllerMouse(const FInputActionValu
     {
         StickInput.Y = 0.0f;
     }
+    if (StickInput.IsNearlyZero(1.e-4f))
+    {
+        return;
+    }
     //UE_LOG(LogTemp,Log, TEXT("HandleControllerMouse - After deadzone: X=%.2f, Y=%.2f"), StickInput.X, StickInput.Y);
 
-    // Get viewport size
-    int32 ViewportSizeX, ViewportSizeY;
-    PlayerController->GetViewportSize(ViewportSizeX, ViewportSizeY);
-    //UE_LOG(LogTemp,Log, TEXT("HandleControllerMouse - Viewport size: %dx%d"), ViewportSizeX, ViewportSizeY);
+    int32 ViewportSizeX = 0;
+    int32 ViewportSizeY = 0;
+    if (!TryGetVirtualCursorViewportPixelExtents(PlayerController, ViewportSizeX, ViewportSizeY))
+    {
+        return;
+    }
 
-    // Get current mouse position
-    float MouseX, MouseY;
-    PlayerController->GetMousePosition(MouseX, MouseY);
-    //UE_LOG(LogTemp,Log, TEXT("HandleControllerMouse - Current mouse position: X=%.2f, Y=%.2f"), MouseX, MouseY);
+    if (!bVirtualCursorInitialized)
+    {
+        VirtualCursorViewport.X = static_cast<float>(ViewportSizeX) * 0.5f;
+        VirtualCursorViewport.Y = static_cast<float>(ViewportSizeY) * 0.5f;
+        bVirtualCursorInitialized = true;
+    }
 
-    // Calculate movement based on stick input and sensitivity
-    float DeltaX = StickInput.X * ControllerMouseSensitivity;
-    float DeltaY = StickInput.Y * ControllerMouseSensitivity;
-    //UE_LOG(LogTemp,Log, TEXT("HandleControllerMouse - Calculated delta: X=%.2f, Y=%.2f"), DeltaX, DeltaY);
+    const float DeltaX = StickInput.X * ControllerMouseSensitivity;
+    const float DeltaY = StickInput.Y * ControllerMouseSensitivity;
+    VirtualCursorViewport.X += DeltaX;
+    VirtualCursorViewport.Y += DeltaY;
+    VirtualCursorViewport.X = FMath::Clamp(VirtualCursorViewport.X, 0.0f, static_cast<float>(ViewportSizeX));
+    VirtualCursorViewport.Y = FMath::Clamp(VirtualCursorViewport.Y, 0.0f, static_cast<float>(ViewportSizeY));
 
-    // Calculate new position
-    float NewMouseX = MouseX + DeltaX;
-    float NewMouseY = MouseY + DeltaY;
+    if (bPU_LogVirtualCursor)
+    {
+        static float sLastVirtualCursorLogTime = -1000.f;
+        const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+        if (Now - sLastVirtualCursorLogTime >= 0.12f)
+        {
+            sLastVirtualCursorLogTime = Now;
+            UE_LOG(LogTemp, Log, TEXT("[VirtualCursor] stick=(%.3f,%.3f) delta=(%.1f,%.1f) -> virtual=(%.1f,%.1f) viewport=%dx%d init=%d"),
+                StickInput.X, StickInput.Y, DeltaX, DeltaY, VirtualCursorViewport.X, VirtualCursorViewport.Y, ViewportSizeX, ViewportSizeY, bVirtualCursorInitialized ? 1 : 0);
+        }
+    }
 
-    // Clamp to viewport bounds
-    NewMouseX = FMath::Clamp(NewMouseX, 0.0f, static_cast<float>(ViewportSizeX));
-    NewMouseY = FMath::Clamp(NewMouseY, 0.0f, static_cast<float>(ViewportSizeY));
-    //UE_LOG(LogTemp,Log, TEXT("HandleControllerMouse - New mouse position: X=%.2f, Y=%.2f"), NewMouseX, NewMouseY);
+    ApplyVirtualCursorVisual(PlayerController);
+}
 
-    // Set new mouse position
-    int32 NewX = static_cast<int32>(NewMouseX);
-    int32 NewY = static_cast<int32>(NewMouseY);
-    PlayerController->SetMouseLocation(NewX, NewY);
-    
-    // Verify the position was set
-    float VerifyX, VerifyY;
-    PlayerController->GetMousePosition(VerifyX, VerifyY);
-    //UE_LOG(LogTemp,Log, TEXT("HandleControllerMouse - Verified mouse position: X=%.2f, Y=%.2f"), VerifyX, VerifyY);
+FVector2D UPUDishCustomizationComponent::GetVirtualCursorScreenPosition(APlayerController* PC) const
+{
+    if (bVirtualCursorInitialized)
+    {
+        return FVector2D(VirtualCursorViewport.X, VirtualCursorViewport.Y);
+    }
+    float X = 0.f;
+    float Y = 0.f;
+    if (PC && PC->GetMousePosition(X, Y))
+    {
+        return FVector2D(X, Y);
+    }
+    return FVector2D::ZeroVector;
+}
+
+bool UPUDishCustomizationComponent::TryGetVirtualCursorViewportPixelExtents(APlayerController* PC, int32& OutW, int32& OutH) const
+{
+    if (!PC)
+    {
+        return false;
+    }
+    if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+    {
+        if (LocalPlayer->ViewportClient)
+        {
+            if (FSceneViewport* SceneViewport = LocalPlayer->ViewportClient->GetGameViewport())
+            {
+                const FIntPoint Size = SceneViewport->GetSizeXY();
+                OutW = Size.X;
+                OutH = Size.Y;
+                if (OutW > 0 && OutH > 0)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    PC->GetViewportSize(OutW, OutH);
+    return OutW > 0 && OutH > 0;
+}
+
+bool UPUDishCustomizationComponent::TryComputeVirtualCursorDesktopAbsolute(APlayerController* PC, FVector2D& OutDesktopAbs) const
+{
+    if (!PC || !bVirtualCursorInitialized)
+    {
+        return false;
+    }
+    int32 VSX = 0;
+    int32 VSY = 0;
+    if (!TryGetVirtualCursorViewportPixelExtents(PC, VSX, VSY))
+    {
+        return false;
+    }
+    ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+    if (!LocalPlayer || !LocalPlayer->ViewportClient)
+    {
+        return false;
+    }
+    FSceneViewport* SceneViewport = LocalPlayer->ViewportClient->GetGameViewport();
+    if (!SceneViewport)
+    {
+        return false;
+    }
+    if (!VirtualViewportPixelsToSlateCursorAbsolute(SceneViewport, FVector2D(VirtualCursorViewport.X, VirtualCursorViewport.Y), VSX, VSY, OutDesktopAbs))
+    {
+        return false;
+    }
+    if (!FMath::IsFinite(OutDesktopAbs.X) || !FMath::IsFinite(OutDesktopAbs.Y))
+    {
+        return false;
+    }
+    return true;
+}
+
+void UPUDishCustomizationComponent::ApplyVirtualCursorVisual(APlayerController* PC)
+{
+    if (!PC || !bVirtualCursorInitialized)
+    {
+        return;
+    }
+    int32 VSX = 0;
+    int32 VSY = 0;
+    if (!TryGetVirtualCursorViewportPixelExtents(PC, VSX, VSY))
+    {
+        return;
+    }
+    VirtualCursorViewport.X = FMath::Clamp(VirtualCursorViewport.X, 0.0f, static_cast<float>(VSX));
+    VirtualCursorViewport.Y = FMath::Clamp(VirtualCursorViewport.Y, 0.0f, static_cast<float>(VSY));
+
+    if (bPU_LogVirtualCursor)
+    {
+        static float sLastSyncLogTime = -1000.f;
+        const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+        if (Now - sLastSyncLogTime >= 0.12f)
+        {
+            sLastSyncLogTime = Now;
+            UE_LOG(LogTemp, Log, TEXT("[VirtualCursor] ApplyVisual: viewport pos (%.1f, %.1f) size %dx%d widget=%s"),
+                VirtualCursorViewport.X, VirtualCursorViewport.Y, VSX, VSY,
+                IsValid(VirtualCursorWidgetInstance) ? TEXT("yes") : TEXT("no"));
+        }
+    }
+
+    if (IsValid(VirtualCursorWidgetInstance))
+    {
+        // true: position is in viewport pixels (same as GetViewportSize / SceneViewport size); subsystem divides by viewport scale for Slate layout.
+        VirtualCursorWidgetInstance->SetPositionInViewport(
+            FVector2D(VirtualCursorViewport.X - VirtualCursorHotspotOffset.X, VirtualCursorViewport.Y - VirtualCursorHotspotOffset.Y),
+            true);
+    }
+
+    ApplyVirtualCursorSlateHover(FVector2D(VirtualCursorViewport.X, VirtualCursorViewport.Y), PC, VSX, VSY);
+
+    FVector2D DesktopAbs;
+    if (TryComputeVirtualCursorDesktopAbsolute(PC, DesktopAbs))
+    {
+        LastVirtualCursorDesktopAbs = DesktopAbs;
+        bLastVirtualCursorDesktopValid = true;
+    }
+
+    CachedVirtualCursorViewportExtentsX = VSX;
+    CachedVirtualCursorViewportExtentsY = VSY;
+}
+
+void UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup()
+{
+    if (!IsCustomizing() || !CurrentCharacter)
+    {
+        return;
+    }
+    APlayerController* PC = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PC)
+    {
+        return;
+    }
+    UGameplayStatics::SetViewportMouseCaptureMode(PC, EMouseCaptureMode::NoCapture);
+    if (bVirtualCursorInitialized)
+    {
+        ApplyVirtualCursorVisual(PC);
+        if (bPU_LogVirtualCursor)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[VirtualCursor] OnCustomizationViewportDeferredSetup: re-applied visual, virtual=(%.1f,%.1f)"), VirtualCursorViewport.X, VirtualCursorViewport.Y);
+        }
+    }
+    else if (bPU_LogVirtualCursor)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursor] OnCustomizationViewportDeferredSetup: bVirtualCursorInitialized was false, skipped sync"));
+    }
 }
 
 void UPUDishCustomizationComponent::OnPreInputMouseButtonDown(const FPointerEvent& MouseEvent)
@@ -1069,18 +1423,113 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
         return;
     }
 
-    // Get mouse position
-    float MouseX, MouseY;
-    PlayerController->GetMousePosition(MouseX, MouseY);
+    bVirtualClickConsumedBySlateUI = false;
+
+    const FVector2D ViewportCursor = GetVirtualCursorScreenPosition(PlayerController);
+    const bool bPhysicalLMB = PlayerController->IsInputKeyDown(EKeys::LeftMouseButton);
+    if (bPU_LogVirtualCursorClick)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] HandleMouseClick START: viewport=(%.1f,%.1f) virtualInit=%d physicalLMB_down=%d"),
+            ViewportCursor.X, ViewportCursor.Y, bVirtualCursorInitialized ? 1 : 0, bPhysicalLMB ? 1 : 0);
+    }
+
+    // Interact / MouseClickAction without physical LMB: send a synthetic left click through Slate so UMG matches mouse (ingredient slots, buttons).
+    // Real LMB still uses normal Slate routing; we skip this branch so we do not double-fire ProcessMouseButtonDownEvent.
+    if (bVirtualCursorInitialized && FSlateApplication::IsInitialized() && !bPhysicalLMB)
+    {
+        if (ULocalPlayer* LocalPlayer = PlayerController->GetLocalPlayer())
+        {
+            FSlateApplication& SlateApp = FSlateApplication::Get();
+            TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
+            if (!SlateUser.IsValid())
+            {
+                SlateUser = SlateApp.GetCursorUser();
+            }
+            if (SlateUser.IsValid())
+            {
+                // Do not use SlateUser->GetCursorPosition() here: with OS cursor hidden it can be invalid (e.g. INT_MIN), breaking LocateWindowUnderMouse.
+                FVector2D AbsPos;
+                if (!TryComputeVirtualCursorDesktopAbsolute(PlayerController, AbsPos))
+                {
+                    if (bPU_LogVirtualCursorClick)
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: TryComputeVirtualCursorDesktopAbsolute failed"));
+                    }
+                }
+                else
+                {
+                const FWidgetPath Path = SlateApp.LocateWindowUnderMouse(AbsPos, SlateApp.GetInteractiveTopLevelWindows(), false, SlateUser->GetUserIndex());
+                const bool bHasUMG = Path.IsValid() && WidgetPathContainsSObjectWidget(Path);
+                FString LeafType = TEXT("(no path)");
+                if (Path.IsValid() && Path.Widgets.Num() > 0)
+                {
+                    LeafType = Path.GetLastWidget()->GetTypeAsString();
+                }
+                if (bPU_LogVirtualCursorClick)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Slate probe: desktopAbs=(%.1f,%.1f) pathValid=%d pathWidgets=%d hasSObjectWidget=%d leafType=%s"),
+                        AbsPos.X, AbsPos.Y, Path.IsValid() ? 1 : 0, Path.IsValid() ? Path.Widgets.Num() : 0, bHasUMG ? 1 : 0, *LeafType);
+                }
+                if (Path.IsValid() && bHasUMG)
+                {
+                    SlateUser->SetCursorPosition(static_cast<int32>(AbsPos.X), static_cast<int32>(AbsPos.Y));
+                    const FVector2D OldAbs = bLastVirtualCursorDesktopValid ? LastVirtualCursorDesktopAbs : AbsPos;
+                    const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
+                    const FPointerEvent MouseEvent(
+                        SlateUser->GetUserIndex(),
+                        FSlateApplication::CursorPointerIndex,
+                        AbsPos,
+                        OldAbs,
+                        bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
+                        EKeys::LeftMouseButton,
+                        0.f,
+                        bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
+                    TSharedPtr<FGenericWindow> GenWindow;
+                    SlateApp.ProcessMouseButtonDownEvent(GenWindow, MouseEvent);
+                    bVirtualClickConsumedBySlateUI = true;
+                    if (bPU_LogVirtualCursorClick)
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] SYNTHETIC LMB DOWN sent to Slate (ProcessMouseButtonDownEvent). Expect slot NativeOnMouseButtonDown; hover may flicker while button is 'held'."));
+                    }
+                    return;
+                }
+                if (bPU_LogVirtualCursorClick)
+                {
+                    if (!Path.IsValid())
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: LocateWindowUnderMouse returned invalid path (SlateAbs mismatch with UI?)"));
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: path has no SObjectWidget — falling through to 3D trace (leaf=%s)"), *LeafType);
+                    }
+                }
+                }
+            }
+            else if (bPU_LogVirtualCursorClick)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: no FSlateUser for local player / cursor user"));
+            }
+        }
+        else if (bPU_LogVirtualCursorClick)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: no ULocalPlayer"));
+        }
+    }
+    else if (bPU_LogVirtualCursorClick && bVirtualCursorInitialized && FSlateApplication::IsInitialized())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Synthetic UMG click SKIPPED because physical LeftMouseButton is DOWN — if you use gamepad only, check IMC: Interact must NOT also press LMB."));
+    }
+
+    const FVector2D ScreenPos = ViewportCursor;
+    const float MouseX = ScreenPos.X;
+    const float MouseY = ScreenPos.Y;
     DragStartMousePosition = FVector(MouseX, MouseY, 0);
 
-    // Use GetHitResultUnderCursor - same method the engine uses for mouse clicks.
-    // Our custom trace was returning 0 hits (possibly due to ignore list or camera mismatch)
-    // while NotifyActorOnClicked was firing, so we use the engine's hit detection for consistency.
     FHitResult HitResult;
-    if (!PlayerController->GetHitResultUnderCursor(ECC_Visibility, true, HitResult))
+    if (!PlayerController->GetHitResultAtScreenPosition(ScreenPos, ECC_Visibility, true, HitResult))
     {
-        if (bPU_LogIngredientDrag) UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - GetHitResultUnderCursor failed (screen %.0f,%.0f)"), MouseX, MouseY);
+        if (bPU_LogIngredientDrag) UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - GetHitResultAtScreenPosition failed (screen %.0f,%.0f)"), MouseX, MouseY);
         return;
     }
 
@@ -1184,8 +1633,71 @@ void UPUDishCustomizationComponent::HandleQuantityDecrease(const FInputActionVal
 
 void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& Value)
 {
-    //UE_LOG(LogTemp,Display, TEXT("🔍 [DRAG] Mouse release event received - Value: %s"), *Value.ToString());
-    
+    (void)Value;
+    if (bPU_LogVirtualCursorClick)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] HandleMouseRelease: consumedBySlate=%d virtualInit=%d dragging3D=%d"),
+            bVirtualClickConsumedBySlateUI ? 1 : 0, bVirtualCursorInitialized ? 1 : 0, bIsDragging ? 1 : 0);
+    }
+
+    if (bVirtualCursorInitialized && bVirtualClickConsumedBySlateUI && FSlateApplication::IsInitialized() && CurrentCharacter)
+    {
+        bVirtualClickConsumedBySlateUI = false;
+        if (APlayerController* PC = Cast<APlayerController>(CurrentCharacter->GetController()))
+        {
+            if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+            {
+                FSlateApplication& SlateApp = FSlateApplication::Get();
+                TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
+                if (!SlateUser.IsValid())
+                {
+                    SlateUser = SlateApp.GetCursorUser();
+                }
+                if (SlateUser.IsValid())
+                {
+                    FVector2D AbsPos;
+                    if (TryComputeVirtualCursorDesktopAbsolute(PC, AbsPos))
+                    {
+                        SlateUser->SetCursorPosition(static_cast<int32>(AbsPos.X), static_cast<int32>(AbsPos.Y));
+                        const FVector2D OldAbs = bLastVirtualCursorDesktopValid ? LastVirtualCursorDesktopAbs : AbsPos;
+                        const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
+                        const FPointerEvent MouseEvent(
+                            SlateUser->GetUserIndex(),
+                            FSlateApplication::CursorPointerIndex,
+                            AbsPos,
+                            OldAbs,
+                            bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
+                            EKeys::LeftMouseButton,
+                            0.f,
+                            bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
+                        SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
+                        if (bPU_LogVirtualCursorClick)
+                        {
+                            UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] SYNTHETIC LMB UP sent (ProcessMouseButtonUpEvent) desktopAbs=(%.1f,%.1f). Hover should restore on next stick move."),
+                                AbsPos.X, AbsPos.Y);
+                        }
+                    }
+                    else if (bPU_LogVirtualCursorClick)
+                    {
+                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Release: TryComputeVirtualCursorDesktopAbsolute failed; synthetic LMB up skipped"));
+                    }
+                }
+                else if (bPU_LogVirtualCursorClick)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Release: expected synthetic up but SlateUser invalid"));
+                }
+            }
+        }
+        if (!bIsDragging)
+        {
+            return;
+        }
+    }
+    else if (bPU_LogVirtualCursorClick && bVirtualCursorInitialized)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Release: not sending synthetic LMB up (consumedBySlate was false or slate not init) — 3D drag release or missed paired down"));
+    }
+
     if (bIsDragging && CurrentlyDraggedIngredient)
     {
         FString IngredientName = IsValid(CurrentlyDraggedIngredient) ? CurrentlyDraggedIngredient->GetName() : TEXT("INVALID");
@@ -1246,10 +1758,10 @@ void UPUDishCustomizationComponent::StartDraggingIngredient(APUIngredientMesh* I
     //UE_LOG(LogTemp,Display, TEXT("🖱️ [DRAG] StartDraggingIngredient - %s at position (%.2f,%.2f,%.2f)"), 
     //    *Ingredient->GetName(), IngredientStartPos.X, IngredientStartPos.Y, IngredientStartPos.Z);
     
-    // Get mouse position
-    float MouseX, MouseY;
-    PlayerController->GetMousePosition(MouseX, MouseY);
-    
+    const FVector2D ScreenPos = GetVirtualCursorScreenPosition(PlayerController);
+    const float MouseX = ScreenPos.X;
+    const float MouseY = ScreenPos.Y;
+
     // Convert screen position to world space and compute grab offset.
     // Use view-perpendicular plane through ingredient (works with any camera angle).
     FVector WorldLocation;
@@ -1337,10 +1849,9 @@ void UPUDishCustomizationComponent::UpdateMouseDrag()
         return;
     }
 
-    // Use GetHitResultUnderCursor - same engine logic that works for HandleMouseClick.
-    // When dragging, cursor is over the ingredient (or dish); use hit location X,Y + surface height.
+    const FVector2D ScreenPos = GetVirtualCursorScreenPosition(PlayerController);
     FHitResult HitResult;
-    if (!PlayerController->GetHitResultUnderCursor(ECC_Visibility, true, HitResult))
+    if (!PlayerController->GetHitResultAtScreenPosition(ScreenPos, ECC_Visibility, true, HitResult))
     {
         return;
     }

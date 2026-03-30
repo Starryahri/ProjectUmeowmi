@@ -29,6 +29,8 @@
 namespace
 {
     constexpr bool bPU_LogIngredientSlotDebug = false;
+    /** Every key in NativeOnKeyDown (including right stick) — very noisy when a slot has focus. */
+    constexpr bool bPU_LogNativeOnKeyDown = false;
 }
 
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
@@ -4059,9 +4061,11 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     // Handle controller button presses
     FKey Key = InKeyEvent.GetKey();
     
-    // Log input for debugging
-    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Key pressed: %s (Slot: %s, Location: %d, HasFocus: %s)"), 
-        *Key.ToString(), *GetName(), (int32)Location, HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+    if (bPU_LogNativeOnKeyDown)
+    {
+        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Key pressed: %s (Slot: %s, Location: %d, HasFocus: %s)"),
+            *Key.ToString(), *GetName(), (int32)Location, HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+    }
     
     // Gamepad A button (Xbox) / X button (PlayStation) - Select/Activate
     if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
@@ -4069,11 +4073,17 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
         // If radial menu is visible, don't process input here - let the menu handle it
         if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
         {
-            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, passing input to menu"));
+            if (bPU_LogNativeOnKeyDown)
+            {
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, passing input to menu"));
+            }
             return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
         }
         
-        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Select button pressed, calling HandleControllerSelect"));
+        if (bPU_LogNativeOnKeyDown)
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Select button pressed, calling HandleControllerSelect"));
+        }
         HandleControllerSelect();
         return FReply::Handled();
     }
@@ -4090,7 +4100,10 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     // If radial menu is visible, block all navigation - let the menu handle input
     if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())
     {
-        UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, blocking navigation input"));
+        if (bPU_LogNativeOnKeyDown)
+        {
+            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Radial menu visible, blocking navigation input"));
+        }
         return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
     }
 
@@ -4118,11 +4131,14 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     {
         if (NavigationUp.IsValid())
         {
-            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating UP to slot: %s"), *NavigationUp->GetName());
+            if (bPU_LogNativeOnKeyDown)
+            {
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating UP to slot: %s"), *NavigationUp->GetName());
+            }
             NavigationUp->SetKeyboardFocus();
             return FReply::Handled();
         }
-        else
+        else if (bPU_LogNativeOnKeyDown)
         {
             UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - UP navigation requested but NavigationUp is invalid"));
         }
@@ -4131,11 +4147,14 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     {
         if (NavigationDown.IsValid())
         {
-            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating DOWN to slot: %s"), *NavigationDown->GetName());
+            if (bPU_LogNativeOnKeyDown)
+            {
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating DOWN to slot: %s"), *NavigationDown->GetName());
+            }
             NavigationDown->SetKeyboardFocus();
             return FReply::Handled();
         }
-        else
+        else if (bPU_LogNativeOnKeyDown)
         {
             UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - DOWN navigation requested but NavigationDown is invalid"));
         }
@@ -4144,11 +4163,14 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     {
         if (NavigationLeft.IsValid())
         {
-            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating LEFT to slot: %s"), *NavigationLeft->GetName());
+            if (bPU_LogNativeOnKeyDown)
+            {
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating LEFT to slot: %s"), *NavigationLeft->GetName());
+            }
             NavigationLeft->SetKeyboardFocus();
             return FReply::Handled();
         }
-        else
+        else if (bPU_LogNativeOnKeyDown)
         {
             UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - LEFT navigation requested but NavigationLeft is invalid"));
         }
@@ -4157,16 +4179,19 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
     {
         if (NavigationRight.IsValid())
         {
-            UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating RIGHT to slot: %s"), *NavigationRight->GetName());
+            if (bPU_LogNativeOnKeyDown)
+            {
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Navigating RIGHT to slot: %s"), *NavigationRight->GetName());
+            }
             NavigationRight->SetKeyboardFocus();
             return FReply::Handled();
         }
-        else
+        else if (bPU_LogNativeOnKeyDown)
         {
             UE_LOG(LogTemp, Warning, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - RIGHT navigation requested but NavigationRight is invalid"));
         }
     }
-    else
+    else if (bPU_LogNativeOnKeyDown)
     {
         UE_LOG(LogTemp, Verbose, TEXT("🎮 UPUIngredientSlot::NativeOnKeyDown - Unhandled key: %s, passing to parent"), *Key.ToString());
     }
