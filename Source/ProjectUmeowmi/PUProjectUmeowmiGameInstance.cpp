@@ -1161,6 +1161,7 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 		{
 			// Check if we're in dish customization (cooking/plating) - if so, keep move/look blocked
 			bool bInCustomization = false;
+			UPUDishCustomizationComponent* CustomizingDishComp = nullptr;
 			for (TActorIterator<AActor> It(World); It; ++It)
 			{
 				if (UPUDishCustomizationComponent* DishComp = It->FindComponentByClass<UPUDishCustomizationComponent>())
@@ -1168,6 +1169,7 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 					if (DishComp->IsCustomizing())
 					{
 						bInCustomization = true;
+						CustomizingDishComp = DishComp;
 						break;
 					}
 				}
@@ -1202,7 +1204,8 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 
 			// GameAndUI + DoNotLock: allows free mouse for UI and 3D ingredient interaction
 			FInputModeGameAndUI InputMode;
-			InputMode.SetHideCursorDuringCapture(false);
+			const bool bHideOSCursorForVirtualCustomization = CustomizingDishComp && CustomizingDishComp->ShouldSuppressHardwareMouseCursor();
+			InputMode.SetHideCursorDuringCapture(bHideOSCursorForVirtualCustomization);
 			InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 
 			// Restore focus to dialogue if still visible (popup had priority, now hand back to dialogue)
@@ -1214,7 +1217,23 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 				}
 			}
 			PlayerController->SetInputMode(InputMode);
-			PlayerController->bShowMouseCursor = true;
+			if (bHideOSCursorForVirtualCustomization)
+			{
+				PlayerController->SetShowMouseCursor(false);
+				PlayerController->CurrentMouseCursor = EMouseCursor::None;
+				if (FSlateApplication::IsInitialized())
+				{
+					FSlateApplication::Get().UsePlatformCursorForCursorUser(false);
+				}
+			}
+			else
+			{
+				PlayerController->bShowMouseCursor = true;
+				if (FSlateApplication::IsInitialized())
+				{
+					FSlateApplication::Get().UsePlatformCursorForCursorUser(true);
+				}
+			}
 
 			UE_LOG(LogTemp, Log, TEXT("UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed - Input restored (focus: %s)"), FocusTarget ? *FocusTarget->GetName() : TEXT("none"));
 		}

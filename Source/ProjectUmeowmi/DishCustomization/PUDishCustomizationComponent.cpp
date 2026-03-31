@@ -20,6 +20,8 @@
 #include "InputMappingContext.h"
 #include "Engine/GameViewportClient.h"
 #include "../UI/PUDishCustomizationWidget.h"
+#include "../UI/PUScorecardWidget.h"
+#include "../UI/PUVirtualCursorUserWidget.h"
 #include "../UI/PUPlatingWidget.h"
 #include "../UI/PUIngredientSlot.h"
 #include "Engine/StaticMeshActor.h"
@@ -177,59 +179,6 @@ namespace
     }
 }
 
-void UPUDishCustomizationComponent::SetHUDVisible(bool bShouldBeVisible)
-{
-    UWorld* World = GetWorld();
-    if (!World)
-    {
-        return;
-    }
-
-    TArray<UUserWidget*> FoundWidgets;
-
-    // If explicitly provided, just use that class.
-    if (HUDWidgetClass)
-    {
-        UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, HUDWidgetClass, /*TopLevelOnly*/ false);
-        for (UUserWidget* Widget : FoundWidgets)
-        {
-            if (IsValid(Widget))
-            {
-                Widget->SetVisibility(bShouldBeVisible ? ESlateVisibility::Visible : HUDHiddenVisibility);
-            }
-        }
-        return;
-    }
-
-    // Fallback: search all user widgets and find something that looks like WBP_HUD.
-    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, UUserWidget::StaticClass(), /*TopLevelOnly*/ false);
-
-    bool bFoundAny = false;
-    for (UUserWidget* Widget : FoundWidgets)
-    {
-        if (!IsValid(Widget))
-        {
-            continue;
-        }
-
-        const FString WidgetName = Widget->GetName();
-        const FString ClassName = Widget->GetClass() ? Widget->GetClass()->GetName() : FString();
-
-        // Typical patterns are WBP_HUD_C, WBP_HUD_C_0, etc.
-        if (WidgetName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase) ||
-            ClassName.Contains(TEXT("WBP_HUD"), ESearchCase::IgnoreCase))
-        {
-            Widget->SetVisibility(bShouldBeVisible ? ESlateVisibility::Visible : HUDHiddenVisibility);
-            bFoundAny = true;
-        }
-    }
-
-    if (!bFoundAny)
-    {
-        //UE_LOG(LogTemp,Verbose, TEXT("UPUDishCustomizationComponent::SetHUDVisible - No HUD widgets found (set HUDWidgetClass to be explicit)."));
-    }
-}
-
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
     PrimaryComponentTick.bCanEverTick = true; // Enable tick for camera transitions
@@ -256,6 +205,11 @@ void UPUDishCustomizationComponent::BeginDestroy()
     Super::BeginDestroy();
 }
 
+bool UPUDishCustomizationComponent::ShouldSuppressHardwareMouseCursor() const
+{
+    return bVirtualCursorInitialized && VirtualCursorWidgetClass != nullptr;
+}
+
 void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -272,10 +226,12 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
     }
 
     // PIE / selected viewport / window resize: extents can change without right-stick input — re-clamp and sync.
-    if (bVirtualCursorInitialized && CurrentCharacter)
+    // Also re-stomp OS cursor each frame: HUD / dialogue / focus paths often call UsePlatformCursorForCursorUser(true).
+    if (bVirtualCursorInitialized && CurrentCharacter && VirtualCursorWidgetClass)
     {
         if (APlayerController* VPC = Cast<APlayerController>(CurrentCharacter->GetController()))
         {
+            ApplyVirtualCursorHardwareCursorLock(VPC);
             int32 nw = 0;
             int32 nh = 0;
             if (TryGetVirtualCursorViewportPixelExtents(VPC, nw, nh))
@@ -329,16 +285,15 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
     CameraTransitionCharacter = nullptr;
     CurrentCharacter = Character;
+    if (AProjectUmeowmiCharacter* PUChar = Cast<AProjectUmeowmiCharacter>(Character))
+    {
+        PUChar->SanitizeScoringStackOrphansInViewport();
+    }
     bWasMouseDown = false;  // Reset for clean state when entering customization
     bVirtualClickConsumedBySlateUI = false;
     bLastVirtualCursorDesktopValid = false;
     CachedVirtualCursorViewportExtentsX = 0;
     CachedVirtualCursorViewportExtentsY = 0;
-
-    if (bHideHUDDuringCustomization)
-    {
-        SetHUDVisible(false);
-    }
 
     // Get the player controller
     APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
@@ -353,7 +308,8 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     // Set input mode first to ensure the input system is ready
     FInputModeGameAndUI InputMode;
     InputMode.SetWidgetToFocus(nullptr);
-    InputMode.SetHideCursorDuringCapture(false);
+    // With an on-screen pointer, Slate/UI capture must not pop the OS cursor (see ApplyVirtualCursorHardwareCursorLock + next-frame reschedule on click).
+    InputMode.SetHideCursorDuringCapture(VirtualCursorWidgetClass != nullptr);
     InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
     PlayerController->SetInputMode(InputMode);
 
@@ -389,7 +345,8 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
             if (VirtualCursorWidgetInstance)
             {
                 VirtualCursorWidgetInstance->SetVisibility(ESlateVisibility::HitTestInvisible);
-                VirtualCursorWidgetInstance->AddToViewport(VirtualCursorZOrder);
+                const int32 CursorZ = FMath::Max(VirtualCursorZOrder, PUDishVirtualCursorViewportZOrder);
+                VirtualCursorWidgetInstance->AddToViewport(CursorZ);
             }
             PlayerController->SetShowMouseCursor(false);
             PlayerController->CurrentMouseCursor = EMouseCursor::None;
@@ -401,6 +358,14 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         }
 
         ApplyVirtualCursorVisual(PlayerController);
+        if (VirtualCursorWidgetClass)
+        {
+            FInputModeGameAndUI InputModeAfterCursor;
+            InputModeAfterCursor.SetWidgetToFocus(nullptr);
+            InputModeAfterCursor.SetHideCursorDuringCapture(true);
+            InputModeAfterCursor.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+            PlayerController->SetInputMode(InputModeAfterCursor);
+        }
         if (bPU_LogVirtualCursor)
         {
             UE_LOG(LogTemp, Log, TEXT("[VirtualCursor] StartCustomization: viewport %dx%d, initial (%.1f, %.1f) widget=%s"),
@@ -563,28 +528,8 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
             //UE_LOG(LogTemp,Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - About to add widget to viewport"));
             
             // Add to viewport with a lower Z-Order so it doesn't override the recipe book widget
-            CustomizationWidget->AddToViewport(250);
+            CustomizationWidget->AddToViewport(PUDishCustomizationViewportZOrder);
             //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget added to viewport successfully with Z-Order -100"));
-            
-            if (bHideHUDDuringCustomization)
-            {
-                // Re-hide HUD after AddToViewport - viewport updates can cause HUD to reappear (e.g. Slate invalidation, widget tree rebuild)
-                SetHUDVisible(false);
-
-                // Defer HUD hide to next frame - catches HUD created lazily or shown by Blueprint/animations after our frame
-                if (UWorld* WorldForTimer = GetWorld())
-                {
-                    TWeakObjectPtr<UPUDishCustomizationComponent> WeakThis(this);
-                    WorldForTimer->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis]()
-                    {
-                        UPUDishCustomizationComponent* Comp = WeakThis.Get();
-                        if (Comp && Comp->IsCustomizing())
-                        {
-                            Comp->SetHUDVisible(false);
-                        }
-                    }));
-                }
-            }
             
             // Check if widget is visible
             if (CustomizationWidget->IsVisible())
@@ -672,9 +617,6 @@ void UPUDishCustomizationComponent::EndCustomization()
         return;
     }
 
-    // Restore HUD visibility when exiting customization
-    SetHUDVisible(true);
-
     // End plating stage if we're in plating mode
     if (bPlatingMode)
     {
@@ -755,6 +697,7 @@ void UPUDishCustomizationComponent::EndCustomization()
         PlayerController->ResetIgnoreMoveInput();
         PlayerController->ResetIgnoreLookInput();
         PlayerController->bShowMouseCursor = true;
+        RestoreSlatePlatformCursorForUser();
 
         // Restore character movement (dialogue box or other systems may have called DisableMovement)
         if (APawn* Pawn = PlayerController->GetPawn())
@@ -790,6 +733,15 @@ void UPUDishCustomizationComponent::EndCustomization()
         {
             UGameplayStatics::SetViewportMouseCaptureMode(PlayerController, SavedViewportMouseCaptureModeForCustomization);
             bHasSavedViewportMouseCaptureForCustomization = false;
+        }
+    }
+
+    // Clear stuck synthetic LMB / pointer capture before removing UMG — otherwise Slate can keep LMB pressed or capture on destroyed widgets and the next session has no slot hover/clicks.
+    if (CurrentCharacter)
+    {
+        if (APlayerController* PCFlush = Cast<APlayerController>(CurrentCharacter->GetController()))
+        {
+            FlushSlateVirtualCursorPointerState(PCFlush);
         }
     }
 
@@ -1122,9 +1074,6 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
             
             // Restore the original dish container mesh
             RestoreOriginalDishContainerMesh();
-            
-            // Ensure HUD is visible again when customization fully ends
-            SetHUDVisible(true);
 
             CameraTransitionCharacter = nullptr;
             bVirtualCursorInitialized = false;
@@ -1150,6 +1099,7 @@ void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
                     PC->ResetIgnoreMoveInput();
                     PC->ResetIgnoreLookInput();
                     PC->bShowMouseCursor = true;
+                    RestoreSlatePlatformCursorForUser();
                     if (APawn* Pawn = PC->GetPawn())
                     {
                         if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
@@ -1373,6 +1323,140 @@ void UPUDishCustomizationComponent::ApplyVirtualCursorVisual(APlayerController* 
 
     CachedVirtualCursorViewportExtentsX = VSX;
     CachedVirtualCursorViewportExtentsY = VSY;
+
+    ApplyVirtualCursorHardwareCursorLock(PC);
+}
+
+void UPUDishCustomizationComponent::ReassertVirtualCursorAfterUMGFocus(APlayerController* PC)
+{
+    if (!PC || !ShouldSuppressHardwareMouseCursor() || !bVirtualCursorInitialized)
+    {
+        return;
+    }
+    ApplyVirtualCursorHardwareCursorLock(PC);
+    ScheduleVirtualCursorHardwareCursorLockNextFrame(PC);
+    ApplyVirtualCursorVisual(PC);
+}
+
+void UPUDishCustomizationComponent::FlushSlateVirtualCursorPointerState(APlayerController* PC)
+{
+    if (!PC || !FSlateApplication::IsInitialized())
+    {
+        return;
+    }
+    ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+    if (!LocalPlayer)
+    {
+        return;
+    }
+
+    FSlateApplication& SlateApp = FSlateApplication::Get();
+    const int32 UserIndex = LocalPlayer->GetControllerId();
+    SlateApp.ReleaseAllPointerCapture(UserIndex);
+
+    TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(UserIndex);
+    if (!SlateUser.IsValid())
+    {
+        SlateUser = SlateApp.GetCursorUser();
+    }
+    if (!SlateUser.IsValid())
+    {
+        return;
+    }
+
+    const bool bPhysicalLMB = PC->IsInputKeyDown(EKeys::LeftMouseButton);
+    if (bPhysicalLMB)
+    {
+        return;
+    }
+
+    const TSet<FKey>& PressedKeys = SlateApp.GetPressedMouseButtons();
+    if (!PressedKeys.Contains(EKeys::LeftMouseButton))
+    {
+        return;
+    }
+
+    FVector2D AbsPos;
+    if (!TryComputeVirtualCursorDesktopAbsolute(PC, AbsPos))
+    {
+        AbsPos = SlateUser->GetCursorPosition();
+    }
+
+    SlateUser->SetCursorPosition(static_cast<int32>(AbsPos.X), static_cast<int32>(AbsPos.Y));
+    const FVector2D OldAbs = bLastVirtualCursorDesktopValid ? LastVirtualCursorDesktopAbs : AbsPos;
+    const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
+    const FPointerEvent MouseEvent(
+        SlateUser->GetUserIndex(),
+        FSlateApplication::CursorPointerIndex,
+        AbsPos,
+        OldAbs,
+        bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
+        EKeys::LeftMouseButton,
+        0.f,
+        bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
+    SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
+    bVirtualClickConsumedBySlateUI = false;
+}
+
+void UPUDishCustomizationComponent::ApplyVirtualCursorHardwareCursorLock(APlayerController* PC) const
+{
+    if (!PC || !VirtualCursorWidgetClass)
+    {
+        return;
+    }
+    PC->SetShowMouseCursor(false);
+    PC->CurrentMouseCursor = EMouseCursor::None;
+    // Slate re-enables the real OS cursor after a few platform mouse-move events (see FSlateApplication::OnMouseMove).
+    // FFauxSlateCursor keeps the Windows pointer hidden while we drive position with SetCursorPosition / virtual UMG pointer.
+    if (FSlateApplication::IsInitialized())
+    {
+        FSlateApplication::Get().UsePlatformCursorForCursorUser(false);
+    }
+}
+
+void UPUDishCustomizationComponent::RestoreSlatePlatformCursorForUser()
+{
+    if (FSlateApplication::IsInitialized())
+    {
+        FSlateApplication::Get().UsePlatformCursorForCursorUser(true);
+    }
+}
+
+void UPUDishCustomizationComponent::ScheduleVirtualCursorHardwareCursorLockNextFrame(APlayerController* PC)
+{
+    if (!PC || !ShouldSuppressHardwareMouseCursor())
+    {
+        return;
+    }
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+    TWeakObjectPtr<UPUDishCustomizationComponent> WeakThis(this);
+    TWeakObjectPtr<APlayerController> WeakPC(PC);
+    World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis, WeakPC]()
+    {
+        UPUDishCustomizationComponent* Comp = WeakThis.Get();
+        APlayerController* P = WeakPC.Get();
+        if (!Comp || !P || !Comp->ShouldSuppressHardwareMouseCursor())
+        {
+            return;
+        }
+        Comp->ApplyVirtualCursorHardwareCursorLock(P);
+    }));
+}
+
+void UPUDishCustomizationComponent::NotifyVirtualCursorInteractVisual(bool bPressed)
+{
+    if (!IsValid(VirtualCursorWidgetInstance))
+    {
+        return;
+    }
+    if (UPUVirtualCursorUserWidget* CursorWidget = Cast<UPUVirtualCursorUserWidget>(VirtualCursorWidgetInstance))
+    {
+        CursorWidget->OnVirtualCursorInteractVisual(bPressed);
+    }
 }
 
 void UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup()
@@ -1389,6 +1473,7 @@ void UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup()
     UGameplayStatics::SetViewportMouseCaptureMode(PC, EMouseCaptureMode::NoCapture);
     if (bVirtualCursorInitialized)
     {
+        FlushSlateVirtualCursorPointerState(PC);
         ApplyVirtualCursorVisual(PC);
         if (bPU_LogVirtualCursor)
         {
@@ -1436,6 +1521,9 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
     }
 
     bVirtualClickConsumedBySlateUI = false;
+
+    NotifyVirtualCursorInteractVisual(true);
+    ApplyVirtualCursorHardwareCursorLock(PlayerController);
 
     const FVector2D ViewportCursor = GetVirtualCursorScreenPosition(PlayerController);
     const bool bPhysicalLMB = PlayerController->IsInputKeyDown(EKeys::LeftMouseButton);
@@ -1501,6 +1589,8 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
                         FPUScopedSyntheticSlateMouseDispatch GuardSyntheticDispatch(bInsideSyntheticSlateMouseDispatch);
                         SlateApp.ProcessMouseButtonDownEvent(GenWindow, MouseEvent);
                     }
+                    ApplyVirtualCursorHardwareCursorLock(PlayerController);
+                    ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
                     bVirtualClickConsumedBySlateUI = true;
                     if (bPU_LogVirtualCursorClick)
                     {
@@ -1545,6 +1635,7 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
     if (!PlayerController->GetHitResultAtScreenPosition(ScreenPos, ECC_Visibility, true, HitResult))
     {
         if (bPU_LogIngredientDrag) UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - GetHitResultAtScreenPosition failed (screen %.0f,%.0f)"), MouseX, MouseY);
+        ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
         return;
     }
 
@@ -1584,6 +1675,8 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
             UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - Hit %s but not an ingredient mesh"), *HitResult.GetActor()->GetName());
         }
     }
+
+    ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
 }
 
 void UPUDishCustomizationComponent::HandleNextStage()
@@ -1649,6 +1742,14 @@ void UPUDishCustomizationComponent::HandleQuantityDecrease(const FInputActionVal
 void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& Value)
 {
     (void)Value;
+    if (bVirtualCursorInitialized && CurrentCharacter)
+    {
+        if (APlayerController* VPC = Cast<APlayerController>(CurrentCharacter->GetController()))
+        {
+            NotifyVirtualCursorInteractVisual(false);
+            ApplyVirtualCursorHardwareCursorLock(VPC);
+        }
+    }
     if (bPU_LogVirtualCursorClick)
     {
         UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] HandleMouseRelease: consumedBySlate=%d virtualInit=%d dragging3D=%d"),
@@ -1686,6 +1787,8 @@ void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& 
                             0.f,
                             bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
                         SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
+                        ApplyVirtualCursorHardwareCursorLock(PC);
+                        ScheduleVirtualCursorHardwareCursorLockNextFrame(PC);
                         if (bPU_LogVirtualCursorClick)
                         {
                             UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] SYNTHETIC LMB UP sent (ProcessMouseButtonUpEvent) desktopAbs=(%.1f,%.1f). Hover should restore on next stick move."),
@@ -1705,6 +1808,10 @@ void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& 
         }
         if (!bIsDragging)
         {
+            if (APlayerController* PCSchedule = Cast<APlayerController>(CurrentCharacter->GetController()))
+            {
+                ScheduleVirtualCursorHardwareCursorLockNextFrame(PCSchedule);
+            }
             return;
         }
     }
@@ -1734,6 +1841,14 @@ void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& 
         
         bIsDragging = false;
         CurrentlyDraggedIngredient = nullptr;
+    }
+
+    if (ShouldSuppressHardwareMouseCursor() && CurrentCharacter)
+    {
+        if (APlayerController* VPC = Cast<APlayerController>(CurrentCharacter->GetController()))
+        {
+            ScheduleVirtualCursorHardwareCursorLockNextFrame(VPC);
+        }
     }
 }
 
@@ -2107,7 +2222,7 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
             CookingStageWidget = CookingWidget;
             
             // Add to viewport first
-            CookingWidget->AddToViewport(250); // Same Z-order as customization widget
+            CookingWidget->AddToViewport(PUDishCustomizationViewportZOrder);
             
             // Get the cooking station location (this component's owner location)
             FVector CookingStationLocation = GetOwner()->GetActorLocation();
@@ -2493,7 +2608,7 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
                 }
                 
                 // Add the widget to viewport
-                CustomizationWidget->AddToViewport();
+                CustomizationWidget->AddToViewport(PUDishCustomizationViewportZOrder);
                 //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating widget added to viewport"));
                 
                 // Create plating ingredient buttons

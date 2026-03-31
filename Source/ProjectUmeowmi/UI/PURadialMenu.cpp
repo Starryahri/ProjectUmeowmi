@@ -1,4 +1,5 @@
 #include "PURadialMenu.h"
+#include "PUScorecardWidget.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
@@ -96,7 +97,7 @@ void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
     // Only add to viewport if not already in a parent widget
     if (!GetParent() && !IsInViewport())
     {
-        AddToViewport(9999); // Use very high z-order to ensure it's on top
+        AddToViewport(PURadialMenuViewportZOrder);
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Added menu to viewport with z-order 9999"));
     }
     else if (GetParent())
@@ -108,7 +109,7 @@ void UPURadialMenu::ShowMenuAtPosition(const FVector2D& ScreenPosition)
     {
         // Already in viewport, remove and re-add to bring to front
         RemoveFromParent();
-        AddToViewport(9999);
+        AddToViewport(PURadialMenuViewportZOrder);
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::ShowMenuAtPosition - Removed and re-added menu to viewport with z-order 9999"));
     }
 

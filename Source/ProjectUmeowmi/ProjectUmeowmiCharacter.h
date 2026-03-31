@@ -568,6 +568,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	FORCEINLINE UPUDialogueBox* GetDialogueBox() const { return DialogueBox; }
 
+	/**
+	 * Removes stray UPUDishScoringWidget / UPUScorecardWidget instances still in the viewport (scoring Z ~50000+).
+	 * Safe to call before opening dish customization so they cannot block UMG under a virtual cursor.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "UI|Dish Scoring")
+	void SanitizeScoringStackOrphansInViewport();
+
 	/** Get the current talking object (selected from overlapping list). */
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	ATalkingObject* GetCurrentTalkingObject() const;

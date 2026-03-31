@@ -47,6 +47,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     bool IsCustomizing() const { return CurrentCharacter != nullptr; }
 
+    /** UMG virtual pointer is active — OS hardware cursor must stay hidden (Slate capture / other code can re-enable it). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Virtual Cursor")
+    bool ShouldSuppressHardwareMouseCursor() const;
+
+    /** After SetUserFocus/SetKeyboardFocus on dish UI, Slate may call UsePlatformCursorForCursorUser(true) — call this to restore faux cursor + hover sync. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Virtual Cursor")
+    void ReassertVirtualCursorAfterUMGFocus(APlayerController* PC);
+
 	/** Player currently in customization (null if not customizing). */
 	AProjectUmeowmiCharacter* GetCurrentCharacter() const { return CurrentCharacter; }
 
@@ -195,19 +203,6 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization")
     TSubclassOf<UUserWidget> CustomizationWidgetClass;
 
-	// Optional: explicitly specify the HUD widget class (e.g. WBP_HUD) to hide during customization.
-	// If unset, we fall back to finding widgets whose name/class contains "WBP_HUD".
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
-	TSubclassOf<UUserWidget> HUDWidgetClass;
-
-	// If true, StartCustomization collapses/hides the HUD widget (see HUDWidgetClass). Default false keeps HUD visible while customizing.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
-	bool bHideHUDDuringCustomization = false;
-
-	// Which visibility to use when hiding the HUD during customization.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|UI")
-	ESlateVisibility HUDHiddenVisibility = ESlateVisibility::Collapsed;
-
     // Original widget class (stored before switching to plating)
     UPROPERTY()
     TSubclassOf<UUserWidget> OriginalWidgetClass;
@@ -260,11 +255,11 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor")
     float ControllerMouseDeadzone = 0.2f;
 
-    /** UMG widget for the on-screen pointer (e.g. Image with your texture). Positioned in viewport; no OS mouse movement. Assign on the component / BP defaults. */
+    /** UMG widget for the on-screen pointer (e.g. Image with your texture). Optionally reparent to UPUVirtualCursorUserWidget for press/release visuals. Assign on the component / BP defaults. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor")
     TSubclassOf<UUserWidget> VirtualCursorWidgetClass;
 
-    /** Draw above the dish UI (CustomizationWidget often uses ~250). */
+    /** Draw above dish UMG. Runtime uses max(this, PUDishVirtualCursorViewportZOrder) so the cursor stays above the scoring stack (~50152). */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Virtual Cursor", meta = (ClampMin = "0"))
     int32 VirtualCursorZOrder = 10000;
 
@@ -433,9 +428,6 @@ protected:
     UCameraComponent* PlatingStationCamera = nullptr;
 
 private:
-	// Hide/show HUD widgets when entering/exiting customization.
-	void SetHUDVisible(bool bShouldBeVisible);
-
 	/** Unlock any ingredients in the dish that aren't already in the pantry (so they appear when customization starts). */
 	void EnsureDishIngredientsInPantry(const FPUDishBase& Dish);
 
@@ -499,6 +491,16 @@ private:
     bool TryGetVirtualCursorViewportPixelExtents(APlayerController* PC, int32& OutW, int32& OutH) const;
 
     void ApplyVirtualCursorVisual(APlayerController* PC);
+    /** Release Slate pointer capture and clear a stuck synthetic LMB-down before/after virtual-cursor sessions (fixes UMG hover/clicks on re-open). */
+    void FlushSlateVirtualCursorPointerState(APlayerController* PC);
+    /** Slate/UI capture can re-show the hardware cursor; call when using VirtualCursorWidgetClass. */
+    void ApplyVirtualCursorHardwareCursorLock(APlayerController* PC) const;
+    /** Re-apply lock on the next frame — some Slate paths toggle cursor after we return. */
+    void ScheduleVirtualCursorHardwareCursorLockNextFrame(APlayerController* PC);
+    /** Pair with ApplyVirtualCursorHardwareCursorLock when leaving customization (restore real OS cursor for menus/desktop). */
+    static void RestoreSlatePlatformCursorForUser();
+    /** If VirtualCursorWidgetInstance is a UPUVirtualCursorUserWidget, forwards press/release for BP visuals. */
+    void NotifyVirtualCursorInteractVisual(bool bPressed);
     FVector2D GetVirtualCursorScreenPosition(APlayerController* PC) const;
     void OnCustomizationViewportDeferredSetup();
     void OnPreInputMouseButtonDown(const struct FPointerEvent& MouseEvent);  // Slate pre-input (before widgets consume)

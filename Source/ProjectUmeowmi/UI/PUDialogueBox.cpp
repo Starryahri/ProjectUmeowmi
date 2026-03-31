@@ -1,11 +1,6 @@
 #include "PUDialogueBox.h"
 #include "PUDialogueOption.h"
-
-// Match ProjectUmeowmiCharacter — filter Output Log for [PUDialogueScoring]
-namespace PUDialogueScoringLog
-{
-	static constexpr const TCHAR* Tag = TEXT("[PUDialogueScoring]");
-}
+#include "PUDialogueScoringLog.h"
 
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "DlgSystem/DlgContext.h"

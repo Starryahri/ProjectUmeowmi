@@ -56,6 +56,18 @@ namespace
         return false;
     }
 
+    static void ReassertVirtualCursorAfterSlotFocus(UPUDishCustomizationWidget* DishWidget, APlayerController* PC)
+    {
+        if (!DishWidget || !PC)
+        {
+            return;
+        }
+        if (UPUDishCustomizationComponent* Comp = DishWidget->GetCustomizationComponent())
+        {
+            Comp->ReassertVirtualCursorAfterUMGFocus(PC);
+        }
+    }
+
     static UPUIngredientQuantityControl* FindQuantityControlFromLeaf(UWidget* Leaf)
     {
         for (UWidget* W = Leaf; W; W = W->GetParent())
@@ -1311,17 +1323,19 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
                         
                         // Manually trigger visual feedback
                         PrepSlotToFocus->ShowFocusVisuals();
+                        ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
                         
                         // Retry if focus wasn't set
                         if (!PrepSlotToFocus->HasKeyboardFocus())
                         {
                             FTimerHandle RetryTimerHandle;
-                            GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [PrepSlotToFocus]()
+                            GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [PrepSlotToFocus, this]()
                             {
                                 if (PrepSlotToFocus.IsValid())
                                 {
                                     PrepSlotToFocus->SetKeyboardFocus();
                                     PrepSlotToFocus->ShowFocusVisuals();
+                                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
                                     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::OnPantrySlotClicked - Retry: Focus restored to %s (HasFocus: %s)"), 
                                         *PrepSlotToFocus->GetName(), PrepSlotToFocus->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
                                 }
@@ -3411,17 +3425,19 @@ void UPUDishCustomizationWidget::SetInitialFocusForPantry()
                     
                     // Manually trigger visual feedback
                     WeakSlot->ShowFocusVisuals();
+                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
                     
                     // Retry if focus wasn't set
                     if (!WeakSlot->HasKeyboardFocus())
                     {
                         FTimerHandle RetryTimerHandle;
-                        GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [WeakSlot]()
+                        GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [WeakSlot, this]()
                         {
                             if (WeakSlot.IsValid())
                             {
                                 WeakSlot->SetKeyboardFocus();
                                 WeakSlot->ShowFocusVisuals();
+                                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
                                 UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Retry: Focus set to %s (HasFocus: %s)"), 
                                     *WeakSlot->GetName(), WeakSlot->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
                             }
@@ -3577,17 +3593,19 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
                 }
                 
                 WeakSlot->ShowFocusVisuals();
+                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
                 
                 if (!WeakSlot->HasKeyboardFocus() && GetWorld())
                 {
                     FTimerHandle RetryTimer;
-                    GetWorld()->GetTimerManager().SetTimer(RetryTimer, [WeakSlot]()
+                    GetWorld()->GetTimerManager().SetTimer(RetryTimer, [WeakSlot, this]()
                     {
                         if (WeakSlot.IsValid())
                         {
                             WeakSlot->SetIsFocusable(true);
                             WeakSlot->SetKeyboardFocus();
                             WeakSlot->ShowFocusVisuals();
+                            ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
                             UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
                         }
                     }, 0.2f, false);
@@ -3598,6 +3616,7 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
     else
     {
         FirstSlot->SetKeyboardFocus();
+        ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
     }
 }
 
@@ -3648,7 +3667,8 @@ void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
                         WeakSlot->SetKeyboardFocus();
                         
                         // Also try setting user focus (for gamepad)
-                        if (APlayerController* PC = GetOwningPlayer())
+                        APlayerController* PC = GetOwningPlayer();
+                        if (PC)
                         {
                             if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
                             {
@@ -3660,6 +3680,7 @@ void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
                         // Manually trigger focus visuals to ensure outline is shown
                         // This is a backup in case NativeOnAddedToFocusPath doesn't fire immediately
                         WeakSlot->ShowFocusVisuals();
+                        ReassertVirtualCursorAfterSlotFocus(this, PC);
                         
                         // Verify focus was set
                         if (WeakSlot->HasKeyboardFocus())
@@ -3673,12 +3694,13 @@ void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
                             if (UWorld* RetryWorld = GetWorld())
                             {
                                 FTimerHandle RetryTimer;
-                                RetryWorld->GetTimerManager().SetTimer(RetryTimer, [WeakSlot]()
+                                RetryWorld->GetTimerManager().SetTimer(RetryTimer, [WeakSlot, this]()
                                 {
                                     if (WeakSlot.IsValid())
                                     {
                                         WeakSlot->SetIsFocusable(true);
                                         WeakSlot->SetKeyboardFocus();
+                                        ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
                                         UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
                                     }
                                 }, 0.2f, false);
@@ -3692,6 +3714,7 @@ void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
                 // Fallback: try immediately if no world available
                 UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - No world available, setting focus immediately"));
                 PrepSlot->SetKeyboardFocus();
+                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
             }
             
             break; // Only focus the first slot

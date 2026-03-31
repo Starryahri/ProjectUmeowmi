@@ -18,6 +18,18 @@ inline constexpr int32 PUScoringDialogueViewportZOrder = PUScoringSceneViewportZ
 /** Scorecard — above dialogue when shown (modal). */
 inline constexpr int32 PUScorecardViewportZOrder = PUScoringDialogueViewportZOrder + 1;
 
+/**
+ * Dish customization UMG — above the entire scoring stack (50000+) so stray scoring/scorecard widgets cannot steal
+ * virtual-cursor hover (they sit at Z 50000+ by design; dish was previously ~250 and was underneath).
+ */
+inline constexpr int32 PUDishCustomizationViewportZOrder = PUScorecardViewportZOrder + 100;
+/** On-screen pointer during dish customization — above dish panel. */
+inline constexpr int32 PUDishVirtualCursorViewportZOrder = PUDishCustomizationViewportZOrder + 50;
+/** Journal AddToViewport Z when opened while dish customization is active (must beat dish + cursor). */
+inline constexpr int32 PUJournalViewportZOrderDuringDishCustomization = PUDishVirtualCursorViewportZOrder + 25;
+/** Radial menu when added directly to viewport — just above the virtual cursor. */
+inline constexpr int32 PURadialMenuViewportZOrder = PUDishVirtualCursorViewportZOrder + 20;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnScorecardClosed);
 
 class UImage;

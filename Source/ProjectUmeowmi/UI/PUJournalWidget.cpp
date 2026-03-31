@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "PUJournalWidget.h"
+#include "PUScorecardWidget.h"
 #include "PUJournalTabListWidget.h"
 #include "PUJournalSectionWidget.h"
 #include "PURecipesSectionWidget.h"
@@ -124,7 +125,8 @@ void UPUJournalWidget::OpenJournal()
 	{
 		if (IsLocalPlayerInActiveDishCustomization(GetWorld(), PC))
 		{
-			AddToViewport(JournalViewportZOrderWhenOpen);
+			const int32 JournalZ = FMath::Max(JournalViewportZOrderWhenOpen, PUJournalViewportZOrderDuringDishCustomization);
+			AddToViewport(JournalZ);
 		}
 	}
 

@@ -18,6 +18,7 @@
 #include "DlgSystem/DlgContext.h"
 #include "DishCustomization/PUDishCustomizationComponent.h"
 #include "UI/PUDialogueBox.h"
+#include "UI/PUDialogueScoringLog.h"
 #include "UI/PUEmoteData.h"
 #include "UI/PUEmoteWidget.h"
 #include "UI/PUJournalWidget.h"
@@ -75,12 +76,6 @@ namespace
 		}
 		return nullptr;
 	}
-}
-
-// Output Log filter: search for [PUDialogueScoring] (dish scoring + dialogue viewport swap / refresh).
-namespace PUDialogueScoringLog
-{
-	static constexpr const TCHAR* Tag = TEXT("[PUDialogueScoring]");
 }
 
 namespace
@@ -1838,6 +1833,11 @@ void AProjectUmeowmiCharacter::TearDownDialogueShowScorecardWidget()
 		ActiveDialogueShowScorecardWidget->RemoveFromParent();
 	}
 	ActiveDialogueShowScorecardWidget = nullptr;
+}
+
+void AProjectUmeowmiCharacter::SanitizeScoringStackOrphansInViewport()
+{
+	RemoveOrphanScoringStackViewportWidgets();
 }
 
 void AProjectUmeowmiCharacter::RemoveOrphanScoringStackViewportWidgets()
