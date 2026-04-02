@@ -23,6 +23,7 @@
 #include "UI/PUEmoteWidget.h"
 #include "UI/PUJournalWidget.h"
 #include "UI/PUQuestObjectiveOffscreenIndicatorWidget.h"
+#include "PUProjectUmeowmiGameInstance.h"
 #include "ProjectUmeowmi/UI/PUScorecardWidget.h"
 #include "ProjectUmeowmi/UI/PUDishScoringWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
@@ -324,8 +325,25 @@ void AProjectUmeowmiCharacter::TryCreateQuestObjectiveOffscreenIndicator()
 		if (QuestObjectiveOffscreenIndicator)
 		{
 			QuestObjectiveOffscreenIndicator->AddToViewport(25);
+			UpdateQuestObjectiveOverlayVisibilityForOverlayUI();
 		}
 	}
+}
+
+void AProjectUmeowmiCharacter::UpdateQuestObjectiveOverlayVisibilityForOverlayUI()
+{
+	if (!bEnableQuestObjectiveOffscreenIndicator || !QuestObjectiveOffscreenIndicator)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance());
+	const bool bSuppress = GI && (GI->IsDialogueOpen() || GI->IsJournalOpen());
+	QuestObjectiveOffscreenIndicator->SetVisibility(bSuppress ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
 }
 
 //////////////////////////////////////////////////////////////////////////

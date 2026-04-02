@@ -4,13 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "CommonActivatableWidget.h"
-#include "PUJournalTypes.h"
 #include "PUJournalSectionWidget.generated.h"
 
 /**
- * Base class for all journal section content (Recipes, Ingredients, People, Town, Settings).
- * Extends CommonActivatableWidget for proper activation/deactivation when switching tabs.
- * Override NativeOnActivated to refresh data when the section becomes visible.
+ * Base class for journal section pages (tab content).
+ * Extends CommonActivatableWidget for activation when switching tabs.
  */
 UCLASS(Abstract, Blueprintable)
 class PROJECTUMEOWMI_API UPUJournalSectionWidget : public UCommonActivatableWidget
@@ -19,14 +17,6 @@ class PROJECTUMEOWMI_API UPUJournalSectionWidget : public UCommonActivatableWidg
 
 public:
 	UPUJournalSectionWidget(const FObjectInitializer& ObjectInitializer);
-
-	/** The section type this widget represents */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
-	EJournalSectionType GetSectionType() const { return SectionType; }
-
-	/** Set the section type (typically set in Blueprint subclass defaults) */
-	UFUNCTION(BlueprintCallable, Category = "Journal")
-	void SetSectionType(EJournalSectionType InSectionType) { SectionType = InSectionType; }
 
 protected:
 	virtual void NativeOnActivated() override;
@@ -41,8 +31,4 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, Category = "Journal")
 	void OnSectionDeactivated();
 	virtual void OnSectionDeactivated_Implementation() {}
-
-	/** The section type - set in Blueprint defaults for each subclass */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal")
-	EJournalSectionType SectionType = EJournalSectionType::Recipes;
 };

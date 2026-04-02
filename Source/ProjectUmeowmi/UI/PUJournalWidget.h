@@ -8,6 +8,8 @@
 #include "PUJournalTypes.h"
 #include "PUJournalWidget.generated.h"
 
+class UPURecipesSectionWidget;
+
 class UCommonActivatableWidgetSwitcher;
 class UCommonButtonBase;
 class UPUJournalTabListWidget;
@@ -16,7 +18,7 @@ class UVerticalBox;
 /**
  * Main journal/recipe book widget - the open book with tabbed sections.
  * Contains the tab bar (vertical, right edge) and content switcher (book pages).
- * Sections: Recipes, Ingredients, People, Town, Settings. (Ingredients, People, Town are stubbed.)
+ * Tab list is driven by the Journal Tabs array (class defaults on the journal widget Blueprint).
  */
 UCLASS(Blueprintable)
 class PROJECTUMEOWMI_API UPUJournalWidget : public UPUCommonUserWidget
@@ -37,17 +39,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Journal")
 	void CloseJournal();
 
-	/** Switch to a specific section by type */
+	/** Switch to the tab with this id (must match a Tab Id from the journal tab list). */
 	UFUNCTION(BlueprintCallable, Category = "Journal")
-	void SwitchToSection(EJournalSectionType SectionType);
+	void SwitchToTabById(FName TabId);
 
-	/** Get the currently active section */
+	/** Active tab id (FName from your journal tab configuration). */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
-	EJournalSectionType GetActiveSection() const;
+	FName GetActiveTabId() const;
 
 	/** Cycle the displayed dish in the Recipes tab. Direction: +1 next, -1 previous. Returns true if a dish was cycled. */
 	UFUNCTION(BlueprintCallable, Category = "Journal")
 	bool CycleRecipesDish(int32 Direction);
+
+	/** Switch to the Recipes tab and show the given dish (updates current dish tag on the game instance). */
+	UFUNCTION(BlueprintCallable, Category = "Journal")
+	void ShowDishInRecipesTab(const FGameplayTag& DishTag);
 
 	/** Get the tab list widget */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
@@ -68,8 +74,7 @@ protected:
 	/** Create a section widget from class and add to switcher */
 	UUserWidget* CreateAndAddSectionWidget(TSubclassOf<UUserWidget> WidgetClass);
 
-	/** Get the Recipes section widget (index 0 in SectionWidgets) */
-	class UPURecipesSectionWidget* GetRecipesSection() const;
+	UPURecipesSectionWidget* GetRecipesSection() const;
 
 	/** Called when a tab button is created - sets the label text */
 	UFUNCTION()
@@ -93,29 +98,33 @@ protected:
 	UPROPERTY(meta = (BindWidget), BlueprintReadOnly, Category = "Journal|UI")
 	TObjectPtr<UCommonActivatableWidgetSwitcher> ContentSwitcher;
 
-	// Section widget classes - assign in Blueprint or defaults
-	// Ingredients, People, Town are stubbed - add layouts when ready
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Sections")
-	TSubclassOf<UUserWidget> RecipesSectionClass;
+	/**
+	 * Tab order and labels. Add one row per tab (unique Tab Id, section widget class, optional display name).
+	 * EditAnywhere: set on this widget's Class Defaults, or on a placed instance in another widget (EditDefaultsOnly hid this on instances before).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs", meta = (TitleProperty = "TabId"))
+	TArray<FPUJournalTabEntry> JournalTabs;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Sections")
-	TSubclassOf<UUserWidget> IngredientsSectionClass;
+	/**
+	 * Optional. Tab Id of the dishes/recipes section — must match a Journal Tabs row if set.
+	 * If None, the first registered UPURecipesSectionWidget is used for Get Recipes Section / dish cycling.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs")
+	FName RecipesTabId;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Sections")
-	TSubclassOf<UUserWidget> PeopleSectionClass;
+	/**
+	 * Optional. Tab to select when opening if last-tab restore does not apply.
+	 * If None or not in the list, the first tab in Journal Tabs is used.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs")
+	FName DefaultTabId;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Sections")
-	TSubclassOf<UUserWidget> TownSectionClass;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Sections")
-	TSubclassOf<UUserWidget> SettingsSectionClass;
-
-	/** Tab button widget class - used for all tabs (Recipes, Ingredients, etc.) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Tabs")
+	/** Tab button widget class - used for all tabs */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs")
 	TSubclassOf<UCommonButtonBase> TabButtonClass;
 
 	/** Optional: name of the TextBlock in the tab button that displays the label (e.g. "ButtonText", "TabLabel"). Leave empty to auto-detect. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Journal|Tabs", meta = (DisplayName = "Tab Label TextBlock Name"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs", meta = (DisplayName = "Tab Label TextBlock Name"))
 	FName TabButtonLabelWidgetName;
 
 	/** Padding between tab buttons (Left, Top, Right, Bottom per slot). E.g. (0, 0, 0, 8) = 8px gap between tabs. */
@@ -136,7 +145,21 @@ protected:
 	UPROPERTY(Transient)
 	FName LastSelectedTabID;
 
-	/** Created section widgets for cleanup */
+	/** Created section widgets for cleanup (order matches the tab list). */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UUserWidget>> SectionWidgets;
+
+	/** Tab id per section widget (same index as SectionWidgets). */
+	UPROPERTY(Transient)
+	TArray<FName> SectionTabIds;
+
+	/** Entries actually registered (for label lookup); mirrors Journal Tabs after validation. */
+	UPROPERTY(Transient)
+	TArray<FPUJournalTabEntry> ResolvedTabEntries;
+
+	bool HasTabId(FName TabId) const;
+	FName GetEffectiveDefaultTabId() const;
+
+	/** Tab id for the recipes/dishes section: Recipes Tab Id if set, else first UPURecipesSectionWidget's tab. */
+	FName ResolveRecipesTabId() const;
 };

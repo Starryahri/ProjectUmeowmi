@@ -207,6 +207,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic")
     FText DisplayName;
 
+    /** Journal / codex flavor text — short description or lore for UI (e.g. ingredients journal right page). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Journal", meta = (MultiLine = "true"))
+    FText IngredientFlavorText;
+
     // Visual Representation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     UTexture2D* PreviewTexture;

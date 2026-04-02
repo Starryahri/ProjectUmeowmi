@@ -5,5 +5,4 @@
 UPUTownSectionWidget::UPUTownSectionWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SectionType = EJournalSectionType::Town;
 }

@@ -6,6 +6,7 @@
 FPUIngredientBase::FPUIngredientBase()
     : IngredientName(NAME_None)
     , DisplayName(FText::GetEmpty())
+    , IngredientFlavorText(FText::GetEmpty())
     , PreviewTexture(nullptr)
     , PantryTexture(nullptr)
     , MaterialInstance(nullptr)

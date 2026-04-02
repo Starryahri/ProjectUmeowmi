@@ -196,6 +196,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
 	class UDataTable* GetIngredientDataTable() const { return IngredientDataTable; }
 
+	/** Dish data table (journal recipes, cooking). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	class UDataTable* GetDishDataTable() const { return DishDataTable; }
+
 	// Save/Load System
 	/**
 	 * Save the current game state to disk
@@ -516,6 +520,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	void NotifyDialogueClosed();
 
+	/** Broadcast when the journal opens (same pattern as dialogue — bind HUD to hide objective UI). */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnJournalOpenedEvent);
+	UPROPERTY(BlueprintAssignable, Category = "Journal|Events", meta = (DisplayName = "On Journal Opened"))
+	FOnJournalOpenedEvent OnJournalOpenedEvent;
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnJournalClosedEvent);
+	UPROPERTY(BlueprintAssignable, Category = "Journal|Events", meta = (DisplayName = "On Journal Closed"))
+	FOnJournalClosedEvent OnJournalClosedEvent;
+
+	/** True while the journal widget is visible (set between NotifyJournalOpened / NotifyJournalClosed). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
+	bool IsJournalOpen() const { return bJournalOpen; }
+
+	/** Called by UPUJournalWidget when the journal is shown. */
+	UFUNCTION(BlueprintCallable, Category = "Journal")
+	void NotifyJournalOpened();
+
+	/** Called by UPUJournalWidget when the journal is hidden. */
+	UFUNCTION(BlueprintCallable, Category = "Journal")
+	void NotifyJournalClosed();
+
 	/** Authoring: line body text. Row names should match tag strings (e.g. D.Sample.Hello). Set on Game Instance. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue|Content")
 	TObjectPtr<class UDataTable> DialogueLineContentTable;
@@ -531,6 +556,12 @@ public:
 protected:
 	/** Set true in NotifyDialogueOpened, false in NotifyDialogueClosed. */
 	bool bDialogueOpen = false;
+
+	/** Set true in NotifyJournalOpened, false in NotifyJournalClosed. */
+	bool bJournalOpen = false;
+
+	/** Updates quest objective edge overlay on the player pawn when dialogue or journal state changes. */
+	void NotifyPlayerQuestObjectiveOverlayVisibility();
 
 	// Saved player state
 	UPROPERTY(BlueprintReadWrite, Category = "Level Transition")

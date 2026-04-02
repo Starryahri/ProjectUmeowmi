@@ -5,5 +5,4 @@
 UPUSettingsSectionWidget::UPUSettingsSectionWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SectionType = EJournalSectionType::Settings;
 }

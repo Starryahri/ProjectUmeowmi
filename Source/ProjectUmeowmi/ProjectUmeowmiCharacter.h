@@ -317,6 +317,13 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 public:
 	AProjectUmeowmiCharacter();
 
+	/**
+	 * Call when dialogue or journal visibility changes (invoked from Game Instance).
+	 * Hides the screen-edge quest objective marker while dialogue or journal is open.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Quest|Markers")
+	void UpdateQuestObjectiveOverlayVisibilityForOverlayUI();
+
 	////////////////////////////////////////////////////////////
 	// Dish capture (scorecard: station snapshot first, then head preview fallback)
 	////////////////////////////////////////////////////////////

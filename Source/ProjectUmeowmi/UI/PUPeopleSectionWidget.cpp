@@ -5,5 +5,4 @@
 UPUPeopleSectionWidget::UPUPeopleSectionWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SectionType = EJournalSectionType::People;
 }

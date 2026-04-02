@@ -90,11 +90,12 @@ namespace
 			}
 		}
 	}
+
 }
 
 UPUJournalWidget::UPUJournalWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, LastSelectedTabID(JournalTabNames::Recipes)
+	, LastSelectedTabID(NAME_None)
 {
 }
 
@@ -112,6 +113,8 @@ void UPUJournalWidget::NativeDestruct()
 		TabList->OnTabButtonCreation.RemoveDynamic(this, &UPUJournalWidget::OnTabButtonCreated);
 	}
 	SectionWidgets.Empty();
+	SectionTabIds.Empty();
+	ResolvedTabEntries.Empty();
 	Super::NativeDestruct();
 }
 
@@ -120,6 +123,13 @@ void UPUJournalWidget::OpenJournal()
 	ApplyJournalInputLayerForWidget(this, true);
 	SetVisibility(ESlateVisibility::Visible);
 	UnhideCollapsedAncestors(this);
+	if (UWorld* World = GetWorld())
+	{
+		if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+		{
+			GI->NotifyJournalOpened();
+		}
+	}
 	// During dish customization the HUD is collapsed and the dish widget is ~Z 250 — bring journal to the foreground only then.
 	if (APlayerController* PC = GetOwningPlayer())
 	{
@@ -130,13 +140,17 @@ void UPUJournalWidget::OpenJournal()
 		}
 	}
 
-	if (TabList && bRestoreLastTabOnOpen && LastSelectedTabID != NAME_None)
+	if (TabList && bRestoreLastTabOnOpen && LastSelectedTabID != NAME_None && HasTabId(LastSelectedTabID))
 	{
 		TabList->SelectTabByID(LastSelectedTabID, true);
 	}
 	else if (TabList)
 	{
-		TabList->SelectTabByID(JournalTabNames::Recipes, true);
+		const FName DefaultId = GetEffectiveDefaultTabId();
+		if (DefaultId != NAME_None)
+		{
+			TabList->SelectTabByID(DefaultId, true);
+		}
 	}
 }
 
@@ -147,45 +161,37 @@ void UPUJournalWidget::CloseJournal()
 		LastSelectedTabID = TabList->GetActiveTab();
 	}
 	SetVisibility(ESlateVisibility::Collapsed);
+	if (UWorld* World = GetWorld())
+	{
+		if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+		{
+			GI->NotifyJournalClosed();
+		}
+	}
 	ApplyJournalInputLayerForWidget(this, false);
 }
 
-void UPUJournalWidget::SwitchToSection(EJournalSectionType SectionType)
+void UPUJournalWidget::SwitchToTabById(FName TabId)
 {
-	FName TabID;
-	switch (SectionType)
+	if (TabList && HasTabId(TabId))
 	{
-	case EJournalSectionType::Recipes:     TabID = JournalTabNames::Recipes;     break;
-	case EJournalSectionType::Ingredients: TabID = JournalTabNames::Ingredients; break;
-	case EJournalSectionType::People:      TabID = JournalTabNames::People;      break;
-	case EJournalSectionType::Town:        TabID = JournalTabNames::Town;        break;
-	case EJournalSectionType::Settings:    TabID = JournalTabNames::Settings;    break;
-	default:                                TabID = JournalTabNames::Recipes;     break;
-	}
-
-	if (TabList)
-	{
-		TabList->SelectTabByID(TabID, true);
+		TabList->SelectTabByID(TabId, true);
 	}
 }
 
-EJournalSectionType UPUJournalWidget::GetActiveSection() const
+FName UPUJournalWidget::GetActiveTabId() const
 {
-	if (!TabList) return EJournalSectionType::Recipes;
-
-	const FName ActiveTab = TabList->GetActiveTab();
-	if (ActiveTab == JournalTabNames::Recipes)     return EJournalSectionType::Recipes;
-	if (ActiveTab == JournalTabNames::Ingredients) return EJournalSectionType::Ingredients;
-	if (ActiveTab == JournalTabNames::People)      return EJournalSectionType::People;
-	if (ActiveTab == JournalTabNames::Town)        return EJournalSectionType::Town;
-	if (ActiveTab == JournalTabNames::Settings)    return EJournalSectionType::Settings;
-
-	return EJournalSectionType::Recipes;
+	if (TabList)
+	{
+		return TabList->GetActiveTab();
+	}
+	return NAME_None;
 }
 
 bool UPUJournalWidget::CycleRecipesDish(int32 Direction)
 {
-	if (GetActiveSection() != EJournalSectionType::Recipes) return false;
+	const FName ResolvedRecipes = ResolveRecipesTabId();
+	if (ResolvedRecipes == NAME_None || GetActiveTabId() != ResolvedRecipes) return false;
 
 	UWorld* World = GetWorld();
 	if (!World) return false;
@@ -204,18 +210,110 @@ bool UPUJournalWidget::CycleRecipesDish(int32 Direction)
 	return true;
 }
 
+void UPUJournalWidget::ShowDishInRecipesTab(const FGameplayTag& DishTag)
+{
+	if (!DishTag.IsValid())
+	{
+		return;
+	}
+	if (UWorld* World = GetWorld())
+	{
+		if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+		{
+			GI->SetCurrentDishTag(DishTag);
+		}
+	}
+	if (const FName RecipesTab = ResolveRecipesTabId(); RecipesTab != NAME_None)
+	{
+		SwitchToTabById(RecipesTab);
+	}
+	if (UPURecipesSectionWidget* RecipesSection = GetRecipesSection())
+	{
+		RecipesSection->DisplayDishByTag(DishTag);
+	}
+}
+
 UPURecipesSectionWidget* UPUJournalWidget::GetRecipesSection() const
 {
-	// Recipes is the first section (index 0)
-	if (SectionWidgets.IsValidIndex(0))
+	if (RecipesTabId != NAME_None)
 	{
-		return Cast<UPURecipesSectionWidget>(SectionWidgets[0]);
+		for (int32 i = 0; i < SectionWidgets.Num(); ++i)
+		{
+			if (SectionTabIds.IsValidIndex(i) && SectionTabIds[i] == RecipesTabId)
+			{
+				if (UPURecipesSectionWidget* W = Cast<UPURecipesSectionWidget>(SectionWidgets[i]))
+				{
+					return W;
+				}
+			}
+		}
+	}
+	for (int32 i = 0; i < SectionWidgets.Num(); ++i)
+	{
+		if (UPURecipesSectionWidget* W = Cast<UPURecipesSectionWidget>(SectionWidgets[i]))
+		{
+			return W;
+		}
 	}
 	return nullptr;
 }
 
+FName UPUJournalWidget::ResolveRecipesTabId() const
+{
+	if (RecipesTabId != NAME_None)
+	{
+		return RecipesTabId;
+	}
+	for (int32 i = 0; i < SectionWidgets.Num(); ++i)
+	{
+		if (Cast<UPURecipesSectionWidget>(SectionWidgets[i]))
+		{
+			return SectionTabIds.IsValidIndex(i) ? SectionTabIds[i] : NAME_None;
+		}
+	}
+	return NAME_None;
+}
+
+bool UPUJournalWidget::HasTabId(FName TabId) const
+{
+	return SectionTabIds.Contains(TabId);
+}
+
+FName UPUJournalWidget::GetEffectiveDefaultTabId() const
+{
+	if (DefaultTabId != NAME_None && SectionTabIds.Contains(DefaultTabId))
+	{
+		return DefaultTabId;
+	}
+	if (SectionTabIds.Num() > 0)
+	{
+		return SectionTabIds[0];
+	}
+	return NAME_None;
+}
+
 void UPUJournalWidget::RegisterJournalTabs()
 {
+	// Super::NativeConstruct already ran the Journal Blueprint Construct — that graph may have called RegisterTab
+	// on the tab list. Clear Common UI state and switcher slots before we apply Journal Tabs, and do this even
+	// when TabButtonClass is unset so we never leave stale tabs or designer placeholders visible.
+	if (TabList)
+	{
+		TabList->RemoveAllTabs();
+	}
+	if (ContentSwitcher)
+	{
+		ContentSwitcher->ClearChildren();
+	}
+	if (TabButtonsContainer)
+	{
+		TabButtonsContainer->ClearChildren();
+	}
+
+	SectionWidgets.Empty();
+	SectionTabIds.Empty();
+	ResolvedTabEntries.Empty();
+
 	if (!TabList || !ContentSwitcher || !TabButtonClass)
 	{
 		return;
@@ -237,35 +335,70 @@ void UPUJournalWidget::RegisterJournalTabs()
 	// Bind to set tab labels when buttons are created
 	TabList->OnTabButtonCreation.AddDynamic(this, &UPUJournalWidget::OnTabButtonCreated);
 
-	// Create section widgets and register tabs (Ingredients, People, Town are stubbed)
-	struct FSectionConfig
+	if (JournalTabs.Num() == 0)
 	{
-		FName TabID;
-		TSubclassOf<UUserWidget> Class;
-	};
-
-	TArray<FSectionConfig> Sections;
-	Sections.Add({ JournalTabNames::Recipes,     RecipesSectionClass });
-	Sections.Add({ JournalTabNames::Ingredients, IngredientsSectionClass });
-	Sections.Add({ JournalTabNames::People,      PeopleSectionClass });
-	Sections.Add({ JournalTabNames::Town,        TownSectionClass });
-	Sections.Add({ JournalTabNames::Settings,    SettingsSectionClass });
-
-	for (int32 i = 0; i < Sections.Num(); ++i)
-	{
-		const FSectionConfig& Config = Sections[i];
-		if (!Config.Class) continue;
-
-		UUserWidget* SectionWidget = CreateAndAddSectionWidget(Config.Class);
-		if (SectionWidget)
-		{
-			SectionWidgets.Add(SectionWidget);
-			TabList->RegisterTab(Config.TabID, TabButtonClass, SectionWidget, i);
-		}
+		UE_LOG(LogTemp, Warning, TEXT("PUJournalWidget: Journal Tabs is empty — add tab rows on the journal widget class defaults."));
+		return;
 	}
 
-	// Select Recipes by default
-	TabList->SelectTabByID(JournalTabNames::Recipes, true);
+	const TArray<FPUJournalTabEntry>& TabsToRegister = JournalTabs;
+	TSet<FName> UsedTabIds;
+	int32 TabIndex = 0;
+
+	for (int32 RowIndex = 0; RowIndex < TabsToRegister.Num(); ++RowIndex)
+	{
+		const FPUJournalTabEntry& Entry = TabsToRegister[RowIndex];
+		if (!Entry.SectionWidgetClass)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("PUJournalWidget: Journal Tabs row %d skipped — Section Widget Class is not set (Tab Id would be '%s')."),
+				RowIndex, Entry.TabId.IsNone() ? TEXT("(none)") : *Entry.TabId.ToString());
+			continue;
+		}
+		if (Entry.TabId.IsNone())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("PUJournalWidget: Journal Tabs row %d skipped — Tab Id is empty (set a non-None name in the row)."), RowIndex);
+			continue;
+		}
+		if (UsedTabIds.Contains(Entry.TabId))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("PUJournalWidget: Journal Tabs row %d duplicate Tab Id '%s' ignored."), RowIndex, *Entry.TabId.ToString());
+			continue;
+		}
+		UsedTabIds.Add(Entry.TabId);
+
+		UUserWidget* SectionWidget = CreateAndAddSectionWidget(Entry.SectionWidgetClass);
+		if (!SectionWidget)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("PUJournalWidget: failed to create section widget for tab '%s' (class %s)."),
+				*Entry.TabId.ToString(), *GetNameSafe(Entry.SectionWidgetClass.Get()));
+			continue;
+		}
+
+		if (!TabList->RegisterTab(Entry.TabId, TabButtonClass, SectionWidget, TabIndex))
+		{
+			UE_LOG(LogTemp, Error, TEXT("PUJournalWidget: RegisterTab failed for '%s' (duplicate id or Common UI error). Removing section widget."), *Entry.TabId.ToString());
+			SectionWidget->RemoveFromParent();
+			continue;
+		}
+
+		SectionWidgets.Add(SectionWidget);
+		SectionTabIds.Add(Entry.TabId);
+		ResolvedTabEntries.Add(Entry);
+		++TabIndex;
+	}
+
+	if (TabIndex == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PUJournalWidget: no journal tabs registered — %d row(s) in Journal Tabs but none succeeded. Each row needs a non-empty Tab Id and a valid Section Widget Class; see warnings above."),
+			TabsToRegister.Num());
+		return;
+	}
+
+	const FName DefaultId = GetEffectiveDefaultTabId();
+	if (DefaultId != NAME_None)
+	{
+		TabList->SelectTabByID(DefaultId, true);
+	}
 }
 
 void UPUJournalWidget::OnTabButtonCreated(FName TabId, UCommonButtonBase* TabButton)
@@ -332,8 +465,18 @@ void UPUJournalWidget::OnTabButtonCreated(FName TabId, UCommonButtonBase* TabBut
 
 FText UPUJournalWidget::GetTabDisplayText(FName TabId) const
 {
-	// Custom display names (override tab ID for display)
-	if (TabId == JournalTabNames::People) return FText::FromString(TEXT("Villagers"));
+	for (const FPUJournalTabEntry& Entry : ResolvedTabEntries)
+	{
+		if (Entry.TabId == TabId && !Entry.DisplayNameOverride.IsEmpty())
+		{
+			return Entry.DisplayNameOverride;
+		}
+	}
+
+	if (TabId == FName(TEXT("People")))
+	{
+		return FText::FromString(TEXT("Villagers"));
+	}
 
 	// Default: use tab ID with first letter capitalized
 	FString Str = TabId.ToString();
@@ -348,7 +491,8 @@ UUserWidget* UPUJournalWidget::CreateAndAddSectionWidget(TSubclassOf<UUserWidget
 {
 	if (!WidgetClass || !ContentSwitcher) return nullptr;
 
-	UUserWidget* Widget = CreateWidget<UUserWidget>(GetOwningPlayer(), WidgetClass);
+	// Use this journal as the owning widget so CreateWidget works during NativeConstruct when GetOwningPlayer() is often still null.
+	UUserWidget* Widget = CreateWidget<UUserWidget>(this, WidgetClass);
 	if (!Widget) return nullptr;
 
 	ContentSwitcher->AddChild(Widget);

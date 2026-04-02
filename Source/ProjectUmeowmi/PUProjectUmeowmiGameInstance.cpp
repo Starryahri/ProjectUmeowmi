@@ -1137,16 +1137,46 @@ void UPUProjectUmeowmiGameInstance::NotifyPopupClosed(FName ButtonID)
 	OnPopupWidgetClosed(ButtonID);
 }
 
+void UPUProjectUmeowmiGameInstance::NotifyPlayerQuestObjectiveOverlayVisibility()
+{
+	if (UWorld* World = GetWorld())
+	{
+		if (APlayerController* PC = World->GetFirstPlayerController())
+		{
+			if (AProjectUmeowmiCharacter* Char = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+			{
+				Char->UpdateQuestObjectiveOverlayVisibilityForOverlayUI();
+			}
+		}
+	}
+}
+
 void UPUProjectUmeowmiGameInstance::NotifyDialogueOpened()
 {
 	bDialogueOpen = true;
 	OnDialogueOpenedEvent.Broadcast();
+	NotifyPlayerQuestObjectiveOverlayVisibility();
 }
 
 void UPUProjectUmeowmiGameInstance::NotifyDialogueClosed()
 {
 	bDialogueOpen = false;
 	OnDialogueClosedEvent.Broadcast();
+	NotifyPlayerQuestObjectiveOverlayVisibility();
+}
+
+void UPUProjectUmeowmiGameInstance::NotifyJournalOpened()
+{
+	bJournalOpen = true;
+	OnJournalOpenedEvent.Broadcast();
+	NotifyPlayerQuestObjectiveOverlayVisibility();
+}
+
+void UPUProjectUmeowmiGameInstance::NotifyJournalClosed()
+{
+	bJournalOpen = false;
+	OnJournalClosedEvent.Broadcast();
+	NotifyPlayerQuestObjectiveOverlayVisibility();
 }
 
 void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)

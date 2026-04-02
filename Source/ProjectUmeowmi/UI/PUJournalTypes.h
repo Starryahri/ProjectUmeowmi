@@ -5,23 +5,20 @@
 #include "CoreMinimal.h"
 #include "PUJournalTypes.generated.h"
 
-/** Journal section types - corresponds to the tabs in the recipe book */
-UENUM(BlueprintType)
-enum class EJournalSectionType : uint8
+/** One row in the journal tab list — edit the Journal Tabs array on the journal widget. */
+USTRUCT(BlueprintType)
+struct FPUJournalTabEntry
 {
-	Recipes     UMETA(DisplayName = "Recipes"),
-	Ingredients UMETA(DisplayName = "Ingredients"),
-	People      UMETA(DisplayName = "People"),
-	Town        UMETA(DisplayName = "Town"),
-	Settings    UMETA(DisplayName = "Settings")
-};
+	GENERATED_BODY()
 
-/** Tab name IDs for registration with CommonTabListWidgetBase */
-namespace JournalTabNames
-{
-	const FName Recipes     = FName(TEXT("Recipes"));
-	const FName Ingredients = FName(TEXT("Ingredients"));
-	const FName People      = FName(TEXT("People"));
-	const FName Town        = FName(TEXT("Town"));
-	const FName Settings    = FName(TEXT("Settings"));
-}
+	/** Unique id for this tab. Used with Switch To Tab By Id and Common UI registration. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal")
+	FName TabId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal")
+	TSubclassOf<UUserWidget> SectionWidgetClass;
+
+	/** If empty, the tab label is derived from TabId (first letter capitalized). Use Display Name Override for custom labels. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal")
+	FText DisplayNameOverride;
+};

@@ -13,7 +13,6 @@
 UPURecipesSectionWidget::UPURecipesSectionWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SectionType = EJournalSectionType::Recipes;
 }
 
 void UPURecipesSectionWidget::OnSectionActivated_Implementation()

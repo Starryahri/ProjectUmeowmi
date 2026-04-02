@@ -19,13 +19,11 @@ AProjectUmeowmiCharacter  →  UPUJournalWidget (Open/Close, CycleRecipesDish)
 
 ---
 
-## Types: `EJournalSectionType` & `JournalTabNames`
+## Types: `FPUJournalTabEntry`
 
 **File:** `PUJournalTypes.h`
 
-**`EJournalSectionType`:** `Recipes`, `Ingredients`, `People`, `Town`, `Settings`.
-
-**`JournalTabNames` namespace** — `FName` ids for **`UCommonTabListWidgetBase`**: `Recipes`, `Ingredients`, `People`, `Town`, `Settings` (string names match enum intent).
+**`FPUJournalTabEntry`:** **`Tab Id`** (`FName`), **`Section Widget Class`**, optional **`Display Name Override`**. Tabs are identified only by **`Tab Id`** — there is no journal section enum.
 
 ---
 
@@ -34,16 +32,16 @@ AProjectUmeowmiCharacter  →  UPUJournalWidget (Open/Close, CycleRecipesDish)
 **Parent:** `UPUCommonUserWidget` (see **`UI.md`**)
 
 **Description**  
-Root journal UI: binds **`TabButtonsContainer`**, **`TabList`**, **`ContentSwitcher`**. **`NativeConstruct`** calls **`RegisterJournalTabs`**, which wires **`UPUJournalTabListWidget`** to the switcher, creates section widgets from configured classes, and registers tabs in order (**Recipes** first = index 0 for **`GetRecipesSection`**).
+Root journal UI: binds **`TabButtonsContainer`**, **`TabList`**, **`ContentSwitcher`**. **`NativeConstruct`** calls **`RegisterJournalTabs`**, which wires **`UPUJournalTabListWidget`** to the switcher, creates section widgets from the **`JournalTabs`** array (class defaults), and registers each tab in list order. **`GetRecipesSection`** resolves **`UPURecipesSectionWidget`** via **`Recipes Tab Id`** if set, otherwise the first recipes section in the tab list.
 
 **Key methods**
 
 | Method | Description |
 |--------|-------------|
-| `OpenJournal` | Shows widget; restores **`LastSelectedTabID`** if **`bRestoreLastTabOnOpen`**, else selects **Recipes**. |
+| `OpenJournal` | Shows widget; restores **`LastSelectedTabID`** if **`bRestoreLastTabOnOpen`**, else selects **`DefaultTabId`** (or first tab). |
 | `CloseJournal` | Saves active tab to **`LastSelectedTabID`**, collapses visibility. |
-| `SwitchToSection` | Maps **`EJournalSectionType`** → tab id, **`SelectTabByID`**. |
-| `GetActiveSection` | From tab list active id. |
+| `SwitchToTabById` | **`SelectTabByID`** for any configured tab id (`FName`). |
+| `GetActiveTabId` | Active **`FName`** tab id. |
 | `CycleRecipesDish(Direction)` | Only if active section is **Recipes**; calls **`UPUProjectUmeowmiGameInstance::CycleJournalDish`**, then **`UPURecipesSectionWidget::DisplayDishByTag`**. |
 | `GetTabList` / `GetContentSwitcher` | Accessors. |
 | `GetTabSlotPadding` | Padding used when building tabs (from **`TabSlotPadding`**). |
@@ -55,17 +53,18 @@ Root journal UI: binds **`TabButtonsContainer`**, **`TabList`**, **`ContentSwitc
 | `TabButtonsContainer` | `UVerticalBox*` | BindWidget — vertical strip for tab buttons. |
 | `TabList` | `UPUJournalTabListWidget*` | BindWidget — tab controller. |
 | `ContentSwitcher` | `UCommonActivatableWidgetSwitcher*` | BindWidget — page content. |
-| `RecipesSectionClass` … `SettingsSectionClass` | `TSubclassOf<UUserWidget>` | Section widget classes; null class **skips** that tab. |
+| `JournalTabs` | `TArray<FPUJournalTabEntry>` | **Required** — one row per tab: **`Tab Id`**, **`Section Widget Class`**, optional **`Display Name Override`**. |
+| `RecipesTabId` / `DefaultTabId` | `FName` | Which tab is recipes content; default tab when not restoring last. |
 | `TabButtonClass` | `TSubclassOf<UCommonButtonBase>` | Tab chrome; **required** for **`RegisterJournalTabs`**. |
 | `TabButtonLabelWidgetName` | `FName` | Optional text block name for tab labels. |
 | `TabSlotPadding` | `FMargin` | Gap between tab buttons. |
 | `bRestoreLastTabOnOpen` | `bool` | Remember last tab between opens. |
 | `LastSelectedTabID` | `FName` | Transient persistence. |
-| `SectionWidgets` | `TArray<UUserWidget*>` | Created sections (Recipes at index 0). |
+| `SectionWidgets` / `SectionTabIds` | Arrays | Created sections and parallel tab ids. |
 
 **Notes**  
 - **`ContentSwitcher`** has transition animation **disabled** for instant tab switches.  
-- Default **`LastSelectedTabID`** in ctor: **`JournalTabNames::Recipes`**.
+- **`LastSelectedTabID`** starts unset so the first open uses **`Default Tab Id`** / first tab (not a hardcoded id).
 
 ---
 
@@ -83,7 +82,7 @@ Adds tab buttons into the parent’s **`TabButtonsContainer`** via **`HandleTabC
 **Parent:** `UCommonActivatableWidget`
 
 **Description**  
-Abstract base for each switcher page. **`SectionType`** is set per Blueprint subclass. **`NativeOnActivated` / `NativeOnDeactivated`** forward to **`OnSectionActivated`** / **`OnSectionDeactivated`** BlueprintNativeEvents for lazy refresh.
+Abstract base for each switcher page. **`NativeOnActivated` / `NativeOnDeactivated`** forward to **`OnSectionActivated`** / **`OnSectionDeactivated`** BlueprintNativeEvents for lazy refresh.
 
 ---
 
