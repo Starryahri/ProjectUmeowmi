@@ -8,6 +8,8 @@
 #include "PUCommonButton.h"
 #include "PUJournalSlotWidget.generated.h"
 
+class UCommonButtonInternalBase;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPUJournalSlotEntryEvent, FGameplayTag, EntryTag);
 
 /**
@@ -41,6 +43,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Journal|Slot")
 	void ConfigureIngredientSlot(const FGameplayTag& InTag, UTexture2D* IconTexture, bool bEmptySlot, bool bLockedIngredient);
 
+	/** After SetUserFocus (e.g. ingredients grid first slot), ensures Slate hover brush + Common UI hover match gamepad focus. */
+	UFUNCTION(BlueprintCallable, Category = "Journal|Slot")
+	void ApplySlateHoverForGamepadFocus();
+
 	UFUNCTION(BlueprintPure, Category = "Journal|Slot")
 	bool IsSlotEmpty() const { return bSlotIsEmpty; }
 
@@ -48,6 +54,8 @@ public:
 	bool IsLockedIngredientSlot() const { return bSlotIsLockedIngredient; }
 
 protected:
+	virtual UCommonButtonInternalBase* ConstructInternalButton() override;
+
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
@@ -60,6 +68,8 @@ protected:
 
 	void BroadcastHovered();
 	void BroadcastUnhovered();
+
+	void ApplySlateHoverVisuals();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Slot")
 	FGameplayTag EntryTag;

@@ -14,6 +14,11 @@
 #include "Components/UniformGridPanel.h"
 #include "Components/UniformGridSlot.h"
 #include "Engine/DataTable.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "Input/NavigationReply.h"
+#include "TimerManager.h"
+#include "Types/SlateEnums.h"
 
 namespace
 {
@@ -194,6 +199,11 @@ void UPUIngredientsSectionWidget::RefreshIngredientsGrid()
 				ShowIngredientDetail(FGameplayTag());
 			}
 		}
+		SetupIngredientsGridNavigation();
+		if (bFocusFirstGridSlotOnRefresh)
+		{
+			ScheduleFocusFirstIngredientsGridSlot();
+		}
 		return;
 	}
 
@@ -246,6 +256,137 @@ void UPUIngredientsSectionWidget::RefreshIngredientsGrid()
 		else
 		{
 			ShowIngredientDetail(FGameplayTag());
+		}
+	}
+	SetupIngredientsGridNavigation();
+	if (bFocusFirstGridSlotOnRefresh)
+	{
+		ScheduleFocusFirstIngredientsGridSlot();
+	}
+}
+
+void UPUIngredientsSectionWidget::SetupIngredientsGridNavigation()
+{
+	if (!IngredientsGrid)
+	{
+		return;
+	}
+	const int32 NumCols = FMath::Max(1, GridNumColumns);
+	const int32 NumChildren = IngredientsGrid->GetChildrenCount();
+	if (NumChildren == 0)
+	{
+		return;
+	}
+
+	for (int32 i = 0; i < NumChildren; ++i)
+	{
+		UPUJournalSlotWidget* Cell = Cast<UPUJournalSlotWidget>(IngredientsGrid->GetChildAt(i));
+		if (!Cell || !Cell->GetIsEnabled())
+		{
+			continue;
+		}
+
+		const int32 Col = i % NumCols;
+
+		auto WireDirection = [this, NumChildren](UPUJournalSlotWidget* From, EUINavigation Direction, int32 NeighborIndex)
+		{
+			if (NeighborIndex < 0 || NeighborIndex >= NumChildren)
+			{
+				From->SetNavigationRuleBase(Direction, EUINavigationRule::Stop);
+				return;
+			}
+			if (UPUJournalSlotWidget* Neighbor = Cast<UPUJournalSlotWidget>(IngredientsGrid->GetChildAt(NeighborIndex)))
+			{
+				if (Neighbor->GetIsEnabled())
+				{
+					From->SetNavigationRuleExplicit(Direction, Neighbor);
+				}
+				else
+				{
+					From->SetNavigationRuleBase(Direction, EUINavigationRule::Stop);
+				}
+			}
+			else
+			{
+				From->SetNavigationRuleBase(Direction, EUINavigationRule::Stop);
+			}
+		};
+
+		if (i >= NumCols)
+		{
+			WireDirection(Cell, EUINavigation::Up, i - NumCols);
+		}
+		else
+		{
+			Cell->SetNavigationRuleBase(EUINavigation::Up, EUINavigationRule::Stop);
+		}
+
+		if (i + NumCols < NumChildren)
+		{
+			WireDirection(Cell, EUINavigation::Down, i + NumCols);
+		}
+		else
+		{
+			Cell->SetNavigationRuleBase(EUINavigation::Down, EUINavigationRule::Stop);
+		}
+
+		if (Col > 0)
+		{
+			WireDirection(Cell, EUINavigation::Left, i - 1);
+		}
+		else
+		{
+			Cell->SetNavigationRuleBase(EUINavigation::Left, EUINavigationRule::Stop);
+		}
+
+		if (Col < NumCols - 1 && i + 1 < NumChildren)
+		{
+			WireDirection(Cell, EUINavigation::Right, i + 1);
+		}
+		else
+		{
+			Cell->SetNavigationRuleBase(EUINavigation::Right, EUINavigationRule::Stop);
+		}
+	}
+}
+
+void UPUIngredientsSectionWidget::ScheduleFocusFirstIngredientsGridSlot()
+{
+	if (!IngredientsGrid)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(this, &UPUIngredientsSectionWidget::TryFocusFirstInteractableIngredientsSlot));
+}
+
+void UPUIngredientsSectionWidget::TryFocusFirstInteractableIngredientsSlot()
+{
+	if (!IngredientsGrid)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayer();
+	if (!PC)
+	{
+		return;
+	}
+	const int32 Num = IngredientsGrid->GetChildrenCount();
+	for (int32 i = 0; i < Num; ++i)
+	{
+		if (UPUJournalSlotWidget* Cell = Cast<UPUJournalSlotWidget>(IngredientsGrid->GetChildAt(i)))
+		{
+			if (Cell->GetIsEnabled() && Cell->IsVisible())
+			{
+				Cell->SetUserFocus(PC);
+				// Slate hover attribute is not set by NativeOnFocusReceived alone when focus lands on first tick.
+				Cell->ApplySlateHoverForGamepadFocus();
+				return;
+			}
 		}
 	}
 }

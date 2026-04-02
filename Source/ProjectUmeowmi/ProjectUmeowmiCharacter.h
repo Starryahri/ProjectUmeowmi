@@ -51,7 +51,7 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/**
 	 * Layered while the journal is open (higher priority than base IMC at 0).
 	 * Keeps IMC_Default or IMC_DishCustomization active underneath so dish customization + journal works.
-	 * Create an IMC (e.g. IMC_Journal) with bindings for journal navigation / confirm / back and assign here.
+	 * Create an IMC (e.g. IMC_Journal) with bindings for open journal, tab cycle prev/next, dish cycle (Recipes), etc., and assign here.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* JournalMappingContext;
@@ -71,6 +71,14 @@ class AProjectUmeowmiCharacter : public ACharacter, public IDlgDialogueParticipa
 	/** Recipes tab: next dish (e.g. RB). Only when journal is open on Recipes. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
 	UInputAction* JournalCycleDishNextAction;
+
+	/** Previous journal section tab (e.g. LT or D-pad left). Only when journal is open. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleTabPrevAction;
+
+	/** Next journal section tab (e.g. RT or D-pad right). Only when journal is open. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config|Journal", meta = (AllowPrivateAccess = "true"))
+	UInputAction* JournalCycleTabNextAction;
 
 	/** Move Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input Config", meta = (AllowPrivateAccess = "true"))
@@ -447,6 +455,8 @@ public:
 	void ToggleJournal(const FInputActionValue& Value);
 	void OnJournalCycleDishPrev(const FInputActionValue& Value);
 	void OnJournalCycleDishNext(const FInputActionValue& Value);
+	void OnJournalCycleTabPrev(const FInputActionValue& Value);
+	void OnJournalCycleTabNext(const FInputActionValue& Value);
 	void OnSkipDialogueStarted(const FInputActionValue& Value);
 	void OnSkipDialogueCompleted(const FInputActionValue& Value);
 	

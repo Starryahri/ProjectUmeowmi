@@ -465,6 +465,14 @@ void AProjectUmeowmiCharacter::SetupPlayerInputComponent(UInputComponent* Player
 		{
 			EnhancedInputComponent->BindAction(JournalCycleDishNextAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleDishNext);
 		}
+		if (JournalCycleTabPrevAction)
+		{
+			EnhancedInputComponent->BindAction(JournalCycleTabPrevAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleTabPrev);
+		}
+		if (JournalCycleTabNextAction)
+		{
+			EnhancedInputComponent->BindAction(JournalCycleTabNextAction, ETriggerEvent::Triggered, this, &AProjectUmeowmiCharacter::OnJournalCycleTabNext);
+		}
 
 		// Hold to skip dialogue (fast typewriter, no sound, auto-advance)
 		if (SkipDialogueAction)
@@ -911,6 +919,50 @@ void AProjectUmeowmiCharacter::OnJournalCycleDishNext(const FInputActionValue& V
 	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
 	{
 		Journal->CycleRecipesDish(1);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnJournalCycleTabPrev(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		Journal->CycleJournalTab(-1);
+	}
+}
+
+void AProjectUmeowmiCharacter::OnJournalCycleTabNext(const FInputActionValue& Value)
+{
+	UPUJournalWidget* Journal = JournalWidget;
+	if (!Journal)
+	{
+		TArray<UUserWidget*> FoundWidgets;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), FoundWidgets, UPUJournalWidget::StaticClass(), false);
+		for (UUserWidget* W : FoundWidgets)
+		{
+			if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+			{
+				Journal = J;
+				break;
+			}
+		}
+	}
+	if (Journal && Journal->GetVisibility() == ESlateVisibility::Visible)
+	{
+		Journal->CycleJournalTab(1);
 	}
 }
 

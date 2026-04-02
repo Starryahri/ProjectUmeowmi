@@ -1,6 +1,14 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "PUJournalSlotWidget.h"
+#include "PUJournalButtonInternal.h"
+#include "CommonButtonBase.h"
+#include "Blueprint/WidgetTree.h"
+
+UCommonButtonInternalBase* UPUJournalSlotWidget::ConstructInternalButton()
+{
+	return WidgetTree->ConstructWidget<UPUJournalButtonInternal>(UPUJournalButtonInternal::StaticClass(), FName(TEXT("InternalRootButtonBase")));
+}
 
 UPUJournalSlotWidget::UPUJournalSlotWidget(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -73,17 +81,38 @@ void UPUJournalSlotWidget::NativeOnUnhovered()
 	BroadcastUnhovered();
 }
 
+void UPUJournalSlotWidget::ApplySlateHoverVisuals()
+{
+	NativeOnHovered();
+	if (UPUJournalButtonInternal* Internal = Cast<UPUJournalButtonInternal>(GetRootWidget()))
+	{
+		Internal->SetSimulatedSlateHover(true);
+	}
+}
+
+void UPUJournalSlotWidget::ApplySlateHoverForGamepadFocus()
+{
+	ApplySlateHoverVisuals();
+}
+
 FReply UPUJournalSlotWidget::NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent)
 {
 	FReply Reply = Super::NativeOnFocusReceived(InGeometry, InFocusEvent);
-	BroadcastHovered();
+	ApplySlateHoverVisuals();
 	return Reply;
 }
 
 void UPUJournalSlotWidget::NativeOnFocusLost(const FFocusEvent& InFocusEvent)
 {
+	if (UPUJournalButtonInternal* Internal = Cast<UPUJournalButtonInternal>(GetRootWidget()))
+	{
+		Internal->SetSimulatedSlateHover(false);
+	}
 	Super::NativeOnFocusLost(InFocusEvent);
-	BroadcastUnhovered();
+	if (!IsHovered())
+	{
+		NativeOnUnhovered();
+	}
 }
 
 void UPUJournalSlotWidget::NativeOnClicked()

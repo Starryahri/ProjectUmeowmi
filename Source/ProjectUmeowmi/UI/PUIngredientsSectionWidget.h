@@ -60,6 +60,14 @@ protected:
 	void RefreshIngredientJournalAspectRows(const FPUIngredientBase& IngredientData);
 	void ClearIngredientJournalAspectRows();
 
+	/** After refresh, move keyboard/gamepad focus to the first enabled grid slot (next tick so layout exists). D-pad moves between focusable slots via Slate navigation, not Enhanced Input. */
+	void ScheduleFocusFirstIngredientsGridSlot();
+
+	void TryFocusFirstInteractableIngredientsSlot();
+
+	/** Slate default navigation escapes the grid to the next focusable widget (tab buttons). Wire cardinal neighbors + Stop at edges. */
+	void SetupIngredientsGridNavigation();
+
 	/** Grid for ingredient slots. */
 	UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Journal|Ingredients|UI")
 	TObjectPtr<UUniformGridPanel> IngredientsGrid;
@@ -100,6 +108,10 @@ protected:
 	/** After refresh, show the first ingredient in the detail panel without requiring hover. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Journal|Ingredients")
 	bool bSelectFirstIngredientOnRefresh = true;
+
+	/** When true (default), after refresh schedule focus on the first enabled slot so gamepad D-pad can navigate the grid. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Journal|Ingredients")
+	bool bFocusFirstGridSlotOnRefresh = true;
 
 	/**
 	 * When populating dishes that use the selected ingredient, only list dishes unlocked in the journal.

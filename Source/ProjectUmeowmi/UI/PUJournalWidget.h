@@ -47,6 +47,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
 	FName GetActiveTabId() const;
 
+	/** Cycle journal section tabs in Journal Tabs order. Direction: +1 next, -1 previous (wraps). Returns false if fewer than two tabs or tab unchanged. */
+	UFUNCTION(BlueprintCallable, Category = "Journal")
+	bool CycleJournalTab(int32 Direction);
+
 	/** Cycle the displayed dish in the Recipes tab. Direction: +1 next, -1 previous. Returns true if a dish was cycled. */
 	UFUNCTION(BlueprintCallable, Category = "Journal")
 	bool CycleRecipesDish(int32 Direction);

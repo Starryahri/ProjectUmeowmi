@@ -188,6 +188,27 @@ FName UPUJournalWidget::GetActiveTabId() const
 	return NAME_None;
 }
 
+bool UPUJournalWidget::CycleJournalTab(int32 Direction)
+{
+	if (!TabList || SectionTabIds.Num() < 2 || Direction == 0)
+	{
+		return false;
+	}
+	const int32 Num = SectionTabIds.Num();
+	int32 Idx = SectionTabIds.IndexOfByKey(GetActiveTabId());
+	if (Idx == INDEX_NONE)
+	{
+		Idx = 0;
+	}
+	const int32 NewIdx = ((Idx + Direction) % Num + Num) % Num;
+	if (NewIdx == Idx)
+	{
+		return false;
+	}
+	SwitchToTabById(SectionTabIds[NewIdx]);
+	return true;
+}
+
 bool UPUJournalWidget::CycleRecipesDish(int32 Direction)
 {
 	const FName ResolvedRecipes = ResolveRecipesTabId();
