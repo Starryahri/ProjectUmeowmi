@@ -237,9 +237,6 @@ public:
 
     // Quantity Control Management Functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
-    void SetQuantityControlContainer(UPanelWidget* Container);
-
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void EnableQuantityControlDrag(bool bEnabled);
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
@@ -409,10 +406,6 @@ protected:
     // Optional direct reference to the ScrollBox that should host quantity controls
     UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category = "Dish Customization Widget|Ingredients")
     UScrollBox* QuantityScrollBox = nullptr;
-
-    // Widget reference for quantity control container (set in Blueprint)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Ingredients")
-    TWeakObjectPtr<class UPanelWidget> QuantityControlContainer;
 
     // Pantry Management Properties
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")

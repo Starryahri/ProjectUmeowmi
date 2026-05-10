@@ -68,6 +68,7 @@ namespace
         }
     }
 
+    /** Walks ancestors for a standalone quantity widget (slots no longer embed PUIngredientQuantityControl). */
     static UPUIngredientQuantityControl* FindQuantityControlFromLeaf(UWidget* Leaf)
     {
         for (UWidget* W = Leaf; W; W = W->GetParent())
@@ -75,10 +76,6 @@ namespace
             if (UPUIngredientQuantityControl* QC = Cast<UPUIngredientQuantityControl>(W))
             {
                 return QC;
-            }
-            if (UPUIngredientSlot* Slot = Cast<UPUIngredientSlot>(W))
-            {
-                return Slot->GetQuantityControl();
             }
         }
         return nullptr;
@@ -2246,69 +2243,28 @@ TArray<FIngredientInstance> UPUDishCustomizationWidget::GetIngredientInstancesFr
 // Quantity Control Management Functions
 // ============================================================================
 
-void UPUDishCustomizationWidget::SetQuantityControlContainer(UPanelWidget* Container)
-{
-    QuantityControlContainer = Container;
-    if (QuantityControlContainer.IsValid())
-    {
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::SetQuantityControlContainer - QuantityControlContainer set to: %s"), *QuantityControlContainer->GetName());
-    }
-    else
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::SetQuantityControlContainer - QuantityControlContainer set to null"));
-    }
-}
-
 void UPUDishCustomizationWidget::EnableQuantityControlDrag(bool bEnabled)
 {
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::EnableQuantityControlDrag - Setting drag enabled to %s for all quantity controls"), 
-    //    bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
-    
-    if (!QuantityControlContainer.IsValid())
+    TArray<UPUIngredientQuantityControl*> Found;
+    FindQuantityControlsInHierarchy(Found);
+    for (UPUIngredientQuantityControl* QuantityControl : Found)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::EnableQuantityControlDrag - QuantityControlContainer is not valid"));
-        return;
-    }
-    
-    // Get all child widgets in the container
-    TArray<UWidget*> ChildWidgets = QuantityControlContainer->GetAllChildren();
-    int32 QuantityControlsFound = 0;
-    
-    for (UWidget* ChildWidget : ChildWidgets)
-    {
-        if (UPUIngredientQuantityControl* QuantityControl = Cast<UPUIngredientQuantityControl>(ChildWidget))
+        if (QuantityControl)
         {
             QuantityControl->SetDragEnabled(bEnabled);
-            QuantityControlsFound++;
-            //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::EnableQuantityControlDrag - Set drag enabled for quantity control: %s"), 
-            //    *QuantityControl->GetIngredientInstance().IngredientData.DisplayName.ToString());
         }
     }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::EnableQuantityControlDrag - Updated %d quantity controls"), QuantityControlsFound);
 }
 
 bool UPUDishCustomizationWidget::UpdateExistingQuantityControl(int32 InstanceID, const FGameplayTagContainer& NewPreparations)
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::UpdateExistingQuantityControl - Looking for quantity control with InstanceID: %d"), InstanceID);
-    
-    // Try to use the bound QuantityScrollBox first, then fall back to QuantityControlContainer
-    UPanelWidget* ContainerToUse = nullptr;
-    
-    if (QuantityScrollBox)
-    {
-        ContainerToUse = QuantityScrollBox;
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::UpdateExistingQuantityControl - Using bound QuantityScrollBox: %s"), *QuantityScrollBox->GetName());
-    }
-    else if (QuantityControlContainer.IsValid())
-    {
-        ContainerToUse = QuantityControlContainer.Get();
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::UpdateExistingQuantityControl - Using QuantityControlContainer: %s"), *QuantityControlContainer->GetName());
-    }
-    
+
+    UPanelWidget* ContainerToUse = QuantityScrollBox;
+
     if (!ContainerToUse)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::UpdateExistingQuantityControl - No container found, trying to find quantity controls automatically"));
+        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::UpdateExistingQuantityControl - No QuantityScrollBox; searching widget hierarchy for quantity controls"));
         
         // Try to find the container automatically by searching for quantity controls in the widget hierarchy
         TArray<UPUIngredientQuantityControl*> FoundQuantityControls;
@@ -2485,56 +2441,20 @@ bool UPUDishCustomizationWidget::TryApplyQuantityInputFromEnhancedInput(int32 De
         }
     }
 
-    // Controller navigation often keeps user focus on the slot, but Slate→UMG resolution can still fail; fall back to focused slot.
-    if (!QC)
+    if (QC && QC->IsVisible())
     {
-        APlayerController* const PC = GetOwningPlayer();
-        auto TrySlots = [this, PC, &QC](const TArray<UPUIngredientSlot*>& Slots)
+        if (Delta > 0)
         {
-            for (UPUIngredientSlot* Slot : Slots)
-            {
-                if (!Slot || !Slot->IsVisible() || Slot->IsEmpty())
-                {
-                    continue;
-                }
-                const EPUIngredientSlotLocation Loc = Slot->GetLocation();
-                if (Loc != EPUIngredientSlotLocation::ActiveIngredientArea && Loc != EPUIngredientSlotLocation::Prep
-                    && Loc != EPUIngredientSlotLocation::Prepped)
-                {
-                    continue;
-                }
-                if (Slot->HasKeyboardFocus() || (PC && (Slot->HasUserFocus(PC) || Slot->HasUserFocusedDescendants(PC))))
-                {
-                    UPUIngredientQuantityControl* Q = Slot->GetQuantityControl();
-                    if (Q && Q->IsVisible())
-                    {
-                        QC = Q;
-                        return;
-                    }
-                }
-            }
-        };
-        TrySlots(CreatedIngredientSlots);
-        if (!QC)
-        {
-            TrySlots(CreatedPreppedSlots);
+            QC->IncreaseQuantity();
         }
+        else
+        {
+            QC->DecreaseQuantity();
+        }
+        return true;
     }
 
-    if (!QC || !QC->IsVisible())
-    {
-        return false;
-    }
-
-    if (Delta > 0)
-    {
-        QC->IncreaseQuantity();
-    }
-    else
-    {
-        QC->DecreaseQuantity();
-    }
-    return true;
+    return false;
 }
 
 FGameplayTagContainer UPUDishCustomizationWidget::GetPreparationTagsForImplement(int32 ImplementIndex) const

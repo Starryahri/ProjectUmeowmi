@@ -2,9 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Styling/SlateTypes.h"
 #include "../DishCustomization/PUDishBase.h"
-#include "PUIngredientQuantityControl.h"
 #include "PUIngredientDragDropOperation.h"
 #include "PURadialMenu.h"
 #include "PUIngredientSlot.generated.h"
@@ -13,8 +11,6 @@ class UButton;
 class UTextBlock;
 class UImage;
 class UWidgetAnimation;
-class UPUIngredientQuantityControl;
-class USlider;
 class UMaterialInstanceDynamic;
 
 // Location enum for ingredient slots
@@ -43,7 +39,6 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
-    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     // Set the ingredient instance for this slot (use ClearSlot() to empty)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
@@ -142,27 +137,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
     void SpawnIngredientAtPosition(const FVector2D& ScreenPosition);
 
-    // Text visibility control for different stages
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
-    void SetTextVisibility(bool bShowQuantity, bool bShowDescription);
-
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
-    void HideAllText();
-
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
-    void ShowAllText();
-
-    // Debug method to check text component status
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Display")
-    void LogTextComponentStatus();
-
-
     // Get UI components (Blueprint accessible)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UImage* GetIngredientIcon() const { return IngredientIcon; }
-
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
-    UPUIngredientQuantityControl* GetQuantityControl() const { return QuantityControlWidget; }
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UTextBlock* GetHoverText() const { return HoverText; }
@@ -175,9 +152,6 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UImage* GetSuspiciousIcon() const { return SuspiciousIcon; }
-
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
-    UPanelWidget* GetQuantityControlContainer() const { return QuantityControlContainer; }
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
     UImage* GetPlateBackground() const { return PlateBackground; }
@@ -218,10 +192,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
     void ShowFocusVisuals();
 
-    // Time/Temperature slider functions
+    /** Sets normalized cook time on the backing ingredient instance and recalculates aspects (no slot widgets). */
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
     void SetTimeValue(float NewTimeValue);
 
+    /** Sets normalized temperature on the backing ingredient instance and recalculates aspects (no slot widgets). */
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
     void SetTemperatureValue(float NewTemperatureValue);
 
@@ -230,18 +205,6 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
     float GetTemperatureValue() const { return IngredientInstance.TemperatureValue; }
-
-    // Update slider display and labels
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
-    void UpdateTimeTempSliders();
-
-    // Show/hide sliders based on location and ingredient state
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
-    void UpdateSliderVisibility();
-
-    // Enable/disable sliders
-    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
-    void SetSlidersEnabled(bool bEnabled);
 
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Slot|Events")
@@ -316,21 +279,6 @@ protected:
 
     UPROPERTY(meta = (BindWidget))
     UImage* PrepBowlBack;
-
-    // Container for quantity control widget
-    UPROPERTY(meta = (BindWidget))
-    class UPanelWidget* QuantityControlContainer;
-
-    // Quantity control widget class
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ingredient Slot|Widget Classes")
-    TSubclassOf<UPUIngredientQuantityControl> QuantityControlClass;
-
-    // Created quantity control widget instance
-    UPROPERTY()
-    UPUIngredientQuantityControl* QuantityControlWidget = nullptr;
-
-    // Flag to track if events are bound (prevent duplicate bindings)
-    bool bQuantityControlEventsBound = false;
 
     // Prep icon images (1 prep icon visible for single prep, or suspicious icon for 2+)
     UPROPERTY(meta = (BindWidget))
@@ -420,46 +368,12 @@ protected:
     // Track hover state for IngredientSelect visibility (hide on mouse leave only if not focused)
     bool bIsHovered = false;
 
-    // Time/Temperature slider properties
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Time/Temp")
-    bool bShowTimeTempSliders = true;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Time/Temp")
-    bool bSlidersEnabled = true;
-
     // Plating-specific properties
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Plating")
     int32 RemainingQuantity = 0;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Plating")
     int32 MaxQuantity = 0;
-
-    // Plating-specific UI components
-    UPROPERTY(meta = (BindWidget))
-    UTextBlock* QuantityText;
-
-    UPROPERTY(meta = (BindWidget))
-    UTextBlock* PreparationText;
-
-    // Time/Temperature slider components
-    UPROPERTY(meta = (BindWidget))
-    USlider* TimeSlider;
-
-    UPROPERTY(meta = (BindWidget))
-    USlider* TemperatureSlider;
-
-    // Cached slider styles for focus-as-hover (restore when losing focus)
-    FSliderStyle CachedTimeSliderStyle;
-    FSliderStyle CachedTemperatureSliderStyle;
-    bool bTimeSliderShowingHoverStyle = false;
-    bool bTemperatureSliderShowingHoverStyle = false;
-
-    // Time/Temperature label text (optional - shows current state)
-    UPROPERTY(meta = (BindWidget))
-    UTextBlock* TimeLabelText;
-
-    UPROPERTY(meta = (BindWidget))
-    UTextBlock* TemperatureLabelText;
 
     // Native drag and drop events
     virtual bool NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
@@ -518,7 +432,6 @@ private:
     void UpdatePrepBowls();
     UTexture2D* GetPreparationTexture(const FGameplayTag& PreparationTag) const;
     UTexture2D* GetPreparationPrepTexture(const FGameplayTag& PreparationTag, UDataTable* PrepDataTable) const;
-    void UpdateQuantityControl();
     void ClearDisplay();
 
     // Get the appropriate texture based on location
@@ -536,19 +449,9 @@ private:
     // Update plate background opacity based on selection state
     void UpdatePlateBackgroundOpacity();
 
-    // Plating helper functions
-    void UpdateQuantityDisplay();
     void UpdatePreparationDisplay();
     FString GetPreparationDisplayText() const;
-    FString GetPreparationIconText() const;
 
-    // Time/Temperature helper functions
-    void InitializeTimeTempSliders();
-    void UpdateTimeLabelText();
-    void UpdateTemperatureLabelText();
-    bool ShouldShowSliders() const;
-    void UpdateSliderFocusVisuals();
-    
     // Recalculate aspects from base + time/temp + quantity
     void RecalculateAspectsFromBase();
 
@@ -557,20 +460,6 @@ private:
 
     // Boost color saturation using HSV conversion
     FLinearColor BoostColorSaturation(const FLinearColor& Color, float SaturationMultiplier) const;
-
-    // Quantity control event handlers
-    UFUNCTION()
-    void OnQuantityControlChanged(const FIngredientInstance& InIngredientInstance);
-
-    UFUNCTION()
-    void OnQuantityControlRemoved(int32 InstanceID, UPUIngredientQuantityControl* InQuantityControlWidget);
-
-    // Time/Temperature slider event handlers
-    UFUNCTION()
-    void OnTimeSliderValueChanged(float NewValue);
-
-    UFUNCTION()
-    void OnTemperatureSliderValueChanged(float NewValue);
 
     // Radial menu event handlers
     UFUNCTION()
