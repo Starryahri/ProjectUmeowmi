@@ -15,6 +15,7 @@ class UPUPlayerSaveGame;
 class UUserWidget;
 class UPUPopupWidget;
 class USoundBase;
+class UPUDishCustomizationComponent;
 
 /**
  * GameInstance that persists across level transitions.
@@ -541,6 +542,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Journal")
 	void NotifyJournalClosed();
 
+	/** True while any dish customization station has an active player session (same scan as popup/input restoration). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish Customization")
+	bool IsDishCustomizationActive() const;
+
+	/** Refreshes quest objective edge-arrow HUD visibility (dialogue, journal, dish customization). */
+	UFUNCTION(BlueprintCallable, Category = "Quest|HUD")
+	void NotifyPlayerQuestObjectiveOverlayVisibility();
+
 	/** Authoring: line body text. Row names should match tag strings (e.g. D.Sample.Hello). Set on Game Instance. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dialogue|Content")
 	TObjectPtr<class UDataTable> DialogueLineContentTable;
@@ -560,8 +569,8 @@ protected:
 	/** Set true in NotifyJournalOpened, false in NotifyJournalClosed. */
 	bool bJournalOpen = false;
 
-	/** Updates quest objective edge overlay on the player pawn when dialogue or journal state changes. */
-	void NotifyPlayerQuestObjectiveOverlayVisibility();
+	/** Owning world customization component with CurrentCharacter set, or nullptr. */
+	UPUDishCustomizationComponent* GetActiveDishCustomizationComponent() const;
 
 	// Saved player state
 	UPROPERTY(BlueprintReadWrite, Category = "Level Transition")

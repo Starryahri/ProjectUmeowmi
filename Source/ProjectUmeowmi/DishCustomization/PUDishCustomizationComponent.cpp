@@ -285,6 +285,13 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
     CameraTransitionCharacter = nullptr;
     CurrentCharacter = Character;
+    if (UWorld* NotifyWorld = GetWorld())
+    {
+        if (UPUProjectUmeowmiGameInstance* GI = NotifyWorld->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+        {
+            GI->NotifyPlayerQuestObjectiveOverlayVisibility();
+        }
+    }
     if (AProjectUmeowmiCharacter* PUChar = Cast<AProjectUmeowmiCharacter>(Character))
     {
         PUChar->SanitizeScoringStackOrphansInViewport();
@@ -784,6 +791,14 @@ void UPUDishCustomizationComponent::EndCustomization()
     CachedVirtualCursorViewportExtentsX = 0;
     CachedVirtualCursorViewportExtentsY = 0;
     CurrentCharacter = nullptr;
+
+    if (World)
+    {
+        if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+        {
+            GI->NotifyPlayerQuestObjectiveOverlayVisibility();
+        }
+    }
 
     // Always re-enable movement on the world's player controller so keyboard/joystick move works no matter what.
     if (WorldPC)

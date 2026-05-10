@@ -1179,6 +1179,31 @@ void UPUProjectUmeowmiGameInstance::NotifyJournalClosed()
 	NotifyPlayerQuestObjectiveOverlayVisibility();
 }
 
+UPUDishCustomizationComponent* UPUProjectUmeowmiGameInstance::GetActiveDishCustomizationComponent() const
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (UPUDishCustomizationComponent* DishComp = It->FindComponentByClass<UPUDishCustomizationComponent>())
+		{
+			if (DishComp->IsCustomizing())
+			{
+				return DishComp;
+			}
+		}
+	}
+	return nullptr;
+}
+
+bool UPUProjectUmeowmiGameInstance::IsDishCustomizationActive() const
+{
+	return GetActiveDishCustomizationComponent() != nullptr;
+}
+
 void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 {
 	// Restore input after popup closes - must use GameAndUI with DoNotLock (FInputModeGameOnly
@@ -1189,21 +1214,8 @@ void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)
 		APlayerController* PlayerController = World->GetFirstPlayerController();
 		if (PlayerController)
 		{
-			// Check if we're in dish customization (cooking/plating) - if so, keep move/look blocked
-			bool bInCustomization = false;
-			UPUDishCustomizationComponent* CustomizingDishComp = nullptr;
-			for (TActorIterator<AActor> It(World); It; ++It)
-			{
-				if (UPUDishCustomizationComponent* DishComp = It->FindComponentByClass<UPUDishCustomizationComponent>())
-				{
-					if (DishComp->IsCustomizing())
-					{
-						bInCustomization = true;
-						CustomizingDishComp = DishComp;
-						break;
-					}
-				}
-			}
+			UPUDishCustomizationComponent* CustomizingDishComp = GetActiveDishCustomizationComponent();
+			const bool bInCustomization = CustomizingDishComp != nullptr;
 
 			UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] OnPopupWidgetClosed - bInCustomization=%d"), bInCustomization);
 			// Use Reset to clear stacked ignore state; SetIgnore* uses a counter that accumulates across popups

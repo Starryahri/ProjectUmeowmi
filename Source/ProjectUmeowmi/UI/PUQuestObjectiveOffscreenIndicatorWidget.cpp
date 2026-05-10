@@ -14,6 +14,7 @@
 #include "Math/RotationMatrix.h"
 #include "SceneView.h"
 #include "ProjectUmeowmi/Dialogue/TalkingObject.h"
+#include "ProjectUmeowmi/PUProjectUmeowmiGameInstance.h"
 #include "ProjectUmeowmi/Quest/PUQuestObjectiveContentRow.h"
 #include "ProjectUmeowmi/Quest/PUQuestSubsystem.h"
 #include "Styling/SlateBrush.h"
@@ -289,9 +290,6 @@ void UPUQuestObjectiveOffscreenIndicatorWidget::NativeTick(const FGeometry& MyGe
 
 void UPUQuestObjectiveOffscreenIndicatorWidget::UpdateIndicator(const FGeometry& MyGeometry)
 {
-	// Never Collapse the root UserWidget: Slate stops ticking collapsed widgets, so we would not detect going off-screen again.
-	SetVisibility(ESlateVisibility::HitTestInvisible);
-
 	auto HideEdgeMarker = [this]()
 	{
 		if (MarkerImage)
@@ -318,6 +316,18 @@ void UPUQuestObjectiveOffscreenIndicatorWidget::UpdateIndicator(const FGeometry&
 	}
 
 	UGameInstance* GI = PC->GetGameInstance();
+	if (UPUProjectUmeowmiGameInstance* PUGI = Cast<UPUProjectUmeowmiGameInstance>(GI))
+	{
+		if (PUGI->IsDialogueOpen() || PUGI->IsJournalOpen() || PUGI->IsDishCustomizationActive())
+		{
+			HideEdgeMarker();
+			return;
+		}
+	}
+
+	// Never Collapse the root UserWidget: Slate stops ticking collapsed widgets, so we would not detect going off-screen again.
+	SetVisibility(ESlateVisibility::HitTestInvisible);
+
 	UPUQuestSubsystem* Quest = GI ? GI->GetSubsystem<UPUQuestSubsystem>() : nullptr;
 	if (!Quest)
 	{

@@ -41,6 +41,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "InputCoreTypes.h"
 #include "Engine/Engine.h"
+#include "UObject/UObjectIterator.h"
 
 #include "Interfaces/PUInteractableInterface.h"
 
@@ -307,6 +308,7 @@ void AProjectUmeowmiCharacter::BeginPlay()
 	}
 
 	TryCreateQuestObjectiveOffscreenIndicator();
+	UpdateQuestObjectiveOverlayVisibilityForOverlayUI();
 
 	//UE_LOG(LogTemp,Log, TEXT("Character BeginPlay - Camera initialized with position index: %d"), CameraPositionIndex);
 }
@@ -330,20 +332,54 @@ void AProjectUmeowmiCharacter::TryCreateQuestObjectiveOffscreenIndicator()
 	}
 }
 
+namespace
+{
+	static constexpr TCHAR HudObjectiveOverlayDesignerName[] = TEXT("ObjectiveRootOverlay");
+
+	static void ApplyWbpHudObjectiveOverlayVisibility(APlayerController* PC, UWorld* World, bool bSuppress)
+	{
+		if (!PC || !World)
+		{
+			return;
+		}
+		const FName OverlayName(HudObjectiveOverlayDesignerName);
+		for (TObjectIterator<UUserWidget> It; It; ++It)
+		{
+			UUserWidget* const UW = *It;
+			if (!IsValid(UW) || UW->GetWorld() != World || UW->GetOwningPlayer() != PC)
+			{
+				continue;
+			}
+			if (UWidget* const Overlay = UW->GetWidgetFromName(OverlayName))
+			{
+				Overlay->SetVisibility(
+					bSuppress ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
+				break;
+			}
+		}
+	}
+}
+
 void AProjectUmeowmiCharacter::UpdateQuestObjectiveOverlayVisibilityForOverlayUI()
 {
-	if (!bEnableQuestObjectiveOffscreenIndicator || !QuestObjectiveOffscreenIndicator)
-	{
-		return;
-	}
 	UWorld* World = GetWorld();
 	if (!World)
 	{
 		return;
 	}
 	UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance());
-	const bool bSuppress = GI && (GI->IsDialogueOpen() || GI->IsJournalOpen());
-	QuestObjectiveOffscreenIndicator->SetVisibility(bSuppress ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	const bool bSuppress =
+		GI && (GI->IsDialogueOpen() || GI->IsJournalOpen() || GI->IsDishCustomizationActive());
+
+	if (bEnableQuestObjectiveOffscreenIndicator && QuestObjectiveOffscreenIndicator)
+	{
+		QuestObjectiveOffscreenIndicator->SetVisibility(bSuppress ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+
+	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	{
+		ApplyWbpHudObjectiveOverlayVisibility(PC, World, bSuppress);
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -354,6 +390,7 @@ void AProjectUmeowmiCharacter::NotifyControllerChanged()
 	Super::NotifyControllerChanged();
 
 	TryCreateQuestObjectiveOffscreenIndicator();
+	UpdateQuestObjectiveOverlayVisibilityForOverlayUI();
 
 	// Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))

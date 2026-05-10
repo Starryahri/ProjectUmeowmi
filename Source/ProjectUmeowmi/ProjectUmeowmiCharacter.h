@@ -326,8 +326,8 @@ public:
 	AProjectUmeowmiCharacter();
 
 	/**
-	 * Call when dialogue or journal visibility changes (invoked from Game Instance).
-	 * Hides the screen-edge quest objective marker while dialogue or journal is open.
+	 * Updates objective HUD visibility for fullscreen overlays (dialogue, journal, dish customization):
+	 * optional screen-edge marker widget + WBP_HUD widget named ObjectiveRootOverlay when found via GetWidgetFromName.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Quest|Markers")
 	void UpdateQuestObjectiveOverlayVisibilityForOverlayUI();
