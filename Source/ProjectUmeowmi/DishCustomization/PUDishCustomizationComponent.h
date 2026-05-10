@@ -69,6 +69,35 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     const FPUDishBase& GetCurrentDishData() const { return CurrentDishData; }
 
+    /** True when current dish row defines CustomizationStages (Phase 2 pipeline). */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
+    bool HasActiveCustomizationPipeline() const;
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
+    int32 GetCustomizationPipelineStageCount() const;
+
+    /** INDEX_NONE when no pipeline; otherwise active stage index in CustomizationStages. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
+    int32 GetActiveCustomizationPipelineIndex() const { return ActiveCustomizationPipelineIndex; }
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
+    bool TryGetActivePipelineStage(FPUDishCustomizationStageDescriptor& OutStage) const;
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
+    bool TryGetPipelineStageByIndex(int32 Index, FPUDishCustomizationStageDescriptor& OutStage) const;
+
+    /** Reset to stage 0 when the dish has a pipeline; otherwise INDEX_NONE. Call when entering customization. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Pipeline")
+    void ResetCustomizationPipelineProgress();
+
+    /** Move to next stage; returns false if no pipeline or already past last stage. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Pipeline")
+    bool AdvanceCustomizationPipeline();
+
+    /** Clamp Index into pipeline range or noop when invalid / no pipeline. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Pipeline")
+    void SetActiveCustomizationPipelineIndex(int32 Index);
+
     // Blueprint-callable function for UI to sync dish data
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
     void SyncDishDataFromUI(const FPUDishBase& DishDataFromUI);
@@ -139,35 +168,21 @@ public:
     /** Dish container + plated ingredient primitives for scorecard snapshot (while still in plating). */
     void GatherDishSnapshotPrimitives(TArray<class UPrimitiveComponent*>& OutPrimitives) const;
 
-    /** Plating camera used for framing; scorecard snapshot can match this view. */
+    /** Station snapshot pipeline removed — always null (scorecard uses preview / other capture paths). */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
-    class UCameraComponent* GetPlatingStationCamera() const { return PlatingStationCamera; }
+    class UCameraComponent* GetPlatingStationCamera() const { return nullptr; }
 
-    /** Destroy all spawned ingredient meshes and liquid components. Call before RestoreOriginalDishContainerMesh to avoid physics/collision issues. */
+    /** Destroy any leftover spawned mesh actors / Niagara (typically unused in UI-only customization). */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ClearAll3DIngredientMeshes();
 
-    // Ingredient dragging (called from ingredient mesh)
+    /** Legacy hook for world ingredient actors — UI-only customization; no-op. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
-    void StartDraggingIngredient(class APUIngredientMesh* Ingredient);
+    void StartDraggingIngredient(APUIngredientMesh* Ingredient);
 
-    // Camera switching functions (for stage navigation)
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
-    void SwitchToCookingCamera();
-
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Camera")
-    void SwitchToPlatingCamera();
-
-    // Plating placement management (for stage navigation)
+    // Ingredient dragging was used with world mesh actors (removed).
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Plating")
     void ResetPlatingPlacements();
-
-    // Dish mesh management (for stage navigation)
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
-    void SwapDishContainerMesh(UStaticMesh* NewDishMesh);
-
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking")
-    void RestoreOriginalDishContainerMesh();
 
     // Planning mode functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
@@ -178,10 +193,6 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Planning")
     bool IsInPlanningMode() const { return bInPlanningMode; }
-
-    // Cooking Camera Position Control
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Cooking Camera")
-    void SetCookingCameraPositionOffset(const FVector& NewOffset);
 
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events")
@@ -277,56 +288,6 @@ public:
     UPROPERTY(Transient)
     TObjectPtr<UUserWidget> VirtualCursorWidgetInstance = nullptr;
 
-    /**
-     * Default ON: UI-first flow — no spring-arm customization framing on enter/exit, no world ingredient spawn/drag,
-     * no plating bowl mesh swap. Set false only if you restore legacy 3D station framing (SwitchToCookingCamera / plating cameras).
-     * OnCustomizationEnded fires next tick after EndCustomization completes.
-     */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|2D Mode")
-    bool bUse2DCustomizationMode = true;
-
-    UFUNCTION(BlueprintPure, Category = "Dish Customization|2D Mode")
-    bool IsUsing2DCustomizationMode() const { return bUse2DCustomizationMode; }
-
-    // Cooking Stage Camera Management (legacy 3D station view — skipped when bUse2DCustomizationMode)
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
-    float CookingCameraPitch = -15.0f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
-    float CookingCameraYaw = 180.0f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
-    float CookingOrthoWidth = 600.0f;
-
-    // Cooking Stage Camera Position Offsets
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
-    FVector CookingCameraPositionOffset = FVector(0.0f, 0.0f, 0.0f); // X=Left/Right, Y=Forward/Back, Z=Up/Down
-
-    // Cooking Stage Camera Component Reference
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
-    FName CookingStationCameraComponentName = TEXT("CookingCamera");
-
-    // Plating Stage Camera Management
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
-    float PlatingCameraDistance = 200.0f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
-    float PlatingCameraPitch = -15.0f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
-    float PlatingCameraYaw = 180.0f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
-    float PlatingOrthoWidth = 600.0f;
-
-    // Plating Stage Camera Position Offsets
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
-    FVector PlatingCameraPositionOffset = FVector(0.0f, 0.0f, 0.0f); // X=Left/Right, Y=Forward/Back, Z=Up/Down
-
-    // Plating Stage Camera Component Reference
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Plating Camera")
-    FName PlatingStationCameraComponentName = TEXT("PlatingCamera");
-
     // Current dish being customized
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Data")
     FPUDishBase CurrentDishData;
@@ -346,30 +307,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
     UDataTable* PreparationDataTable;
 
-    // Plating dish mesh
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
-    TSoftObjectPtr<UStaticMesh> PlatingDishMesh;
-
-    // Ingredient mesh scale for plating stage
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
-    FVector IngredientMeshScale = FVector(1.0f, 1.0f, 1.0f);
-
-    // Height above dish container to spawn ingredients (avoids collision with rim/platform)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating", meta = (ClampMin = "10.0", UIMin = "10.0"))
-    float IngredientSpawnHeightOffset = 30.0f;
-
-    // Blueprint class for spawned 3D ingredient meshes (set DefaultMaterial, HoverMaterial, GrabbedMaterial here)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|Plating")
-    TSubclassOf<class APUIngredientMesh> IngredientMeshClass;
-
-    // Original dish container mesh (stored when customization starts)
-    UPROPERTY()
-    UStaticMesh* OriginalDishContainerMesh = nullptr;
-
-    // Original dish container children meshes (stored when customization starts)
-    UPROPERTY()
-    TArray<UStaticMesh*> OriginalDishContainerChildren;
-
 protected:
     // Internal state management
     UPROPERTY()
@@ -383,6 +320,9 @@ protected:
 
     /** Blocks re-entrant EndCustomization (Slate focus / interaction code can call EndInteraction → EndCustomization mid-teardown). */
     bool bInEndCustomization = false;
+
+    /** Index into CurrentDishData.CustomizationStages while session uses data pipeline (Phase 2). */
+    int32 ActiveCustomizationPipelineIndex = INDEX_NONE;
 
     // Input binding handles
     uint32 ExitActionBindingHandle;
@@ -406,20 +346,9 @@ protected:
     FVector DragStartMousePosition;
     FVector DragOffset; // Offset between mouse and ingredient when grabbed
 
-    // Cooking stage camera component
-    UPROPERTY()
-    UCameraComponent* CookingStationCamera = nullptr;
-
-    // Plating stage camera component
-    UPROPERTY()
-    UCameraComponent* PlatingStationCamera = nullptr;
-
 private:
 	/** Unlock any ingredients in the dish that aren't already in the pantry (so they appear when customization starts). */
 	void EnsureDishIngredientsInPantry(const FPUDishBase& Dish);
-
-    // Spawn visual 3D mesh for ingredient
-    void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
 
     // Plating mode state
     bool bPlatingMode = false;
@@ -432,17 +361,6 @@ private:
 
     // Track spawned liquid Niagara components for cleanup (allows multiple per InstanceID when Quantity > 1)
     TArray<TPair<int32, TObjectPtr<UNiagaraComponent>>> SpawnedLiquidComponents;
-
-    // Plating camera transition state
-    bool bPlatingCameraTransitioning = false;
-    float PlatingCameraTransitionTime = 0.0f;
-    float PlatingCameraTransitionDuration = 1.0f;
-    FVector PlatingCameraStartLocation;
-    FRotator PlatingCameraStartRotation;
-    FVector PlatingCameraTargetLocation;
-    FRotator PlatingCameraTargetRotation;
-    float PlatingCameraStartOrthoWidth = 0.0f;
-    float PlatingCameraTargetOrthoWidth = 0.0f;
 
     // Input handling
     void HandleExitInput();
@@ -495,11 +413,6 @@ private:
     void HandleQuantityDecrease(const FInputActionValue& Value);
     void UpdateMouseDrag();
 
-    // Cooking / plating station cameras (legacy 3D paths)
-    void SetPlatingCameraPositionOffset(const FVector& NewOffset);
-    void StartPlatingCameraTransition(const FVector* ExplicitStartLocation = nullptr, const FRotator* ExplicitStartRotation = nullptr, float ExplicitStartOrthoWidth = -1.0f);
-    void UpdatePlatingCameraTransition(float DeltaTime);
-
     // Plating placement limits
     bool CanPlaceIngredient(int32 InstanceID) const;
     int32 GetRemainingQuantity(int32 InstanceID) const;
@@ -523,9 +436,6 @@ private:
     // Reset all plating (restore original quantities and clear placed ingredients)
     UFUNCTION(BlueprintCallable, Category = "Plating")
     void ResetPlating();
-
-    // Store original dish container mesh
-    void StoreOriginalDishContainerMesh();
 
     // Get plate/dish surface height for drag projection (matches GetSpawnPositionAboveStation surface)
     bool GetPlateSurfaceHeight(float& OutSurfaceHeight) const;

@@ -15,16 +15,6 @@
 class UPUDishCustomizationComponent;
 class UScrollBox;
 
-// Stage type enum for dish customization stages
-UENUM(BlueprintType)
-enum class EDishCustomizationStageType : uint8
-{
-    Planning     UMETA(DisplayName = "Planning"),
-    Cooking      UMETA(DisplayName = "Cooking"),
-    Plating      UMETA(DisplayName = "Plating"),
-    Ending       UMETA(DisplayName = "Ending")
-};
-
 UCLASS(BlueprintType, Blueprintable)
 class PROJECTUMEOWMI_API UPUDishCustomizationWidget : public UUserWidget
 {

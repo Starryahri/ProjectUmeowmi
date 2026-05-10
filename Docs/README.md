@@ -16,6 +16,7 @@ Class/API-style guides live in **`Docs/`** (this folder). Folder-level `README` 
 | [`Orders.md`](Orders.md) | `FPUOrderBase`, `UPUOrderComponent`, dish giver, validation/satisfaction |
 | [`Dialogue.md`](Dialogue.md) | Dlg, `ATalkingObject`, dialogue UI, line table, talking-object events |
 | [`DishCustomization.md`](DishCustomization.md) | Customization component, `FPUDishBase`, blueprint libraries, plating |
+| [`DishCustomizationRoadmap.md`](DishCustomizationRoadmap.md) | Phased plan: 2D shell, Congee pipeline, spine audit, slimming legacy 3D |
 | [`Scorecard.md`](Scorecard.md) | Scorecard widget, `FPUScorecardData`, dish scoring mode, radar chart |
 | [`Journal.md`](Journal.md) | Journal tabs, recipes section, game instance journal API |
 | [`QuestSystem.md`](QuestSystem.md) | Quest subsystem, objectives, save fields |

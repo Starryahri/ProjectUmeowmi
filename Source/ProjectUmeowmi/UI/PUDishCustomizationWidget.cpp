@@ -375,7 +375,6 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
                 // Clear ingredient meshes BEFORE restoring dish mesh - otherwise physics/collision blows them apart
                 CustomizationComponent->ClearAll3DIngredientMeshes();
                 CustomizationComponent->SetPlatingMode(false);
-                CustomizationComponent->RestoreOriginalDishContainerMesh();
                 break;
             
             case EDishCustomizationStageType::Cooking:
@@ -424,40 +423,13 @@ void UPUDishCustomizationWidget::GoToStage(UPUDishCustomizationWidget* TargetSta
         {
             case EDishCustomizationStageType::Plating:
             {
-                // Setup plating stage
                 CustomizationComponent->SetPlatingMode(true);
                 CustomizationComponent->ResetPlatingPlacements();
-                CustomizationComponent->SwitchToPlatingCamera();
-
-                // Use dish mesh from data table (CurrentData.DishMesh); fallback to PlatingDishMesh if not set
-                TSoftObjectPtr<UStaticMesh> MeshToUse = CurrentData.DishMesh;
-                if (!MeshToUse.IsValid() && MeshToUse.ToSoftObjectPath().IsNull())
-                {
-                    MeshToUse = CustomizationComponent->PlatingDishMesh;
-                }
-
-                UStaticMesh* MeshToSwap = nullptr;
-                if (MeshToUse.IsValid())
-                {
-                    MeshToSwap = MeshToUse.LoadSynchronous();
-                }
-                if (!MeshToSwap && !MeshToUse.ToSoftObjectPath().IsNull())
-                {
-                    MeshToSwap = LoadObject<UStaticMesh>(nullptr, *MeshToUse.ToString());
-                }
-                if (MeshToSwap)
-                {
-                    CustomizationComponent->SwapDishContainerMesh(MeshToSwap);
-                }
                 break;
             }
             
             case EDishCustomizationStageType::Cooking:
-                // Setup cooking stage
-                //UE_LOG(LogTemp,Display, TEXT("🔄 PUDishCustomizationWidget::GoToStage - Setting up cooking stage"));
                 CustomizationComponent->SetPlatingMode(false);
-                CustomizationComponent->SwitchToCookingCamera();
-                CustomizationComponent->RestoreOriginalDishContainerMesh();
                 break;
             
             case EDishCustomizationStageType::Planning:

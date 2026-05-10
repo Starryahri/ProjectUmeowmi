@@ -1,7 +1,8 @@
 # Dish Customization System — Developer Documentation
 
 **Module:** `ProjectUmeowmi`  
-**Primary source:** `Source/ProjectUmeowmi/DishCustomization/`, `Source/ProjectUmeowmi/UI/PUDishCustomizationWidget.h`
+**Primary source:** `Source/ProjectUmeowmi/DishCustomization/`, `Source/ProjectUmeowmi/UI/PUDishCustomizationWidget.h`  
+**Migration roadmap (2D shell, Congee phases):** [`DishCustomizationRoadmap.md`](DishCustomizationRoadmap.md)
 
 Gameplay-tag-driven cooking flow: **planning** (pick ingredients) → **cooking** (quantities, prep, time/temp) → **plating** (3D placement, liquids, scorecard snapshot) → **ending** UI. Dish state is `FPUDishBase` with per-instance `FIngredientInstance` rows. Orders (`FPUOrderBase` / `UPUOrderComponent`) define targets and satisfaction scoring — see also **`Orders.md`** for the dish-giver loop and player copy. Data tables supply `FPUDishBase`, `FPUIngredientBase`, and `FPUPreparationBase` rows.
 
@@ -11,9 +12,9 @@ Gameplay-tag-driven cooking flow: **planning** (pick ingredients) → **cooking*
 
 | Piece | Role |
 |-------|------|
-| `UPUDishCustomizationComponent` | Scene component on stations: starts/ends customization, cameras, input, 3D plating meshes, syncs `CurrentDishData` with UI. Set **`bUse2DCustomizationMode`** on the station instance to skip spring-arm framing, station camera blends, mesh spawn/drag, and plating bowl swap; exit broadcasts **`OnCustomizationEnded`** immediately (see class properties). |
+| `UPUDishCustomizationComponent` | Scene component on stations: starts/ends customization, cameras, input, 3D plating meshes, syncs `CurrentDishData` with UI. Set **`bUse2DCustomizationMode`** on the station instance to skip station camera blends, mesh spawn/drag, and plating bowl swap; **`EndCustomization`** schedules **`OnCustomizationEnded`** on the **next tick** (see class properties and roadmap). |
 | `UPUDishCustomizationWidget` | Multi-stage UI (Planning / Cooking / Plating / Ending); slots, pantry, navigation. |
-| `FPUDishBase` | Authoring + runtime dish: tags, meshes, `IngredientInstances`, `PlatingEntries`, aspect aggregation. |
+| `FPUDishBase` | Authoring + runtime dish: tags, meshes, `IngredientInstances`, `PlatingEntries`, optional ordered **`CustomizationStages`** (Phase 2 pipeline), aspect aggregation. |
 | `FIngredientInstance` | One stack in the dish: `InstanceID`, quantity, ingredient data, prep tags, time/temp sliders, plating transforms. |
 | `FPUIngredientBase` | Data table row: visuals, flavor/texture aspects, preparations, liquids (Niagara). |
 | `FPUPreparationBase` | Data table row: aspect modifiers, naming, tags. |
@@ -123,6 +124,13 @@ Used only when **`bUse2DCustomizationMode`** is false (legacy station cameras).
 | `GetCurrentCharacter` | Current player or null. | — | `AProjectUmeowmiCharacter*` |
 | `UpdateCurrentDishData` | Sets `CurrentDishData` and updates listeners. | `NewDishData` | `void` |
 | `GetCurrentDishData` | Const reference to dish. | — | `const FPUDishBase&` |
+| `HasActiveCustomizationPipeline` | Dish row has non-empty **`CustomizationStages`**. | — | `bool` |
+| `GetCustomizationPipelineStageCount` | Length of pipeline array. | — | `int32` |
+| `GetActiveCustomizationPipelineIndex` | Current stage index or `INDEX_NONE`. | — | `int32` |
+| `TryGetActivePipelineStage` / `TryGetPipelineStageByIndex` | Copy descriptor for active / indexed stage. | `OutStage` | `bool` |
+| `ResetCustomizationPipelineProgress` | Set index **0** if pipeline exists (**`StartCustomization`** calls this). | — | `void` |
+| `AdvanceCustomizationPipeline` | Increment active index; **false** at last stage or no pipeline. | — | `bool` |
+| `SetActiveCustomizationPipelineIndex` | Jump when index valid. | `Index` | `void` |
 | `SyncDishDataFromUI` | Push UI state into component dish. | `DishDataFromUI` | `void` |
 | `SetWidgetComponentReference` / `SetDishCustomizationComponentOnWidget` | Bind widget ↔ component. | Widget | `void` |
 | `SetActiveCustomizationWidget` | Track widget for stage navigation. | `ActiveWidget` | `void` |
@@ -185,12 +193,35 @@ Canonical dish: identity tags, display strings, soft textures/meshes, optional p
 | `IngredientDataTable` | `TSoftObjectPtr<UDataTable>` | EditAnywhere, BlueprintReadWrite | Optional per-dish ingredient source. |
 | `IngredientInstances` | `TArray<FIngredientInstance>` | EditAnywhere, BlueprintReadWrite | All stacks in the dish. |
 | `PlatingEntries` | `TArray<FPUPlatingEntry>` | EditAnywhere, BlueprintReadWrite | Per-mesh or liquid entry on plate. |
-| `PlatingDishCenter` | `FVector` | EditAnywhere, BlueprintReadWrite | World origin used when replaying layout. |
+| `CustomizationStages` | `TArray<FPUDishCustomizationStageDescriptor>` | EditAnywhere, BlueprintReadWrite | Ordered customization pipeline (Phase 2); leave empty to use legacy **`NextStage`** widget chain only. |
 | `DishTags` | `FGameplayTagContainer` | EditAnywhere, BlueprintReadWrite | Extra tags. |
 | `CustomName` | `FText` | EditAnywhere, BlueprintReadWrite | Player-facing rename. |
 
 **Methods (selected)**  
-`GetTotalFlavorAspect` / `GetTotalTextureAspect`, `HasIngredient`, `GetCurrentDisplayName`, `GetIngredient` / `GetIngredientForInstance` / `GetIngredientForInstanceID`, `GetAllIngredients`, `GetAllIngredientInstances`, `GenerateNewInstanceID` / `GenerateUniqueInstanceID`, plating getters/setters, aspect aggregation across instances.
+`HasCustomizationPipeline`, `GetTotalFlavorAspect` / `GetTotalTextureAspect`, `HasIngredient`, `GetCurrentDisplayName`, `GetIngredient` / `GetIngredientForInstance` / `GetIngredientForInstanceID`, `GetAllIngredients`, `GetAllIngredientInstances`, `GenerateNewInstanceID` / `GenerateUniqueInstanceID`, plating getters/setters, aspect aggregation across instances.
+
+---
+
+## Enums: `EDishCustomizationStageType`, `EDishCustomizationWorkspaceMode`
+
+Defined in **`PUDishBase.h`**. **`EDishCustomizationStageType`** is the legacy Planning / Cooking / Plating / Ending kind used by **`GoToStage`** and cameras. **`EDishCustomizationWorkspaceMode`** selects Gather grid vs rail+vignette for the shell (Phase 3).
+
+---
+
+## Struct API: `FPUDishCustomizationStageDescriptor`
+
+**Description**  
+One row in **`FPUDishBase::CustomizationStages`**: stable **`StageId`**, UI title, bridge **`LegacyStageKind`**, workspace mode, optional **`StageWidgetClass`**, pantry filter tags, optional **`AdvanceGateTag`** for gameplay/BP gating.
+
+| Property Name | Type | Description |
+|---------------|------|-------------|
+| `StageId` | `FGameplayTag` | Stable step id (e.g. Congee.Gather). |
+| `StageDisplayName` | `FText` | Banner / shell title. |
+| `LegacyStageKind` | `EDishCustomizationStageType` | Hooks existing camera/plating until shell replaces **`GoToStage`**. |
+| `WorkspaceMode` | `EDishCustomizationWorkspaceMode` | Gather vs rail+vignette layout. |
+| `StageWidgetClass` | `TSubclassOf<UUserWidget>` | Widget for this step. |
+| `PantryIngredientParentTags` | `FGameplayTagContainer` | OR filter on pantry rows (empty = no extra filter). |
+| `AdvanceGateTag` | `FGameplayTag` | Optional required tag before advancing. |
 
 ---
 

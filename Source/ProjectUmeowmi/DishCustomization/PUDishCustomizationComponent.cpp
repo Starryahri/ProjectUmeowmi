@@ -15,8 +15,6 @@
 #include "Engine/World.h"
 #include "Engine/EngineBaseTypes.h"
 #include "EngineUtils.h"
-#include "GameFramework/SpringArmComponent.h"
-#include "Camera/CameraComponent.h"
 #include "InputMappingContext.h"
 #include "Engine/GameViewportClient.h"
 #include "../UI/PUDishCustomizationWidget.h"
@@ -29,7 +27,6 @@
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "PUIngredientMesh.h"
-#include "Camera/CameraActor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Application/SlateUser.h"
 #include "Engine/LocalPlayer.h"
@@ -180,7 +177,7 @@ namespace
 
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
-    PrimaryComponentTick.bCanEverTick = true; // Plating camera tween, virtual cursor sync, mouse-drag fallback
+    PrimaryComponentTick.bCanEverTick = true; // Virtual cursor sync; drag updates while dragging
     QuantityIncreaseBindingHandle = 0;
     QuantityDecreaseBindingHandle = 0;
 }
@@ -213,12 +210,6 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    // Update plating camera transition if active
-    if (bPlatingCameraTransitioning)
-    {
-        UpdatePlatingCameraTransition(DeltaTime);
-    }
-
     // PIE / selected viewport / window resize: extents can change without right-stick input — re-clamp and sync.
     // Also re-stomp OS cursor each frame: HUD / dialogue / focus paths often call UsePlatformCursorForCursorUser(true).
     if (bVirtualCursorInitialized && CurrentCharacter && VirtualCursorWidgetClass)
@@ -243,24 +234,6 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
     {
         UpdateMouseDrag();
     }
-    else if (CurrentCharacter && CanSpawnIngredientsIn3D())
-    {
-        // Fallback: poll for mouse clicks in Tick (widget may block Enhanced Input)
-        APlayerController* PC = Cast<APlayerController>(CurrentCharacter->GetController());
-        if (PC)
-        {
-            bool bMouseDown = PC->IsInputKeyDown(EKeys::LeftMouseButton);
-            if (bMouseDown && !bWasMouseDown)
-            {
-                HandleMouseClick(FInputActionValue());
-            }
-            else if (!bMouseDown && bWasMouseDown && !bIsDragging)
-            {
-                HandleMouseRelease(FInputActionValue());
-            }
-            bWasMouseDown = bMouseDown;
-        }
-    }
 }
 
 void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter* Character)
@@ -272,9 +245,6 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to get Character"));
         return;
     }
-
-    // Store the original dish container mesh before any changes
-    StoreOriginalDishContainerMesh();
 
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
     CurrentCharacter = Character;
@@ -294,6 +264,8 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     bLastVirtualCursorDesktopValid = false;
     CachedVirtualCursorViewportExtentsX = 0;
     CachedVirtualCursorViewportExtentsY = 0;
+
+    ResetCustomizationPipelineProgress();
 
     // Get the player controller
     APlayerController* PlayerController = Cast<APlayerController>(Character->GetController());
@@ -778,7 +750,6 @@ void UPUDishCustomizationComponent::EndCustomization()
     }
 
     ClearAll3DIngredientMeshes();
-    RestoreOriginalDishContainerMesh();
     if (World)
     {
         if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
@@ -792,6 +763,7 @@ void UPUDishCustomizationComponent::EndCustomization()
     bLastVirtualCursorDesktopValid = false;
     CachedVirtualCursorViewportExtentsX = 0;
     CachedVirtualCursorViewportExtentsY = 0;
+    ActiveCustomizationPipelineIndex = INDEX_NONE;
     CurrentCharacter = nullptr;
 
     if (World)
@@ -833,135 +805,6 @@ void UPUDishCustomizationComponent::EndCustomization()
     else
     {
         BroadcastOnCustomizationEndedNextTick();
-    }
-}
-
-void UPUDishCustomizationComponent::SwitchToCookingCamera()
-{
-    if (!CurrentCharacter || !CurrentCharacter->GetWorld())
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No character or world available"));
-        return;
-    }
-
-    if (bUse2DCustomizationMode)
-    {
-        return;
-    }
-
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Switching to cooking camera"));
-
-    // Get the player controller
-    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
-    if (!PlayerController)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No player controller found"));
-        return;
-    }
-
-    // Find the cooking station camera component
-    if (!CookingStationCamera)
-    {
-        AActor* OwnerActor = GetOwner();
-        if (OwnerActor)
-        {
-            CookingStationCamera = Cast<UCameraComponent>(OwnerActor->GetComponentByClass(UCameraComponent::StaticClass()));
-            
-            if (!CookingStationCamera)
-            {
-                // Try to find by name if the default class search didn't work
-                TArray<UCameraComponent*> CameraComponents;
-                OwnerActor->GetComponents<UCameraComponent>(CameraComponents);
-                
-                for (UCameraComponent* CameraComp : CameraComponents)
-                {
-                    if (CameraComp && CameraComp->GetName() == CookingStationCameraComponentName.ToString())
-                    {
-                        CookingStationCamera = CameraComp;
-                        break;
-                    }
-                }
-            }
-            
-            if (CookingStationCamera)
-            {
-                // CRITICAL: Set the CookingCamera as the active camera component on the actor FIRST
-                AActor* StationActor = CookingStationCamera->GetOwner();
-                if (StationActor)
-                {
-                    // Disable the plating camera first
-                    TArray<UCameraComponent*> AllCameras;
-                    StationActor->GetComponents<UCameraComponent>(AllCameras);
-                    
-                    for (UCameraComponent* Camera : AllCameras)
-                    {
-                        if (Camera && Camera->GetName() == TEXT("PlatingCamera"))
-                        {
-                            Camera->SetActive(false);
-                            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Disabled PlatingCamera"));
-                        }
-                    }
-                    
-                    // Enable the cooking camera
-                    CookingStationCamera->SetActive(true);
-                    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Activated CookingCamera"));
-                }
-
-                // Configure the camera for orthographic projection
-                CookingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
-                CookingStationCamera->OrthoWidth = CookingOrthoWidth;
-                
-                // Position the camera properly for smooth transition
-                FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + CookingCameraPositionOffset;
-                FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
-                
-                CookingStationCamera->SetWorldLocation(CameraLocation);
-                CookingStationCamera->SetWorldRotation(CameraRotation);
-                
-                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Found and configured cooking camera component, width: %.2f, position: %s"), 
-                //    CookingOrthoWidth, *CameraLocation.ToString());
-            }
-            else
-            {
-                //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - No camera component found on cooking station"));
-                return;
-            }
-        }
-        else
-        {
-            //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToCookingCamera - No owner actor found"));
-            return;
-        }
-    }
-
-    // Switch to the cooking camera
-    PlayerController->SetViewTargetWithBlend(CookingStationCamera->GetOwner(), 0.5f);
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCookingCamera - Switched to cooking camera"));
-}
-
-void UPUDishCustomizationComponent::SetCookingCameraPositionOffset(const FVector& NewOffset)
-{
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Setting camera offset to: %s"), 
-    //    *NewOffset.ToString());
-
-    CookingCameraPositionOffset = NewOffset;
-
-    if (bUse2DCustomizationMode)
-    {
-        return;
-    }
-    
-    // If the cooking camera component is found, update its position
-    if (CookingStationCamera)
-    {
-        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + NewOffset;
-        FRotator CameraRotation = FRotator(CookingCameraPitch, CookingCameraYaw, 0.0f);
-        
-        CookingStationCamera->SetWorldLocation(CameraLocation);
-        CookingStationCamera->SetWorldRotation(CameraRotation);
-        
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Updated existing camera position to: %s"), 
-        //    *CameraLocation.ToString());
     }
 }
 
@@ -1339,11 +1182,8 @@ void UPUDishCustomizationComponent::OnPreInputMouseButtonDown(const FPointerEven
     {
         return;
     }
-    if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton || !CanSpawnIngredientsIn3D() || !CurrentCharacter)
-    {
-        return;
-    }
-    HandleMouseClick(FInputActionValue());
+    // UI-only customization: do not forward to world-ingredient click/drag (Enhanced Input + Slate handle UMG).
+    (void)MouseEvent;
 }
 
 void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Value)
@@ -1472,62 +1312,7 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
         UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Synthetic UMG click SKIPPED because physical LeftMouseButton is DOWN — if you use gamepad only, check IMC: Interact must NOT also press LMB."));
     }
 
-    if (!CanSpawnIngredientsIn3D())
-    {
-        ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
-        return;
-    }
-
-    const FVector2D ScreenPos = ViewportCursor;
-    const float MouseX = ScreenPos.X;
-    const float MouseY = ScreenPos.Y;
-    DragStartMousePosition = FVector(MouseX, MouseY, 0);
-
-    FHitResult HitResult;
-    if (!PlayerController->GetHitResultAtScreenPosition(ScreenPos, ECC_Visibility, true, HitResult))
-    {
-        if (bPU_LogIngredientDrag) UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - GetHitResultAtScreenPosition failed (screen %.0f,%.0f)"), MouseX, MouseY);
-        ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
-        return;
-    }
-
-    if (bPU_LogIngredientDrag)
-    {
-        UE_LOG(LogTemp, Log, TEXT("[DRAG] HandleMouseClick - Hit: %s (%s) at (%.0f,%.0f)"), HitResult.GetActor() ? *HitResult.GetActor()->GetName() : TEXT("null"), HitResult.GetComponent() ? *HitResult.GetComponent()->GetName() : TEXT("null"), MouseX, MouseY);
-    }
-
-    APUIngredientMesh* HitIngredient = Cast<APUIngredientMesh>(HitResult.GetActor());
-    FHitResult IngredientHitResult = HitResult;
-
-    if (HitIngredient)
-    {
-        if (bPU_LogIngredientDrag)
-        {
-            UE_LOG(LogTemp, Log, TEXT("[DRAG] HandleMouseClick - Started dragging ingredient: %s at (%.1f,%.1f,%.1f)"), *HitIngredient->GetName(), HitIngredient->GetActorLocation().X, HitIngredient->GetActorLocation().Y, HitIngredient->GetActorLocation().Z);
-        }
-
-        // Test mouse interaction for this ingredient
-        HitIngredient->TestMouseInteraction();
-
-        bIsDragging = true;
-        CurrentlyDraggedIngredient = HitIngredient;
-        DragStartPosition = HitIngredient->GetActorLocation();
-
-        // Calculate offset between mouse and ingredient
-        FVector MouseWorldPosition = IngredientHitResult.Location;
-        DragOffset = DragStartPosition - MouseWorldPosition;
-
-        // Call the ingredient's grab function
-        HitIngredient->OnMouseGrab();
-    }
-    else
-    {
-        if (bPU_LogIngredientDrag && HitResult.GetActor())
-        {
-            UE_LOG(LogTemp, Warning, TEXT("[DRAG] HandleMouseClick - Hit %s but not an ingredient mesh"), *HitResult.GetActor()->GetName());
-        }
-    }
-
+    // No world trace / ingredient mesh drag — plating uses UI slots only.
     ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
 }
 
@@ -1706,96 +1491,10 @@ void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& 
 
 void UPUDishCustomizationComponent::StartDraggingIngredient(APUIngredientMesh* Ingredient)
 {
-    if (bPU_LogIngredientDrag)
+    if (bPU_LogIngredientDrag && Ingredient)
     {
-        UE_LOG(LogTemp, Log, TEXT("[DRAG] StartDraggingIngredient called for %s"), Ingredient ? *Ingredient->GetName() : TEXT("null"));
+        UE_LOG(LogTemp, Log, TEXT("[DRAG] StartDraggingIngredient (no-op UI-only) — %s"), *Ingredient->GetName());
     }
-
-    if (!Ingredient)
-    {
-        return;
-    }
-    
-    if (!IsValid(Ingredient))
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - Ingredient is not valid"));
-        return;
-    }
-    
-    if (!CurrentCharacter)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - No character"));
-        return;
-    }
-    
-    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
-    if (!PlayerController)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ [DRAG] StartDraggingIngredient - No player controller"));
-        return;
-    }
-    
-    // Get current ingredient position before any changes
-    FVector IngredientStartPos = Ingredient->GetActorLocation();
-    //UE_LOG(LogTemp,Display, TEXT("🖱️ [DRAG] StartDraggingIngredient - %s at position (%.2f,%.2f,%.2f)"), 
-    //    *Ingredient->GetName(), IngredientStartPos.X, IngredientStartPos.Y, IngredientStartPos.Z);
-    
-    const FVector2D ScreenPos = GetVirtualCursorScreenPosition(PlayerController);
-    const float MouseX = ScreenPos.X;
-    const float MouseY = ScreenPos.Y;
-
-    // Convert screen position to world space and compute grab offset.
-    // Use view-perpendicular plane through ingredient (works with any camera angle).
-    FVector WorldLocation;
-    FVector WorldDirection;
-    if (PlayerController->DeprojectScreenPositionToWorld(MouseX, MouseY, WorldLocation, WorldDirection))
-    {
-        FVector PlanePoint(IngredientStartPos.X, IngredientStartPos.Y, IngredientStartPos.Z);
-        float DirLenSq = WorldDirection.SizeSquared();
-        if (DirLenSq > SMALL_NUMBER)
-        {
-            float T = FVector::DotProduct(PlanePoint - WorldLocation, WorldDirection) / DirLenSq;
-            if (T > 0.0f && T < 10000.0f)
-            {
-                FVector MouseWorldPosition = WorldLocation + (WorldDirection * T);
-                DragOffset = IngredientStartPos - MouseWorldPosition;
-            }
-            else
-            {
-                DragOffset = FVector::ZeroVector;
-            }
-        }
-        else
-        {
-            DragOffset = FVector::ZeroVector;
-        }
-    }
-    else
-    {
-        DragOffset = FVector::ZeroVector;
-    }
-    
-    // Call the ingredient's grab function first to set up its state
-    Ingredient->OnMouseGrab();
-    
-    // Verify ingredient is still valid after grab
-    if (!IsValid(Ingredient))
-    {
-        //UE_LOG(LogTemp,Error, TEXT("❌ [DRAG] StartDraggingIngredient - Ingredient became invalid after OnMouseGrab!"));
-        return;
-    }
-    
-    FVector IngredientAfterGrabPos = Ingredient->GetActorLocation();
-    //UE_LOG(LogTemp,Display, TEXT("🖱️ [DRAG] After OnMouseGrab - %s at position (%.2f,%.2f,%.2f)"), 
-    //    *Ingredient->GetName(), IngredientAfterGrabPos.X, IngredientAfterGrabPos.Y, IngredientAfterGrabPos.Z);
-    
-    bIsDragging = true;
-    CurrentlyDraggedIngredient = Ingredient;
-    DragStartPosition = IngredientAfterGrabPos;
-    DragStartMousePosition = FVector(MouseX, MouseY, 0);
-    
-    //UE_LOG(LogTemp,Display, TEXT("✅ [DRAG] Started dragging ingredient: %s with offset: (%.2f,%.2f,%.2f)"), 
-    //    *Ingredient->GetName(), DragOffset.X, DragOffset.Y, DragOffset.Z);
 }
 
 void UPUDishCustomizationComponent::UpdateMouseDrag()
@@ -1856,13 +1555,85 @@ void UPUDishCustomizationComponent::UpdateMouseDrag()
     }
 }
 
+bool UPUDishCustomizationComponent::HasActiveCustomizationPipeline() const
+{
+    return CurrentDishData.HasCustomizationPipeline();
+}
+
+int32 UPUDishCustomizationComponent::GetCustomizationPipelineStageCount() const
+{
+    return CurrentDishData.CustomizationStages.Num();
+}
+
+bool UPUDishCustomizationComponent::TryGetActivePipelineStage(FPUDishCustomizationStageDescriptor& OutStage) const
+{
+    if (!CurrentDishData.HasCustomizationPipeline() || !CurrentDishData.CustomizationStages.IsValidIndex(ActiveCustomizationPipelineIndex))
+    {
+        return false;
+    }
+    OutStage = CurrentDishData.CustomizationStages[ActiveCustomizationPipelineIndex];
+    return true;
+}
+
+bool UPUDishCustomizationComponent::TryGetPipelineStageByIndex(int32 Index, FPUDishCustomizationStageDescriptor& OutStage) const
+{
+    if (!CurrentDishData.CustomizationStages.IsValidIndex(Index))
+    {
+        return false;
+    }
+    OutStage = CurrentDishData.CustomizationStages[Index];
+    return true;
+}
+
+void UPUDishCustomizationComponent::ResetCustomizationPipelineProgress()
+{
+    ActiveCustomizationPipelineIndex = CurrentDishData.HasCustomizationPipeline() ? 0 : INDEX_NONE;
+}
+
+bool UPUDishCustomizationComponent::AdvanceCustomizationPipeline()
+{
+    if (!CurrentDishData.HasCustomizationPipeline())
+    {
+        return false;
+    }
+    if (ActiveCustomizationPipelineIndex == INDEX_NONE)
+    {
+        ActiveCustomizationPipelineIndex = 0;
+    }
+    const int32 Next = ActiveCustomizationPipelineIndex + 1;
+    if (!CurrentDishData.CustomizationStages.IsValidIndex(Next))
+    {
+        return false;
+    }
+    ActiveCustomizationPipelineIndex = Next;
+    return true;
+}
+
+void UPUDishCustomizationComponent::SetActiveCustomizationPipelineIndex(int32 Index)
+{
+    if (!CurrentDishData.HasCustomizationPipeline() || !CurrentDishData.CustomizationStages.IsValidIndex(Index))
+    {
+        return;
+    }
+    ActiveCustomizationPipelineIndex = Index;
+}
+
 void UPUDishCustomizationComponent::UpdateCurrentDishData(const FPUDishBase& NewDishData)
 {
     //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::UpdateCurrentDishData - Updating dish data with %d ingredients"), 
     //    NewDishData.IngredientInstances.Num());
     
     CurrentDishData = NewDishData;
-    
+
+    if (!CurrentDishData.HasCustomizationPipeline())
+    {
+        ActiveCustomizationPipelineIndex = INDEX_NONE;
+    }
+    else if (ActiveCustomizationPipelineIndex != INDEX_NONE && !CurrentDishData.CustomizationStages.IsValidIndex(ActiveCustomizationPipelineIndex))
+    {
+        ActiveCustomizationPipelineIndex = FMath::Clamp(ActiveCustomizationPipelineIndex, 0, CurrentDishData.CustomizationStages.Num() - 1);
+    }
+
     // Log the ingredients for debugging
     if (bPU_LogDishDataIngredientTags)
     {
@@ -2047,9 +1818,6 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
     // Store the dish data
     CurrentDishData = DishData;
     
-    // Switch to cooking stage camera
-    SwitchToCookingCamera();
-    
     // Save reference to dish widget BEFORE removing it (needed for ingredient slots)
     UPUDishCustomizationWidget* SavedDishWidget = nullptr;
     if (CustomizationWidget)
@@ -2231,9 +1999,6 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3D(const FGameplayTag& Ingr
             
             //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3D - Set plating for instance %d"), Instance.InstanceID);
             
-            // Spawn visual 3D mesh
-            SpawnVisualIngredientMesh(Instance, WorldPosition);
-            
             // Broadcast the updated dish data
             //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3D - Broadcasting OnDishDataUpdated"));
             OnDishDataUpdated.Broadcast(CurrentDishData);
@@ -2288,9 +2053,6 @@ void UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID(int32 Instan
             
             //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Set plating for instance %d"), InstanceID);
             
-            // Spawn visual 3D mesh
-            SpawnVisualIngredientMesh(Instance, WorldPosition);
-            
             // Broadcast the updated dish data
             //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SpawnIngredientIn3DByInstanceID - Broadcasting OnDishDataUpdated"));
             OnDishDataUpdated.Broadcast(CurrentDishData);
@@ -2319,12 +2081,7 @@ bool UPUDishCustomizationComponent::IsPlatingMode() const
 
 bool UPUDishCustomizationComponent::CanSpawnIngredientsIn3D() const
 {
-    if (bUse2DCustomizationMode)
-    {
-        return false;
-    }
-
-    // Allow spawning in both plating and cooking stages
+    // Allow plating/cooking UI to record world-space plating coordinates (no mesh actors spawned).
     if (bPlatingMode)
     {
         return true;
@@ -2345,6 +2102,7 @@ FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
         return FVector::ZeroVector;
     }
 
+    constexpr float SpawnHeightOffset = 40.f;
     // Use DishContainer mesh component so we spawn directly above the bowl, not the station center (which may be over platform/collision)
     TArray<UStaticMeshComponent*> MeshComponents;
     OwnerActor->GetComponents<UStaticMeshComponent>(MeshComponents);
@@ -2355,7 +2113,7 @@ FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
             FBoxSphereBounds DishBounds = MeshComp->CalcBounds(MeshComp->GetComponentTransform());
             // Spawn above center of dish container; use dish bounds for X,Y,Z so we're not over platform/rim
             float SurfaceHeight = DishBounds.Origin.Z + DishBounds.BoxExtent.Z;  // Top of bowl
-            float SpawnHeight = SurfaceHeight + IngredientSpawnHeightOffset;
+            float SpawnHeight = SurfaceHeight + SpawnHeightOffset;
             return FVector(DishBounds.Origin.X, DishBounds.Origin.Y, SpawnHeight);
         }
     }
@@ -2365,7 +2123,7 @@ FVector UPUDishCustomizationComponent::GetSpawnPositionAboveStation() const
     FVector Center = StationBoundsBox.GetCenter();
     FVector Extent = StationBoundsBox.GetExtent();
     float SurfaceHeight = Center.Z + Extent.Z;
-    return FVector(Center.X, Center.Y, SurfaceHeight + IngredientSpawnHeightOffset);
+    return FVector(Center.X, Center.Y, SurfaceHeight + SpawnHeightOffset);
 }
 
 bool UPUDishCustomizationComponent::GetPlateSurfaceHeight(float& OutSurfaceHeight) const
@@ -2492,34 +2250,7 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     
     // Broadcast the dish data to the new widget
     BroadcastInitialDishData(DishData);
-    
-    // Switch to plating camera
-    if (!bUse2DCustomizationMode)
-    {
-        SwitchToPlatingCamera();
-    }
-    
-    // Swap to dish mesh from data table (DishData.DishMesh); fallback to PlatingDishMesh if not set
-    TSoftObjectPtr<UStaticMesh> MeshToUse = DishData.DishMesh;
-    if (!MeshToUse.IsValid() && MeshToUse.ToSoftObjectPath().IsNull())
-    {
-        MeshToUse = PlatingDishMesh;  // Fallback to component's default plating mesh
-    }
 
-    UStaticMesh* LoadedMesh = nullptr;
-    if (MeshToUse.IsValid())
-    {
-        LoadedMesh = MeshToUse.LoadSynchronous();
-    }
-    if (!LoadedMesh && !MeshToUse.ToSoftObjectPath().IsNull())
-    {
-        LoadedMesh = LoadObject<UStaticMesh>(nullptr, *MeshToUse.ToString());
-    }
-    if (LoadedMesh && !bUse2DCustomizationMode)
-    {
-        SwapDishContainerMesh(LoadedMesh);
-    }
-    
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating stage transition complete"));
 }
 
@@ -2569,390 +2300,7 @@ void UPUDishCustomizationComponent::EndPlatingStage()
     // Clear the original widget class reference
     OriginalWidgetClass = nullptr;
 
-    // Switch back to cooking camera for the next cooking session
-    SwitchToCookingCamera();
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Switched back to cooking camera"));
-
     //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Plating stage ended"));
-}
-
-void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition)
-{
-    if (bUse2DCustomizationMode)
-    {
-        return;
-    }
-
-    // Get the owner actor (should be the plating station or dish)
-    AActor* OwnerActor = GetOwner();
-    if (!OwnerActor)
-    {
-        return;
-    }
-
-    // Get the world
-    UWorld* World = GetWorld();
-    if (!World)
-    {
-        return;
-    }
-
-    const FPUIngredientBase& IngredientData = IngredientInstance.IngredientData;
-
-    // Liquid path: spawn Niagara fill system instead of mesh
-    if (IngredientData.bIsLiquid && IngredientData.LiquidParticleSystem.IsValid())
-    {
-        UNiagaraSystem* NiagaraSystem = IngredientData.LiquidParticleSystem.LoadSynchronous();
-        if (NiagaraSystem)
-        {
-            UNiagaraComponent* NiagaraComp = NewObject<UNiagaraComponent>(OwnerActor, UNiagaraComponent::StaticClass(), NAME_None, RF_Transient);
-            if (NiagaraComp)
-            {
-                NiagaraComp->SetAsset(NiagaraSystem);
-                NiagaraComp->SetAutoActivate(true);
-                NiagaraComp->RegisterComponent();
-                NiagaraComp->AttachToComponent(OwnerActor->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
-                NiagaraComp->SetWorldLocation(WorldPosition);
-                NiagaraComp->Activate(true);
-
-                SpawnedLiquidComponents.Add(TPair<int32, UNiagaraComponent*>(IngredientInstance.InstanceID, NiagaraComp));
-            }
-        }
-        return;
-    }
-
-    // Solid path: spawn mesh actor
-    UStaticMesh* IngredientMesh = IngredientData.IngredientMesh.LoadSynchronous();
-    if (!IngredientMesh)
-    {
-        IngredientMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube"));
-        if (!IngredientMesh)
-        {
-            return;
-        }
-    }
-
-    // Use the WorldPosition that was already converted from screen coordinates
-    // Add an offset above the surface to ensure ingredients are visible and clickable
-    // Scale the offset so larger ingredients spawn higher; smaller ones lower
-    // Ingredient data table MeshScale overrides everything when set
-    FVector EffectiveScale;
-    if (IngredientData.MeshScale.SizeSquared() > KINDA_SMALL_NUMBER)
-    {
-        EffectiveScale = IngredientData.MeshScale;
-    }
-    else
-    {
-        FVector InstanceScale = (IngredientInstance.PlatingScale.SizeSquared() > KINDA_SMALL_NUMBER)
-            ? IngredientInstance.PlatingScale : FVector::OneVector;
-        EffectiveScale = IngredientMeshScale * InstanceScale;
-    }
-    float ScaleFactor = FMath::Max(EffectiveScale.GetMax(), 0.01f);  // Avoid zero
-    FVector SpawnPosition = WorldPosition + FVector(0, 0, 20 * ScaleFactor);
-
-    // Spawn the interactive ingredient mesh actor
-    FActorSpawnParameters SpawnParams;
-    SpawnParams.Owner = OwnerActor;
-    SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-    UClass* MeshClass = IngredientMeshClass ? IngredientMeshClass.Get() : APUIngredientMesh::StaticClass();
-    APUIngredientMesh* SpawnedIngredient = World->SpawnActor<APUIngredientMesh>(MeshClass, SpawnPosition, FRotator::ZeroRotator, SpawnParams);
-    
-    if (SpawnedIngredient)
-    {
-        // Initialize with full instance data (handles chopped preparation via procedural mesh slicing)
-        SpawnedIngredient->InitializeWithIngredientInstance(IngredientInstance);
-        
-        // Set mesh for non-chopped case (InitializeWithIngredientInstance handles chopped)
-        if (!SpawnedIngredient->IsChopped())
-        {
-            UStaticMeshComponent* MeshComp = SpawnedIngredient->FindComponentByClass<UStaticMeshComponent>();
-            if (MeshComp && IngredientMesh)
-            {
-                MeshComp->SetMobility(EComponentMobility::Movable);
-                MeshComp->SetStaticMesh(IngredientMesh);
-                // Re-apply collision/physics after SetStaticMesh (mesh asset can override to incompatible state)
-                MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-                MeshComp->SetCollisionProfileName(TEXT("PhysicsActor"));
-                MeshComp->SetSimulatePhysics(true);
-                MeshComp->SetGenerateOverlapEvents(true);
-                MeshComp->SetNotifyRigidBodyCollision(true);
-            }
-        }
-        
-        // Scale the ingredient; for chopped/minced, must set scale on proc mesh pieces directly (actor scale doesn't propagate)
-        SpawnedIngredient->SetIngredientScale(EffectiveScale);
-
-        // Store InstanceID for transform capture before cleanup
-        SpawnedIngredient->SetPlatingInstanceID(IngredientInstance.InstanceID);
-        
-        // Track the spawned mesh for cleanup
-        SpawnedIngredientMeshes.Add(SpawnedIngredient);
-    }
-}
-
-void UPUDishCustomizationComponent::SwitchToPlatingCamera()
-{
-    if (!CurrentCharacter || !GetWorld())
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToPlatingCamera - No character or world available"));
-        return;
-    }
-
-    if (bUse2DCustomizationMode)
-    {
-        return;
-    }
-
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Switching to plating camera"));
-
-    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
-    if (!PlayerController)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToPlatingCamera - No player controller found"));
-        return;
-    }
-
-    // Find the plating station camera component
-    if (!PlatingStationCamera)
-    {
-        AActor* OwnerActor = GetOwner();
-        if (OwnerActor)
-        {
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Owner actor: %s"), *OwnerActor->GetName());
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Looking for camera component named: %s"), *PlatingStationCameraComponentName.ToString());
-            
-            // Search for camera component with specific name (since there are multiple cameras)
-            TArray<UCameraComponent*> CameraComponents;
-            OwnerActor->GetComponents<UCameraComponent>(CameraComponents);
-            
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Found %d camera components"), CameraComponents.Num());
-            
-            for (UCameraComponent* CameraComp : CameraComponents)
-            {
-                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Camera component: %s"), *CameraComp->GetName());
-                if (CameraComp && CameraComp->GetName() == PlatingStationCameraComponentName.ToString())
-                {
-                    PlatingStationCamera = CameraComp;
-                    //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::SwitchToPlatingCamera - Found matching camera component: %s"), *CameraComp->GetName());
-                    break;
-                }
-            }
-            
-            if (!PlatingStationCamera)
-            {
-                //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No camera component found with name: %s"), *PlatingStationCameraComponentName.ToString());
-            }
-        }
-        else
-        {
-            //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No owner actor found"));
-            return;
-        }
-    }
-
-    if (PlatingStationCamera)
-    {
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToPlatingCamera - Configuring plating camera: %s"), *PlatingStationCamera->GetName());
-        
-        // Get transition start position: CookingCamera when viewing station, else current view (e.g. when skipping Cooking)
-        FVector StartLocation = PlatingStationCamera->GetComponentLocation();
-        FRotator StartRotation = PlatingStationCamera->GetComponentRotation();
-        float StartOrthoWidth = PlatingOrthoWidth;
-        AActor* StationActor = PlatingStationCamera->GetOwner();
-        const bool bViewingStation = StationActor && PlayerController && PlayerController->GetViewTarget() == StationActor;
-        if (bViewingStation && StationActor)
-        {
-            TArray<UCameraComponent*> AllCameras;
-            StationActor->GetComponents<UCameraComponent>(AllCameras);
-            for (UCameraComponent* Camera : AllCameras)
-            {
-                if (Camera && Camera->GetName() == TEXT("CookingCamera"))
-                {
-                    StartLocation = Camera->GetComponentLocation();
-                    StartRotation = Camera->GetComponentRotation();
-                    StartOrthoWidth = Camera->OrthoWidth;
-                    break;
-                }
-            }
-        }
-        else if (PlayerController && PlayerController->PlayerCameraManager)
-        {
-            // Skipping Cooking or not viewing station - use current view so transition starts from where the player is looking
-            StartLocation = PlayerController->PlayerCameraManager->GetCameraLocation();
-            StartRotation = PlayerController->PlayerCameraManager->GetCameraRotation();
-        }
-
-        // Set PlatingCamera to START position first so transition animates from cooking view to plating view
-        PlatingStationCamera->SetProjectionMode(ECameraProjectionMode::Orthographic);
-        PlatingStationCamera->OrthoWidth = StartOrthoWidth;
-        PlatingStationCamera->SetWorldLocation(StartLocation);
-        PlatingStationCamera->SetWorldRotation(StartRotation);
-
-        // Disable cooking camera and enable plating camera
-        if (StationActor)
-        {
-            TArray<UCameraComponent*> AllCameras;
-            StationActor->GetComponents<UCameraComponent>(AllCameras);
-            for (UCameraComponent* Camera : AllCameras)
-            {
-                if (Camera && Camera->GetName() == TEXT("CookingCamera"))
-                {
-                    Camera->SetActive(false);
-                    break;
-                }
-            }
-            PlatingStationCamera->SetActive(true);
-        }
-
-        // Ensure we're viewing the station (needed when skipping Cooking stage - ViewTarget might still be character)
-        if (StationActor)
-        {
-            PlayerController->SetViewTargetWithBlend(StationActor, 0.0f);  // Instant - our transition handles the animation
-        }
-
-        // Set target position so StartPlatingCameraTransition can read it, then restore start for first frame
-        FVector TargetLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
-        FRotator TargetRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
-        PlatingStationCamera->SetWorldLocation(TargetLocation);
-        PlatingStationCamera->SetWorldRotation(TargetRotation);
-
-        // Start smooth transition (reads target from camera; pass explicit start when we used fallback e.g. skipping Cooking)
-        StartPlatingCameraTransition(&StartLocation, &StartRotation, StartOrthoWidth);
-
-        // Restore start position for first frame - UpdatePlatingCameraTransition will animate from here
-        PlatingStationCamera->SetWorldLocation(StartLocation);
-        PlatingStationCamera->SetWorldRotation(StartRotation);
-        PlatingStationCamera->OrthoWidth = StartOrthoWidth;
-    }
-    else
-    {
-        //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::SwitchToPlatingCamera - No camera component found on plating station"));
-    }
-}
-
-void UPUDishCustomizationComponent::StartPlatingCameraTransition(const FVector* ExplicitStartLocation, const FRotator* ExplicitStartRotation, float ExplicitStartOrthoWidth)
-{
-    if (!PlatingStationCamera || !CurrentCharacter)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StartPlatingCameraTransition - No camera or character available"));
-        return;
-    }
-
-    if (bUse2DCustomizationMode)
-    {
-        return;
-    }
-
-    //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Starting smooth camera transition"));
-
-    // Use explicit start when provided (e.g. when skipping Cooking), else derive from CookingCamera
-    FVector CurrentLocation = PlatingStationCamera->GetComponentLocation();
-    FRotator CurrentRotation = PlatingStationCamera->GetComponentRotation();
-    float CurrentOrthoWidth = PlatingStationCamera->OrthoWidth;
-
-    if (ExplicitStartLocation && ExplicitStartRotation && ExplicitStartOrthoWidth >= 0.0f)
-    {
-        CurrentLocation = *ExplicitStartLocation;
-        CurrentRotation = *ExplicitStartRotation;
-        CurrentOrthoWidth = ExplicitStartOrthoWidth;
-    }
-    else
-    {
-        AActor* StationActor = PlatingStationCamera->GetOwner();
-        if (StationActor)
-        {
-            TArray<UCameraComponent*> AllCameras;
-            StationActor->GetComponents<UCameraComponent>(AllCameras);
-            for (UCameraComponent* Camera : AllCameras)
-            {
-                if (Camera && Camera->GetName() == TEXT("CookingCamera"))
-                {
-                    CurrentLocation = Camera->GetComponentLocation();
-                    CurrentRotation = Camera->GetComponentRotation();
-                    CurrentOrthoWidth = Camera->OrthoWidth;
-                    break;
-                }
-            }
-        }
-    }
-
-    // Set up transition state
-    bPlatingCameraTransitioning = true;
-    PlatingCameraTransitionTime = 0.0f;
-    PlatingCameraStartLocation = CurrentLocation;
-    PlatingCameraStartRotation = CurrentRotation;
-
-    // Target position and properties (already set in SwitchToPlatingCamera)
-    PlatingCameraTargetLocation = PlatingStationCamera->GetComponentLocation();
-    PlatingCameraTargetRotation = PlatingStationCamera->GetComponentRotation();
-
-    // Store start and target ortho widths for smooth transition
-    PlatingCameraStartOrthoWidth = CurrentOrthoWidth;
-    PlatingCameraTargetOrthoWidth = PlatingOrthoWidth;
-
-    //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Start: %s (Ortho: %.2f), Target: %s (Ortho: %.2f)"), 
-    //    *PlatingCameraStartLocation.ToString(), PlatingCameraStartOrthoWidth,
-    //    *PlatingCameraTargetLocation.ToString(), PlatingCameraTargetOrthoWidth);
-}
-
-void UPUDishCustomizationComponent::UpdatePlatingCameraTransition(float DeltaTime)
-{
-    if (!bPlatingCameraTransitioning || !PlatingStationCamera)
-    {
-        return;
-    }
-
-    PlatingCameraTransitionTime += DeltaTime;
-    float Alpha = FMath::Clamp(PlatingCameraTransitionTime / PlatingCameraTransitionDuration, 0.0f, 1.0f);
-
-    // Use smooth interpolation
-    float SmoothAlpha = FMath::SmoothStep(0.0f, 1.0f, Alpha);
-
-    // Interpolate position and rotation
-    FVector NewLocation = FMath::Lerp(PlatingCameraStartLocation, PlatingCameraTargetLocation, SmoothAlpha);
-    FRotator NewRotation = FMath::Lerp(PlatingCameraStartRotation, PlatingCameraTargetRotation, SmoothAlpha);
-
-    // Interpolate ortho width smoothly
-    float NewOrthoWidth = FMath::Lerp(PlatingCameraStartOrthoWidth, PlatingCameraTargetOrthoWidth, SmoothAlpha);
-
-    // Update camera position, rotation, and ortho width
-    PlatingStationCamera->SetWorldLocation(NewLocation);
-    PlatingStationCamera->SetWorldRotation(NewRotation);
-    PlatingStationCamera->OrthoWidth = NewOrthoWidth;
-
-    // Check if transition is complete
-    if (Alpha >= 1.0f)
-    {
-        bPlatingCameraTransitioning = false;
-        //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::UpdatePlatingCameraTransition - Transition complete"));
-    }
-}
-
-void UPUDishCustomizationComponent::SetPlatingCameraPositionOffset(const FVector& NewOffset)
-{
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SetPlatingCameraPositionOffset - Setting camera offset to: %s"),
-    //    *NewOffset.ToString());
-
-    PlatingCameraPositionOffset = NewOffset;
-
-    if (bUse2DCustomizationMode)
-    {
-        return;
-    }
-
-    // If the plating camera component is found, update its position
-    if (PlatingStationCamera)
-    {
-        FVector CameraLocation = GetOwner()->GetActorLocation() + FVector(0.0f, 0.0f, 200.0f) + PlatingCameraPositionOffset;
-        FRotator CameraRotation = FRotator(PlatingCameraPitch, PlatingCameraYaw, 0.0f);
-
-        PlatingStationCamera->SetWorldLocation(CameraLocation);
-        PlatingStationCamera->SetWorldRotation(CameraRotation);
-
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SetPlatingCameraPositionOffset - Updated existing camera position to: %s"),
-        //    *CameraLocation.ToString());
-    }
 }
 
 // Plating placement limits implementation
@@ -3206,10 +2554,10 @@ void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
         UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - InstanceID %d at (%.1f, %.1f, %.1f)"), InstanceID, WorldPos.X, WorldPos.Y, WorldPos.Z);
     }
 
-    for (const TPair<int32, UNiagaraComponent*>& Pair : SpawnedLiquidComponents)
+    for (const TPair<int32, TObjectPtr<UNiagaraComponent>>& Pair : SpawnedLiquidComponents)
     {
         const int32 InstanceID = Pair.Key;
-        UNiagaraComponent* NiagaraComp = Pair.Value;
+        UNiagaraComponent* NiagaraComp = Pair.Value.Get();
         if (!NiagaraComp || !IsValid(NiagaraComp))
         {
             continue;
@@ -3226,6 +2574,26 @@ void UPUDishCustomizationComponent::CapturePlatingTransformsFromMeshes()
         CurrentDishData.PlatingEntries.Add(Entry);
         Captured++;
         UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - liquid InstanceID %d at (%.1f, %.1f, %.1f)"), InstanceID, WorldPos.X, WorldPos.Y, WorldPos.Z);
+    }
+
+    if (Captured == 0)
+    {
+        for (const FIngredientInstance& Inst : CurrentDishData.IngredientInstances)
+        {
+            if (!Inst.bIsPlated)
+            {
+                continue;
+            }
+            FPUPlatingEntry Entry;
+            Entry.InstanceID = Inst.InstanceID;
+            Entry.Position = Inst.PlatingPosition;
+            Entry.Rotation = Inst.PlatingRotation;
+            Entry.Scale = Inst.PlatingScale;
+            Entry.bIsLiquid = Inst.IngredientData.bIsLiquid;
+            CurrentDishData.PlatingEntries.Add(Entry);
+            Captured++;
+        }
+        UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - filled %d entries from plated instances (UI-only / no world meshes)"), Captured);
     }
 
     UE_LOG(LogDishPreview, Log, TEXT("CapturePlatingTransformsFromMeshes - captured %d transforms"), Captured);
@@ -3335,9 +2703,9 @@ void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
     SpawnedIngredientMeshes.Empty();
     
     // Destroy all tracked liquid Niagara components
-    for (const TPair<int32, UNiagaraComponent*>& Pair : SpawnedLiquidComponents)
+    for (const TPair<int32, TObjectPtr<UNiagaraComponent>>& Pair : SpawnedLiquidComponents)
     {
-        if (UNiagaraComponent* NiagaraComp = Pair.Value)
+        if (UNiagaraComponent* NiagaraComp = Pair.Value.Get())
         {
             if (IsValid(NiagaraComp))
             {
@@ -3347,250 +2715,4 @@ void UPUDishCustomizationComponent::ClearAll3DIngredientMeshes()
         }
     }
     SpawnedLiquidComponents.Empty();
-}
-
-void UPUDishCustomizationComponent::SwapDishContainerMesh(UStaticMesh* NewDishMesh)
-{
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Swapping dish container mesh"));
-    
-    if (!NewDishMesh)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is null"));
-        return;
-    }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is valid: %s"), 
-    //    *NewDishMesh->GetName());
-    
-    // Use the owner (the cooking station this component belongs to) - NOT a world search.
-    // With multiple cooking stations, a world search would always pick the first instance.
-    AActor* DishStation = GetOwner();
-    if (!DishStation)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - DishStation not found"));
-        return;
-    }
-    
-    // Find the DishContainer child component (nested in StationMesh)
-    UStaticMeshComponent* DishContainer = nullptr;
-    
-    // First, find the StationMesh component
-    UStaticMeshComponent* StationMesh = nullptr;
-    TArray<UStaticMeshComponent*> AllMeshComponents;
-    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents);
-    
-    for (UStaticMeshComponent* MeshComp : AllMeshComponents)
-    {
-        if (MeshComp->GetName().Contains(TEXT("StationMesh")))
-        {
-            StationMesh = MeshComp;
-            break;
-        }
-    }
-    
-    if (!StationMesh)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - StationMesh component not found"));
-        return;
-    }
-    
-    // Now find DishContainer as a child of StationMesh using a simpler approach
-    TArray<UStaticMeshComponent*> AllMeshComponents2;
-    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
-    
-    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
-    {
-        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
-        {
-            DishContainer = MeshComp;
-            break;
-        }
-    }
-    
-    if (!DishContainer)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - DishContainer component not found"));
-        return;
-    }
-    
-    // Clear any child static mesh components under DishContainer
-    // Get all components from the DishContainer's owner actor and clear only child meshes
-    TArray<UStaticMeshComponent*> AllChildMeshes;
-    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
-    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
-    {
-        // Only clear meshes that are children of DishContainer, not StationMesh or other main components
-        if (ChildMesh != DishContainer && ChildMesh != StationMesh && 
-            ChildMesh->GetAttachParent() == DishContainer)
-        {
-            ChildMesh->SetStaticMesh(nullptr);
-            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Cleared child mesh: %s"), 
-            //    *ChildMesh->GetName());
-        }
-    }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Cleared child meshes only"));
-    
-    // Add the new dish mesh under DishContainer
-    if (NewDishMesh)
-    {
-        // Set the mesh on the main DishContainer component
-        DishContainer->SetStaticMesh(NewDishMesh);
-        
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::SwapDishContainerMesh - Set mesh on DishContainer: %s"), 
-        //    *NewDishMesh->GetName());
-    }
-    else
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwapDishContainerMesh - NewDishMesh is null!"));
-    }
-}
-
-void UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh()
-{
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restoring original dish container mesh"));
-    
-    // Use the owner (the cooking station this component belongs to) - NOT a world search.
-    // With multiple cooking stations, a world search would always pick the first instance.
-    AActor* DishStation = GetOwner();
-    if (!DishStation)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - BP_CookingStation not found"));
-        return;
-    }
-    
-    // Find the DishContainer child component
-    UStaticMeshComponent* DishContainer = nullptr;
-    TArray<UStaticMeshComponent*> AllMeshComponents2;
-    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
-    
-    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
-    {
-        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
-        {
-            DishContainer = MeshComp;
-            break;
-        }
-    }
-    
-    if (!DishContainer)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - DishContainer component not found"));
-        return;
-    }
-    
-    // Clear any existing children first
-    TArray<UStaticMeshComponent*> AllChildMeshes;
-    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
-    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
-    {
-        // Only clear meshes that are children of DishContainer, not StationMesh or other main components
-        if (ChildMesh != DishContainer && ChildMesh->GetAttachParent() == DishContainer)
-        {
-            ChildMesh->SetStaticMesh(nullptr);
-            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Cleared child mesh: %s"), 
-            //    *ChildMesh->GetName());
-        }
-    }
-
-    // Restore the original mesh
-    if (OriginalDishContainerMesh)
-    {
-        DishContainer->SetStaticMesh(OriginalDishContainerMesh);
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored original mesh: %s"), 
-        //    *OriginalDishContainerMesh->GetName());
-    }
-    else
-    {
-        // Clear the mesh if no original was stored
-        DishContainer->SetStaticMesh(nullptr);
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Cleared mesh (no original stored)"));
-    }
-
-    // Restore the original children meshes
-    for (UStaticMesh* ChildMesh : OriginalDishContainerChildren)
-    {
-        if (ChildMesh)
-        {
-            // Create a new static mesh component for the child
-            UStaticMeshComponent* NewChildComponent = NewObject<UStaticMeshComponent>(DishContainer->GetOwner());
-            NewChildComponent->SetStaticMesh(ChildMesh);
-            NewChildComponent->SetupAttachment(DishContainer);
-            NewChildComponent->RegisterComponent();
-            
-            //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored child mesh: %s"), 
-            //    *ChildMesh->GetName());
-        }
-    }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::RestoreOriginalDishContainerMesh - Restored %d child meshes"), 
-    //    OriginalDishContainerChildren.Num());
-}
-
-void UPUDishCustomizationComponent::StoreOriginalDishContainerMesh()
-{
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Storing original dish container mesh"));
-    
-    // Use the owner (the cooking station this component belongs to) - NOT a world search.
-    // With multiple cooking stations, a world search would always pick the first instance.
-    AActor* DishStation = GetOwner();
-    if (!DishStation)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - BP_CookingStation not found"));
-        return;
-    }
-    
-    // Find the DishContainer child component
-    UStaticMeshComponent* DishContainer = nullptr;
-    TArray<UStaticMeshComponent*> AllMeshComponents2;
-    DishStation->GetComponents<UStaticMeshComponent>(AllMeshComponents2);
-    
-    for (UStaticMeshComponent* MeshComp : AllMeshComponents2)
-    {
-        if (MeshComp->GetName().Contains(TEXT("DishContainer")))
-        {
-            DishContainer = MeshComp;
-            break;
-        }
-    }
-    
-    if (!DishContainer)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - DishContainer component not found"));
-        return;
-    }
-    
-    // Store the original mesh
-    OriginalDishContainerMesh = DishContainer->GetStaticMesh();
-    if (OriginalDishContainerMesh)
-    {
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored original mesh: %s"), 
-        //    *OriginalDishContainerMesh->GetName());
-    }
-    else
-    {
-        //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - No original mesh found (DishContainer was empty)"));
-    }
-
-    // Store the original children meshes
-    OriginalDishContainerChildren.Empty();
-    TArray<UStaticMeshComponent*> AllChildMeshes;
-    DishContainer->GetOwner()->GetComponents<UStaticMeshComponent>(AllChildMeshes);
-    for (UStaticMeshComponent* ChildMesh : AllChildMeshes)
-    {
-        // Only store meshes that are children of DishContainer, not StationMesh or other main components
-        if (ChildMesh != DishContainer && ChildMesh->GetAttachParent() == DishContainer)
-        {
-            UStaticMesh* ChildStaticMesh = ChildMesh->GetStaticMesh();
-            if (ChildStaticMesh)
-            {
-                OriginalDishContainerChildren.Add(ChildStaticMesh);
-                //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored child mesh: %s"), 
-                //    *ChildStaticMesh->GetName());
-            }
-        }
-    }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::StoreOriginalDishContainerMesh - Stored %d child meshes"), 
-    //    OriginalDishContainerChildren.Num());
 }

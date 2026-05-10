@@ -1,10 +1,63 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Blueprint/UserWidget.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagContainer.h"
 #include "PUIngredientBase.h"
 #include "PUDishBase.generated.h"
+
+/** Legacy stage kinds — used by widget navigation and camera/plating hooks until data pipeline fully replaces hardcoded flows. */
+UENUM(BlueprintType)
+enum class EDishCustomizationStageType : uint8
+{
+    Planning     UMETA(DisplayName = "Planning"),
+    Cooking      UMETA(DisplayName = "Cooking"),
+    Plating      UMETA(DisplayName = "Plating"),
+    Ending       UMETA(DisplayName = "Ending")
+};
+
+/** Shell workspace layout for this pipeline step (see DishCustomizationRoadmap Phase 0–3). */
+UENUM(BlueprintType)
+enum class EDishCustomizationWorkspaceMode : uint8
+{
+    Gather       UMETA(DisplayName = "Gather (counter grid + pantry)"),
+    RailVignette UMETA(DisplayName = "Rail + stage vignette"),
+};
+
+/** One step in a dish-authored customization pipeline (Phase 2+). */
+USTRUCT(BlueprintType)
+struct PROJECTUMEOWMI_API FPUDishCustomizationStageDescriptor
+{
+    GENERATED_BODY()
+
+    /** Stable id for branching/save (e.g. `Dish.Congee.Gather`). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
+    FGameplayTag StageId;
+
+    /** Title for shell / banners. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
+    FText StageDisplayName;
+
+    /** Bridges existing camera / plating / planning behavior until shell replaces `GoToStage`. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
+    EDishCustomizationStageType LegacyStageKind = EDishCustomizationStageType::Cooking;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
+    EDishCustomizationWorkspaceMode WorkspaceMode = EDishCustomizationWorkspaceMode::RailVignette;
+
+    /** Widget for this step (`UPUDishCustomizationWidget` subclass or shell slot content). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
+    TSubclassOf<UUserWidget> StageWidgetClass;
+
+    /** Pantry shows ingredients matching these tags (OR). Empty = no extra tag filter beyond unlock rules. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Pantry", meta = (Categories = "Ingredient"))
+    FGameplayTagContainer PantryIngredientParentTags;
+
+    /** Optional gate — BP/gameplay can require this tag before advancing (Phase 5+). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Advance", meta = (Categories = "Dish"))
+    FGameplayTag AdvanceGateTag;
+};
 
 // Internal struct to track ingredient instances
 USTRUCT(BlueprintType)
@@ -96,6 +149,8 @@ struct PROJECTUMEOWMI_API FPUDishBase : public FTableRowBase
 public:
     FPUDishBase();
 
+    bool HasCustomizationPipeline() const { return CustomizationStages.Num() > 0; }
+
     // Basic Identification
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Basic", meta = (Categories = "Dish"))
     FGameplayTag DishTag;
@@ -137,6 +192,13 @@ public:
     /** World position of dish surface center when plating was captured. Used as origin for ingredient placement when copying to preview. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Plating")
     FVector PlatingDishCenter = FVector::ZeroVector;
+
+    /**
+     * Optional ordered customization pipeline (Phase 2). When non-empty, Blueprint/C++ should prefer this over ad-hoc stage subclass chains.
+     * Example (Congee): Gather → Chop → Marinate → Cook → Garnish — each row sets StageId, LegacyStageKind, WorkspaceMode, StageWidgetClass, pantry filters.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Customization Pipeline")
+    TArray<FPUDishCustomizationStageDescriptor> CustomizationStages;
 
     // Tags associated with this dish
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Tags", meta = (Categories = "Dish"))
