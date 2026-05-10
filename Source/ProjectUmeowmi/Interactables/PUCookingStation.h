@@ -90,6 +90,9 @@ protected:
     bool ValidateDishAgainstOrder(const FPUDishBase& Dish, const FPUOrderBase& Order, float& OutSatisfactionScore) const;
 
 private:
+    /** Runs Super::EndInteraction on the next tick so we never nest TalkingObject cleanup inside OnCustomizationEnded multicast / Slate stacks. */
+    void DeferredApplyTalkingObjectInteractionEnded();
+
     // Calculate satisfaction score for order completion
     float CalculateSatisfactionScore(const FPUDishBase& Dish, const FPUOrderBase& Order) const;
 }; 

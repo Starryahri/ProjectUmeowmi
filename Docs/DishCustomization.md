@@ -11,7 +11,7 @@ Gameplay-tag-driven cooking flow: **planning** (pick ingredients) → **cooking*
 
 | Piece | Role |
 |-------|------|
-| `UPUDishCustomizationComponent` | Scene component on stations: starts/ends customization, cameras, input, 3D plating meshes, syncs `CurrentDishData` with UI. |
+| `UPUDishCustomizationComponent` | Scene component on stations: starts/ends customization, cameras, input, 3D plating meshes, syncs `CurrentDishData` with UI. Set **`bUse2DCustomizationMode`** on the station instance to skip spring-arm framing, station camera blends, mesh spawn/drag, and plating bowl swap; exit broadcasts **`OnCustomizationEnded`** immediately (see class properties). |
 | `UPUDishCustomizationWidget` | Multi-stage UI (Planning / Cooking / Plating / Ending); slots, pantry, navigation. |
 | `FPUDishBase` | Authoring + runtime dish: tags, meshes, `IngredientInstances`, `PlatingEntries`, aspect aggregation. |
 | `FIngredientInstance` | One stack in the dish: `InstanceID`, quantity, ingredient data, prep tags, time/temp sliders, plating transforms. |
@@ -75,13 +75,14 @@ N/A. **Feature area:** Dish customization (`DishCustomization/`).
 | `CustomizationMappingContext` | `UInputMappingContext*` | EditDefaultsOnly, BlueprintReadOnly | IMC layered while customizing. |
 | `ControllerMouseSensitivity` | `float` | EditDefaultsOnly, BlueprintReadOnly | Controller mouse speed. |
 | `ControllerMouseDeadzone` | `float` | EditDefaultsOnly, BlueprintReadOnly | Stick deadzone for virtual mouse. |
+| **`bUse2DCustomizationMode`** | **`bool`** | **EditAnywhere, BlueprintReadWrite** | **When true:** skips cooking/plating station cameras and blends, 3D ingredient spawning/drag, plating bowl mesh swap; **`EndCustomization`** clears meshes/restores bowl, clears GI dish tag, restores input/movement, and schedules **`OnCustomizationEnded`** for the next tick (no spring-arm customization enter/exit). |
 
 **Properties — cameras (representative; all EditDefaultsOnly, BlueprintReadOnly)**  
+Used only when **`bUse2DCustomizationMode`** is false (legacy station cameras).
+
 | Property Name | Type | Description |
 |---------------|------|-------------|
-| `CustomizationCameraDistance` / `Pitch` / `OrthoWidth` | `float` | Default ortho customization view before stage split. |
-| `CameraTransitionSpeed` | `float` | Lerp speed when entering/exiting customization. |
-| `CookingCameraDistance` / `Pitch` / `Yaw` / `OrthoWidth` | `float` | Cooking station framing. |
+| `CookingCameraPitch` / `Yaw` / `OrthoWidth` | `float` | Cooking station ortho framing (`SwitchToCookingCamera`). |
 | `CookingCameraPositionOffset` | `FVector` | Fine position tweak (left/right, forward/back, up/down). |
 | `CookingStationCameraComponentName` | `FName` | Name of `UCameraComponent` on station (default `CookingCamera`). |
 | `PlatingCameraDistance` / `Pitch` / `Yaw` / `OrthoWidth` | `float` | Plating station framing. |

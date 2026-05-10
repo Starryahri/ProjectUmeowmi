@@ -25,7 +25,6 @@
 #include "../UI/PUPlatingWidget.h"
 #include "../UI/PUIngredientSlot.h"
 #include "Engine/StaticMeshActor.h"
-#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "Components/PrimitiveComponent.h"
@@ -181,7 +180,7 @@ namespace
 
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
 {
-    PrimaryComponentTick.bCanEverTick = true; // Enable tick for camera transitions
+    PrimaryComponentTick.bCanEverTick = true; // Plating camera tween, virtual cursor sync, mouse-drag fallback
     QuantityIncreaseBindingHandle = 0;
     QuantityDecreaseBindingHandle = 0;
 }
@@ -213,11 +212,6 @@ bool UPUDishCustomizationComponent::ShouldSuppressHardwareMouseCursor() const
 void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-    if (bIsTransitioningCamera && (CurrentCharacter || CameraTransitionCharacter.Get()))
-    {
-        UpdateCameraTransition(DeltaTime);
-    }
 
     // Update plating camera transition if active
     if (bPlatingCameraTransitioning)
@@ -283,7 +277,6 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     StoreOriginalDishContainerMesh();
 
     //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Character valid: %s"), *Character->GetName());
-    CameraTransitionCharacter = nullptr;
     CurrentCharacter = Character;
     if (UWorld* NotifyWorld = GetWorld())
     {
@@ -571,9 +564,7 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
         //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - No CustomizationWidgetClass set"));
     }
 
-    // Start camera transition to customization view
-    //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::StartCustomization - Starting camera transition"));
-    StartCameraTransition(true);
+    // Spring-arm zoom-framing on enter is disabled — customization is UI-first; character camera stays as-is.
 
     // Re-apply capture after layout; re-sync virtual cursor once FSceneViewport CachedGeometry has ticked (no SetFocusToGameViewport — keeps Game+UI widget focus).
     if (UWorld* WorldForCapture = GetWorld())
@@ -586,6 +577,11 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
 
 void UPUDishCustomizationComponent::EndCustomization()
 {
+    if (bInEndCustomization)
+    {
+        return;
+    }
+
     UWorld* World = GetWorld();
     APlayerController* WorldPC = World ? World->GetFirstPlayerController() : nullptr;
 
@@ -608,7 +604,7 @@ void UPUDishCustomizationComponent::EndCustomization()
             LogMovementState(WorldPC, TEXT("EARLY before restore"));
             WorldPC->ResetIgnoreMoveInput();
             WorldPC->ResetIgnoreLookInput();
-            UWidgetBlueprintLibrary::SetFocusToGameViewport();
+            // Do not call SetAllUserFocusToGameViewport here — FindPathToWidget can recurse until stack overflow during teardown.
             if (APawn* Pawn = WorldPC->GetPawn())
             {
                 if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
@@ -623,6 +619,14 @@ void UPUDishCustomizationComponent::EndCustomization()
         }
         return;
     }
+
+    bInEndCustomization = true;
+    struct FScopedEndCustomizationGuard
+    {
+        bool& Flag;
+        explicit FScopedEndCustomizationGuard(bool& InFlag) : Flag(InFlag) {}
+        ~FScopedEndCustomizationGuard() { Flag = false; }
+    } EndCustomizationGuard(bInEndCustomization);
 
     // End plating stage if we're in plating mode
     if (bPlatingMode)
@@ -733,8 +737,7 @@ void UPUDishCustomizationComponent::EndCustomization()
         InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
         PlayerController->SetInputMode(InputMode);
 
-        // Return focus to the game viewport so controller/gamepad works again (was stuck after closing customization UI)
-        UWidgetBlueprintLibrary::SetFocusToGameViewport();
+        // Optional viewport focus skipped — SetAllUserFocusToGameViewport walks Slate tree (FindPathToWidget) and has overflowed stacks here.
 
         if (bHasSavedViewportMouseCaptureForCustomization)
         {
@@ -774,17 +777,16 @@ void UPUDishCustomizationComponent::EndCustomization()
         //UE_LOG(LogTemp,Log, TEXT("Cooking Stage Widget Removed"));
     }
 
-    // Switch back to character camera
-    SwitchToCharacterCamera();
-    
-    // Start camera transition back to original view
-    StartCameraTransition(false);
+    ClearAll3DIngredientMeshes();
+    RestoreOriginalDishContainerMesh();
+    if (World)
+    {
+        if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+        {
+            GI->ClearCurrentDishTag();
+        }
+    }
 
-    // Store character for the outgoing camera transition, then clear CurrentCharacter so IsCustomizing()
-    // returns false immediately. Otherwise other systems (e.g. GameInstance OnPopupWidgetClosed when a
-    // popup closes) see IsCustomizing() true and re-apply ignore move/look, taking control away again.
-    // UpdateCameraTransition uses CameraTransitionCharacter when CurrentCharacter is null.
-    CameraTransitionCharacter = CurrentCharacter;
     bVirtualCursorInitialized = false;
     bVirtualClickConsumedBySlateUI = false;
     bLastVirtualCursorDesktopValid = false;
@@ -807,7 +809,6 @@ void UPUDishCustomizationComponent::EndCustomization()
             LogMovementState(WorldPC, TEXT("WorldPC before restore"));
         WorldPC->ResetIgnoreMoveInput();
         WorldPC->ResetIgnoreLookInput();
-        UWidgetBlueprintLibrary::SetFocusToGameViewport();
 
         // Restore character movement (belt-and-suspenders in case PlayerController path was skipped)
         if (APawn* Pawn = WorldPC->GetPawn())
@@ -823,55 +824,16 @@ void UPUDishCustomizationComponent::EndCustomization()
         if (bPU_LogMovementRestore)
             LogMovementState(WorldPC, TEXT("WorldPC after restore"));
     }
-}
 
-void UPUDishCustomizationComponent::StartCameraTransition(bool bToCustomization)
-{
-    if (!CurrentCharacter)
+    if (World)
     {
-        return;
-    }
-
-    // Store current camera settings
-    USpringArmComponent* CameraBoom = CurrentCharacter->GetCameraBoom();
-    UCameraComponent* FollowCamera = CurrentCharacter->GetFollowCamera();
-    if (!CameraBoom || !FollowCamera)
-    {
-        return;
-    }
-
-    bTransitioningToCustomization = bToCustomization;
-
-    // Store original values if transitioning to customization
-    if (bToCustomization)
-    {
-        OriginalCameraDistance = CameraBoom->TargetArmLength;
-        OriginalCameraPitch = CameraBoom->GetRelativeRotation().Pitch;
-        OriginalCameraYaw = CameraBoom->GetRelativeRotation().Yaw;
-        OriginalOrthoWidth = FollowCamera->OrthoWidth;
-        OriginalCameraOffset = CurrentCharacter->GetCameraOffset();
-        OriginalCameraPositionIndex = CurrentCharacter->GetCameraPositionIndex();
-
-        // Set target values for customization view
-        TargetCameraDistance = CustomizationCameraDistance;
-        TargetCameraPitch = CustomizationCameraPitch;
-        TargetCameraYaw = OriginalCameraYaw; // Keep the same yaw
-        TargetOrthoWidth = CustomizationOrthoWidth;
-        TargetCameraOffset = OriginalCameraOffset; // Keep the same offset
-        TargetCameraPositionIndex = OriginalCameraPositionIndex; // Keep the same position index
+        World->GetTimerManager().SetTimerForNextTick(
+            FTimerDelegate::CreateUObject(this, &UPUDishCustomizationComponent::BroadcastOnCustomizationEndedNextTick));
     }
     else
     {
-        // Set target values back to original
-        TargetCameraDistance = OriginalCameraDistance;
-        TargetCameraPitch = OriginalCameraPitch;
-        TargetCameraYaw = OriginalCameraYaw;
-        TargetOrthoWidth = OriginalOrthoWidth;
-        TargetCameraOffset = OriginalCameraOffset;
-        TargetCameraPositionIndex = OriginalCameraPositionIndex;
+        BroadcastOnCustomizationEndedNextTick();
     }
-
-    bIsTransitioningCamera = true;
 }
 
 void UPUDishCustomizationComponent::SwitchToCookingCamera()
@@ -879,6 +841,11 @@ void UPUDishCustomizationComponent::SwitchToCookingCamera()
     if (!CurrentCharacter || !CurrentCharacter->GetWorld())
     {
         //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCookingCamera - No character or world available"));
+        return;
+    }
+
+    if (bUse2DCustomizationMode)
+    {
         return;
     }
 
@@ -976,8 +943,13 @@ void UPUDishCustomizationComponent::SetCookingCameraPositionOffset(const FVector
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Setting camera offset to: %s"), 
     //    *NewOffset.ToString());
-    
+
     CookingCameraPositionOffset = NewOffset;
+
+    if (bUse2DCustomizationMode)
+    {
+        return;
+    }
     
     // If the cooking camera component is found, update its position
     if (CookingStationCamera)
@@ -990,152 +962,6 @@ void UPUDishCustomizationComponent::SetCookingCameraPositionOffset(const FVector
         
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SetCookingCameraPositionOffset - Updated existing camera position to: %s"), 
         //    *CameraLocation.ToString());
-    }
-}
-
-void UPUDishCustomizationComponent::SwitchToCharacterCamera()
-{
-    if (!CurrentCharacter)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCharacterCamera - No character available"));
-        return;
-    }
-
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Switching to character camera"));
-
-    // Get the player controller
-    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
-    if (!PlayerController)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToCharacterCamera - No player controller found"));
-        return;
-    }
-
-    // Switch back to the character camera
-    PlayerController->SetViewTargetWithBlend(CurrentCharacter, 0.5f);
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Switched to character camera"));
-
-    // Reset the cooking camera component reference
-    CookingStationCamera = nullptr;
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::SwitchToCharacterCamera - Reset cooking camera reference"));
-}
-
-void UPUDishCustomizationComponent::UpdateCameraTransition(float DeltaTime)
-{
-    AProjectUmeowmiCharacter* Char = CurrentCharacter ? CurrentCharacter : CameraTransitionCharacter.Get();
-    if (!Char)
-    {
-        return;
-    }
-
-    USpringArmComponent* CameraBoom = Char->GetCameraBoom();
-    UCameraComponent* FollowCamera = Char->GetFollowCamera();
-    if (!CameraBoom || !FollowCamera)
-    {
-        return;
-    }
-
-    // Get current values
-    float CurrentDistance = CameraBoom->TargetArmLength;
-    float CurrentPitch = CameraBoom->GetRelativeRotation().Pitch;
-    float CurrentYaw = CameraBoom->GetRelativeRotation().Yaw;
-    float CurrentOrthoWidth = FollowCamera->OrthoWidth;
-    float CurrentCameraOffset = Char->GetCameraOffset();
-    int32 CurrentCameraPositionIndex = Char->GetCameraPositionIndex();
-
-    // Interpolate values
-    float NewDistance = FMath::FInterpTo(CurrentDistance, TargetCameraDistance, DeltaTime, CameraTransitionSpeed);
-    float NewPitch = FMath::FInterpTo(CurrentPitch, TargetCameraPitch, DeltaTime, CameraTransitionSpeed);
-    float NewYaw = FMath::FInterpTo(CurrentYaw, TargetCameraYaw, DeltaTime, CameraTransitionSpeed);
-    float NewOrthoWidth = FMath::FInterpTo(CurrentOrthoWidth, TargetOrthoWidth, DeltaTime, CameraTransitionSpeed);
-    float NewCameraOffset = FMath::FInterpTo(CurrentCameraOffset, TargetCameraOffset, DeltaTime, CameraTransitionSpeed);
-
-    // Apply new values
-    CameraBoom->TargetArmLength = NewDistance;
-    CameraBoom->SetRelativeRotation(FRotator(NewPitch, NewYaw, 0.0f));
-    FollowCamera->OrthoWidth = NewOrthoWidth;
-    Char->SetCameraOffset(NewCameraOffset);
-    Char->SetCameraPositionIndex(TargetCameraPositionIndex);
-
-    // Check if we've reached the target
-    if (FMath::IsNearlyEqual(NewDistance, TargetCameraDistance, 1.0f) &&
-        FMath::IsNearlyEqual(NewPitch, TargetCameraPitch, 1.0f) &&
-        FMath::IsNearlyEqual(NewYaw, TargetCameraYaw, 1.0f) &&
-        FMath::IsNearlyEqual(NewOrthoWidth, TargetOrthoWidth, 1.0f) &&
-        FMath::IsNearlyEqual(NewCameraOffset, TargetCameraOffset, 1.0f))
-    {
-        bIsTransitioningCamera = false;
-
-        // Only run exit logic when we're transitioning OUT of customization (not when entering or going to cooking).
-        // bTransitioningToCustomization: false = transitioning out, true = transitioning in or to cooking stage.
-        // TargetOrthoWidth==OriginalOrthoWidth: ensures we're actually returning to original camera (not cooking target).
-        const bool bIsExiting = !bTransitioningToCustomization && (TargetOrthoWidth == OriginalOrthoWidth);
-
-        // If we're exiting customization (returning to original camera settings), re-enable collision detection
-        if (bIsExiting && Char)
-        {
-            if (CameraBoom)
-            {
-                CameraBoom->bDoCollisionTest = true;
-                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::UpdateCameraTransition - Re-enabled spring arm collision detection"));
-            }
-        }
-
-        // If we're exiting customization, clear the character reference and broadcast the end event
-        if (bIsExiting)
-        {
-            // Transforms were already captured in EndPlatingStage; clear meshes now
-            ClearAll3DIngredientMeshes();
-            
-            // Restore the original dish container mesh
-            RestoreOriginalDishContainerMesh();
-
-            CameraTransitionCharacter = nullptr;
-            bVirtualCursorInitialized = false;
-            CurrentCharacter = nullptr;
-
-            UWorld* World = GetWorld();
-            if (UPUProjectUmeowmiGameInstance* GI = World ? World->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
-            {
-                GI->ClearCurrentDishTag();
-            }
-            OnCustomizationEnded.Broadcast();
-
-            // Force restore move/look, input mode, and focus when transition fully ends (belt-and-suspenders so player can always move/interact)
-            if (World)
-            {
-                if (APlayerController* PC = World->GetFirstPlayerController())
-                {
-                    if (bPU_LogMovementRestore)
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[MovementRestore] UpdateCameraTransition bIsExiting - restoring move/look"));
-                        LogMovementState(PC, TEXT("CAMERA_TRANSITION before"));
-                    }
-                    PC->ResetIgnoreMoveInput();
-                    PC->ResetIgnoreLookInput();
-                    PC->bShowMouseCursor = true;
-                    RestoreSlatePlatformCursorForUser();
-                    if (APawn* Pawn = PC->GetPawn())
-                    {
-                        if (ACharacter* PlayerCharacter = Cast<ACharacter>(Pawn))
-                        {
-                            if (UCharacterMovementComponent* MovementComp = PlayerCharacter->GetCharacterMovement())
-                            {
-                                MovementComp->SetMovementMode(MOVE_Walking);
-                            }
-                        }
-                    }
-                    if (bPU_LogMovementRestore)
-                        LogMovementState(PC, TEXT("CAMERA_TRANSITION after"));
-                    FInputModeGameAndUI InputMode;
-                    InputMode.SetWidgetToFocus(nullptr);
-                    InputMode.SetHideCursorDuringCapture(false);
-                    InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-                    PC->SetInputMode(InputMode);
-                    UWidgetBlueprintLibrary::SetFocusToGameViewport();
-                }
-            }
-        }
     }
 }
 
@@ -1474,6 +1300,11 @@ void UPUDishCustomizationComponent::NotifyVirtualCursorInteractVisual(bool bPres
     }
 }
 
+void UPUDishCustomizationComponent::BroadcastOnCustomizationEndedNextTick()
+{
+    OnCustomizationEnded.Broadcast();
+}
+
 void UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup()
 {
     if (!IsCustomizing() || !CurrentCharacter)
@@ -1639,6 +1470,12 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
     else if (bPU_LogVirtualCursorClick && bVirtualCursorInitialized && FSlateApplication::IsInitialized())
     {
         UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Synthetic UMG click SKIPPED because physical LeftMouseButton is DOWN — if you use gamepad only, check IMC: Interact must NOT also press LMB."));
+    }
+
+    if (!CanSpawnIngredientsIn3D())
+    {
+        ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
+        return;
     }
 
     const FVector2D ScreenPos = ViewportCursor;
@@ -2482,6 +2319,11 @@ bool UPUDishCustomizationComponent::IsPlatingMode() const
 
 bool UPUDishCustomizationComponent::CanSpawnIngredientsIn3D() const
 {
+    if (bUse2DCustomizationMode)
+    {
+        return false;
+    }
+
     // Allow spawning in both plating and cooking stages
     if (bPlatingMode)
     {
@@ -2652,7 +2494,10 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     BroadcastInitialDishData(DishData);
     
     // Switch to plating camera
-    SwitchToPlatingCamera();
+    if (!bUse2DCustomizationMode)
+    {
+        SwitchToPlatingCamera();
+    }
     
     // Swap to dish mesh from data table (DishData.DishMesh); fallback to PlatingDishMesh if not set
     TSoftObjectPtr<UStaticMesh> MeshToUse = DishData.DishMesh;
@@ -2670,7 +2515,7 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
     {
         LoadedMesh = LoadObject<UStaticMesh>(nullptr, *MeshToUse.ToString());
     }
-    if (LoadedMesh)
+    if (LoadedMesh && !bUse2DCustomizationMode)
     {
         SwapDishContainerMesh(LoadedMesh);
     }
@@ -2733,6 +2578,11 @@ void UPUDishCustomizationComponent::EndPlatingStage()
 
 void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition)
 {
+    if (bUse2DCustomizationMode)
+    {
+        return;
+    }
+
     // Get the owner actor (should be the plating station or dish)
     AActor* OwnerActor = GetOwner();
     if (!OwnerActor)
@@ -2841,43 +2691,16 @@ void UPUDishCustomizationComponent::SpawnVisualIngredientMesh(const FIngredientI
     }
 }
 
-void UPUDishCustomizationComponent::StartCookingStageCameraTransition()
-{
-    if (!CurrentCharacter)
-    {
-        return;
-    }
-
-    USpringArmComponent* CameraBoom = CurrentCharacter->GetCameraBoom();
-    UCameraComponent* FollowCamera = CurrentCharacter->GetFollowCamera();
-    if (!CameraBoom || !FollowCamera)
-    {
-        return;
-    }
-
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::StartCookingStageCameraTransition - Starting cooking stage camera transition"));
-
-    // Disable collision detection on the spring arm to prevent jittering
-    CameraBoom->bDoCollisionTest = false;
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationComponent::StartCookingStageCameraTransition - Disabled spring arm collision detection"));
-
-    // Set target values for cooking stage view
-    TargetCameraDistance = CookingCameraDistance;
-    TargetCameraPitch = CookingCameraPitch;
-    TargetCameraYaw = CookingCameraYaw;
-    TargetOrthoWidth = CookingOrthoWidth;
-    TargetCameraOffset = OriginalCameraOffset; // Keep the same offset
-    TargetCameraPositionIndex = OriginalCameraPositionIndex; // Keep the same position index
-
-    bIsTransitioningCamera = true;
-}
-
-
 void UPUDishCustomizationComponent::SwitchToPlatingCamera()
 {
     if (!CurrentCharacter || !GetWorld())
     {
         //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationComponent::SwitchToPlatingCamera - No character or world available"));
+        return;
+    }
+
+    if (bUse2DCustomizationMode)
+    {
         return;
     }
 
@@ -3016,6 +2839,11 @@ void UPUDishCustomizationComponent::StartPlatingCameraTransition(const FVector* 
         return;
     }
 
+    if (bUse2DCustomizationMode)
+    {
+        return;
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎬 UPUDishCustomizationComponent::StartPlatingCameraTransition - Starting smooth camera transition"));
 
     // Use explicit start when provided (e.g. when skipping Cooking), else derive from CookingCamera
@@ -3107,6 +2935,11 @@ void UPUDishCustomizationComponent::SetPlatingCameraPositionOffset(const FVector
     //    *NewOffset.ToString());
 
     PlatingCameraPositionOffset = NewOffset;
+
+    if (bUse2DCustomizationMode)
+    {
+        return;
+    }
 
     // If the plating camera component is found, update its position
     if (PlatingStationCamera)

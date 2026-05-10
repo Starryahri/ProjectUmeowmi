@@ -2,6 +2,8 @@
 #include "../ProjectUmeowmiCharacter.h"
 #include "../DishCustomization/PUDishPreviewComponent.h"
 #include "GameplayTagContainer.h"
+#include "Engine/World.h"
+#include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 
@@ -210,6 +212,13 @@ void APUCookingStation::StartInteraction()
 
 void APUCookingStation::EndInteraction()
 {
+    // Slate focus changes during customization teardown can synchronously invoke EndInteraction again.
+    // Skip nested calls — outer EndInteraction still runs Super after EndCustomization returns.
+    if (IsValid(DishCustomizationComponent) && DishCustomizationComponent->IsTearingDownCustomization())
+    {
+        return;
+    }
+
     // End dish customization if active
     if (IsValid(DishCustomizationComponent))
     {
@@ -304,8 +313,21 @@ void APUCookingStation::OnCustomizationEnded()
             //UE_LOG(LogTemp,Display, TEXT("CookingStation::OnCustomizationEnded - No active order to validate against"));
         }
     }
-    
-    EndInteraction();
+
+    if (UWorld* W = GetWorld())
+    {
+        W->GetTimerManager().SetTimerForNextTick(
+            FTimerDelegate::CreateUObject(this, &APUCookingStation::DeferredApplyTalkingObjectInteractionEnded));
+    }
+    else
+    {
+        Super::EndInteraction();
+    }
+}
+
+void APUCookingStation::DeferredApplyTalkingObjectInteractionEnded()
+{
+    Super::EndInteraction();
 }
 
 bool APUCookingStation::ValidateDishAgainstOrder(const FPUDishBase& Dish, const FPUOrderBase& Order, float& OutSatisfactionScore) const

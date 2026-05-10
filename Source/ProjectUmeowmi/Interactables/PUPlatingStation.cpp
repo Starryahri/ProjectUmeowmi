@@ -107,6 +107,11 @@ void APUPlatingStation::StartInteraction()
 
 void APUPlatingStation::EndInteraction()
 {
+    if (IsValid(PlatingComponent) && PlatingComponent->IsTearingDownCustomization())
+    {
+        return;
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🍽️ APUPlatingStation::EndInteraction - Ending plating interaction"));
 
     if (PlatingComponent)
@@ -142,7 +147,8 @@ void APUPlatingStation::OnPlatingEnded()
         //UE_LOG(LogTemp,Display, TEXT("✅ APUPlatingStation::OnPlatingEnded - Updated order with plated dish data"));
     }
 
-    EndInteraction();
+    // Plating customization already ended; only clear TalkingObject interaction state (avoid EndInteraction → EndCustomization).
+    Super::EndInteraction();
 }
 
 void APUPlatingStation::StartNoOrderDialogue()

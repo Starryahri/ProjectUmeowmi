@@ -47,6 +47,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization")
     bool IsCustomizing() const { return CurrentCharacter != nullptr; }
 
+    /** True during EndCustomization teardown — stations must not call EndCustomization again from nested EndInteraction (focus/input chains). */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization")
+    bool IsTearingDownCustomization() const { return bInEndCustomization; }
+
     /** UMG virtual pointer is active — OS hardware cursor must stay hidden (Slate capture / other code can re-enable it). */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Virtual Cursor")
     bool ShouldSuppressHardwareMouseCursor() const;
@@ -273,23 +277,18 @@ public:
     UPROPERTY(Transient)
     TObjectPtr<UUserWidget> VirtualCursorWidgetInstance = nullptr;
 
-    // Camera Management
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
-    float CustomizationCameraDistance = 200.0f;
+    /**
+     * Default ON: UI-first flow — no spring-arm customization framing on enter/exit, no world ingredient spawn/drag,
+     * no plating bowl mesh swap. Set false only if you restore legacy 3D station framing (SwitchToCookingCamera / plating cameras).
+     * OnCustomizationEnded fires next tick after EndCustomization completes.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization|2D Mode")
+    bool bUse2DCustomizationMode = true;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
-    float CustomizationCameraPitch = -25.0f;
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|2D Mode")
+    bool IsUsing2DCustomizationMode() const { return bUse2DCustomizationMode; }
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
-    float CameraTransitionSpeed = 2.0f;
-
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Camera")
-    float CustomizationOrthoWidth = 500.0f;
-
-    // Cooking Stage Camera Management
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
-    float CookingCameraDistance = 200.0f;
-
+    // Cooking Stage Camera Management (legacy 3D station view — skipped when bUse2DCustomizationMode)
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization|Cooking Camera")
     float CookingCameraPitch = -15.0f;
 
@@ -382,9 +381,8 @@ protected:
     UPROPERTY()
     AProjectUmeowmiCharacter* CurrentCharacter;
 
-    /** Used during camera transition out of customization so we can clear CurrentCharacter (and thus IsCustomizing()) immediately while the transition still has a character reference. */
-    UPROPERTY()
-    TWeakObjectPtr<AProjectUmeowmiCharacter> CameraTransitionCharacter;
+    /** Blocks re-entrant EndCustomization (Slate focus / interaction code can call EndInteraction → EndCustomization mid-teardown). */
+    bool bInEndCustomization = false;
 
     // Input binding handles
     uint32 ExitActionBindingHandle;
@@ -408,17 +406,6 @@ protected:
     FVector DragStartMousePosition;
     FVector DragOffset; // Offset between mouse and ingredient when grabbed
 
-    // Camera transition state
-    bool bIsTransitioningCamera = false;
-    /** True when transitioning INTO customization; false when transitioning OUT. Used to avoid incorrectly running exit logic when entering. */
-    bool bTransitioningToCustomization = false;
-    float OriginalCameraDistance = 0.0f;
-    float OriginalCameraPitch = 0.0f;
-    float OriginalCameraYaw = 0.0f;
-    float OriginalOrthoWidth = 0.0f;
-    float OriginalCameraOffset = 0.0f;
-    int32 OriginalCameraPositionIndex = 0;
-
     // Cooking stage camera component
     UPROPERTY()
     UCameraComponent* CookingStationCamera = nullptr;
@@ -433,12 +420,6 @@ private:
 
     // Spawn visual 3D mesh for ingredient
     void SpawnVisualIngredientMesh(const FIngredientInstance& IngredientInstance, const FVector& WorldPosition);
-    float TargetCameraDistance = 0.0f;
-    float TargetCameraPitch = 0.0f;
-    float TargetCameraYaw = 0.0f;
-    float TargetOrthoWidth = 0.0f;
-    float TargetCameraOffset = 0.0f;
-    int32 TargetCameraPositionIndex = 0;
 
     // Plating mode state
     bool bPlatingMode = false;
@@ -503,6 +484,8 @@ private:
     void NotifyVirtualCursorInteractVisual(bool bPressed);
     FVector2D GetVirtualCursorScreenPosition(APlayerController* PC) const;
     void OnCustomizationViewportDeferredSetup();
+    /** Runs OnCustomizationEnded next tick so Blueprint ReceiveEndInteraction / delegate graphs cannot re-enter EndCustomization during synchronous teardown. */
+    void BroadcastOnCustomizationEndedNextTick();
     void OnPreInputMouseButtonDown(const struct FPointerEvent& MouseEvent);  // Slate pre-input (before widgets consume)
     void HandleMouseClick(const FInputActionValue& Value);
     void HandleMouseRelease(const FInputActionValue& Value);
@@ -512,15 +495,7 @@ private:
     void HandleQuantityDecrease(const FInputActionValue& Value);
     void UpdateMouseDrag();
 
-    // Camera handling
-    void StartCameraTransition(bool bToCustomization);
-    void UpdateCameraTransition(float DeltaTime);
-
-    // Cooking stage camera handling
-    void StartCookingStageCameraTransition();
-    void SwitchToCharacterCamera();
-
-    // Plating stage camera handling
+    // Cooking / plating station cameras (legacy 3D paths)
     void SetPlatingCameraPositionOffset(const FVector& NewOffset);
     void StartPlatingCameraTransition(const FVector* ExplicitStartLocation = nullptr, const FRotator* ExplicitStartRotation = nullptr, float ExplicitStartOrthoWidth = -1.0f);
     void UpdatePlatingCameraTransition(float DeltaTime);
