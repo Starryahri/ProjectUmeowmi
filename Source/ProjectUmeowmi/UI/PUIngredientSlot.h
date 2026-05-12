@@ -19,7 +19,6 @@ enum class EPUIngredientSlotLocation : uint8
 {
     Pantry,
     ActiveIngredientArea,
-    Prep,
     Plating,
     Prepped
 };
@@ -63,6 +62,10 @@ public:
     // Get the location
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     EPUIngredientSlotLocation GetLocation() const { return Location; }
+
+    /** Planning-stage gather plate uses ActiveIngredientArea; cooking strip uses the same location on the cooking widget. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
+    bool IsPlanningGatherPlateSlot() const;
 
     // Set selection state
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
@@ -177,6 +180,20 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     void SetDishCustomizationWidget(class UPUDishCustomizationWidget* InDishWidget);
 
+    /** When true, pantry slots show InventoryEmptyDot instead of PlateBackground (shelf padding cells only). */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Pantry")
+    void SetPantryShelfPaddingCell(bool bPadding);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Pantry")
+    bool IsPantryShelfPaddingCell() const { return bPantryShelfPaddingCell; }
+
+    /** True for slots in the prepped-ingredient picker row (inside pantry UI); click/controller behave like pantry picks. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Pantry")
+    void SetPreppedPantryPickerSlot(bool bPicker);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Pantry")
+    bool IsPreppedPantryPickerSlot() const { return bPreppedPantryPickerSlot; }
+
     // Controller input functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
     void HandleControllerSelect(); // Called when A/X button is pressed on focused slot
@@ -269,6 +286,14 @@ protected:
     UPROPERTY(meta = (BindWidgetOptional))
     UImage* IngredientSelect;
 
+    /** Optional: shown for pantry shelf padding slots instead of PlateBackground (name must match in WBP). */
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* InventoryEmptyDot;
+
+    /** Texture for pantry shelf padding cells; assign on the ingredient slot widget class (InventoryEmptyDot brush optional if set here). */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ingredient Slot|Pantry")
+    TObjectPtr<UTexture2D> PantryShelfEmptyDotTexture = nullptr;
+
     // Animation played when IngredientSelect is shown (fade-in + rotation). Name in Blueprint must match "IngredientSelectAnim"
     UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
     UWidgetAnimation* IngredientSelectAnim;
@@ -342,6 +367,11 @@ protected:
 
     // Guard to avoid binding radial menu events multiple times
     bool bRadialMenuEventsBound = false;
+
+    /** True only for pantry shelf filler slots (prevents empty-dot flash before real ingredient is assigned). */
+    bool bPantryShelfPaddingCell = false;
+
+    bool bPreppedPantryPickerSlot = false;
 
     // Cached reference to the dish customization widget (set when slot is created)
     UPROPERTY()
@@ -433,6 +463,7 @@ private:
     UTexture2D* GetPreparationTexture(const FGameplayTag& PreparationTag) const;
     UTexture2D* GetPreparationPrepTexture(const FGameplayTag& PreparationTag, UDataTable* PrepDataTable) const;
     void ClearDisplay();
+    void ApplyPantryShelfEmptyVisual();
 
     // Get the appropriate texture based on location
     UTexture2D* GetTextureForLocation() const;

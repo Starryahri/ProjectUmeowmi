@@ -125,7 +125,8 @@ public:
     // This is the main function for creating slots - all other creation functions use this internally
     // Parameters:
     //   - Container: The container widget to add slots to (can be null if bUseShelvingWidgets is true, container will be used for shelving widgets)
-    //   - Location: The location type for the slots (Pantry, ActiveIngredientArea, Prep, Plating, Prepped)
+    //   - Location: The location type for the slots (Pantry, ActiveIngredientArea, Plating, Prepped).
+    //     Planning gather plate and cooking strip both use ActiveIngredientArea; behavior differs by dish widget StageType.
     //   - MaxSlots: Maximum number of slots to create (default 12, clamped to 1-12)
     //   - bUseShelvingWidgets: If true, slots will be organized into shelving widgets (3 slots per shelf). If false, slots added directly to container
     //   - bCreateEmptySlots: If true, creates empty slots up to MaxSlots. If false, only creates slots for existing ingredients
@@ -136,7 +137,6 @@ public:
     void CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding = 0.0f);
     
     // Convenience function that uses CurrentDishData.IngredientInstances (no IngredientSource parameter needed).
-    // For Prep location, always creates empty slots (player chooses from pantry; dish ingredients are added via EnsureDishIngredientsInPantry).
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots = 12, bool bUseShelvingWidgets = false, bool bCreateEmptySlots = true, bool bEnableDrag = true, float FirstSlotLeftPadding = 0.0f);
     
@@ -164,7 +164,7 @@ public:
     void CreatePlatingIngredientSlots();
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Plating")
-    void SetIngredientSlotContainer(UPanelWidget* Container, EPUIngredientSlotLocation SlotLocation = EPUIngredientSlotLocation::Prep);
+    void SetIngredientSlotContainer(UPanelWidget* Container, EPUIngredientSlotLocation SlotLocation = EPUIngredientSlotLocation::ActiveIngredientArea);
 
     // Prepped ingredient management functions (for prep stage)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Prepped")
@@ -274,6 +274,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
     void SetPantryContainerByName(const FName& ContainerName);
 
+    /** Scroll/list panel for prepped-ingredient picks (same shelving pattern as pantry). Bind a widget named PreppedPantryScrollBox or call SetPreppedPantryContainer. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void SetPreppedPantryContainer(UPanelWidget* Container);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void SetPreppedPantryContainerByName(const FName& ContainerName);
+
+    /** Rebuild from CurrentDishData: one slot per instance with any preparation, padded to rows of 3. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
+    void RefreshPreppedPantrySlots();
+
     // Handle empty slot click (opens pantry)
     UFUNCTION()
     void OnEmptySlotClicked(class UPUIngredientSlot* IngredientSlot);
@@ -293,6 +304,10 @@ public:
     // Set up navigation for pantry slots (for controller support)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
     void SetupPantrySlotNavigation();
+
+    /** Controller navigation for prepped-ingredient picker rows (inside pantry UI). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    void SetupPreppedPantrySlotNavigation();
     
     // Set initial focus for pantry (for controller support)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
@@ -437,6 +452,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Pantry")
     TWeakObjectPtr<class UPanelWidget> PantryContainer;
 
+    /** Optional: panel or scroll box hosting prepped-ingredient picker shelving (e.g. widget name PreppedPantryScrollBox). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Pantry")
+    TWeakObjectPtr<class UPanelWidget> PreppedPantryContainer;
+
     // Store references to pantry slots by ingredient tag (for quick lookup)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     TMap<FGameplayTag, class UPUIngredientSlot*> PantrySlotMap;
@@ -456,6 +475,18 @@ protected:
     // Number of slots in the current pantry shelving widget (0-3)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     int32 CurrentPantryShelvingWidgetSlotCount = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    TArray<class UPUIngredientSlot*> CreatedPreppedPantrySlots;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    TArray<UUserWidget*> CreatedPreppedPantryShelvingWidgets;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    TWeakObjectPtr<UUserWidget> CurrentPreppedPantryShelvingWidget;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
+    int32 CurrentPreppedPantryShelvingWidgetSlotCount = 0;
 
     // Implement Preparation Tags (simplified - no carousel, just data structure)
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization Widget|Preparations", meta=(EditFixedSize=true, Categories="Prep", DisplayName="Implement Preparation Tags", ToolTip="Per-implement allowed preparation tags; uses Prep.* tags"))
@@ -523,6 +554,9 @@ private:
     void CreateIngredientInstance(const FPUIngredientBase& IngredientData);
     void UpdateIngredientInstance(const FIngredientInstance& IngredientInstance);
     void RefreshQuantityControls();
+
+    /** Shared by raw pantry pick and prepped pantry pick: fills pending strip slot, syncs dish, closes pantry, restores focus. */
+    void CompletePendingStripFillAndClosePantry(const FIngredientInstance& NewInstance);
     
     // Handle pantry slot clicks
     UFUNCTION()
@@ -546,4 +580,8 @@ private:
     
     // Helper function to add a slot to the current pantry shelving widget
     bool AddSlotToCurrentPantryShelvingWidget(class UPUIngredientSlot* IngredientSlot);
+
+    UUserWidget* GetOrCreateCurrentPreppedPantryShelvingWidget(UPanelWidget* ContainerToUse);
+
+    bool AddSlotToCurrentPreppedPantryShelvingWidget(class UPUIngredientSlot* IngredientSlot);
 }; 

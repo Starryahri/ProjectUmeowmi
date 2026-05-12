@@ -155,12 +155,9 @@ void UPUIngredientSlot::NativeConstruct()
         UpdateDisplay();
     }
 
-    // Make slots focusable for controller navigation (especially important for prep stage)
-    // Prep, Pantry, and ActiveIngredientArea slots should be focusable
-    if (Location == EPUIngredientSlotLocation::Prep || 
-        Location == EPUIngredientSlotLocation::Pantry || 
-        Location == EPUIngredientSlotLocation::ActiveIngredientArea ||
-        Location == EPUIngredientSlotLocation::Prepped)
+    // Make slots focusable for controller navigation (gather plate + pantry + cooking strip all use ActiveIngredientArea or Pantry)
+    if (Location == EPUIngredientSlotLocation::Pantry ||
+        Location == EPUIngredientSlotLocation::ActiveIngredientArea)
     {
         SetIsFocusable(true);
     }
@@ -287,8 +284,8 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     // Update all display elements
     UpdateDisplay();
 
-    // If ingredient is added to Prep area, automatically create/update prepped slot
-    if (bHasIngredient && Location == EPUIngredientSlotLocation::Prep)
+    // Planning gather plate: ingredient appears in prepped strip when added
+    if (bHasIngredient && IsPlanningGatherPlateSlot())
     {
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
         if (DishWidget)
@@ -315,8 +312,8 @@ void UPUIngredientSlot::ClearSlot()
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Clearing slot: %s"), *GetName());
 
-    // If we're in prep or active ingredient area and have an ingredient, remove the prepped slot
-    if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient)
+    // Active ingredient strip: clear prepped UI mirror when removing from dish strip
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && bHasIngredient)
     {
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ClearSlot - Removing prepped slot for ingredient with preparations"));
         UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
@@ -350,9 +347,25 @@ void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
         // Update display when location changes (texture may change)
         UpdateDisplay();
 
+        // Match NativeConstruct: focusable when switching stage at runtime
+        const bool bFocusable =
+            (Location == EPUIngredientSlotLocation::Pantry ||
+             Location == EPUIngredientSlotLocation::ActiveIngredientArea);
+        SetIsFocusable(bFocusable);
+
         // Call Blueprint event
         OnLocationChanged(Location);
     }
+}
+
+bool UPUIngredientSlot::IsPlanningGatherPlateSlot() const
+{
+    if (Location != EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        return false;
+    }
+    const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    return DishWidget != nullptr && DishWidget->GetStageType() == EDishCustomizationStageType::Planning;
 }
 
 void UPUIngredientSlot::UpdateDisplay()
@@ -360,18 +373,38 @@ void UPUIngredientSlot::UpdateDisplay()
     // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
     //     *GetName(), IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
-    // For pantry, prep, and prepped slots, we want to show the texture even if "empty" (quantity 0)
-    // For other locations, clear display if empty
+    // Pantry / prepped bowls / planning gather plate show texture even when quantity is 0
     bool bShouldClear = IsEmpty();
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prepped ||
+        IsPlanningGatherPlateSlot())
     {
-        // Pantry/Prep/Prepped slots: only clear if we don't have ingredient data at all
+        // Pantry/Prepped/planning gather: only clear if we don't have ingredient data at all
         bShouldClear = !IngredientInstance.IngredientData.IngredientTag.IsValid();
     }
 
     if (bShouldClear)
     {
         ClearDisplay();
+        // Shelf padding cells (pantry + prepped picker rows): empty-dot visual instead of plate
+        if ((Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prepped) &&
+            bPantryShelfPaddingCell && !IngredientInstance.IngredientData.IngredientTag.IsValid())
+        {
+            ApplyPantryShelfEmptyVisual();
+        }
+        // Strip slots collapse PlateBackground while occupied (prep bowls / icon). When the slot
+        // becomes empty we must show the plate again — otherwise the widget can retain zero useful
+        // hit geometry and LMB never reaches NativeOnMouseButtonDown (pantry won't open on click).
+        else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && PlateBackground)
+        {
+            PlateBackground->SetVisibility(ESlateVisibility::Visible);
+        }
+        else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && !PlateBackground && IngredientIcon &&
+                 IsEmpty())
+        {
+            // No plate bound in BP: keep a hit-target-sized icon slot so hover/clicks still reach this widget.
+            IngredientIcon->SetVisibility(ESlateVisibility::Visible);
+            IngredientIcon->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.f));
+        }
     }
     else
     {
@@ -386,21 +419,21 @@ void UPUIngredientSlot::UpdateDisplay()
         {
             UpdateHoverTextVisibility(true);
         }
-        
-        // Handle PlateBackground visibility based on location
+
         if (PlateBackground)
         {
-            if (Location == EPUIngredientSlotLocation::Prepped || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
-            {
-                // Hide PlateBackground for Prepped and ActiveIngredientArea locations (prep bowls are shown instead)
-                PlateBackground->SetVisibility(ESlateVisibility::Collapsed);
-            }
-            else
-            {
-                // Show PlateBackground for other locations
-                PlateBackground->SetVisibility(ESlateVisibility::Visible);
-            }
+            PlateBackground->SetVisibility(ESlateVisibility::Visible);
         }
+        if (InventoryEmptyDot)
+        {
+            InventoryEmptyDot->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+
+    // Strip slots must stay fully hit-testable; BP visibility quirks otherwise swallow hover/LMB.
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        SetVisibility(ESlateVisibility::Visible);
     }
 }
 
@@ -412,12 +445,11 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         return;
     }
 
-    // For pantry, prep, and prepped slots, show texture even if empty (to display ingredient texture)
-    // For active ingredient area slots, only show if we have an ingredient
+    // Pantry / prepped bowls / planning gather plate show texture even when quantity is 0
     bool bShouldShowTexture = false;
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prepped ||
+        IsPlanningGatherPlateSlot())
     {
-        // Pantry/Prep/Prepped slots: show texture if we have ingredient data (even if quantity is 0)
         bShouldShowTexture = IngredientInstance.IngredientData.IngredientTag.IsValid();
     }
     else // ActiveIngredientArea
@@ -554,8 +586,9 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         
         IngredientIcon->SetVisibility(ESlateVisibility::Visible);
         
-        // Grey out the icon if quantity is 0, but NOT for Pantry, Prep, or Prepped locations
-        if (IngredientInstance.Quantity <= 0 && Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && Location != EPUIngredientSlotLocation::Prepped)
+        // Grey out the icon if quantity is 0, but NOT for pantry, planning gather, or prepped bowls
+        if (IngredientInstance.Quantity <= 0 && Location != EPUIngredientSlotLocation::Pantry &&
+            Location != EPUIngredientSlotLocation::Prepped && !IsPlanningGatherPlateSlot())
         {
             // Grey color: 0.5, 0.5, 0.5, 1.0
             IngredientIcon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
@@ -653,99 +686,9 @@ UTexture2D* UPUIngredientSlot::GetPreparationPrepTexture(const FGameplayTag& Pre
 
 void UPUIngredientSlot::UpdatePrepBowls()
 {
-    // Update prep bowls for Prepped and ActiveIngredientArea location slots
-    if (Location != EPUIngredientSlotLocation::Prepped && Location != EPUIngredientSlotLocation::ActiveIngredientArea)
-    {
-        // Hide prep bowls for other locations
-        if (PrepBowlFront) PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
-        if (PrepBowlBack) PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
-        return;
-    }
-
-    // Check if we have valid texture arrays
-    if (PrepBowlFrontTextures.Num() == 0 || PrepBowlBackTextures.Num() == 0)
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::UpdatePrepBowls - Prep bowl texture arrays are empty (Front: %d, Back: %d)"),
-        //    PrepBowlFrontTextures.Num(), PrepBowlBackTextures.Num());
-        // Hide prep bowls if no textures available
-        if (PrepBowlFront) PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
-        if (PrepBowlBack) PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
-        return;
-    }
-
-    // Use a deterministic random stream seeded by the ingredient instance ID so the same
-    // instance always gets the same bowl selection across widgets and refreshes.
-    int32 InstanceID = IngredientInstance.InstanceID;
-
-    // If we somehow don't have a valid instance ID, fall back to zero (first textures).
-    if (InstanceID == 0)
-    {
-        InstanceID = 1;
-    }
-
-    FRandomStream Stream(InstanceID);
-
-    int32 FrontIndex = 0;
-    int32 BackIndex = 0;
-
-    if (bUseRandomPrepBowls)
-    {
-        // Random selection: any front with any back (but deterministic per instance)
-        FrontIndex = Stream.RandRange(0, PrepBowlFrontTextures.Num() - 1);
-        BackIndex  = Stream.RandRange(0, PrepBowlBackTextures.Num() - 1);
-
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic random selection (InstanceID: %d, Front: %d, Back: %d)"),
-        //    IngredientInstance.InstanceID, FrontIndex, BackIndex);
-    }
-    else
-    {
-        // Paired selection: use same index from both arrays (deterministic per instance)
-        int32 MaxIndex = FMath::Min(PrepBowlFrontTextures.Num(), PrepBowlBackTextures.Num()) - 1;
-        int32 SelectedIndex = Stream.RandRange(0, MaxIndex);
-        FrontIndex = BackIndex = SelectedIndex;
-
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Deterministic paired selection (InstanceID: %d, Index: %d)"),
-        //    IngredientInstance.InstanceID, SelectedIndex);
-    }
-
-    UTexture2D* SelectedFrontTexture = PrepBowlFrontTextures.IsValidIndex(FrontIndex)
-        ? PrepBowlFrontTextures[FrontIndex]
-        : nullptr;
-    UTexture2D* SelectedBackTexture = PrepBowlBackTextures.IsValidIndex(BackIndex)
-        ? PrepBowlBackTextures[BackIndex]
-        : nullptr;
-
-    // Set front bowl texture and visibility
-    if (PrepBowlFront)
-    {
-        if (SelectedFrontTexture)
-        {
-            PrepBowlFront->SetBrushFromTexture(SelectedFrontTexture);
-            PrepBowlFront->SetVisibility(ESlateVisibility::Visible);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set front bowl texture: %s"),
-            //    *SelectedFrontTexture->GetName());
-        }
-        else
-        {
-            PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
-        }
-    }
-
-    // Set back bowl texture and visibility
-    if (PrepBowlBack)
-    {
-        if (SelectedBackTexture)
-        {
-            PrepBowlBack->SetBrushFromTexture(SelectedBackTexture);
-            PrepBowlBack->SetVisibility(ESlateVisibility::Visible);
-            //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdatePrepBowls - Set back bowl texture: %s"),
-            //    *SelectedBackTexture->GetName());
-        }
-        else
-        {
-            PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
-        }
-    }
+    // Prep bowl layers retired — keep widgets collapsed so plate + icon are the only strip visuals.
+    if (PrepBowlFront) PrepBowlFront->SetVisibility(ESlateVisibility::Collapsed);
+    if (PrepBowlBack) PrepBowlBack->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 void UPUIngredientSlot::UpdatePrepIcons()
@@ -837,13 +780,49 @@ void UPUIngredientSlot::ClearDisplay()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
+    if (InventoryEmptyDot)
+    {
+        InventoryEmptyDot->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+}
+
+void UPUIngredientSlot::ApplyPantryShelfEmptyVisual()
+{
+    if (!bPantryShelfPaddingCell ||
+        (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prepped) ||
+        IngredientInstance.IngredientData.IngredientTag.IsValid())
+    {
+        return;
+    }
+
+    if (InventoryEmptyDot)
+    {
+        if (PlateBackground)
+        {
+            PlateBackground->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        if (PantryShelfEmptyDotTexture)
+        {
+            InventoryEmptyDot->SetBrushFromTexture(PantryShelfEmptyDotTexture);
+        }
+        InventoryEmptyDot->SetVisibility(ESlateVisibility::Visible);
+    }
+    else if (PantryShelfEmptyDotTexture && PlateBackground)
+    {
+        PlateBackground->SetBrushFromTexture(PantryShelfEmptyDotTexture);
+        PlateBackground->SetVisibility(ESlateVisibility::Visible);
+    }
+    else if (PlateBackground)
+    {
+        PlateBackground->SetVisibility(ESlateVisibility::Collapsed);
+    }
 }
 
 UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
 {
-    // For pantry, prep, and prepped slots, show texture even if bHasIngredient is false (for display purposes)
-    // For other locations, require bHasIngredient to be true
-    if (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && Location != EPUIngredientSlotLocation::Prepped && !bHasIngredient)
+    if (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prepped &&
+        !IsPlanningGatherPlateSlot() && !bHasIngredient)
     {
         return nullptr;
     }
@@ -875,15 +854,9 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
         }
         return Texture;
     }
-    else if (Location == EPUIngredientSlotLocation::Prep)
+    else if (IsPlanningGatherPlateSlot())
     {
-        // Prep slots use PreviewTexture (or could use a specific prep texture in the future)
         UTexture2D* Texture = IngredientInstance.IngredientData.PreviewTexture;
-        if (!Texture)
-        {
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUIngredientSlot::GetTextureForLocation - Prep slot has no PreviewTexture for ingredient: %s"),
-            //    *IngredientInstance.IngredientData.DisplayName.ToString());
-        }
         return Texture;
     }
     else if (Location == EPUIngredientSlotLocation::Prepped || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
@@ -1261,8 +1234,8 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Drop on slot: %s (Ingredient: %s, Location: %d, Empty: %s)"),
         //    *GetName(), *IngredientDragOp->IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location, IsEmpty() ? TEXT("TRUE") : TEXT("FALSE"));
 
-        // In cooking stage (ActiveIngredientArea) or prep stage (Prep), handle both empty slots (move) and occupied slots (swap)
-        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea || Location == EPUIngredientSlotLocation::Prep)
+        // In cooking / planning strips (ActiveIngredientArea), handle both empty slots (move) and occupied slots (swap)
+        if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
         {
             // SAFETY CHECK: If InstanceID is 0, this is from pantry - generate new GUID and set quantity to 1
             if (IngredientDragOp->IngredientInstance.InstanceID == 0)
@@ -1364,8 +1337,7 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
                     //    SourceInstance.InstanceID,
                     //    SourceSlot->IsEmpty() ? TEXT("FALSE") : TEXT("TRUE"));
                     
-                    if ((SourceSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea || 
-                         SourceSlot->GetLocation() == EPUIngredientSlotLocation::Prep) &&
+                    if (SourceSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea &&
                         SourceInstance.InstanceID == IngredientDragOp->IngredientInstance.InstanceID &&
                         !SourceSlot->IsEmpty())
                     {
@@ -1439,7 +1411,25 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s, Location: %d)"),
     //    *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
-    // Special handling for pantry slots - clicking should select the ingredient (not drag)
+    bool bShiftPressed = InMouseEvent.IsShiftDown();
+
+    // Active ingredient strip (planning gather + cooking): plain LMB on occupied slot toggles/opens pantry to swap.
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && bHasIngredient &&
+        InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed)
+    {
+        OnEmptySlotClicked.Broadcast(this);
+        return FReply::Handled();
+    }
+
+    const bool bPlanningGatherPlate = IsPlanningGatherPlateSlot();
+
+    if (bPreppedPantryPickerSlot && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton &&
+        IngredientInstance.IngredientData.IngredientTag.IsValid())
+    {
+        OnEmptySlotClicked.Broadcast(this);
+        return FReply::Handled();
+    }
+
     if (Location == EPUIngredientSlotLocation::Pantry && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
         // Pantry slots: if we have valid ingredient data, treat click as selection (not drag)
@@ -1459,11 +1449,9 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     // If drag is enabled and we have an ingredient, don't handle left clicks here
     // Let the drag system handle it (NativeOnPreviewMouseButtonDown will handle drag)
     // BUT: Don't do this for pantry slots - we want clicks to work for selection
-    // AND: Don't do this for prep slots - we want clicks to work for menu access
-    // AND: Don't do this if Shift is pressed (Shift+Click shows menu instead)
-    bool bShiftPressed = InMouseEvent.IsShiftDown();
-    if (Location != EPUIngredientSlotLocation::Pantry && Location != EPUIngredientSlotLocation::Prep && 
-        bDragEnabled && bHasIngredient && 
+    // Occupied strip plain LMB is handled above (pantry). Planning gather still uses Shift+LMB for radial below.
+    if (Location != EPUIngredientSlotLocation::Pantry && !bPlanningGatherPlate &&
+        bDragEnabled && bHasIngredient &&
         InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed)
     {
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Drag enabled, letting drag system handle left click"));
@@ -1473,7 +1461,7 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     if (IsEmpty())
     {
         // Empty slot clicked - open pantry (only for non-pantry locations)
-        if (Location != EPUIngredientSlotLocation::Pantry)
+        if (Location != EPUIngredientSlotLocation::Pantry && !bPantryShelfPaddingCell)
         {
             //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Empty slot clicked, opening pantry"));
             OnEmptySlotClicked.Broadcast(this);
@@ -1484,26 +1472,18 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     // Slot has ingredient - handle left/right click
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
-        // Show prep menu if:
-        // 1. This is a Prep slot (Prep slots always show menu on click, regardless of drag), OR
-        // 2. Shift is held down AND drag is enabled (allows menu access even when drag is enabled)
-        //
-        // IMPORTANT:
-        // - For non-Prep slots created via CreateSlotsFromDishData with bEnableDrag = false,
-        //   we SHOULD NOT show the radial menu on simple left-click. In that case bDragEnabled
-        //   is false and Location != Prep, so the menu will not open.
-        bool bShouldShowMenu =
-            (Location == EPUIngredientSlotLocation::Prep) ||
-            (bShiftPressed && bDragEnabled);
+        // Plain LMB on occupied strip opens pantry (handled above). Radial: Shift+LMB with drag, or Shift+LMB on planning gather even if drag is off.
+        const bool bShouldShowMenu =
+            (bShiftPressed && bDragEnabled) || (bPlanningGatherPlate && bShiftPressed);
         if (bShouldShowMenu)
         {
             if (bShiftPressed)
             {
                 //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Shift+Left click, showing prep radial menu (drag enabled but using modifier)"));
             }
-            else if (Location == EPUIngredientSlotLocation::Prep)
+            else if (bPlanningGatherPlate)
             {
-                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click on Prep slot, showing prep radial menu"));
+                //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Left click on planning gather slot, showing radial menu"));
             }
             else
             {
@@ -1517,9 +1497,8 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     else if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
         // Right click - show combined menu (preparations + actions)
-        // Only allow right-click radial menu in Prep slots (plate area).
-        // Disable in all other locations, including ActiveIngredientArea and Prepped (bowls).
-        if (Location != EPUIngredientSlotLocation::Prep)
+        // Only allow right-click radial menu on the planning gather plate (same as old Prep plate).
+        if (!IsPlanningGatherPlateSlot())
         {
             //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Right click radial menu disabled for this slot location: %d"), (int32)Location);
             return FReply::Unhandled();
@@ -1535,10 +1514,15 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
 
 void UPUIngredientSlot::ShowRadialMenu(bool bIsPrepMenu, bool bIncludeActions)
 {
-    // Radial menus are only allowed in Prep slots (plate area).
-    if (Location != EPUIngredientSlotLocation::Prep)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Plating ||
+        Location == EPUIngredientSlotLocation::Prepped)
     {
-        //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ShowRadialMenu - Blocked radial menu for non-Prep slot (Location: %d)"), (int32)Location);
+        return;
+    }
+
+    // Allowed on ActiveIngredientArea (planning gather + cooking when callers invoke e.g. Shift+menu).
+    if (Location != EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
         return;
     }
 
@@ -1829,7 +1813,7 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
     // For prep/pantry/prepped slots, show text even if "empty" (quantity 0) as long as we have ingredient data
     // For other locations, require bHasIngredient to be true
     bool bShouldShowText = false;
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prepped || IsPlanningGatherPlateSlot())
     {
         // Prep/Pantry/Prepped slots: show text if we have ingredient data (even if quantity is 0)
         bShouldShowText = IngredientInstance.IngredientData.IngredientTag.IsValid();
@@ -1845,9 +1829,8 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
         return FText::GetEmpty();
     }
 
-    // For prep area slots, show only the base ingredient name (no preparations)
-    // For other areas (prepped, pantry, etc.), show the full name with preparations
-    if (Location == EPUIngredientSlotLocation::Prep)
+    // Planning gather plate: show base name only (no preparation prefixes in hover).
+    if (IsPlanningGatherPlateSlot())
     {
         // Just return the base ingredient name without preparations
         FText Result = IngredientInstance.IngredientData.DisplayName;
@@ -1913,7 +1896,7 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
     // For prep/pantry/prepped slots, show text if we have ingredient data (even if "empty")
     // For other locations, require bHasIngredient
     bool bCanShowText = false;
-    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::Prepped)
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prepped || IsPlanningGatherPlateSlot())
     {
         bCanShowText = IngredientInstance.IngredientData.IngredientTag.IsValid();
     }
@@ -2086,12 +2069,12 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     
     // Only handle left mouse button and only if drag is enabled
     // For pantry slots, we want clicks to work for selection, but still allow dragging if mouse moves
-    // For prep slots, we want clicks to work for menu access, but still allow dragging if mouse moves
+    // For planning gather plate slots, clicks should open menus rather than starting DetectDrag immediately
     bool bCanDrag = false;
-    bool bIsPantrySlot = (Location == EPUIngredientSlotLocation::Pantry);
-    bool bIsPrepSlot = (Location == EPUIngredientSlotLocation::Prep);
-    
-    if (bIsPantrySlot)
+    const bool bIsPantryLikeSlot =
+        (Location == EPUIngredientSlotLocation::Pantry) || bPreppedPantryPickerSlot;
+
+    if (bIsPantryLikeSlot)
     {
         // For pantry slots, we want clicks to work for selection
         // Don't set up drag detection here - let the click handler process it
@@ -2105,15 +2088,18 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     }
     else
     {
-        // Other slots (including Prep) require bHasIngredient to be true for dragging
-        // Prep slots can drag, but clicks will also work because DetectDrag only triggers on actual drag movement
+        // Other slots require bHasIngredient to be true for dragging
         bCanDrag = bDragEnabled && bHasIngredient;
     }
-    
+
     // Only start drag if Shift is NOT pressed (Shift+Click shows menu instead)
     bool bShiftPressed = InMouseEvent.IsShiftDown();
-    
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bCanDrag && !bIsPantrySlot && !bShiftPressed)
+
+    // Occupied strip: plain LMB opens pantry (swap); do not start DetectDrag — it would swallow the click.
+    const bool bOccupiedStripPantryClick =
+        (Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient && !bShiftPressed;
+
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bCanDrag && !bIsPantryLikeSlot && !bShiftPressed && !bOccupiedStripPantryClick)
     {
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s (Location: %d)"), 
         //    *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
@@ -2650,7 +2636,7 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 UpdateIngredientIcon();
                 
                 // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
-                if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
+                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
                 {
                     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::ApplyPreparationToIngredient - In prep/active ingredient area, creating/updating prepped slot"));
                     DishWidget->CreateOrUpdatePreppedSlot(UpdatedInstance);
@@ -2696,7 +2682,7 @@ bool UPUIngredientSlot::ApplyPreparationToIngredient(const FGameplayTag& Prepara
                 UpdateIngredientIcon();
                 
                 // If we're in prep or active ingredient area and have preparations, create/update the prepped slot
-                if ((Location == EPUIngredientSlotLocation::Prep || Location == EPUIngredientSlotLocation::ActiveIngredientArea) && UpdatedInstance.Preparations.Num() > 0)
+                if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && UpdatedInstance.Preparations.Num() > 0)
                 {
                     UPUDishCustomizationWidget* PreppedDishWidget = GetDishCustomizationWidget();
                     if (PreppedDishWidget)
@@ -3016,6 +3002,16 @@ void UPUIngredientSlot::SetDishCustomizationWidget(UPUDishCustomizationWidget* I
     //    InDishWidget ? *InDishWidget->GetName() : TEXT("NULL"));
 }
 
+void UPUIngredientSlot::SetPantryShelfPaddingCell(bool bPadding)
+{
+    bPantryShelfPaddingCell = bPadding;
+}
+
+void UPUIngredientSlot::SetPreppedPantryPickerSlot(bool bPicker)
+{
+    bPreppedPantryPickerSlot = bPicker;
+}
+
 void UPUIngredientSlot::RecalculateAspectsFromBase()
 {
     if (!bHasIngredient)
@@ -3273,48 +3269,35 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
 
 void UPUIngredientSlot::HandleControllerSelect()
 {
-    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerSelect - Called (Slot: %s, Location: %d, Empty: %s)"), 
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerSelect - Called (Slot: %s, Location: %d, Empty: %s)"),
         *GetName(), (int32)Location, IsEmpty() ? TEXT("YES") : TEXT("NO"));
-    
-    // For prep stage: If slot is empty, open pantry. If slot has ingredient, open radial menu
-    if (Location == EPUIngredientSlotLocation::Prep)
+
+    if (bPreppedPantryPickerSlot && IngredientInstance.IngredientData.IngredientTag.IsValid())
     {
-        if (IsEmpty())
-        {
-            // Empty slot - trigger empty slot click (opens pantry)
-            OnEmptySlotClicked.Broadcast(this);
-        }
-        else
-        {
-            // Slot has ingredient - open radial menu for preparations AND actions (same as right-click)
-            ShowRadialMenu(true, true);
-        }
+        OnEmptySlotClicked.Broadcast(this);
     }
     else if (Location == EPUIngredientSlotLocation::Pantry)
     {
-        // Pantry slot - select ingredient (this will be handled by the dish widget)
         OnEmptySlotClicked.Broadcast(this);
     }
     else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
     {
-        // Active ingredient area - open radial menu
-        if (bHasIngredient)
-        {
-            ShowRadialMenu(true, true);
-        }
+        OnEmptySlotClicked.Broadcast(this);
     }
 }
 
 void UPUIngredientSlot::HandleControllerMenu()
 {
-    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerMenu - Called (Slot: %s, Location: %d, HasIngredient: %s)"), 
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerMenu - Called (Slot: %s, Location: %d, HasIngredient: %s)"),
         *GetName(), (int32)Location, bHasIngredient ? TEXT("YES") : TEXT("NO"));
-    
-    // Open radial menu when X/Square is pressed
-    if (bHasIngredient || Location == EPUIngredientSlotLocation::Prep)
+
+    const bool bPlanningGather = IsPlanningGatherPlateSlot();
+
+    if (bHasIngredient || bPlanningGather)
     {
-        bool bIsPrepMenu = (Location == EPUIngredientSlotLocation::Prep);
-        bool bIncludeActions = (Location == EPUIngredientSlotLocation::ActiveIngredientArea);
+        const bool bIsPrepMenu = bPlanningGather;
+        const bool bIncludeActions =
+            (Location == EPUIngredientSlotLocation::ActiveIngredientArea && !bPlanningGather);
         ShowRadialMenu(bIsPrepMenu, bIncludeActions);
     }
 }

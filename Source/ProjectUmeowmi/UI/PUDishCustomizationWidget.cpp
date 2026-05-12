@@ -20,6 +20,7 @@
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
 #include "Blueprint/WidgetTree.h"
+#include "UObject/GarbageCollection.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Slate/SObjectWidget.h"
 #include "GameFramework/PlayerController.h"
@@ -54,6 +55,11 @@ namespace
             }
         }
         return false;
+    }
+
+    static bool IngredientInstanceHasAnyPreparation(const FIngredientInstance& Inst)
+    {
+        return Inst.Preparations.Num() > 0 || Inst.IngredientData.ActivePreparations.Num() > 0;
     }
 
     static void ReassertVirtualCursorAfterSlotFocus(UPUDishCustomizationWidget* DishWidget, APlayerController* PC)
@@ -213,7 +219,7 @@ void UPUDishCustomizationWidget::OnInitialDishDataReceived(const FPUDishBase& In
     }
     CurrentDishData = InitialDishData;
     
-    // Prep always starts with blank IngredientInstances (player chooses from pantry).
+    // Planning/cooking entry starts with blank IngredientInstances (player gathers from pantry).
     // Keep DishTag, DisplayName, etc. for the ending stage, but clear ingredients so prepped area is empty.
     CurrentDishData.IngredientInstances.Empty();
     // Clear any existing prepped slots (e.g. from SetPreppedIngredientContainer called before this)
@@ -232,6 +238,8 @@ void UPUDishCustomizationWidget::OnInitialDishDataReceived(const FPUDishBase& In
         CustomizationComponent->UpdateCurrentDishData(CurrentDishData);
     }
     
+    RefreshPreppedPantrySlots();
+
     // Cooking stage: set up controller navigation and focus on first slot (same pattern as prep stage)
     if (StageType == EDishCustomizationStageType::Cooking && CreatedPreppedSlots.Num() > 0)
     {
@@ -266,6 +274,8 @@ void UPUDishCustomizationWidget::OnDishDataUpdated(const FPUDishBase& UpdatedDis
     
     // Call the Blueprint event
     OnDishDataChanged(UpdatedDishData);
+
+    RefreshPreppedPantrySlots();
 }
 
 void UPUDishCustomizationWidget::OnCustomizationEnded()
@@ -329,6 +339,8 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
         RefreshRadarChartsFromDishData(NewDishData);
         OnDishDataChanged(NewDishData);
     }
+
+    RefreshPreppedPantrySlots();
 }
 
 FText UPUDishCustomizationWidget::GetEndingStageTextForCurrentDish() const
@@ -692,7 +704,7 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
     }
     
     // Use unified CreateSlots function with shelving widgets enabled
-    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Prep, AvailableIngredients.Num(), true, false, false, PantryInstances, 0.0f);
+    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::ActiveIngredientArea, AvailableIngredients.Num(), true, false, false, PantryInstances, 0.0f);
     
     // Post-process: Set up special logic for prep stage slots (selection state, pantry click handler)
     for (int32 i = 0; i < CreatedIngredientSlots.Num() && i < AvailableIngredients.Num(); ++i)
@@ -1139,257 +1151,233 @@ void UPUDishCustomizationWidget::RefreshQuantityControls()
     // Blueprint can override this to handle the UI updates
 }
 
-void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* IngredientSlot)
+void UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry(const FIngredientInstance& NewInstance)
 {
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantrySlotClicked - Pantry slot clicked (Slot: %s)"), 
-    //    IngredientSlot ? *IngredientSlot->GetName() : TEXT("NULL"));
-    
-    if (!IngredientSlot)
+    if (!PendingEmptySlot.IsValid())
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::OnPantrySlotClicked - IngredientSlot is null!"));
         return;
     }
-    
-    // Check if this is a pantry slot or prep slot
-    if (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Pantry)
+
+    UPUIngredientSlot* EmptySlot = PendingEmptySlot.Get();
+    TWeakObjectPtr<UPUIngredientSlot> PrepSlotToFocus = EmptySlot;
+
+    if (!EmptySlot->IsEmpty())
     {
-        // Handle pantry slot click - get the ingredient data directly from the slot
-        const FIngredientInstance& PantryInstance = IngredientSlot->GetIngredientInstance();
-        
-        if (!PantryInstance.IngredientData.IngredientTag.IsValid())
+        const FIngredientInstance OldInstance = EmptySlot->GetIngredientInstance();
+        RemovePreppedSlot(OldInstance);
+        if (OldInstance.InstanceID != 0)
         {
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::OnPantrySlotClicked - Pantry slot has invalid ingredient tag!"));
+            RemoveIngredientInstance(OldInstance.InstanceID);
+        }
+    }
+
+    CurrentDishData.IngredientInstances.Add(NewInstance);
+
+    EmptySlot->OnSlotIngredientChanged.AddUniqueDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
+
+    EmptySlot->SetIngredientInstance(NewInstance);
+
+    UpdateDishData(CurrentDishData);
+
+    PendingEmptySlot.Reset();
+
+    if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+    {
+        if (GI->IsTutorialModeEnabled())
+        {
+            const int32 CurrentStep = GI->GetTutorialStep();
+            if (CurrentStep == 1)
+            {
+                GI->AdvanceTutorialStep();
+                FPopupData PopupData;
+                PopupData.PopupType = EPopupType::Tutorial;
+                PopupData.Title = FText::FromString(TEXT("TUTORIAL"));
+                PopupData.Message = FText::FromString(TEXT("Great! Now do the same for the gochujang. Select the ingredient from the Pantry to add it to a Prep Plate."));
+                PopupData.bModal = true;
+                PopupData.bShowCloseButton = true;
+                GI->ShowPopup(PopupData);
+            }
+            else if (CurrentStep == 2)
+            {
+                GI->AdvanceTutorialStep();
+            }
+        }
+    }
+
+    ClosePantry();
+
+    if (UWorld* World = GetWorld())
+    {
+        FTimerHandle FocusRestoreTimerHandle;
+        World->GetTimerManager().SetTimer(FocusRestoreTimerHandle, [PrepSlotToFocus, this]()
+        {
+            if (PrepSlotToFocus.IsValid() && !IsDialogueVisible())
+            {
+                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry - Restoring focus to prep slot: %s"),
+                    *PrepSlotToFocus->GetName());
+
+                PrepSlotToFocus->SetIsFocusable(true);
+                PrepSlotToFocus->SetKeyboardFocus();
+                FSlateApplication::Get().SetUserFocus(0, PrepSlotToFocus->TakeWidget());
+
+                PrepSlotToFocus->ShowFocusVisuals();
+                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+
+                if (!PrepSlotToFocus->HasKeyboardFocus())
+                {
+                    FTimerHandle RetryTimerHandle;
+                    GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [PrepSlotToFocus, this]()
+                    {
+                        if (PrepSlotToFocus.IsValid())
+                        {
+                            PrepSlotToFocus->SetKeyboardFocus();
+                            PrepSlotToFocus->ShowFocusVisuals();
+                            ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry - Retry: Focus restored to %s (HasFocus: %s)"),
+                                *PrepSlotToFocus->GetName(), PrepSlotToFocus->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                        }
+                    }, 0.1f, false);
+                }
+            }
+        }, 0.3f, false);
+    }
+}
+
+void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* IngredientSlot)
+{
+    if (!IngredientSlot)
+    {
+        return;
+    }
+
+    auto PassesTutorialIngredientGate = [this](const FGameplayTag& IngredientTagToCheck) -> bool
+    {
+        UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr;
+        if (!GI || !GI->IsTutorialModeEnabled())
+        {
+            return true;
+        }
+        const FGameplayTag AllowedTag = GI->GetTutorialAllowedIngredientTag();
+        if (!AllowedTag.IsValid() || IngredientTagToCheck == AllowedTag)
+        {
+            return true;
+        }
+        FPopupData PopupData;
+        PopupData.PopupType = EPopupType::Tutorial;
+        PopupData.Title = FText::FromString(TEXT("TUTORIAL"));
+        PopupData.Message = (GI->GetTutorialStep() == 1)
+            ? FText::FromString(TEXT("Let's add the Egg Yolk Cookies to a Prep Plate. Find the cookies in your Pantry window and select the ingredient to add it to a Prep Plate."))
+            : FText::FromString(TEXT("Great! Now do the same for the gochujang. Select the ingredient from the Pantry to add it to a Prep Plate."));
+        PopupData.bModal = true;
+        PopupData.bShowCloseButton = true;
+        GI->ShowPopup(PopupData);
+        return false;
+    };
+
+    if (IngredientSlot->IsPreppedPantryPickerSlot())
+    {
+        const FIngredientInstance& Pick = IngredientSlot->GetIngredientInstance();
+        if (!Pick.IngredientData.IngredientTag.IsValid())
+        {
             return;
         }
-        
-        // Tutorial: validate that the correct ingredient was selected (restriction should prevent wrong clicks, but validate as fallback)
-        if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+        if (!PassesTutorialIngredientGate(Pick.IngredientData.IngredientTag))
         {
-            if (GI->IsTutorialModeEnabled())
-            {
-                const FGameplayTag AllowedTag = GI->GetTutorialAllowedIngredientTag();
-                if (AllowedTag.IsValid() && PantryInstance.IngredientData.IngredientTag != AllowedTag)
-                {
-                    FPopupData PopupData;
-                    PopupData.PopupType = EPopupType::Tutorial;
-                    PopupData.Title = FText::FromString(TEXT("TUTORIAL"));
-                    PopupData.Message = (GI->GetTutorialStep() == 1)
-                        ? FText::FromString(TEXT("Let's add the Egg Yolk Cookies to a Prep Plate. Find the cookies in your Pantry window and select the ingredient to add it to a Prep Plate."))
-                        : FText::FromString(TEXT("Great! Now do the same for the gochujang. Select the ingredient from the Pantry to add it to a Prep Plate."));
-                    PopupData.bModal = true;
-                    PopupData.bShowCloseButton = true;
-                    GI->ShowPopup(PopupData);
-                    return;
-                }
-            }
+            return;
         }
-        
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantrySlotClicked - Found ingredient: %s (Tag: %s), PendingEmptySlot valid: %s"),
-        //    *PantryInstance.IngredientData.DisplayName.ToString(), 
-        //    *PantryInstance.IngredientData.IngredientTag.ToString(),
-        //    PendingEmptySlot.IsValid() ? TEXT("YES") : TEXT("NO"));
-        
-        // If no pending empty slot (e.g. pantry opened via button), use first empty prep slot
-        if (!PendingEmptySlot.IsValid())
-        {
-            if (CurrentDishData.IngredientInstances.Num() >= MaxIngredients)
-            {
-                ClosePantry();
-                return;
-            }
-            for (UPUIngredientSlot* PrepSlot : CreatedIngredientSlots)
-            {
-                if (PrepSlot && PrepSlot->GetLocation() == EPUIngredientSlotLocation::Prep && PrepSlot->IsEmpty())
-                {
-                    PendingEmptySlot = PrepSlot;
-                    break;
-                }
-            }
-        }
-        
-        // If we have a pending empty slot, populate it
+
         if (PendingEmptySlot.IsValid())
         {
-            UPUIngredientSlot* EmptySlot = PendingEmptySlot.Get();
-            
-            // Store reference to the prep slot before clearing PendingEmptySlot (for focus restoration)
-            TWeakObjectPtr<UPUIngredientSlot> PrepSlotToFocus = EmptySlot;
-            
-            //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantrySlotClicked - Populating empty slot: %s"), 
-            //    *EmptySlot->GetName());
-            
-            // Create a new ingredient instance with GUID-based ID and quantity 1
-            // Use the ingredient data directly from the pantry slot
+            FIngredientInstance NewInstance = Pick;
+            NewInstance.InstanceID = GenerateGUIDBasedInstanceID();
+            NewInstance.Quantity = 1;
+            if (!NewInstance.IngredientTag.IsValid())
+            {
+                NewInstance.IngredientTag = NewInstance.IngredientData.IngredientTag;
+            }
+            NewInstance.IngredientData.ActivePreparations = NewInstance.Preparations;
+            CompletePendingStripFillAndClosePantry(NewInstance);
+        }
+        else
+        {
+            ClosePantry();
+        }
+        return;
+    }
+
+    if (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Pantry)
+    {
+        const FIngredientInstance& PantryInstance = IngredientSlot->GetIngredientInstance();
+
+        if (!PantryInstance.IngredientData.IngredientTag.IsValid())
+        {
+            return;
+        }
+
+        if (!PassesTutorialIngredientGate(PantryInstance.IngredientData.IngredientTag))
+        {
+            return;
+        }
+
+        if (PendingEmptySlot.IsValid())
+        {
             FIngredientInstance NewInstance;
             NewInstance.IngredientData = PantryInstance.IngredientData;
             NewInstance.InstanceID = GenerateGUIDBasedInstanceID();
             NewInstance.Quantity = 1;
-            NewInstance.IngredientTag = PantryInstance.IngredientData.IngredientTag; // Set the convenient tag field
-            
-            // IMPORTANT: Add to dish data FIRST before setting the ingredient instance
-            // This prevents OnQuantityControlChanged from adding a duplicate when SetIngredientInstance broadcasts
-            CurrentDishData.IngredientInstances.Add(NewInstance);
-            
-            // Bind to slot's ingredient changed event (check if already bound to avoid duplicates)
-            EmptySlot->OnSlotIngredientChanged.AddUniqueDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
-            
-            // Set the ingredient instance on the empty slot (this will broadcast OnSlotIngredientChanged)
-            // Since we already added it to dish data, OnQuantityControlChanged will find it and update it instead of adding a duplicate
-            EmptySlot->SetIngredientInstance(NewInstance);
-            
-            // Update dish data to sync changes
-            UpdateDishData(CurrentDishData);
-            
-            //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantrySlotClicked - Populated empty slot with: %s (ID: %d, Qty: 1)"), 
-            //    *PantryInstance.IngredientData.DisplayName.ToString(), NewInstance.InstanceID);
-            
-            // Clear pending empty slot
-            PendingEmptySlot.Reset();
-            
-            // Tutorial: advance step and show next popup when correct ingredient added
-            if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
-            {
-                if (GI->IsTutorialModeEnabled())
-                {
-                    const int32 CurrentStep = GI->GetTutorialStep();
-                    if (CurrentStep == 1)
-                    {
-                        GI->AdvanceTutorialStep();
-                        FPopupData PopupData;
-                        PopupData.PopupType = EPopupType::Tutorial;
-                        PopupData.Title = FText::FromString(TEXT("TUTORIAL"));
-                        PopupData.Message = FText::FromString(TEXT("Great! Now do the same for the gochujang. Select the ingredient from the Pantry to add it to a Prep Plate."));
-                        PopupData.bModal = true;
-                        PopupData.bShowCloseButton = true;
-                        GI->ShowPopup(PopupData);
-                    }
-                    else if (CurrentStep == 2)
-                    {
-                        // Gochujang added - advance to step 3. User handles BAO dialogue and stage skip in Blueprint.
-                        GI->AdvanceTutorialStep();
-                    }
-                }
-            }
-            
-            // Close the pantry
-            ClosePantry();
-            
-            // Restore focus to the prep slot after a short delay (to allow pantry close animation)
-            if (UWorld* World = GetWorld())
-            {
-                FTimerHandle FocusRestoreTimerHandle;
-                World->GetTimerManager().SetTimer(FocusRestoreTimerHandle, [PrepSlotToFocus, this]()
-                {
-                    if (PrepSlotToFocus.IsValid() && !IsDialogueVisible())
-                    {
-                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::OnPantrySlotClicked - Restoring focus to prep slot: %s"), 
-                            *PrepSlotToFocus->GetName());
-                        
-                        // Ensure slot is focusable and set focus
-                        PrepSlotToFocus->SetIsFocusable(true);
-                        PrepSlotToFocus->SetKeyboardFocus();
-                        FSlateApplication::Get().SetUserFocus(0, PrepSlotToFocus->TakeWidget());
-                        
-                        // Manually trigger visual feedback
-                        PrepSlotToFocus->ShowFocusVisuals();
-                        ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                        
-                        // Retry if focus wasn't set
-                        if (!PrepSlotToFocus->HasKeyboardFocus())
-                        {
-                            FTimerHandle RetryTimerHandle;
-                            GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [PrepSlotToFocus, this]()
-                            {
-                                if (PrepSlotToFocus.IsValid())
-                                {
-                                    PrepSlotToFocus->SetKeyboardFocus();
-                                    PrepSlotToFocus->ShowFocusVisuals();
-                                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::OnPantrySlotClicked - Retry: Focus restored to %s (HasFocus: %s)"), 
-                                        *PrepSlotToFocus->GetName(), PrepSlotToFocus->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
-                                }
-                            }, 0.1f, false);
-                        }
-                    }
-                }, 0.3f, false); // Delay to allow pantry close animation
-            }
+            NewInstance.IngredientTag = PantryInstance.IngredientData.IngredientTag;
+            CompletePendingStripFillAndClosePantry(NewInstance);
         }
         else
         {
-            //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::OnPantrySlotClicked - No pending empty slot! Pantry slot clicked but no empty slot to populate."));
-            
-            // Close the pantry even if no pending slot
             ClosePantry();
         }
+        return;
     }
-    else
+
+    for (auto& SlotPair : IngredientSlotMap)
     {
-        // Handle prep slot click - find the ingredient data from the slot map
-        // Find the ingredient data by looking up the slot in our map
-        for (auto& SlotPair : IngredientSlotMap)
+        if (SlotPair.Value == IngredientSlot)
         {
-            if (SlotPair.Value == IngredientSlot)
+            if (CustomizationComponent)
             {
-                // Found the slot, get the ingredient data from the component
-                if (CustomizationComponent)
+                TArray<FPUIngredientBase> AvailableIngredients = CustomizationComponent->GetIngredientData();
+                const FPUIngredientBase* FoundIngredient = AvailableIngredients.FindByPredicate([&SlotPair](const FPUIngredientBase& Ingredient) {
+                    return Ingredient.IngredientTag == SlotPair.Key;
+                });
+
+                if (FoundIngredient)
                 {
-                    TArray<FPUIngredientBase> AvailableIngredients = CustomizationComponent->GetIngredientData();
-                    const FPUIngredientBase* FoundIngredient = AvailableIngredients.FindByPredicate([&SlotPair](const FPUIngredientBase& Ingredient) {
-                        return Ingredient.IngredientTag == SlotPair.Key;
-                    });
-                    
-                    if (FoundIngredient)
+                    if (IngredientSlot->IsPlanningGatherPlateSlot())
                     {
-                        // For prep slots, handle selection with max limit enforcement
-                        if (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
+                        bool bCurrentlySelected = IngredientSlot->IsSelected();
+                        bool bWantToSelect = !bCurrentlySelected;
+
+                        bool bIngredientInDishData = IsIngredientSelected(*FoundIngredient);
+
+                        if (bWantToSelect && !bIngredientInDishData)
                         {
-                            bool bCurrentlySelected = IngredientSlot->IsSelected();
-                            bool bWantToSelect = !bCurrentlySelected;
-                            
-                            // Check if ingredient is already in dish data (actually selected)
-                            bool bIngredientInDishData = IsIngredientSelected(*FoundIngredient);
-                            
-                            // If trying to select, check max limit
-                            if (bWantToSelect && !bIngredientInDishData)
+                            int32 CurrentSelectedCount = CurrentDishData.IngredientInstances.Num();
+
+                            if (CurrentSelectedCount >= MaxIngredients)
                             {
-                                // Count unique selected ingredients
-                                int32 CurrentSelectedCount = CurrentDishData.IngredientInstances.Num();
-                                
-                                if (CurrentSelectedCount >= MaxIngredients)
-                                {
-                                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::OnPantrySlotClicked - Max ingredients reached (%d). Cannot select more."), MaxIngredients);
-                                    // Don't toggle selection, don't add ingredient - keep visual state as is
-                                    return;
-                                }
+                                return;
                             }
-                            
-                            // DON'T set visual state here - wait until after we confirm the ingredient was actually added
                         }
-                        
-                        // Call the same handler as button click (this handles ingredient selection logic)
-                        // In planning mode, this calls ToggleIngredientSelection which already updates the slot's visual state
-                        // So we don't need to update it again here
-                        OnIngredientButtonClicked(*FoundIngredient);
-                        
-                        // Only sync visual state if NOT in planning mode (planning mode is handled by ToggleIngredientSelection)
-                        if (!bInPlanningMode && IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
-                        {
-                            bool bActuallySelected = IsIngredientSelected(*FoundIngredient);
-                            IngredientSlot->SetSelected(bActuallySelected);
-                            //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantrySlotClicked - Synced slot selection state to: %s (actual: %s)"), 
-                            //    bActuallySelected ? TEXT("SELECTED") : TEXT("UNSELECTED"),
-                            //    bActuallySelected ? TEXT("YES") : TEXT("NO"));
-                        }
-                        
-                        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantrySlotClicked - Slot clicked for: %s"), 
-                        //    *FoundIngredient->DisplayName.ToString());
-                        return;
                     }
+
+                    OnIngredientButtonClicked(*FoundIngredient);
+
+                    if (!bInPlanningMode && IngredientSlot->IsPlanningGatherPlateSlot())
+                    {
+                        bool bActuallySelected = IsIngredientSelected(*FoundIngredient);
+                        IngredientSlot->SetSelected(bActuallySelected);
+                    }
+
+                    return;
                 }
             }
         }
-        
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::OnPantrySlotClicked - Could not find ingredient data for clicked slot"));
     }
 }
 
@@ -1944,8 +1932,8 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentShelvingWidget(UPUIngredientSlo
 
 void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding)
 {
-    UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateSlots - FUNCTION CALLED! Location: %d (Prep=%d), MaxSlots: %d"), 
-        (int32)Location, (int32)EPUIngredientSlotLocation::Prep, MaxSlots);
+    UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateSlots - FUNCTION CALLED! Location: %d, MaxSlots: %d"),
+        (int32)Location, MaxSlots);
     
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Creating slots (Location: %d, MaxSlots: %d, UseShelving: %s, CreateEmpty: %s, EnableDrag: %s)"), 
     //    (int32)Location, MaxSlots, bUseShelvingWidgets ? TEXT("YES") : TEXT("NO"), bCreateEmptySlots ? TEXT("YES") : TEXT("NO"), bEnableDrag ? TEXT("YES") : TEXT("NO"));
@@ -1967,17 +1955,10 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
     
     // Determine ingredient source
     const TArray<FIngredientInstance>* IngredientInstancesToUse = nullptr;
-    static const TArray<FIngredientInstance> EmptyIngredientArray;
     if (IngredientSource.Num() > 0)
     {
         IngredientInstancesToUse = &IngredientSource;
         //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Using provided ingredient source (%d instances)"), IngredientSource.Num());
-    }
-    else if (Location == EPUIngredientSlotLocation::Prep)
-    {
-        // Prep always creates empty slots (player chooses from pantry)
-        IngredientInstancesToUse = &EmptyIngredientArray;
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Prep location: using empty source"));
     }
     else
     {
@@ -2132,8 +2113,9 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
                 Container->AddChild(IngredientSlot);
                 //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Added slot %d directly to container"), i);
                 
-                // Apply left padding to first slot if it's prep location and padding is specified
-                if (i == 0 && Location == EPUIngredientSlotLocation::Prep && FirstSlotLeftPadding > 0.0f)
+                // Apply left padding to first planning gather slot on the plate grid when requested
+                if (i == 0 && Location == EPUIngredientSlotLocation::ActiveIngredientArea &&
+                    StageType == EDishCustomizationStageType::Planning && FirstSlotLeftPadding > 0.0f)
                 {
                     // Try to get the slot and apply padding based on container type
                     if (UWrapBox* WrapBox = Cast<UWrapBox>(Container))
@@ -2175,15 +2157,15 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
     // Mark that slots have been created
     bIngredientSlotsCreated = true;
     
-    // Set up navigation for prep slots (for controller support)
-    // This ensures navigation works regardless of how slots are created
-    if (Location == EPUIngredientSlotLocation::Prep)
+    // Planning gather plate vs cooking strip both use ActiveIngredientArea — disambiguate with StageType
+    if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && StageType == EDishCustomizationStageType::Planning)
     {
-        UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateSlots - Prep slots created! Setting up navigation..."));
+        UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateSlots - Planning gather slots created! Setting up navigation..."));
         SetupPrepSlotNavigation();
         SetInitialFocusForPrepStage();
     }
-    else if (Location == EPUIngredientSlotLocation::Prepped || Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    else if (Location == EPUIngredientSlotLocation::Prepped ||
+             (Location == EPUIngredientSlotLocation::ActiveIngredientArea && StageType == EDishCustomizationStageType::Cooking))
     {
         UE_LOG(LogTemp, Log, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Cooking stage slots created! Setting up navigation and focus..."));
         SetupCookingSlotNavigation();
@@ -2193,8 +2175,7 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
 
 void UPUDishCustomizationWidget::CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, float FirstSlotLeftPadding)
 {
-    // Call the main CreateSlots function with an empty ingredient source array.
-    // For Prep location, CreateSlots always uses empty source. For other locations, it uses CurrentDishData.IngredientInstances.
+    // CreateSlots with empty IngredientSource selects CurrentDishData.IngredientInstances.
     TArray<FIngredientInstance> EmptyArray;
     CreateSlots(Container, Location, MaxSlots, bUseShelvingWidgets, bCreateEmptySlots, bEnableDrag, EmptyArray, FirstSlotLeftPadding);
 }
@@ -2529,6 +2510,257 @@ void UPUDishCustomizationWidget::SetPantryContainerByName(const FName& Container
     }
 }
 
+void UPUDishCustomizationWidget::SetPreppedPantryContainer(UPanelWidget* Container)
+{
+    if (Container)
+    {
+        PreppedPantryContainer = Container;
+        RefreshPreppedPantrySlots();
+    }
+}
+
+void UPUDishCustomizationWidget::SetPreppedPantryContainerByName(const FName& ContainerName)
+{
+    UWidget* FoundWidget = GetWidgetFromName(ContainerName);
+    if (!FoundWidget)
+    {
+        FoundWidget = WidgetTree ? WidgetTree->FindWidget(ContainerName) : nullptr;
+    }
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        SetPreppedPantryContainer(PanelWidget);
+    }
+}
+
+void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
+{
+    if (!IsValid(this) || !GetWorld())
+    {
+        return;
+    }
+
+    if (IsGarbageCollecting())
+    {
+        return;
+    }
+
+    for (UPUIngredientSlot* PreppedPantrySlotWidget : CreatedPreppedPantrySlots)
+    {
+        if (!IsValid(PreppedPantrySlotWidget))
+        {
+            continue;
+        }
+        if (PreppedPantrySlotWidget->IsPreppedPantryPickerSlot())
+        {
+            PreppedPantrySlotWidget->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
+        }
+        if (PreppedPantrySlotWidget->GetParent())
+        {
+            PreppedPantrySlotWidget->RemoveFromParent();
+        }
+        PreppedPantrySlotWidget->ReleaseSlateResources(true);
+        PreppedPantrySlotWidget->MarkAsGarbage();
+    }
+    CreatedPreppedPantrySlots.Empty();
+
+    CurrentPreppedPantryShelvingWidget.Reset();
+
+    for (UUserWidget* Shelving : CreatedPreppedPantryShelvingWidgets)
+    {
+        if (!IsValid(Shelving))
+        {
+            continue;
+        }
+        if (Shelving->GetParent())
+        {
+            Shelving->RemoveFromParent();
+        }
+        Shelving->ReleaseSlateResources(true);
+        Shelving->MarkAsGarbage();
+    }
+    CreatedPreppedPantryShelvingWidgets.Empty();
+    CurrentPreppedPantryShelvingWidgetSlotCount = 0;
+
+    UPanelWidget* ContainerToUse = PreppedPantryContainer.IsValid() ? PreppedPantryContainer.Get() : nullptr;
+    if (!ContainerToUse)
+    {
+        return;
+    }
+
+    TArray<FIngredientInstance> PreppedInstances;
+    for (const FIngredientInstance& Inst : CurrentDishData.IngredientInstances)
+    {
+        if (IngredientInstanceHasAnyPreparation(Inst))
+        {
+            PreppedInstances.Add(Inst);
+        }
+    }
+
+    const int32 NumPrepped = PreppedInstances.Num();
+    const int32 TotalSlots = FMath::Max(3, (NumPrepped + 2) / 3 * 3);
+
+    for (int32 SlotIndex = 0; SlotIndex < TotalSlots; ++SlotIndex)
+    {
+        const bool bIsPadding = SlotIndex >= NumPrepped;
+
+        TSubclassOf<UPUIngredientSlot> SlotClass;
+        if (IngredientSlotClass)
+        {
+            SlotClass = IngredientSlotClass;
+        }
+        else
+        {
+            SlotClass = UPUIngredientSlot::StaticClass();
+        }
+
+        UPUIngredientSlot* PantrySlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
+        if (!PantrySlot)
+        {
+            continue;
+        }
+
+        PantrySlot->SetDishCustomizationWidget(this);
+
+        if (bIsPadding)
+        {
+            PantrySlot->SetPreppedPantryPickerSlot(false);
+            PantrySlot->SetPantryShelfPaddingCell(true);
+            PantrySlot->SetLocation(EPUIngredientSlotLocation::Prepped);
+            PantrySlot->SetDragEnabled(false);
+            PantrySlot->SetIsEnabled(false);
+            PantrySlot->SetIsFocusable(false);
+
+            FIngredientInstance EmptyInst;
+            PantrySlot->SetIngredientInstance(EmptyInst);
+
+            if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
+            {
+                PantrySlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+            }
+
+            CreatedPreppedPantrySlots.Add(PantrySlot);
+
+            if (UUserWidget* ShelvingWidget = GetOrCreateCurrentPreppedPantryShelvingWidget(ContainerToUse))
+            {
+                AddSlotToCurrentPreppedPantryShelvingWidget(PantrySlot);
+            }
+            continue;
+        }
+
+        PantrySlot->SetPreppedPantryPickerSlot(true);
+        PantrySlot->SetPantryShelfPaddingCell(false);
+        PantrySlot->SetLocation(EPUIngredientSlotLocation::Prepped);
+        PantrySlot->SetDragEnabled(true);
+        PantrySlot->SetIsEnabled(true);
+        PantrySlot->SetIsFocusable(true);
+
+        FIngredientInstance DisplayInst = PreppedInstances[SlotIndex];
+        DisplayInst.Quantity = 0;
+
+        PantrySlot->SetIngredientInstance(DisplayInst);
+
+        if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
+        {
+            PantrySlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+        }
+
+        PantrySlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
+
+        CreatedPreppedPantrySlots.Add(PantrySlot);
+
+        if (UUserWidget* ShelvingWidget = GetOrCreateCurrentPreppedPantryShelvingWidget(ContainerToUse))
+        {
+            AddSlotToCurrentPreppedPantryShelvingWidget(PantrySlot);
+        }
+    }
+
+    if (UPUProjectUmeowmiGameInstance* GI = GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+    {
+        if (GI->IsTutorialModeEnabled())
+        {
+            const FGameplayTag AllowedTag = GI->GetTutorialAllowedIngredientTag();
+            for (UPUIngredientSlot* PSlot : CreatedPreppedPantrySlots)
+            {
+                if (!PSlot)
+                {
+                    continue;
+                }
+                const FIngredientInstance& Inst = PSlot->GetIngredientInstance();
+                if (!Inst.IngredientData.IngredientTag.IsValid())
+                {
+                    PSlot->SetIsEnabled(false);
+                    PSlot->SetDragEnabled(false);
+                    continue;
+                }
+                const bool bAllowed = !AllowedTag.IsValid() || (Inst.IngredientData.IngredientTag == AllowedTag);
+                PSlot->SetIsEnabled(bAllowed);
+                PSlot->SetDragEnabled(bAllowed);
+            }
+        }
+    }
+}
+
+UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentPreppedPantryShelvingWidget(UPanelWidget* ContainerToUse)
+{
+    if (!CurrentPreppedPantryShelvingWidget.IsValid() || CurrentPreppedPantryShelvingWidgetSlotCount >= 3)
+    {
+        if (!ShelvingWidgetClass)
+        {
+            return nullptr;
+        }
+        if (!GetWorld())
+        {
+            return nullptr;
+        }
+        UUserWidget* NewShelvingWidget = CreateWidget<UUserWidget>(this, ShelvingWidgetClass);
+        if (!NewShelvingWidget)
+        {
+            return nullptr;
+        }
+        if (ContainerToUse)
+        {
+            ContainerToUse->AddChild(NewShelvingWidget);
+        }
+        CreatedPreppedPantryShelvingWidgets.Add(NewShelvingWidget);
+        CurrentPreppedPantryShelvingWidget = NewShelvingWidget;
+        CurrentPreppedPantryShelvingWidgetSlotCount = 0;
+        return NewShelvingWidget;
+    }
+    return CurrentPreppedPantryShelvingWidget.Get();
+}
+
+bool UPUDishCustomizationWidget::AddSlotToCurrentPreppedPantryShelvingWidget(UPUIngredientSlot* IngredientSlot)
+{
+    if (!IngredientSlot || !CurrentPreppedPantryShelvingWidget.IsValid())
+    {
+        return false;
+    }
+
+    UWidget* FoundWidget = CurrentPreppedPantryShelvingWidget->GetWidgetFromName(ShelvingHorizontalBoxName);
+    if (!FoundWidget)
+    {
+        FoundWidget = CurrentPreppedPantryShelvingWidget->GetWidgetFromName(TEXT("HorizontalBox"));
+        if (!FoundWidget)
+        {
+            FoundWidget = CurrentPreppedPantryShelvingWidget->GetWidgetFromName(TEXT("SlotContainer"));
+        }
+    }
+
+    if (UHorizontalBox* HorizontalBox = Cast<UHorizontalBox>(FoundWidget))
+    {
+        HorizontalBox->AddChild(IngredientSlot);
+        CurrentPreppedPantryShelvingWidgetSlotCount++;
+        return true;
+    }
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        PanelWidget->AddChild(IngredientSlot);
+        CurrentPreppedPantryShelvingWidgetSlotCount++;
+        return true;
+    }
+    return false;
+}
+
 void UPUDishCustomizationWidget::PopulatePantrySlots()
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::PopulatePantrySlots - Populating pantry slots"));
@@ -2578,9 +2810,14 @@ void UPUDishCustomizationWidget::PopulatePantrySlots()
         return;
     }
     
-    // Create pantry slots for each available ingredient
-    for (const FPUIngredientBase& IngredientData : AvailableIngredients)
+    // Pad pantry shelves to multiples of three slots (minimum one row of three).
+    const int32 NumIngredients = AvailableIngredients.Num();
+    const int32 TotalSlots = FMath::Max(3, (NumIngredients + 2) / 3 * 3);
+
+    for (int32 SlotIndex = 0; SlotIndex < TotalSlots; ++SlotIndex)
     {
+        const bool bIsShelfPadding = SlotIndex >= NumIngredients;
+
         // Create ingredient slot using the Blueprint class
         TSubclassOf<UPUIngredientSlot> SlotClass;
         if (IngredientSlotClass)
@@ -2591,81 +2828,78 @@ void UPUDishCustomizationWidget::PopulatePantrySlots()
         {
             SlotClass = UPUIngredientSlot::StaticClass();
         }
-        
+
         UPUIngredientSlot* PantrySlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
-        if (PantrySlot)
+        if (!PantrySlot)
         {
-            // Set the dish widget reference for easy access
-            PantrySlot->SetDishCustomizationWidget(this);
-            // Set the location to Pantry
+            continue;
+        }
+
+        PantrySlot->SetDishCustomizationWidget(this);
+
+        if (bIsShelfPadding)
+        {
+            PantrySlot->SetPantryShelfPaddingCell(true);
             PantrySlot->SetLocation(EPUIngredientSlotLocation::Pantry);
-            
-            // Enable drag and drop for pantry slots
-            PantrySlot->SetDragEnabled(true);
-            
-            // Create a minimal ingredient instance with just the ingredient data (quantity 0)
-            // This allows the slot to display the pantry texture while remaining "empty"
-            FIngredientInstance PantryInstance;
-            PantryInstance.IngredientData = IngredientData;
-            PantryInstance.IngredientTag = IngredientData.IngredientTag; // Set the convenient tag field
-            PantryInstance.Quantity = 0; // Empty slot, but has ingredient data for display
-            PantryInstance.InstanceID = 0; // Not a real instance, just for display
-            
-            // Set the ingredient instance (slot will handle displaying pantry texture)
-            PantrySlot->SetIngredientInstance(PantryInstance);
-            
-            // Update the display
-            PantrySlot->UpdateDisplay();
-            
-            // Set the preparation data table if we have access to it
+            PantrySlot->SetDragEnabled(false);
+            PantrySlot->SetIsEnabled(false);
+            PantrySlot->SetIsFocusable(false);
+
+            FIngredientInstance EmptyPantryInstance;
+            PantrySlot->SetIngredientInstance(EmptyPantryInstance);
+
             if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
             {
                 PantrySlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
             }
-            
-            // Store slot reference in map for O(1) lookup
-            PantrySlotMap.Add(IngredientData.IngredientTag, PantrySlot);
-            
-            // Also add to array
+
             CreatedPantrySlots.Add(PantrySlot);
-            
-            // Bind pantry slot click event to handle ingredient selection
-            PantrySlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
-            
-            // Add to shelving widget (which will be added to container)
+
             if (ContainerToUse)
             {
-                // Get or create a current shelving widget
                 UUserWidget* ShelvingWidget = GetOrCreateCurrentPantryShelvingWidget(ContainerToUse);
                 if (ShelvingWidget)
                 {
-                    // Add slot to the shelving widget
-                    if (AddSlotToCurrentPantryShelvingWidget(PantrySlot))
-                    {
-                        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::PopulatePantrySlots - Added pantry slot to shelving widget for: %s"), 
-                        //    *IngredientData.DisplayName.ToString());
-                    }
-                    else
-                    {
-                        //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::PopulatePantrySlots - Failed to add slot to shelving widget"));
-                    }
-                }
-                else
-                {
-                    //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::PopulatePantrySlots - Failed to get or create shelving widget"));
+                    AddSlotToCurrentPantryShelvingWidget(PantrySlot);
                 }
             }
-            else
+            continue;
+        }
+
+        const FPUIngredientBase& IngredientData = AvailableIngredients[SlotIndex];
+
+        PantrySlot->SetPantryShelfPaddingCell(false);
+        PantrySlot->SetLocation(EPUIngredientSlotLocation::Pantry);
+        PantrySlot->SetDragEnabled(true);
+
+        // Create a minimal ingredient instance with just the ingredient data (quantity 0)
+        FIngredientInstance PantryInstance;
+        PantryInstance.IngredientData = IngredientData;
+        PantryInstance.IngredientTag = IngredientData.IngredientTag;
+        PantryInstance.Quantity = 0;
+        PantryInstance.InstanceID = 0;
+
+        PantrySlot->SetIngredientInstance(PantryInstance);
+
+        if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
+        {
+            PantrySlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+        }
+
+        PantrySlotMap.Add(IngredientData.IngredientTag, PantrySlot);
+        CreatedPantrySlots.Add(PantrySlot);
+        PantrySlot->OnEmptySlotClicked.AddDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
+
+        if (ContainerToUse)
+        {
+            UUserWidget* ShelvingWidget = GetOrCreateCurrentPantryShelvingWidget(ContainerToUse);
+            if (ShelvingWidget)
             {
-                //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::PopulatePantrySlots - Pantry slot created but not added to container (container not set yet)"));
+                AddSlotToCurrentPantryShelvingWidget(PantrySlot);
             }
-            
-            //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::PopulatePantrySlots - Created pantry slot for: %s"), 
-            //    *IngredientData.DisplayName.ToString());
         }
     }
-    
-    // Only mark as created if we actually created slots and have a container
+
     if (CreatedPantrySlots.Num() > 0 && ContainerToUse)
     {
         bPantrySlotsCreated = true;
@@ -2688,6 +2922,8 @@ void UPUDishCustomizationWidget::OpenPantry()
     {
         PopulatePantrySlots();
     }
+
+    RefreshPreppedPantrySlots();
     
     // Tutorial: initialize step 1 when first opening pantry in tutorial mode
     if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
@@ -2705,6 +2941,12 @@ void UPUDishCustomizationWidget::OpenPantry()
             if (PantrySlot)
             {
                 const FIngredientInstance& Instance = PantrySlot->GetIngredientInstance();
+                if (!Instance.IngredientData.IngredientTag.IsValid())
+                {
+                    PantrySlot->SetIsEnabled(false);
+                    PantrySlot->SetDragEnabled(false);
+                    continue;
+                }
                 const bool bIsAllowed = !AllowedTag.IsValid() || (Instance.IngredientData.IngredientTag == AllowedTag);
                 PantrySlot->SetIsEnabled(bIsAllowed);
                 PantrySlot->SetDragEnabled(bIsAllowed);
@@ -2726,6 +2968,7 @@ void UPUDishCustomizationWidget::OpenPantry()
     
     // Set up navigation for pantry slots (for controller support)
     SetupPantrySlotNavigation();
+    SetupPreppedPantrySlotNavigation();
     
     // Set pantry open flag
     bPantryOpen = true;
@@ -2800,22 +3043,22 @@ void UPUDishCustomizationWidget::OnEmptySlotClicked(UPUIngredientSlot* Ingredien
         return;
     }
     
-    // Only handle empty slots in the active ingredient area or prep area
-    if (IngredientSlot->GetLocation() != EPUIngredientSlotLocation::ActiveIngredientArea && 
-        IngredientSlot->GetLocation() != EPUIngredientSlotLocation::Prep)
+    if (IngredientSlot->GetLocation() != EPUIngredientSlotLocation::ActiveIngredientArea)
     {
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnEmptySlotClicked - Ignoring empty slot click (Location: %d is not ActiveIngredientArea or Prep)"), 
+        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnEmptySlotClicked - Ignoring slot click (Location: %d)"),
         //    (int32)IngredientSlot->GetLocation());
         return;
     }
-    
-    // Store the empty slot reference for later population
+
+    // Strip slot click toggles pantry (same expectation as the pantry button).
+    if (bPantryOpen)
+    {
+        ClosePantry();
+        return;
+    }
+
     PendingEmptySlot = IngredientSlot;
-    
-    // Open the pantry
     OpenPantry();
-    
-    //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnEmptySlotClicked - Pantry opened for empty slot selection"));
 }
 
 UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentPantryShelvingWidget(UPanelWidget* ContainerToUse)
@@ -2963,10 +3206,10 @@ void UPUDishCustomizationWidget::CreateOrUpdatePreppedSlot(const FIngredientInst
     }
 
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateOrUpdatePreppedSlot - InstanceID: %d"), InstanceID);
-    
+
     // Check if a prepped slot already exists for this specific ingredient instance
     UPUIngredientSlot* ExistingSlot = PreppedSlotMap.FindRef(InstanceID);
-    
+
     if (ExistingSlot && ExistingSlot->IsValidLowLevel())
     {
         // Update existing slot with new preparation data
@@ -3071,7 +3314,7 @@ void UPUDishCustomizationWidget::SetupPrepSlotNavigation()
     TArray<UPUIngredientSlot*> PrepSlots;
     for (UPUIngredientSlot* PrepSlot : CreatedIngredientSlots)
     {
-        if (PrepSlot && PrepSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
+        if (PrepSlot && PrepSlot->IsPlanningGatherPlateSlot())
         {
             // Ensure ALL prep slots are focusable, including empty ones
             PrepSlot->SetIsFocusable(true);
@@ -3167,15 +3410,14 @@ void UPUDishCustomizationWidget::SetupPantrySlotNavigation()
     // Set up navigation grid for pantry slots (for controller support)
     // Pantry slots are typically in a horizontal or wrap container
     // For now, we'll set up simple linear navigation (left/right, with wrap)
-    const int32 SlotsPerRow = 6; // Adjust based on your pantry layout
+    const int32 SlotsPerRow = 3;
     
     TArray<UPUIngredientSlot*> PantrySlots;
     for (UPUIngredientSlot* PantrySlot : CreatedPantrySlots)
     {
         if (PantrySlot && PantrySlot->GetLocation() == EPUIngredientSlotLocation::Pantry)
         {
-            // Ensure ALL pantry slots are focusable
-            PantrySlot->SetIsFocusable(true);
+            PantrySlot->SetIsFocusable(!PantrySlot->IsPantryShelfPaddingCell());
             PantrySlots.Add(PantrySlot);
             
             UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - Added pantry slot: %s"), 
@@ -3262,6 +3504,93 @@ void UPUDishCustomizationWidget::SetupPantrySlotNavigation()
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPantrySlotNavigation - Navigation setup complete for %d pantry slots"), PantrySlots.Num());
 }
 
+void UPUDishCustomizationWidget::SetupPreppedPantrySlotNavigation()
+{
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPreppedPantrySlotNavigation - Setting up navigation for prepped pantry picker slots"));
+
+    if (PreppedPantryContainer.IsValid())
+    {
+        for (UWidget* Ancestor = PreppedPantryContainer.Get(); Ancestor; Ancestor = Ancestor->GetParent())
+        {
+            if (UScrollBox* ScrollBox = Cast<UScrollBox>(Ancestor))
+            {
+                ScrollBox->SetScrollWhenFocusChanges(EScrollWhenFocusChanges::AnimatedScroll);
+                break;
+            }
+        }
+    }
+
+    const int32 SlotsPerRow = 3;
+
+    TArray<UPUIngredientSlot*> PantrySlots;
+    for (UPUIngredientSlot* PantrySlot : CreatedPreppedPantrySlots)
+    {
+        if (PantrySlot && PantrySlot->GetLocation() == EPUIngredientSlotLocation::Prepped)
+        {
+            PantrySlot->SetIsFocusable(!PantrySlot->IsPantryShelfPaddingCell());
+            PantrySlots.Add(PantrySlot);
+        }
+    }
+
+    if (PantrySlots.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetupPreppedPantrySlotNavigation - No prepped pantry slots found"));
+        return;
+    }
+
+    for (int32 i = 0; i < PantrySlots.Num(); ++i)
+    {
+        UPUIngredientSlot* CurrentSlot = PantrySlots[i];
+        if (!CurrentSlot)
+        {
+            continue;
+        }
+
+        int32 Row = i / SlotsPerRow;
+        int32 Col = i % SlotsPerRow;
+
+        int32 UpIndex = (Row > 0) ? (i - SlotsPerRow) : INDEX_NONE;
+        int32 DownIndex = ((Row + 1) * SlotsPerRow <= PantrySlots.Num()) ? (i + SlotsPerRow) : INDEX_NONE;
+
+        int32 LeftIndex = INDEX_NONE;
+        if (Col > 0)
+        {
+            LeftIndex = i - 1;
+        }
+        else if (Row > 0)
+        {
+            int32 PrevRowLastIndex = (Row * SlotsPerRow) - 1;
+            if (PrevRowLastIndex >= 0 && PrevRowLastIndex < PantrySlots.Num())
+            {
+                LeftIndex = PrevRowLastIndex;
+            }
+        }
+
+        int32 RightIndex = INDEX_NONE;
+        if (Col < SlotsPerRow - 1)
+        {
+            RightIndex = (i + 1 < PantrySlots.Num()) ? (i + 1) : INDEX_NONE;
+        }
+        else
+        {
+            int32 NextRowFirstIndex = (Row + 1) * SlotsPerRow;
+            if (NextRowFirstIndex < PantrySlots.Num())
+            {
+                RightIndex = NextRowFirstIndex;
+            }
+        }
+
+        UPUIngredientSlot* UpSlot = (UpIndex != INDEX_NONE && UpIndex >= 0 && UpIndex < PantrySlots.Num()) ? PantrySlots[UpIndex] : nullptr;
+        UPUIngredientSlot* DownSlot = (DownIndex != INDEX_NONE && DownIndex >= 0 && DownIndex < PantrySlots.Num()) ? PantrySlots[DownIndex] : nullptr;
+        UPUIngredientSlot* LeftSlot = (LeftIndex != INDEX_NONE && LeftIndex >= 0 && LeftIndex < PantrySlots.Num()) ? PantrySlots[LeftIndex] : nullptr;
+        UPUIngredientSlot* RightSlot = (RightIndex != INDEX_NONE && RightIndex >= 0 && RightIndex < PantrySlots.Num()) ? PantrySlots[RightIndex] : nullptr;
+
+        CurrentSlot->SetupNavigation(UpSlot, DownSlot, LeftSlot, RightSlot);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupPreppedPantrySlotNavigation - Navigation setup complete for %d slots"), PantrySlots.Num());
+}
+
 bool UPUDishCustomizationWidget::IsDialogueVisible() const
 {
     UWorld* World = GetWorld();
@@ -3338,7 +3667,46 @@ void UPUDishCustomizationWidget::SetInitialFocusForPantry()
                 }
             }, 0.2f, false);
             
-            return; // Only set focus to the first slot
+            return;
+        }
+    }
+
+    for (UPUIngredientSlot* PickSlot : CreatedPreppedPantrySlots)
+    {
+        if (PickSlot && PickSlot->IsPreppedPantryPickerSlot() && PickSlot->GetIngredientInstance().IngredientData.IngredientTag.IsValid())
+        {
+            PickSlot->SetIsFocusable(true);
+
+            FTimerHandle FocusTimerHandle;
+            GetWorld()->GetTimerManager().SetTimer(FocusTimerHandle, [WeakSlot = TWeakObjectPtr<UPUIngredientSlot>(PickSlot), this]()
+            {
+                if (WeakSlot.IsValid() && !IsDialogueVisible())
+                {
+                    WeakSlot->SetIsFocusable(true);
+                    WeakSlot->SetKeyboardFocus();
+                    FSlateApplication::Get().SetUserFocus(0, WeakSlot->TakeWidget());
+                    WeakSlot->ShowFocusVisuals();
+                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+
+                    if (!WeakSlot->HasKeyboardFocus())
+                    {
+                        FTimerHandle RetryTimerHandle;
+                        GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [WeakSlot, this]()
+                        {
+                            if (WeakSlot.IsValid())
+                            {
+                                WeakSlot->SetKeyboardFocus();
+                                WeakSlot->ShowFocusVisuals();
+                                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Retry: Focus set to %s (HasFocus: %s)"),
+                                    *WeakSlot->GetName(), WeakSlot->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                            }
+                        }, 0.1f, false);
+                    }
+                }
+            }, 0.2f, false);
+
+            return;
         }
     }
     
@@ -3369,8 +3737,10 @@ void UPUDishCustomizationWidget::SetupCookingSlotNavigation()
     TArray<UPUIngredientSlot*> CookingSlots;
     for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
     {
-        if (IngredientSlot && (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prepped || 
-                              IngredientSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea))
+        if (IngredientSlot &&
+            (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prepped ||
+             (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea &&
+              StageType == EDishCustomizationStageType::Cooking)))
         {
             IngredientSlot->SetIsFocusable(true);
             CookingSlots.Add(IngredientSlot);
@@ -3438,8 +3808,10 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
     UPUIngredientSlot* FirstSlot = nullptr;
     for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
     {
-        if (IngredientSlot && (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prepped || 
-                              IngredientSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea))
+        if (IngredientSlot &&
+            (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::Prepped ||
+             (IngredientSlot->GetLocation() == EPUIngredientSlotLocation::ActiveIngredientArea &&
+              StageType == EDishCustomizationStageType::Cooking)))
         {
             FirstSlot = IngredientSlot;
             break;
@@ -3526,7 +3898,7 @@ void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
     // Find the first prep slot (including empty ones) and set focus to it
     for (UPUIngredientSlot* PrepSlot : CreatedIngredientSlots)
     {
-        if (PrepSlot && PrepSlot->GetLocation() == EPUIngredientSlotLocation::Prep)
+        if (PrepSlot && PrepSlot->IsPlanningGatherPlateSlot())
         {
             UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Found prep slot: %s (Empty: %s, Focusable: %s)"), 
                 *PrepSlot->GetName(), 
