@@ -488,6 +488,10 @@ public:
 	FORCEINLINE UInputAction* GetLookAction() const { return LookAction; }
 	FORCEINLINE UInputAction* GetInteractAction() const { return InteractAction; }
 	FORCEINLINE UInputAction* GetOpenJournalAction() const { return OpenJournalAction; }
+
+	/** Journal widget placed on this character Blueprint (fallback: search worlds for UPUJournalWidget). Dish UI opens it via this reference when available. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
+	UPUJournalWidget* GetJournalWidget() const { return JournalWidget; }
 	FORCEINLINE UInputAction* GetToggleGridMovementAction() const { return ToggleGridMovementAction; }
 	FORCEINLINE UInputAction* GetJumpAction() const { return JumpAction; }
 	FORCEINLINE UInputMappingContext* GetDefaultMappingContext() const { return DefaultMappingContext; }

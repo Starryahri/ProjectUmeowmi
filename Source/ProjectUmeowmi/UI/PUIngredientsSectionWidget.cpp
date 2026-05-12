@@ -66,7 +66,7 @@ void UPUIngredientsSectionWidget::OnSectionActivated_Implementation()
 	RefreshIngredientsGrid();
 }
 
-void UPUIngredientsSectionWidget::RefreshIngredientsGrid()
+void UPUIngredientsSectionWidget::RefreshIngredientsGrid(bool bApplyDefaultDetailAndFocus)
 {
 	if (!IngredientsGrid)
 	{
@@ -188,21 +188,24 @@ void UPUIngredientsSectionWidget::RefreshIngredientsGrid()
 			}
 		}
 
-		if (bSelectFirstIngredientOnRefresh)
-		{
-			if (UnlockedRows.Num() > 0)
-			{
-				ShowIngredientDetail(UnlockedRows[0].IngredientTag);
-			}
-			else
-			{
-				ShowIngredientDetail(FGameplayTag());
-			}
-		}
 		SetupIngredientsGridNavigation();
-		if (bFocusFirstGridSlotOnRefresh)
+		if (bApplyDefaultDetailAndFocus)
 		{
-			ScheduleFocusFirstIngredientsGridSlot();
+			if (bSelectFirstIngredientOnRefresh)
+			{
+				if (UnlockedRows.Num() > 0)
+				{
+					ShowIngredientDetail(UnlockedRows[0].IngredientTag);
+				}
+				else
+				{
+					ShowIngredientDetail(FGameplayTag());
+				}
+			}
+			if (bFocusFirstGridSlotOnRefresh)
+			{
+				ScheduleFocusFirstIngredientsGridSlot();
+			}
 		}
 		return;
 	}
@@ -247,21 +250,25 @@ void UPUIngredientsSectionWidget::RefreshIngredientsGrid()
 		++Index;
 	}
 
-	if (bSelectFirstIngredientOnRefresh)
-	{
-		if (Rows.Num() > 0)
-		{
-			ShowIngredientDetail(Rows[0].IngredientTag);
-		}
-		else
-		{
-			ShowIngredientDetail(FGameplayTag());
-		}
-	}
 	SetupIngredientsGridNavigation();
-	if (bFocusFirstGridSlotOnRefresh)
+
+	if (bApplyDefaultDetailAndFocus)
 	{
-		ScheduleFocusFirstIngredientsGridSlot();
+		if (bSelectFirstIngredientOnRefresh)
+		{
+			if (Rows.Num() > 0)
+			{
+				ShowIngredientDetail(Rows[0].IngredientTag);
+			}
+			else
+			{
+				ShowIngredientDetail(FGameplayTag());
+			}
+		}
+		if (bFocusFirstGridSlotOnRefresh)
+		{
+			ScheduleFocusFirstIngredientsGridSlot();
+		}
 	}
 }
 
@@ -362,6 +369,56 @@ void UPUIngredientsSectionWidget::ScheduleFocusFirstIngredientsGridSlot()
 		return;
 	}
 	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(this, &UPUIngredientsSectionWidget::TryFocusFirstInteractableIngredientsSlot));
+}
+
+void UPUIngredientsSectionWidget::ScheduleFocusIngredientGridSlot(const FGameplayTag& IngredientTag)
+{
+	if (!IngredientTag.IsValid() || !IngredientsGrid)
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const FGameplayTag TagCopy = IngredientTag;
+	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([WeakThis = TWeakObjectPtr<UPUIngredientsSectionWidget>(this), TagCopy]()
+	{
+		if (UPUIngredientsSectionWidget* Self = WeakThis.Get())
+		{
+			Self->TryFocusIngredientGridSlot(TagCopy);
+		}
+	}));
+}
+
+void UPUIngredientsSectionWidget::TryFocusIngredientGridSlot(const FGameplayTag& IngredientTag)
+{
+	if (!IngredientTag.IsValid() || !IngredientsGrid)
+	{
+		return;
+	}
+	APlayerController* PC = GetOwningPlayer();
+	if (!PC)
+	{
+		return;
+	}
+	const int32 Num = IngredientsGrid->GetChildrenCount();
+	for (int32 i = 0; i < Num; ++i)
+	{
+		UPUJournalSlotWidget* Cell = Cast<UPUJournalSlotWidget>(IngredientsGrid->GetChildAt(i));
+		if (!Cell || Cell->GetEntryTag() != IngredientTag)
+		{
+			continue;
+		}
+		if (!Cell->GetIsEnabled() || !Cell->IsVisible() || Cell->IsSlotEmpty())
+		{
+			continue;
+		}
+		Cell->SetUserFocus(PC);
+		Cell->ApplySlateHoverForGamepadFocus();
+		break;
+	}
 }
 
 void UPUIngredientsSectionWidget::TryFocusFirstInteractableIngredientsSlot()

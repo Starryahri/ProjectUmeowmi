@@ -5,6 +5,7 @@
 #include "PUJournalTabListWidget.h"
 #include "PUJournalSectionWidget.h"
 #include "PURecipesSectionWidget.h"
+#include "PUIngredientsSectionWidget.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../PUProjectUmeowmiGameInstance.h"
@@ -254,6 +255,29 @@ void UPUJournalWidget::ShowDishInRecipesTab(const FGameplayTag& DishTag)
 	}
 }
 
+void UPUJournalWidget::OpenJournalToIngredient(const FGameplayTag& IngredientTag)
+{
+	if (!IngredientTag.IsValid())
+	{
+		return;
+	}
+
+	OpenJournal();
+
+	const FName IngredientsTab = ResolveIngredientsTabId();
+	if (IngredientsTab != NAME_None)
+	{
+		SwitchToTabById(IngredientsTab);
+	}
+
+	if (UPUIngredientsSectionWidget* IngredientsSection = GetIngredientsSection())
+	{
+		IngredientsSection->RefreshIngredientsGrid(false);
+		IngredientsSection->ShowIngredientDetail(IngredientTag);
+		IngredientsSection->ScheduleFocusIngredientGridSlot(IngredientTag);
+	}
+}
+
 UPURecipesSectionWidget* UPUJournalWidget::GetRecipesSection() const
 {
 	if (RecipesTabId != NAME_None)
@@ -279,6 +303,31 @@ UPURecipesSectionWidget* UPUJournalWidget::GetRecipesSection() const
 	return nullptr;
 }
 
+UPUIngredientsSectionWidget* UPUJournalWidget::GetIngredientsSection() const
+{
+	if (IngredientsTabId != NAME_None)
+	{
+		for (int32 i = 0; i < SectionWidgets.Num(); ++i)
+		{
+			if (SectionTabIds.IsValidIndex(i) && SectionTabIds[i] == IngredientsTabId)
+			{
+				if (UPUIngredientsSectionWidget* W = Cast<UPUIngredientsSectionWidget>(SectionWidgets[i]))
+				{
+					return W;
+				}
+			}
+		}
+	}
+	for (int32 i = 0; i < SectionWidgets.Num(); ++i)
+	{
+		if (UPUIngredientsSectionWidget* W = Cast<UPUIngredientsSectionWidget>(SectionWidgets[i]))
+		{
+			return W;
+		}
+	}
+	return nullptr;
+}
+
 FName UPUJournalWidget::ResolveRecipesTabId() const
 {
 	if (RecipesTabId != NAME_None)
@@ -288,6 +337,22 @@ FName UPUJournalWidget::ResolveRecipesTabId() const
 	for (int32 i = 0; i < SectionWidgets.Num(); ++i)
 	{
 		if (Cast<UPURecipesSectionWidget>(SectionWidgets[i]))
+		{
+			return SectionTabIds.IsValidIndex(i) ? SectionTabIds[i] : NAME_None;
+		}
+	}
+	return NAME_None;
+}
+
+FName UPUJournalWidget::ResolveIngredientsTabId() const
+{
+	if (IngredientsTabId != NAME_None)
+	{
+		return IngredientsTabId;
+	}
+	for (int32 i = 0; i < SectionWidgets.Num(); ++i)
+	{
+		if (Cast<UPUIngredientsSectionWidget>(SectionWidgets[i]))
 		{
 			return SectionTabIds.IsValidIndex(i) ? SectionTabIds[i] : NAME_None;
 		}

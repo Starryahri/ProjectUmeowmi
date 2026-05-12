@@ -3,6 +3,7 @@
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../ProjectUmeowmiCharacter.h"
 #include "PUDialogueBox.h"
+#include "PUJournalWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
 #include "../PUProjectUmeowmiGameInstance.h"
@@ -28,6 +29,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "Input/Events.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -2888,7 +2890,40 @@ void UPUDishCustomizationWidget::SetRecipeLogPreppedContainerByName(const FName&
 
 void UPUDishCustomizationWidget::NavigateJournalToIngredientInInventory_Implementation(FGameplayTag IngredientTag)
 {
-    (void)IngredientTag;
+    if (!IngredientTag.IsValid())
+    {
+        return;
+    }
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+    UPUJournalWidget* Journal = nullptr;
+    if (APlayerController* PC = GetOwningPlayer())
+    {
+        if (AProjectUmeowmiCharacter* Char = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+        {
+            Journal = Char->GetJournalWidget();
+        }
+    }
+    if (!Journal)
+    {
+        TArray<UUserWidget*> FoundWidgets;
+        UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, FoundWidgets, UPUJournalWidget::StaticClass(), false);
+        for (UUserWidget* W : FoundWidgets)
+        {
+            if (UPUJournalWidget* J = Cast<UPUJournalWidget>(W))
+            {
+                Journal = J;
+                break;
+            }
+        }
+    }
+    if (Journal)
+    {
+        Journal->OpenJournalToIngredient(IngredientTag);
+    }
 }
 
 void UPUDishCustomizationWidget::RefreshRecipeLog()

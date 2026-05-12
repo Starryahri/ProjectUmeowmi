@@ -10,6 +10,8 @@
 
 class UPURecipesSectionWidget;
 
+class UPUIngredientsSectionWidget;
+
 class UCommonActivatableWidgetSwitcher;
 class UCommonButtonBase;
 class UPUJournalTabListWidget;
@@ -59,6 +61,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Journal")
 	void ShowDishInRecipesTab(const FGameplayTag& DishTag);
 
+	/** Open journal, Ingredients tab, and show that ingredient's detail (+ focus unlocked grid cell when possible). */
+	UFUNCTION(BlueprintCallable, Category = "Journal")
+	void OpenJournalToIngredient(const FGameplayTag& IngredientTag);
+
 	/** Get the tab list widget */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Journal")
 	UPUJournalTabListWidget* GetTabList() const { return TabList; }
@@ -79,6 +85,8 @@ protected:
 	UUserWidget* CreateAndAddSectionWidget(TSubclassOf<UUserWidget> WidgetClass);
 
 	UPURecipesSectionWidget* GetRecipesSection() const;
+
+	UPUIngredientsSectionWidget* GetIngredientsSection() const;
 
 	/** Called when a tab button is created - sets the label text */
 	UFUNCTION()
@@ -115,6 +123,13 @@ protected:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs")
 	FName RecipesTabId;
+
+	/**
+	 * Optional. Tab Id of the Ingredients / pantry inventory section — must match a Journal Tabs row if set.
+	 * If None, the first registered UPUIngredientsSectionWidget is used for OpenJournalToIngredient.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Journal|Tabs")
+	FName IngredientsTabId;
 
 	/**
 	 * Optional. Tab to select when opening if last-tab restore does not apply.
@@ -166,4 +181,7 @@ protected:
 
 	/** Tab id for the recipes/dishes section: Recipes Tab Id if set, else first UPURecipesSectionWidget's tab. */
 	FName ResolveRecipesTabId() const;
+
+	/** Tab id for ingredients inventory: Ingredients Tab Id if set, else first UPUIngredientsSectionWidget's tab. */
+	FName ResolveIngredientsTabId() const;
 };

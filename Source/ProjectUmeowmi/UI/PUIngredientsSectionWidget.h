@@ -31,7 +31,11 @@ public:
 
 	/** Rebuild the grid from the ingredient table. Safe to call when the tab is shown or inventory changes. */
 	UFUNCTION(BlueprintCallable, Category = "Journal|Ingredients")
-	void RefreshIngredientsGrid();
+	void RefreshIngredientsGrid(bool bApplyDefaultDetailAndFocus = true);
+
+	/** After @RefreshIngredientsGrid, move focus next tick to the unlocked grid cell matching this tag if any (no-op if locked-only or missing). */
+	UFUNCTION(BlueprintCallable, Category = "Journal|Ingredients")
+	void ScheduleFocusIngredientGridSlot(const FGameplayTag& IngredientTag);
 
 	/**
 	 * Look up an ingredient row and refresh the right-hand detail area.
@@ -64,6 +68,8 @@ protected:
 	void ScheduleFocusFirstIngredientsGridSlot();
 
 	void TryFocusFirstInteractableIngredientsSlot();
+
+	void TryFocusIngredientGridSlot(const FGameplayTag& IngredientTag);
 
 	/** Slate default navigation escapes the grid to the next focusable widget (tab buttons). Wire cardinal neighbors + Stop at edges. */
 	void SetupIngredientsGridNavigation();
