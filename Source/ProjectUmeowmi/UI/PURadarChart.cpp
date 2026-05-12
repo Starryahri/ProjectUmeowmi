@@ -1384,20 +1384,22 @@ void UPURadarChart::SetValuesWithFluctuations(
 
 void UPURadarChart::CancelFluctuationAnimation()
 {
-    // Clear the timer if it's active
-    if (UWorld* World = GetWorld())
+    if (UWorld* World = GetWorld(); World != nullptr && FluctuationTimerHandle.IsValid())
     {
-        if (FluctuationTimerHandle.IsValid())
-        {
-            World->GetTimerManager().ClearTimer(FluctuationTimerHandle);
-            //UE_LOG(LogTemp,Log, TEXT("PURadarChart::CancelFluctuationAnimation: Cancelled ongoing fluctuation animation"));
-        }
+        World->GetTimerManager().ClearTimer(FluctuationTimerHandle);
+        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::CancelFluctuationAnimation: Cancelled ongoing fluctuation animation"));
     }
+    FluctuationTimerHandle = FTimerHandle();
 
-    // Reset state
     CurrentFluctuationStep = 0;
     TotalFluctuationSteps = 0;
     FinalTargetValues.Empty();
+}
+
+void UPURadarChart::BeginDestroy()
+{
+    CancelFluctuationAnimation();
+    Super::BeginDestroy();
 }
 
 bool UPURadarChart::IsFluctuationAnimationInProgress() const

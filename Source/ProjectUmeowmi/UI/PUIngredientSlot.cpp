@@ -1413,6 +1413,17 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
 
     bool bShiftPressed = InMouseEvent.IsShiftDown();
 
+    // Recipe log (base or prepped): navigate journal — before pantry / drag paths.
+    if (bRecipeLogSlot && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed &&
+        IngredientInstance.IngredientData.IngredientTag.IsValid())
+    {
+        if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+        {
+            DishWidget->NavigateJournalToIngredientInInventory(IngredientInstance.IngredientData.IngredientTag);
+        }
+        return FReply::Handled();
+    }
+
     // Active ingredient strip (planning gather + cooking): plain LMB on occupied slot toggles/opens pantry to swap.
     if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && bHasIngredient &&
         InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed)
@@ -2072,7 +2083,7 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     // For planning gather plate slots, clicks should open menus rather than starting DetectDrag immediately
     bool bCanDrag = false;
     const bool bIsPantryLikeSlot =
-        (Location == EPUIngredientSlotLocation::Pantry) || bPreppedPantryPickerSlot;
+        (Location == EPUIngredientSlotLocation::Pantry) || bPreppedPantryPickerSlot || bRecipeLogSlot;
 
     if (bIsPantryLikeSlot)
     {
@@ -3012,6 +3023,15 @@ void UPUIngredientSlot::SetPreppedPantryPickerSlot(bool bPicker)
     bPreppedPantryPickerSlot = bPicker;
 }
 
+void UPUIngredientSlot::SetRecipeLogSlot(bool bInRecipeLog)
+{
+    bRecipeLogSlot = bInRecipeLog;
+    if (bRecipeLogSlot)
+    {
+        bPreppedPantryPickerSlot = false;
+    }
+}
+
 void UPUIngredientSlot::RecalculateAspectsFromBase()
 {
     if (!bHasIngredient)
@@ -3271,6 +3291,15 @@ void UPUIngredientSlot::HandleControllerSelect()
 {
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerSelect - Called (Slot: %s, Location: %d, Empty: %s)"),
         *GetName(), (int32)Location, IsEmpty() ? TEXT("YES") : TEXT("NO"));
+
+    if (bRecipeLogSlot && IngredientInstance.IngredientData.IngredientTag.IsValid())
+    {
+        if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+        {
+            DishWidget->NavigateJournalToIngredientInInventory(IngredientInstance.IngredientData.IngredientTag);
+        }
+        return;
+    }
 
     if (bPreppedPantryPickerSlot && IngredientInstance.IngredientData.IngredientTag.IsValid())
     {

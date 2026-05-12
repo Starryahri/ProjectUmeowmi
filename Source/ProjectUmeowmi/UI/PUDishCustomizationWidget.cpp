@@ -20,11 +20,13 @@
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
 #include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
 #include "UObject/GarbageCollection.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Slate/SObjectWidget.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "Input/Events.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
@@ -60,6 +62,104 @@ namespace
     static bool IngredientInstanceHasAnyPreparation(const FIngredientInstance& Inst)
     {
         return Inst.Preparations.Num() > 0 || Inst.IngredientData.ActivePreparations.Num() > 0;
+    }
+
+    static uint32 HashGameplayTagContainerStable(const FGameplayTagContainer& Container)
+    {
+        TArray<FGameplayTag> Tags;
+        Container.GetGameplayTagArray(Tags);
+        Tags.Sort([](const FGameplayTag& A, const FGameplayTag& B) {
+            return A.GetTagName().FastLess(B.GetTagName());
+        });
+        uint32 Hash = 0;
+        for (const FGameplayTag& Tag : Tags)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(Tag));
+        }
+        return Hash;
+    }
+
+    static uint32 ComputeRecipeLogBaseContentSignature(const TArray<FIngredientInstance>& BaseOrdered)
+    {
+        uint32 Hash = 0;
+        for (const FIngredientInstance& I : BaseOrdered)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(I.InstanceID));
+            Hash = HashCombine(Hash, GetTypeHash(I.IngredientTag));
+        }
+        return Hash;
+    }
+
+    static uint32 ComputeRecipeLogPreppedContentSignature(const TArray<FIngredientInstance>& PreppedOrdered)
+    {
+        uint32 Hash = 0;
+        for (const FIngredientInstance& I : PreppedOrdered)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(I.InstanceID));
+            Hash = HashCombine(Hash, GetTypeHash(I.IngredientTag));
+            Hash = HashCombine(Hash, HashGameplayTagContainerStable(I.Preparations));
+            Hash = HashCombine(Hash, HashGameplayTagContainerStable(I.IngredientData.ActivePreparations));
+            Hash = HashCombine(Hash, GetTypeHash(I.TimeValue));
+            Hash = HashCombine(Hash, GetTypeHash(I.TemperatureValue));
+        }
+        return Hash;
+    }
+
+    static bool AreRecipeLogSlotsValid(const TArray<UPUIngredientSlot*>& Slots)
+    {
+        for (UPUIngredientSlot* SlotWidget : Slots)
+        {
+            if (!IsValid(SlotWidget))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static UPanelWidget* FindRecipeLogPanelByNames(UUserWidget* Owner, std::initializer_list<FName> Names)
+    {
+        if (!Owner)
+        {
+            return nullptr;
+        }
+        for (FName WidgetName : Names)
+        {
+            UWidget* Found = Owner->WidgetTree ? Owner->WidgetTree->FindWidget(WidgetName) : nullptr;
+            if (!Found)
+            {
+                Found = Owner->GetWidgetFromName(WidgetName);
+            }
+            if (UPanelWidget* Panel = Cast<UPanelWidget>(Found))
+            {
+                return Panel;
+            }
+        }
+        return nullptr;
+    }
+
+    /** Editor UMG designer/preview + incremental GC: avoid dynamic spawn there (PIE/game use teardown + normal GC lifecycle). */
+    static bool PU_ShouldSpawnDishPantryLikeDynamicWidgets(const UWorld* World, const UWidget* OwnerWidget)
+    {
+        if (!World || !OwnerWidget)
+        {
+            return false;
+        }
+#if WITH_EDITOR
+        if (OwnerWidget->IsDesignTime() || OwnerWidget->IsPreviewTime())
+        {
+            return false;
+        }
+#endif
+        switch (World->WorldType)
+        {
+        case EWorldType::Game:
+        case EWorldType::PIE:
+        case EWorldType::GamePreview:
+            return true;
+        default:
+            return false;
+        }
     }
 
     static void ReassertVirtualCursorAfterSlotFocus(UPUDishCustomizationWidget* DishWidget, APlayerController* PC)
@@ -124,7 +224,15 @@ void UPUDishCustomizationWidget::NativeConstruct()
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::NativeConstruct - Widget class: %s"), *GetClass()->GetName());
     
     Super::NativeConstruct();
-    
+
+    TryResolveRecipeLogPanelsFromHierarchy();
+
+    // Recipe log: no timers/ticks — one synchronous build when allowed (PIE/game; never UMG design/preview).
+    if (PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        RefreshRecipeLog();
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::NativeConstruct - Super::NativeConstruct completed"));
     
     // Check if we're in the game world
@@ -169,17 +277,110 @@ void UPUDishCustomizationWidget::NativeConstruct()
 void UPUDishCustomizationWidget::NativeDestruct()
 {
     // //UE_LOG(LogTemp,Display, TEXT("PUDishCustomizationWidget::NativeDestruct - Widget destructing"));
-    
+
     // Clear any pending timers
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(InitialFocusTimerHandle);
     }
-    
-    // Unsubscribe from events
+
     UnsubscribeFromEvents();
-    
+
+    ReleaseProgrammaticCustomizationSlots();
+
     Super::NativeDestruct();
+}
+
+void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
+{
+    TeardownRecipeLogDynamicWidgets(false);
+
+    TArray<UPUIngredientButton*> ButtonsToRelease;
+    IngredientButtonMap.GenerateValueArray(ButtonsToRelease);
+    IngredientButtonMap.Empty();
+    for (UPUIngredientButton* Btn : ButtonsToRelease)
+    {
+        if (IsValid(Btn))
+        {
+            Btn->OnIngredientButtonClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnIngredientButtonClicked);
+            Btn->RemoveFromParent();
+            Btn->ReleaseSlateResources(true);
+        }
+    }
+
+    auto UnbindIngredientSlotDelegates = [&](UPUIngredientSlot* S)
+    {
+        if (!IsValid(S))
+        {
+            return;
+        }
+        S->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnEmptySlotClicked);
+        S->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
+        S->OnSlotIngredientChanged.RemoveDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
+        S->OnIngredientDroppedOnSlot.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPlatingIngredientDropped);
+        S->RemoveFromParent();
+        S->ReleaseSlateResources(true);
+    };
+
+    for (UPUIngredientSlot* S : CreatedIngredientSlots)
+    {
+        UnbindIngredientSlotDelegates(S);
+    }
+    CreatedIngredientSlots.Empty();
+
+    auto TearDownShelving = [&](TArray<UUserWidget*>& ShelvingArray, TWeakObjectPtr<UUserWidget>& CurrentShelving, int32& CurrentCount)
+    {
+        for (UUserWidget* W : ShelvingArray)
+        {
+            if (IsValid(W))
+            {
+                W->RemoveFromParent();
+                W->ReleaseSlateResources(true);
+            }
+        }
+        ShelvingArray.Empty();
+        CurrentShelving.Reset();
+        CurrentCount = 0;
+    };
+
+    TearDownShelving(CreatedShelvingWidgets, CurrentShelvingWidget, CurrentShelvingWidgetSlotCount);
+
+    for (UPUIngredientSlot* S : CreatedPantrySlots)
+    {
+        UnbindIngredientSlotDelegates(S);
+    }
+    CreatedPantrySlots.Empty();
+    TearDownShelving(CreatedPantryShelvingWidgets, CurrentPantryShelvingWidget, CurrentPantryShelvingWidgetSlotCount);
+    bPantrySlotsCreated = false;
+
+    for (UPUIngredientSlot* S : CreatedPreppedSlots)
+    {
+        UnbindIngredientSlotDelegates(S);
+    }
+    CreatedPreppedSlots.Empty();
+
+    for (UPUIngredientSlot* S : CreatedPreppedPantrySlots)
+    {
+        UnbindIngredientSlotDelegates(S);
+    }
+    CreatedPreppedPantrySlots.Empty();
+    TearDownShelving(CreatedPreppedPantryShelvingWidgets, CurrentPreppedPantryShelvingWidget, CurrentPreppedPantryShelvingWidgetSlotCount);
+
+    CachedPreppedPantrySlotsContentSignature = 0;
+    bPreppedPantrySlotsHierarchyBuilt = false;
+
+    IngredientSlotMap.Empty();
+    PantrySlotMap.Empty();
+    PreppedSlotMap.Empty();
+    PendingEmptySlot.Reset();
+    bIngredientSlotsCreated = false;
+
+    CachedRecipeLogBaseSignature = 0;
+    CachedRecipeLogPreppedSignature = 0;
+    CachedRecipeLogSlotsPerRowForRecipeLog = -1;
+    CachedRecipeLogMaxBaseForRecipeLog = -1;
+    bRecipeLogBaseHierarchyBuilt = false;
+    bRecipeLogPreppedHierarchyBuilt = false;
 }
 
 void UPUDishCustomizationWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -239,6 +440,7 @@ void UPUDishCustomizationWidget::OnInitialDishDataReceived(const FPUDishBase& In
     }
     
     RefreshPreppedPantrySlots();
+    RefreshRecipeLog();
 
     // Cooking stage: set up controller navigation and focus on first slot (same pattern as prep stage)
     if (StageType == EDishCustomizationStageType::Cooking && CreatedPreppedSlots.Num() > 0)
@@ -276,6 +478,7 @@ void UPUDishCustomizationWidget::OnDishDataUpdated(const FPUDishBase& UpdatedDis
     OnDishDataChanged(UpdatedDishData);
 
     RefreshPreppedPantrySlots();
+    RefreshRecipeLog();
 }
 
 void UPUDishCustomizationWidget::OnCustomizationEnded()
@@ -341,6 +544,7 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
     }
 
     RefreshPreppedPantrySlots();
+    RefreshRecipeLog();
 }
 
 FText UPUDishCustomizationWidget::GetEndingStageTextForCurrentDish() const
@@ -597,6 +801,11 @@ int32 UPUDishCustomizationWidget::GenerateGUIDBasedInstanceID()
 
 void UPUDishCustomizationWidget::CreateIngredientButtons()
 {
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        return;
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientButtons - Creating ingredient buttons"));
     
     // Clear existing buttons
@@ -645,6 +854,11 @@ void UPUDishCustomizationWidget::CreateIngredientButtons()
 
 void UPUDishCustomizationWidget::CreateIngredientSlots()
 {
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        return;
+    }
+
     UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateIngredientSlots - FUNCTION CALLED! Creating ingredient slots from available ingredients"));
     
     // Clear existing slots and shelving widgets
@@ -744,6 +958,11 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
 
 void UPUDishCustomizationWidget::CreatePlatingIngredientSlots()
 {
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        return;
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🍽️ PUDishCustomizationWidget::CreatePlatingIngredientSlots - Creating plating ingredient slots"));
 
     if (!CustomizationComponent)
@@ -1246,6 +1465,11 @@ void UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry(const FI
 void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* IngredientSlot)
 {
     if (!IngredientSlot)
+    {
+        return;
+    }
+
+    if (IngredientSlot->IsRecipeLogSlot())
     {
         return;
     }
@@ -1949,6 +2173,11 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
         //UE_LOG(LogTemp,Error, TEXT("❌ PUDishCustomizationWidget::CreateSlots - No world context available"));
         return;
     }
+
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        return;
+    }
     
     // Clamp MaxSlots to a reasonable range (1-12)
     MaxSlots = FMath::Clamp(MaxSlots, 1, 12);
@@ -2510,13 +2739,514 @@ void UPUDishCustomizationWidget::SetPantryContainerByName(const FName& Container
     }
 }
 
+void UPUDishCustomizationWidget::TeardownRecipeLogBaseDynamicWidgets(bool bFinishDestroyInstances)
+{
+    (void)bFinishDestroyInstances;
+    for (UPUIngredientSlot* SlotWidget : CreatedRecipeLogBaseSlots)
+    {
+        if (!IsValid(SlotWidget))
+        {
+            continue;
+        }
+        SlotWidget->RemoveFromParent();
+        SlotWidget->ReleaseSlateResources(true);
+    }
+    CreatedRecipeLogBaseSlots.Empty();
+
+    CurrentRecipeLogBaseShelvingWidget.Reset();
+    CurrentRecipeLogBaseShelvingWidgetSlotCount = 0;
+
+    for (UUserWidget* Shelving : CreatedRecipeLogBaseShelvingWidgets)
+    {
+        if (!IsValid(Shelving))
+        {
+            continue;
+        }
+        Shelving->RemoveFromParent();
+        Shelving->ReleaseSlateResources(true);
+    }
+    CreatedRecipeLogBaseShelvingWidgets.Empty();
+}
+
+void UPUDishCustomizationWidget::TeardownRecipeLogPreppedDynamicWidgets(bool bFinishDestroyInstances)
+{
+    (void)bFinishDestroyInstances;
+    for (UPUIngredientSlot* SlotWidget : CreatedRecipeLogPreppedSlots)
+    {
+        if (!IsValid(SlotWidget))
+        {
+            continue;
+        }
+        SlotWidget->RemoveFromParent();
+        SlotWidget->ReleaseSlateResources(true);
+    }
+    CreatedRecipeLogPreppedSlots.Empty();
+
+    CurrentRecipeLogPreppedShelvingWidget.Reset();
+    CurrentRecipeLogPreppedShelvingWidgetSlotCount = 0;
+
+    for (UUserWidget* Shelving : CreatedRecipeLogPreppedShelvingWidgets)
+    {
+        if (!IsValid(Shelving))
+        {
+            continue;
+        }
+        Shelving->RemoveFromParent();
+        Shelving->ReleaseSlateResources(true);
+    }
+    CreatedRecipeLogPreppedShelvingWidgets.Empty();
+}
+
+void UPUDishCustomizationWidget::TeardownRecipeLogDynamicWidgets(bool bFinishDestroyInstances)
+{
+    TeardownRecipeLogBaseDynamicWidgets(bFinishDestroyInstances);
+    TeardownRecipeLogPreppedDynamicWidgets(bFinishDestroyInstances);
+}
+
+void UPUDishCustomizationWidget::TryResolveRecipeLogPanelsFromHierarchy()
+{
+    if (RecipeLogBaseScrollBox)
+    {
+        RecipeLogBaseContainer = RecipeLogBaseScrollBox.Get();
+    }
+    else if (!RecipeLogBaseContainer.IsValid())
+    {
+        if (UPanelWidget* Found = FindRecipeLogPanelByNames(
+                this,
+                {FName(TEXT("RecipeLogBaseScrollBox")), FName(TEXT("RecipeLogBaseContainer"))}))
+        {
+            RecipeLogBaseContainer = Found;
+        }
+    }
+
+    if (RecipeLogPreppedScrollBox)
+    {
+        RecipeLogPreppedContainer = RecipeLogPreppedScrollBox.Get();
+    }
+    else if (!RecipeLogPreppedContainer.IsValid())
+    {
+        if (UPanelWidget* Found = FindRecipeLogPanelByNames(
+                this,
+                {FName(TEXT("RecipeLogPreppedScrollBox")), FName(TEXT("RecipeLogPreppedContainer"))}))
+        {
+            RecipeLogPreppedContainer = Found;
+        }
+    }
+}
+
+void UPUDishCustomizationWidget::SetRecipeLogBaseContainer(UPanelWidget* Container)
+{
+    UPanelWidget* Previous = RecipeLogBaseContainer.IsValid() ? RecipeLogBaseContainer.Get() : nullptr;
+    if (Previous != Container)
+    {
+        TeardownRecipeLogBaseDynamicWidgets(true);
+        bRecipeLogBaseHierarchyBuilt = false;
+        CachedRecipeLogBaseSignature = 0;
+    }
+    RecipeLogBaseContainer = Container;
+    RefreshRecipeLog();
+}
+
+void UPUDishCustomizationWidget::SetRecipeLogBaseContainerByName(const FName& ContainerName)
+{
+    UWidget* FoundWidget = GetWidgetFromName(ContainerName);
+    if (!FoundWidget)
+    {
+        FoundWidget = WidgetTree ? WidgetTree->FindWidget(ContainerName) : nullptr;
+    }
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        SetRecipeLogBaseContainer(PanelWidget);
+    }
+}
+
+void UPUDishCustomizationWidget::SetRecipeLogPreppedContainer(UPanelWidget* Container)
+{
+    UPanelWidget* Previous = RecipeLogPreppedContainer.IsValid() ? RecipeLogPreppedContainer.Get() : nullptr;
+    if (Previous != Container)
+    {
+        TeardownRecipeLogPreppedDynamicWidgets(true);
+        bRecipeLogPreppedHierarchyBuilt = false;
+        CachedRecipeLogPreppedSignature = 0;
+    }
+    RecipeLogPreppedContainer = Container;
+    RefreshRecipeLog();
+}
+
+void UPUDishCustomizationWidget::SetRecipeLogPreppedContainerByName(const FName& ContainerName)
+{
+    UWidget* FoundWidget = GetWidgetFromName(ContainerName);
+    if (!FoundWidget)
+    {
+        FoundWidget = WidgetTree ? WidgetTree->FindWidget(ContainerName) : nullptr;
+    }
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        SetRecipeLogPreppedContainer(PanelWidget);
+    }
+}
+
+void UPUDishCustomizationWidget::NavigateJournalToIngredientInInventory_Implementation(FGameplayTag IngredientTag)
+{
+    (void)IngredientTag;
+}
+
+void UPUDishCustomizationWidget::RefreshRecipeLog()
+{
+    UWorld* World = GetWorld();
+    if (!IsValid(this) || HasAnyFlags(RF_BeginDestroyed) || !World)
+    {
+        return;
+    }
+
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(World, this))
+    {
+        return;
+    }
+
+    if (IsGarbageCollecting())
+    {
+        return;
+    }
+
+    const int32 SlotsPerRow = FMath::Max(1, RecipeLogSlotsPerRow);
+    const int32 MaxBase = FMath::Max(0, RecipeLogMaxBaseIngredients);
+
+    UPanelWidget* BaseContainer = RecipeLogBaseContainer.IsValid() ? RecipeLogBaseContainer.Get() : nullptr;
+    if (BaseContainer && !IsValid(BaseContainer))
+    {
+        BaseContainer = nullptr;
+    }
+    UPanelWidget* PreppedContainer = RecipeLogPreppedContainer.IsValid() ? RecipeLogPreppedContainer.Get() : nullptr;
+    if (PreppedContainer && !IsValid(PreppedContainer))
+    {
+        PreppedContainer = nullptr;
+    }
+
+    TArray<FIngredientInstance> BaseInstances;
+    for (const FIngredientInstance& Inst : CurrentDishData.IngredientInstances)
+    {
+        if (!Inst.IngredientData.IngredientTag.IsValid())
+        {
+            continue;
+        }
+        if (IngredientInstanceHasAnyPreparation(Inst))
+        {
+            continue;
+        }
+        BaseInstances.Add(Inst);
+    }
+    while (BaseInstances.Num() > MaxBase)
+    {
+        BaseInstances.Pop();
+    }
+
+    TArray<FIngredientInstance> PreppedInstances;
+    for (const FIngredientInstance& Inst : CurrentDishData.IngredientInstances)
+    {
+        if (IngredientInstanceHasAnyPreparation(Inst))
+        {
+            PreppedInstances.Add(Inst);
+        }
+    }
+
+    const uint32 NewBaseSig = ComputeRecipeLogBaseContentSignature(BaseInstances);
+    const uint32 NewPreppedSig = ComputeRecipeLogPreppedContentSignature(PreppedInstances);
+
+    const int32 NumBase = BaseInstances.Num();
+    const int32 TotalBaseSlots =
+        BaseContainer ? FMath::Max(SlotsPerRow, FMath::DivideAndRoundUp(NumBase, SlotsPerRow) * SlotsPerRow) : 0;
+
+    const int32 NumPrepped = PreppedInstances.Num();
+    const int32 TotalPreppedSlots =
+        PreppedContainer ? FMath::Max(SlotsPerRow, FMath::DivideAndRoundUp(NumPrepped, SlotsPerRow) * SlotsPerRow) : 0;
+
+    const bool bSkipBaseRebuild = BaseContainer != nullptr && bRecipeLogBaseHierarchyBuilt && NewBaseSig == CachedRecipeLogBaseSignature
+                                  && SlotsPerRow == CachedRecipeLogSlotsPerRowForRecipeLog && MaxBase == CachedRecipeLogMaxBaseForRecipeLog
+                                  && CreatedRecipeLogBaseSlots.Num() == TotalBaseSlots && AreRecipeLogSlotsValid(CreatedRecipeLogBaseSlots);
+
+    const bool bSkipPreppedRebuild =
+        PreppedContainer != nullptr && bRecipeLogPreppedHierarchyBuilt && NewPreppedSig == CachedRecipeLogPreppedSignature
+        && SlotsPerRow == CachedRecipeLogSlotsPerRowForRecipeLog && CreatedRecipeLogPreppedSlots.Num() == TotalPreppedSlots
+        && AreRecipeLogSlotsValid(CreatedRecipeLogPreppedSlots);
+
+    if (!BaseContainer)
+    {
+        if (bRecipeLogBaseHierarchyBuilt || CreatedRecipeLogBaseSlots.Num() > 0 || CreatedRecipeLogBaseShelvingWidgets.Num() > 0)
+        {
+            TeardownRecipeLogBaseDynamicWidgets(true);
+        }
+        bRecipeLogBaseHierarchyBuilt = false;
+        CachedRecipeLogBaseSignature = 0;
+    }
+
+    if (!PreppedContainer)
+    {
+        if (bRecipeLogPreppedHierarchyBuilt || CreatedRecipeLogPreppedSlots.Num() > 0 || CreatedRecipeLogPreppedShelvingWidgets.Num() > 0)
+        {
+            TeardownRecipeLogPreppedDynamicWidgets(true);
+        }
+        bRecipeLogPreppedHierarchyBuilt = false;
+        CachedRecipeLogPreppedSignature = 0;
+    }
+
+    auto CreatePaddingSlot = [&](EPUIngredientSlotLocation SlotLocation) -> UPUIngredientSlot* {
+        TSubclassOf<UPUIngredientSlot> SlotClass;
+        if (IngredientSlotClass)
+        {
+            SlotClass = IngredientSlotClass;
+        }
+        else
+        {
+            SlotClass = UPUIngredientSlot::StaticClass();
+        }
+        UPUIngredientSlot* RLSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
+        if (!RLSlot)
+        {
+            return nullptr;
+        }
+        RLSlot->SetDishCustomizationWidget(this);
+        RLSlot->SetRecipeLogSlot(false);
+        RLSlot->SetPreppedPantryPickerSlot(false);
+        RLSlot->SetPantryShelfPaddingCell(true);
+        RLSlot->SetLocation(SlotLocation);
+        RLSlot->SetDragEnabled(false);
+        RLSlot->SetIsEnabled(false);
+        RLSlot->SetIsFocusable(false);
+        FIngredientInstance EmptyInst;
+        RLSlot->SetIngredientInstance(EmptyInst);
+        if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
+        {
+            RLSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+        }
+        return RLSlot;
+    };
+
+    auto CreateFilledRecipeLogSlot = [&](EPUIngredientSlotLocation SlotLocation, const FIngredientInstance& SourceInst) -> UPUIngredientSlot* {
+        TSubclassOf<UPUIngredientSlot> SlotClass;
+        if (IngredientSlotClass)
+        {
+            SlotClass = IngredientSlotClass;
+        }
+        else
+        {
+            SlotClass = UPUIngredientSlot::StaticClass();
+        }
+        UPUIngredientSlot* RLSlot = CreateWidget<UPUIngredientSlot>(this, SlotClass);
+        if (!RLSlot)
+        {
+            return nullptr;
+        }
+        RLSlot->SetDishCustomizationWidget(this);
+        RLSlot->SetRecipeLogSlot(true);
+        RLSlot->SetPreppedPantryPickerSlot(false);
+        RLSlot->SetPantryShelfPaddingCell(false);
+        RLSlot->SetLocation(SlotLocation);
+        RLSlot->SetDragEnabled(false);
+        RLSlot->SetIsEnabled(true);
+        RLSlot->SetIsFocusable(true);
+        FIngredientInstance DisplayInst = SourceInst;
+        DisplayInst.Quantity = 0;
+        RLSlot->SetIngredientInstance(DisplayInst);
+        if (CustomizationComponent && CustomizationComponent->PreparationDataTable)
+        {
+            RLSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+        }
+        return RLSlot;
+    };
+
+    if (!bSkipBaseRebuild && BaseContainer)
+    {
+        TeardownRecipeLogBaseDynamicWidgets(true);
+
+        for (int32 SlotIndex = 0; SlotIndex < TotalBaseSlots; ++SlotIndex)
+        {
+            const bool bIsPadding = SlotIndex >= NumBase;
+            UPUIngredientSlot* RLSlot = bIsPadding ? CreatePaddingSlot(EPUIngredientSlotLocation::Pantry)
+                                                   : CreateFilledRecipeLogSlot(EPUIngredientSlotLocation::Pantry, BaseInstances[SlotIndex]);
+            if (!RLSlot)
+            {
+                continue;
+            }
+            CreatedRecipeLogBaseSlots.Add(RLSlot);
+            if (UUserWidget* ShelvingWidget = GetOrCreateCurrentRecipeLogBaseShelvingWidget(BaseContainer))
+            {
+                AddSlotToCurrentRecipeLogBaseShelvingWidget(RLSlot);
+            }
+        }
+        CachedRecipeLogBaseSignature = NewBaseSig;
+        bRecipeLogBaseHierarchyBuilt = true;
+    }
+
+    if (!bSkipPreppedRebuild && PreppedContainer)
+    {
+        TeardownRecipeLogPreppedDynamicWidgets(true);
+
+        for (int32 SlotIndex = 0; SlotIndex < TotalPreppedSlots; ++SlotIndex)
+        {
+            const bool bIsPadding = SlotIndex >= NumPrepped;
+            UPUIngredientSlot* RLSlot = bIsPadding ? CreatePaddingSlot(EPUIngredientSlotLocation::Prepped)
+                                                   : CreateFilledRecipeLogSlot(EPUIngredientSlotLocation::Prepped, PreppedInstances[SlotIndex]);
+            if (!RLSlot)
+            {
+                continue;
+            }
+            CreatedRecipeLogPreppedSlots.Add(RLSlot);
+            if (UUserWidget* ShelvingWidget = GetOrCreateCurrentRecipeLogPreppedShelvingWidget(PreppedContainer))
+            {
+                AddSlotToCurrentRecipeLogPreppedShelvingWidget(RLSlot);
+            }
+        }
+        CachedRecipeLogPreppedSignature = NewPreppedSig;
+        bRecipeLogPreppedHierarchyBuilt = true;
+    }
+
+    CachedRecipeLogSlotsPerRowForRecipeLog = SlotsPerRow;
+    CachedRecipeLogMaxBaseForRecipeLog = MaxBase;
+}
+
+UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentRecipeLogBaseShelvingWidget(UPanelWidget* ContainerToUse)
+{
+    const int32 RowSlots = FMath::Max(1, RecipeLogSlotsPerRow);
+    if (!CurrentRecipeLogBaseShelvingWidget.IsValid() || CurrentRecipeLogBaseShelvingWidgetSlotCount >= RowSlots)
+    {
+        if (!ShelvingWidgetClass)
+        {
+            return nullptr;
+        }
+        if (!GetWorld())
+        {
+            return nullptr;
+        }
+        UUserWidget* NewShelvingWidget = CreateWidget<UUserWidget>(this, ShelvingWidgetClass);
+        if (!NewShelvingWidget)
+        {
+            return nullptr;
+        }
+        if (ContainerToUse)
+        {
+            ContainerToUse->AddChild(NewShelvingWidget);
+        }
+        CreatedRecipeLogBaseShelvingWidgets.Add(NewShelvingWidget);
+        CurrentRecipeLogBaseShelvingWidget = NewShelvingWidget;
+        CurrentRecipeLogBaseShelvingWidgetSlotCount = 0;
+        return NewShelvingWidget;
+    }
+    return CurrentRecipeLogBaseShelvingWidget.Get();
+}
+
+bool UPUDishCustomizationWidget::AddSlotToCurrentRecipeLogBaseShelvingWidget(UPUIngredientSlot* IngredientSlot)
+{
+    if (!IngredientSlot || !CurrentRecipeLogBaseShelvingWidget.IsValid())
+    {
+        return false;
+    }
+
+    UWidget* FoundWidget = CurrentRecipeLogBaseShelvingWidget->GetWidgetFromName(ShelvingHorizontalBoxName);
+    if (!FoundWidget)
+    {
+        FoundWidget = CurrentRecipeLogBaseShelvingWidget->GetWidgetFromName(TEXT("HorizontalBox"));
+        if (!FoundWidget)
+        {
+            FoundWidget = CurrentRecipeLogBaseShelvingWidget->GetWidgetFromName(TEXT("SlotContainer"));
+        }
+    }
+
+    if (UHorizontalBox* HorizontalBox = Cast<UHorizontalBox>(FoundWidget))
+    {
+        HorizontalBox->AddChild(IngredientSlot);
+        CurrentRecipeLogBaseShelvingWidgetSlotCount++;
+        return true;
+    }
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        PanelWidget->AddChild(IngredientSlot);
+        CurrentRecipeLogBaseShelvingWidgetSlotCount++;
+        return true;
+    }
+    return false;
+}
+
+UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentRecipeLogPreppedShelvingWidget(UPanelWidget* ContainerToUse)
+{
+    const int32 RowSlots = FMath::Max(1, RecipeLogSlotsPerRow);
+    if (!CurrentRecipeLogPreppedShelvingWidget.IsValid() || CurrentRecipeLogPreppedShelvingWidgetSlotCount >= RowSlots)
+    {
+        if (!ShelvingWidgetClass)
+        {
+            return nullptr;
+        }
+        if (!GetWorld())
+        {
+            return nullptr;
+        }
+        UUserWidget* NewShelvingWidget = CreateWidget<UUserWidget>(this, ShelvingWidgetClass);
+        if (!NewShelvingWidget)
+        {
+            return nullptr;
+        }
+        if (ContainerToUse)
+        {
+            ContainerToUse->AddChild(NewShelvingWidget);
+        }
+        CreatedRecipeLogPreppedShelvingWidgets.Add(NewShelvingWidget);
+        CurrentRecipeLogPreppedShelvingWidget = NewShelvingWidget;
+        CurrentRecipeLogPreppedShelvingWidgetSlotCount = 0;
+        return NewShelvingWidget;
+    }
+    return CurrentRecipeLogPreppedShelvingWidget.Get();
+}
+
+bool UPUDishCustomizationWidget::AddSlotToCurrentRecipeLogPreppedShelvingWidget(UPUIngredientSlot* IngredientSlot)
+{
+    if (!IngredientSlot || !CurrentRecipeLogPreppedShelvingWidget.IsValid())
+    {
+        return false;
+    }
+
+    UWidget* FoundWidget = CurrentRecipeLogPreppedShelvingWidget->GetWidgetFromName(ShelvingHorizontalBoxName);
+    if (!FoundWidget)
+    {
+        FoundWidget = CurrentRecipeLogPreppedShelvingWidget->GetWidgetFromName(TEXT("HorizontalBox"));
+        if (!FoundWidget)
+        {
+            FoundWidget = CurrentRecipeLogPreppedShelvingWidget->GetWidgetFromName(TEXT("SlotContainer"));
+        }
+    }
+
+    if (UHorizontalBox* HorizontalBox = Cast<UHorizontalBox>(FoundWidget))
+    {
+        HorizontalBox->AddChild(IngredientSlot);
+        CurrentRecipeLogPreppedShelvingWidgetSlotCount++;
+        return true;
+    }
+    if (UPanelWidget* PanelWidget = Cast<UPanelWidget>(FoundWidget))
+    {
+        PanelWidget->AddChild(IngredientSlot);
+        CurrentRecipeLogPreppedShelvingWidgetSlotCount++;
+        return true;
+    }
+    return false;
+}
+
 void UPUDishCustomizationWidget::SetPreppedPantryContainer(UPanelWidget* Container)
 {
-    if (Container)
+    if (!Container)
     {
-        PreppedPantryContainer = Container;
+        PreppedPantryContainer = nullptr;
         RefreshPreppedPantrySlots();
+        return;
     }
+
+    UPanelWidget* Previous = PreppedPantryContainer.IsValid() ? PreppedPantryContainer.Get() : nullptr;
+    if (Previous != Container)
+    {
+        bPreppedPantrySlotsHierarchyBuilt = false;
+        CachedPreppedPantrySlotsContentSignature = 0;
+    }
+
+    PreppedPantryContainer = Container;
+    RefreshPreppedPantrySlots();
 }
 
 void UPUDishCustomizationWidget::SetPreppedPantryContainerByName(const FName& ContainerName)
@@ -2539,8 +3269,106 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
         return;
     }
 
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        return;
+    }
+
     if (IsGarbageCollecting())
     {
+        return;
+    }
+
+    auto ApplyPreppedPantryTutorialLocks = [&]() {
+        if (UPUProjectUmeowmiGameInstance* GI = GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+        {
+            if (GI->IsTutorialModeEnabled())
+            {
+                const FGameplayTag AllowedTag = GI->GetTutorialAllowedIngredientTag();
+                for (UPUIngredientSlot* PSlot : CreatedPreppedPantrySlots)
+                {
+                    if (!PSlot)
+                    {
+                        continue;
+                    }
+                    const FIngredientInstance& Inst = PSlot->GetIngredientInstance();
+                    if (!Inst.IngredientData.IngredientTag.IsValid())
+                    {
+                        PSlot->SetIsEnabled(false);
+                        PSlot->SetDragEnabled(false);
+                        continue;
+                    }
+                    const bool bAllowed = !AllowedTag.IsValid() || (Inst.IngredientData.IngredientTag == AllowedTag);
+                    PSlot->SetIsEnabled(bAllowed);
+                    PSlot->SetDragEnabled(bAllowed);
+                }
+            }
+        }
+    };
+
+    UPanelWidget* ContainerToUse = PreppedPantryContainer.IsValid() ? PreppedPantryContainer.Get() : nullptr;
+
+    TArray<FIngredientInstance> PreppedInstances;
+    for (const FIngredientInstance& Inst : CurrentDishData.IngredientInstances)
+    {
+        if (IngredientInstanceHasAnyPreparation(Inst))
+        {
+            PreppedInstances.Add(Inst);
+        }
+    }
+
+    const uint32 NewPreppedPantrySig = ComputeRecipeLogPreppedContentSignature(PreppedInstances);
+    const int32 NumPrepped = PreppedInstances.Num();
+    const int32 TotalSlots = FMath::Max(3, (NumPrepped + 2) / 3 * 3);
+
+    if (!ContainerToUse)
+    {
+        for (UPUIngredientSlot* PreppedPantrySlotWidget : CreatedPreppedPantrySlots)
+        {
+            if (!IsValid(PreppedPantrySlotWidget))
+            {
+                continue;
+            }
+            if (PreppedPantrySlotWidget->IsPreppedPantryPickerSlot())
+            {
+                PreppedPantrySlotWidget->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
+            }
+            if (PreppedPantrySlotWidget->GetParent())
+            {
+                PreppedPantrySlotWidget->RemoveFromParent();
+            }
+            PreppedPantrySlotWidget->ReleaseSlateResources(true);
+        }
+        CreatedPreppedPantrySlots.Empty();
+
+        CurrentPreppedPantryShelvingWidget.Reset();
+
+        for (UUserWidget* Shelving : CreatedPreppedPantryShelvingWidgets)
+        {
+            if (!IsValid(Shelving))
+            {
+                continue;
+            }
+            if (Shelving->GetParent())
+            {
+                Shelving->RemoveFromParent();
+            }
+            Shelving->ReleaseSlateResources(true);
+        }
+        CreatedPreppedPantryShelvingWidgets.Empty();
+        CurrentPreppedPantryShelvingWidgetSlotCount = 0;
+
+        bPreppedPantrySlotsHierarchyBuilt = false;
+        CachedPreppedPantrySlotsContentSignature = 0;
+        return;
+    }
+
+    const bool bSkipPreppedPantryRebuild = bPreppedPantrySlotsHierarchyBuilt && NewPreppedPantrySig == CachedPreppedPantrySlotsContentSignature
+                                           && CreatedPreppedPantrySlots.Num() == TotalSlots && AreRecipeLogSlotsValid(CreatedPreppedPantrySlots);
+
+    if (bSkipPreppedPantryRebuild)
+    {
+        ApplyPreppedPantryTutorialLocks();
         return;
     }
 
@@ -2559,7 +3387,6 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
             PreppedPantrySlotWidget->RemoveFromParent();
         }
         PreppedPantrySlotWidget->ReleaseSlateResources(true);
-        PreppedPantrySlotWidget->MarkAsGarbage();
     }
     CreatedPreppedPantrySlots.Empty();
 
@@ -2576,28 +3403,9 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
             Shelving->RemoveFromParent();
         }
         Shelving->ReleaseSlateResources(true);
-        Shelving->MarkAsGarbage();
     }
     CreatedPreppedPantryShelvingWidgets.Empty();
     CurrentPreppedPantryShelvingWidgetSlotCount = 0;
-
-    UPanelWidget* ContainerToUse = PreppedPantryContainer.IsValid() ? PreppedPantryContainer.Get() : nullptr;
-    if (!ContainerToUse)
-    {
-        return;
-    }
-
-    TArray<FIngredientInstance> PreppedInstances;
-    for (const FIngredientInstance& Inst : CurrentDishData.IngredientInstances)
-    {
-        if (IngredientInstanceHasAnyPreparation(Inst))
-        {
-            PreppedInstances.Add(Inst);
-        }
-    }
-
-    const int32 NumPrepped = PreppedInstances.Num();
-    const int32 TotalSlots = FMath::Max(3, (NumPrepped + 2) / 3 * 3);
 
     for (int32 SlotIndex = 0; SlotIndex < TotalSlots; ++SlotIndex)
     {
@@ -2674,30 +3482,10 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
         }
     }
 
-    if (UPUProjectUmeowmiGameInstance* GI = GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>())
-    {
-        if (GI->IsTutorialModeEnabled())
-        {
-            const FGameplayTag AllowedTag = GI->GetTutorialAllowedIngredientTag();
-            for (UPUIngredientSlot* PSlot : CreatedPreppedPantrySlots)
-            {
-                if (!PSlot)
-                {
-                    continue;
-                }
-                const FIngredientInstance& Inst = PSlot->GetIngredientInstance();
-                if (!Inst.IngredientData.IngredientTag.IsValid())
-                {
-                    PSlot->SetIsEnabled(false);
-                    PSlot->SetDragEnabled(false);
-                    continue;
-                }
-                const bool bAllowed = !AllowedTag.IsValid() || (Inst.IngredientData.IngredientTag == AllowedTag);
-                PSlot->SetIsEnabled(bAllowed);
-                PSlot->SetDragEnabled(bAllowed);
-            }
-        }
-    }
+    CachedPreppedPantrySlotsContentSignature = NewPreppedPantrySig;
+    bPreppedPantrySlotsHierarchyBuilt = true;
+
+    ApplyPreppedPantryTutorialLocks();
 }
 
 UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentPreppedPantryShelvingWidget(UPanelWidget* ContainerToUse)
@@ -2769,6 +3557,11 @@ void UPUDishCustomizationWidget::PopulatePantrySlots()
     if (bPantrySlotsCreated)
     {
         //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::PopulatePantrySlots - Pantry slots already created, skipping"));
+        return;
+    }
+
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
         return;
     }
     
@@ -2924,6 +3717,7 @@ void UPUDishCustomizationWidget::OpenPantry()
     }
 
     RefreshPreppedPantrySlots();
+    RefreshRecipeLog();
     
     // Tutorial: initialize step 1 when first opening pantry in tutorial mode
     if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
@@ -3186,6 +3980,11 @@ void UPUDishCustomizationWidget::SetPreppedIngredientContainer(UPanelWidget* Con
 
 void UPUDishCustomizationWidget::CreateOrUpdatePreppedSlot(const FIngredientInstance& IngredientInstance)
 {
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        return;
+    }
+
     // Only create prepped slots if we have a container
     if (!PreppedIngredientContainer.IsValid())
     {

@@ -194,6 +194,13 @@ public:
     UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Pantry")
     bool IsPreppedPantryPickerSlot() const { return bPreppedPantryPickerSlot; }
 
+    /** Recipe log row: display-only; click navigates journal via dish widget (not pantry pick). */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Pantry")
+    void SetRecipeLogSlot(bool bInRecipeLog);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Pantry")
+    bool IsRecipeLogSlot() const { return bRecipeLogSlot; }
+
     // Controller input functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
     void HandleControllerSelect(); // Called when A/X button is pressed on focused slot
@@ -372,6 +379,8 @@ protected:
     bool bPantryShelfPaddingCell = false;
 
     bool bPreppedPantryPickerSlot = false;
+
+    bool bRecipeLogSlot = false;
 
     // Cached reference to the dish customization widget (set when slot is created)
     UPROPERTY()

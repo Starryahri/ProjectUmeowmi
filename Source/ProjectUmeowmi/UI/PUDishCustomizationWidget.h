@@ -15,6 +15,8 @@
 class UPUDishCustomizationComponent;
 class UScrollBox;
 
+class UPanelWidget;
+
 UCLASS(BlueprintType, Blueprintable)
 class PROJECTUMEOWMI_API UPUDishCustomizationWidget : public UUserWidget
 {
@@ -285,6 +287,27 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
     void RefreshPreppedPantrySlots();
 
+    /** Panels hosting recipe log shelving (4 slots per row). Assign in Blueprint, bind widgets named RecipeLogBaseScrollBox / RecipeLogPreppedScrollBox, or call Set*ByName. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Recipe Log")
+    void SetRecipeLogBaseContainer(UPanelWidget* Container);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Recipe Log")
+    void SetRecipeLogBaseContainerByName(const FName& ContainerName);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Recipe Log")
+    void SetRecipeLogPreppedContainer(UPanelWidget* Container);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Recipe Log")
+    void SetRecipeLogPreppedContainerByName(const FName& ContainerName);
+
+    /** Rebuild base (no preparations, capped) and prepped rows from CurrentDishData. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Recipe Log")
+    void RefreshRecipeLog();
+
+    /** Stub in C++; override in Blueprint to open the journal inventory tab for this ingredient. */
+    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Dish Customization Widget|Recipe Log")
+    void NavigateJournalToIngredientInInventory(FGameplayTag IngredientTag);
+
     // Handle empty slot click (opens pantry)
     UFUNCTION()
     void OnEmptySlotClicked(class UPUIngredientSlot* IngredientSlot);
@@ -422,6 +445,14 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta=(BindWidgetOptional), Category = "Dish Customization Widget|Ingredients")
     UScrollBox* QuantityScrollBox = nullptr;
 
+    /** Recipe log base shelving host — bind a panel named exactly `RecipeLogBaseScrollBox`, or name one `RecipeLogBaseContainer` for runtime lookup (see NativeConstruct). */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TObjectPtr<UPanelWidget> RecipeLogBaseScrollBox;
+
+    /** Recipe log prepped shelving host — bind `RecipeLogPreppedScrollBox` or name `RecipeLogPreppedContainer`. */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TObjectPtr<UPanelWidget> RecipeLogPreppedScrollBox;
+
     // Pantry Management Properties
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     TArray<class UPUIngredientSlot*> CreatedPantrySlots;
@@ -456,6 +487,20 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Pantry")
     TWeakObjectPtr<class UPanelWidget> PreppedPantryContainer;
 
+    /** Optional manual assignment; also filled from BindWidget / hierarchy names in NativeConstruct (same idea as pantry containers). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Recipe Log")
+    TWeakObjectPtr<class UPanelWidget> RecipeLogBaseContainer;
+
+    /** Optional manual assignment; also filled from BindWidget / hierarchy names in NativeConstruct. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Customization Widget|Recipe Log")
+    TWeakObjectPtr<class UPanelWidget> RecipeLogPreppedContainer;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log", meta = (ClampMin = "1", ClampMax = "12"))
+    int32 RecipeLogSlotsPerRow = 4;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log", meta = (ClampMin = "1", ClampMax = "12"))
+    int32 RecipeLogMaxBaseIngredients = 4;
+
     // Store references to pantry slots by ingredient tag (for quick lookup)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     TMap<FGameplayTag, class UPUIngredientSlot*> PantrySlotMap;
@@ -487,6 +532,30 @@ protected:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     int32 CurrentPreppedPantryShelvingWidgetSlotCount = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TArray<class UPUIngredientSlot*> CreatedRecipeLogBaseSlots;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TArray<UUserWidget*> CreatedRecipeLogBaseShelvingWidgets;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TWeakObjectPtr<UUserWidget> CurrentRecipeLogBaseShelvingWidget;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    int32 CurrentRecipeLogBaseShelvingWidgetSlotCount = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TArray<class UPUIngredientSlot*> CreatedRecipeLogPreppedSlots;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TArray<UUserWidget*> CreatedRecipeLogPreppedShelvingWidgets;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    TWeakObjectPtr<UUserWidget> CurrentRecipeLogPreppedShelvingWidget;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
+    int32 CurrentRecipeLogPreppedShelvingWidgetSlotCount = 0;
 
     // Implement Preparation Tags (simplified - no carousel, just data structure)
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dish Customization Widget|Preparations", meta=(EditFixedSize=true, Categories="Prep", DisplayName="Implement Preparation Tags", ToolTip="Per-implement allowed preparation tags; uses Prep.* tags"))
@@ -543,6 +612,9 @@ private:
 
     void SubscribeToEvents();
     void UnsubscribeFromEvents();
+
+    /** Removes dynamically spawned shelving/slots/delegate bindings before destruction so GC never traverses dangling UObject*s on this widget. */
+    void ReleaseProgrammaticCustomizationSlots();
     
     // Helper function to update radar chart from planning data
     void UpdateRadarChartFromPlanningData();
@@ -584,4 +656,32 @@ private:
     UUserWidget* GetOrCreateCurrentPreppedPantryShelvingWidget(UPanelWidget* ContainerToUse);
 
     bool AddSlotToCurrentPreppedPantryShelvingWidget(class UPUIngredientSlot* IngredientSlot);
+
+    UUserWidget* GetOrCreateCurrentRecipeLogBaseShelvingWidget(UPanelWidget* ContainerToUse);
+
+    bool AddSlotToCurrentRecipeLogBaseShelvingWidget(class UPUIngredientSlot* IngredientSlot);
+
+    UUserWidget* GetOrCreateCurrentRecipeLogPreppedShelvingWidget(UPanelWidget* ContainerToUse);
+
+    bool AddSlotToCurrentRecipeLogPreppedShelvingWidget(class UPUIngredientSlot* IngredientSlot);
+
+    /** Fills RecipeLog*Container weak ptrs from BindWidgetOptional panels or WidgetTree names (RecipeLogBaseScrollBox / RecipeLogBaseContainer, etc.). */
+    void TryResolveRecipeLogPanelsFromHierarchy();
+
+    void TeardownRecipeLogBaseDynamicWidgets(bool bFinishDestroyInstances);
+    void TeardownRecipeLogPreppedDynamicWidgets(bool bFinishDestroyInstances);
+
+    /** Tear down dynamically spawned recipe log slots/shelving (detach Slate, clear TArray refs); UObject lifetime follows normal GC. */
+    void TeardownRecipeLogDynamicWidgets(bool bFinishDestroyInstances);
+
+    /** Skip full rebuild when dish recipe-log slice unchanged (avoids flashing base when only prepped rows change). */
+    uint32 CachedRecipeLogBaseSignature = 0;
+    uint32 CachedRecipeLogPreppedSignature = 0;
+    int32 CachedRecipeLogSlotsPerRowForRecipeLog = -1;
+    int32 CachedRecipeLogMaxBaseForRecipeLog = -1;
+    bool bRecipeLogBaseHierarchyBuilt = false;
+    bool bRecipeLogPreppedHierarchyBuilt = false;
+
+    uint32 CachedPreppedPantrySlotsContentSignature = 0;
+    bool bPreppedPantrySlotsHierarchyBuilt = false;
 }; 

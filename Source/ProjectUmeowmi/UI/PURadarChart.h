@@ -297,6 +297,9 @@ protected:
     /** Updates the value layers to match the current segment count */
     void UpdateValueLayers();
 
+    /** Stops fluctuation timers before UObject teardown (GetWorld may already be unavailable). */
+    virtual void BeginDestroy() override;
+
     /** Internal function to process the next step in the fluctuation animation sequence */
     void ProcessFluctuationStep();
 
