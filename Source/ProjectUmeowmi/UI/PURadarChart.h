@@ -7,6 +7,7 @@
 #include "../DishCustomization/PUIngredientBase.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "../DishCustomization/PUOrderBase.h"
+#include "../DishCustomization/PUAspectRadarIconRow.h"
 #include "PURadarChart.generated.h"
 
 /**
@@ -163,6 +164,13 @@ public:
     bool bShowHintLayer = true;
 
     /**
+     * Optional data table mapping Profile.Flavor.* / Profile.Texture.* gameplay tags to icons.
+     * Assign the same asset on flavor and texture radar widgets, or leave empty to skip icons.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Radar Chart|Icons", meta = (RowType = "/Script/ProjectUmeowmi.PUAspectRadarIconRow"))
+    TObjectPtr<class UDataTable> AspectRadarIconTable = nullptr;
+
+    /**
      * Sets values from a dish's flavor profile with random fluctuations before settling.
      * @param Dish - The dish to get flavor profile from
      * @param InFluctuationIntensity - How much to vary from final values (0.0 to 1.0, default: 0.3)
@@ -244,6 +252,13 @@ public:
     bool IsFluctuationAnimationInProgress() const;
 
     /**
+     * Clears invalid UObject / Slate asset pointers on ChartStyle and ValueLayers.
+     * Works for marketplace URadarChart or UPURadarChart (call after construct / when opening embedded UI).
+     */
+    UFUNCTION(BlueprintCallable, Category = "Radar Chart|Helpers")
+    static void SanitizeObjectReferencesOnAnyRadar(class URadarChart* Chart);
+
+    /**
      * Helper function to find a PURadarChart widget in a parent widget.
      * Useful for finding the radar chart from a parent widget blueprint.
      * @param ParentWidget - The parent widget to search in
@@ -300,6 +315,10 @@ protected:
     /** Stops fluctuation timers before UObject teardown (GetWorld may already be unavailable). */
     virtual void BeginDestroy() override;
 
+    virtual void PostLoad() override;
+
+    virtual void SynchronizeProperties() override;
+
     /** Internal function to process the next step in the fluctuation animation sequence */
     void ProcessFluctuationStep();
 
@@ -337,4 +356,11 @@ private:
 
     /** Builds hint values from DiscoveredHints for the given aspect names and type. */
     TArray<float> BuildHintValuesFromDiscoveredHints(const TArray<FOrderAspectRequirement>& DiscoveredHints, const TArray<FName>& AspectNames, EOrderAspectType AspectType) const;
+
+    void SetSegmentIconWithoutRebuild(int32 SegmentIndex, UTexture2D* IconTexture);
+    void ApplyAspectIconsFromTable(const TArray<FName>& AspectNamesInOrder, EOrderAspectType Category);
+    void ApplyAspectIconsTwelveSegmentFlavorThenTexture();
+
+    /** Clears invalid UObject refs on chart style, value layers, and segments (stale BP / editor GC). */
+    void SanitizeChartObjectReferences();
 }; 

@@ -211,6 +211,23 @@ namespace
         }
         return FSlateApplication::Get().GetKeyboardFocusedWidget();
     }
+
+    static void SanitizeRadarChartsInWidgetTree(UWidgetTree* InWidgetTree)
+    {
+        if (!InWidgetTree)
+        {
+            return;
+        }
+        TArray<UWidget*> AllWidgets;
+        InWidgetTree->GetAllWidgets(AllWidgets);
+        for (UWidget* W : AllWidgets)
+        {
+            if (URadarChart* Radar = Cast<URadarChart>(W))
+            {
+                UPURadarChart::SanitizeObjectReferencesOnAnyRadar(Radar);
+            }
+        }
+    }
 }
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
@@ -226,6 +243,8 @@ void UPUDishCustomizationWidget::NativeConstruct()
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::NativeConstruct - Widget class: %s"), *GetClass()->GetName());
     
     Super::NativeConstruct();
+
+    SanitizeRadarChartsInWidgetTree(WidgetTree);
 
     TryResolveRecipeLogPanelsFromHierarchy();
 
@@ -443,6 +462,8 @@ void UPUDishCustomizationWidget::OnInitialDishDataReceived(const FPUDishBase& In
     
     RefreshPreppedPantrySlots();
     RefreshRecipeLog();
+
+    RefreshRadarChartsFromDishData(CurrentDishData);
 
     // Cooking stage: set up controller navigation and focus on first slot (same pattern as prep stage)
     if (StageType == EDishCustomizationStageType::Cooking && CreatedPreppedSlots.Num() > 0)
@@ -1811,6 +1832,8 @@ void UPUDishCustomizationWidget::ToggleIngredientSelection(const FPUIngredientBa
 
 void UPUDishCustomizationWidget::RefreshRadarChartsFromDishData(const FPUDishBase& Dish)
 {
+    SanitizeRadarChartsInWidgetTree(WidgetTree);
+
     // Update assigned radar charts (assign in Blueprint Details under "Radar Chart" category)
     if (FlavorRadarChart)
     {

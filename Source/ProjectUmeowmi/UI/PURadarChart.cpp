@@ -1,15 +1,195 @@
 #include "PURadarChart.h"
+#include "RadarChart.h"
 #include "RadarChartStyle.h"
 #include "RadarChartTypes.h"
 #include "SRadarChart.h"
 #include "Engine/DataTable.h"
 #include "../DishCustomization/PUIngredientBase.h"
+#include "../DishCustomization/PUAspectRadarIconRow.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "../DishCustomization/PUOrderBase.h"
+#include "GameplayTagsManager.h"
 #include "TimerManager.h"
 #include "Engine/World.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Widget.h"
+#include "Fonts/SlateFontInfo.h"
+#include "Sound/SlateSound.h"
+#include "Styling/SlateTypes.h"
+
+namespace
+{
+	bool IsAspectRadarIconTableStructValid(const UDataTable* Table)
+	{
+		if (!Table)
+		{
+			return false;
+		}
+		const UScriptStruct* RowStruct = Table->GetRowStruct();
+		return RowStruct != nullptr && RowStruct == FPUAspectRadarIconRow::StaticStruct();
+	}
+
+	TMap<FGameplayTag, UTexture2D*> BuildAspectIconLookup(UDataTable* Table)
+	{
+		TMap<FGameplayTag, UTexture2D*> Map;
+		if (!IsAspectRadarIconTableStructValid(Table))
+		{
+			return Map;
+		}
+		for (const FName& RowName : Table->GetRowNames())
+		{
+			if (FPUAspectRadarIconRow* Row = Table->FindRow<FPUAspectRadarIconRow>(RowName, TEXT("RadarAspectIcons")))
+			{
+				UTexture2D* Tex = Row->Icon.Get();
+				if (Row->AspectTag.IsValid() && Tex != nullptr && IsValid(Tex))
+				{
+					Map.Add(Row->AspectTag, Tex);
+				}
+			}
+		}
+		return Map;
+	}
+
+	void SanitizeSlateBrush(FSlateBrush& Brush)
+	{
+		if (UObject* Res = Brush.GetResourceObject())
+		{
+			if (!IsValid(Res))
+			{
+				Brush.SetResourceObject(nullptr);
+			}
+		}
+	}
+
+	void SanitizeSlateSound(FSlateSound& Sound)
+	{
+		if (UObject* Res = Sound.GetResourceObject())
+		{
+			if (!IsValid(Res))
+			{
+				Sound.SetResourceObject(nullptr);
+			}
+		}
+	}
+
+	void SanitizeButtonStyleBrushes(FButtonStyle& Style)
+	{
+		SanitizeSlateBrush(Style.Normal);
+		SanitizeSlateBrush(Style.Hovered);
+		SanitizeSlateBrush(Style.Pressed);
+		SanitizeSlateBrush(Style.Disabled);
+		SanitizeSlateSound(Style.PressedSlateSound);
+		SanitizeSlateSound(Style.HoveredSlateSound);
+	}
+
+	void SanitizeSlateFont(FSlateFontInfo& Font)
+	{
+		if (Font.FontObject != nullptr && !IsValid(Font.FontObject))
+		{
+			Font.FontObject = nullptr;
+		}
+		if (Font.FontMaterial != nullptr && !IsValid(Font.FontMaterial))
+		{
+			Font.FontMaterial = nullptr;
+		}
+		if (Font.OutlineSettings.OutlineMaterial != nullptr && !IsValid(Font.OutlineSettings.OutlineMaterial))
+		{
+			Font.OutlineSettings.OutlineMaterial = nullptr;
+		}
+	}
+
+	void SanitizeAppearance(FRadarChartAppearance& App)
+	{
+		if (App.ShapeTexture != nullptr && !IsValid(App.ShapeTexture))
+		{
+			App.ShapeTexture = nullptr;
+		}
+		if (App.ActiveMaterial != nullptr && !IsValid(App.ActiveMaterial))
+		{
+			App.ActiveMaterial = nullptr;
+		}
+		SanitizeSlateBrush(App.ActiveMaterialBrush);
+		SanitizeButtonStyleBrushes(static_cast<FButtonStyle&>(App.Pin));
+	}
+
+	/** Core sanitizer for marketplace URadarChart / UPURadarChart (style + value layers + segments). */
+	void SanitizeRadarChartObjectReferences(URadarChart* Chart)
+	{
+		if (Chart == nullptr || !Chart->IsValidLowLevel())
+		{
+			return;
+		}
+
+		if (UPURadarChart* PU = Cast<UPURadarChart>(Chart))
+		{
+			if (PU->AspectRadarIconTable && !IsValid(PU->AspectRadarIconTable))
+			{
+				PU->AspectRadarIconTable = nullptr;
+			}
+		}
+
+		FRadarChartStyle& ChartStyle = Chart->ChartStyle;
+		SanitizeAppearance(ChartStyle.Appearance);
+		SanitizeButtonStyleBrushes(static_cast<FButtonStyle&>(ChartStyle.LabelButton));
+		SanitizeSlateFont(ChartStyle.NameFont);
+		SanitizeSlateFont(ChartStyle.ValuesFont);
+		SanitizeSlateFont(ChartStyle.UnitsFont);
+		SanitizeSlateBrush(ChartStyle.ValueSeparator);
+
+		for (FRadarChartValueLayer& Layer : Chart->ValueLayers)
+		{
+			SanitizeAppearance(Layer.Appearance);
+			SanitizeButtonStyleBrushes(static_cast<FButtonStyle&>(Layer.TextSettings.Button));
+		}
+
+		for (FRadarChartSegment& Seg : ChartStyle.Segments)
+		{
+			UObject* IconObj = Seg.Icon;
+			UObject* BrushObj = Seg.IconBrush.GetResourceObject();
+
+			if (IconObj != nullptr && !IsValid(IconObj))
+			{
+				Seg.Icon = nullptr;
+				IconObj = nullptr;
+			}
+			if (BrushObj != nullptr && !IsValid(BrushObj))
+			{
+				Seg.IconBrush.SetResourceObject(nullptr);
+				BrushObj = nullptr;
+			}
+
+			if (Seg.Icon == nullptr && BrushObj != nullptr && IsValid(BrushObj))
+			{
+				if (UTexture2D* AsTex = Cast<UTexture2D>(BrushObj))
+				{
+					Seg.Icon = AsTex;
+				}
+				else
+				{
+					Seg.IconBrush.SetResourceObject(nullptr);
+				}
+			}
+
+			if (Seg.Icon != nullptr)
+			{
+				if (Seg.IconBrush.GetResourceObject() != Seg.Icon)
+				{
+					Seg.IconBrush.SetResourceObject(Seg.Icon);
+					Seg.IconBrush.DrawAs = ESlateBrushDrawType::Image;
+				}
+			}
+			else
+			{
+				Seg.IconBrush.SetResourceObject(nullptr);
+			}
+		}
+	}
+}
+
+void UPURadarChart::SanitizeObjectReferencesOnAnyRadar(URadarChart* Chart)
+{
+	SanitizeRadarChartObjectReferences(Chart);
+}
 
 UPURadarChart::UPURadarChart()
     : CurrentFluctuationStep(0)
@@ -35,15 +215,13 @@ void UPURadarChart::ShowIcons(bool bShow)
     
     if (bShow)
     {
-        // Configure icon settings
-        ChartStyle.IconSize = FVector2D(32.0f, 32.0f);  // Set a reasonable icon size
-        
-        // Configure icon color
+        ChartStyle.IconSize = FVector2D(56.0f, 56.0f);
+
         ChartStyle.IconColor.Method = ERadarChartColorOverride::None;
         ChartStyle.IconColor.Color = FLinearColor::White;
-        
-        ChartStyle.IconPadding = FVector2D(5.0f, 5.0f);  // Add some padding around icons
-        ChartStyle.bAlwaysUprightIcon = true;  // Keep icons upright for better readability
+
+        ChartStyle.IconPadding = FVector2D(8.0f, 8.0f);
+        ChartStyle.bAlwaysUprightIcon = true;
     }
     
     // Force a rebuild of the chart to apply changes
@@ -311,6 +489,7 @@ bool UPURadarChart::SetValuesFromIngredient(const FPUIngredientBase& Ingredient)
 
     // Set the values
     SetValues(Values);
+    ApplyAspectIconsTwelveSegmentFlavorThenTexture();
     return true;
 }
 
@@ -366,6 +545,7 @@ bool UPURadarChart::SetValuesFromIngredientWithTimeTemp(const FPUIngredientBase&
     SetValues(Values);
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromIngredientWithTimeTemp: Updated with Time=%.2f, Temp=%.2f"), TimeValue, TemperatureValue);
+    ApplyAspectIconsTwelveSegmentFlavorThenTexture();
     return true;
 }
 
@@ -522,7 +702,7 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
             
             // Get the texture
             const UTexture2D* const* FoundTexture = IngredientTextures.Find(Pair.Key);
-            if (FoundTexture)
+            if (FoundTexture && *FoundTexture != nullptr && IsValid(*FoundTexture))
             {
                 IconTextures[SegmentIndex] = const_cast<UTexture2D*>(*FoundTexture);
             }
@@ -557,58 +737,128 @@ bool UPURadarChart::SetValuesFromDishIngredients(const FPUDishBase& Dish)
     // Set the values with smooth animation
     SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
     
-    // Set the icons
+    // Set the icons (one rebuild after batch)
     for (int32 i = 0; i < IconTextures.Num() && i < TotalSegments; ++i)
     {
-        SetSegmentIcon(i, IconTextures[i]);
+        SetSegmentIconWithoutRebuild(i, IconTextures[i]);
     }
     
     // Make sure icons are enabled
     ShowIcons(true);
+    ForceRebuild();
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishIngredients: Completed setup with %d segments"), TotalSegments);
     return true;
 }
 
+void UPURadarChart::SetSegmentIconWithoutRebuild(int32 SegmentIndex, UTexture2D* IconTexture)
+{
+	if (SegmentIndex < 0 || SegmentIndex >= ChartStyle.Segments.Num())
+	{
+		return;
+	}
+
+	if (IconTexture != nullptr && !IsValid(IconTexture))
+	{
+		IconTexture = nullptr;
+	}
+
+	if (IconTexture)
+	{
+		ChartStyle.Segments[SegmentIndex].Icon = IconTexture;
+		ChartStyle.Segments[SegmentIndex].IconBrush.SetResourceObject(IconTexture);
+		ChartStyle.Segments[SegmentIndex].IconBrush.DrawAs = ESlateBrushDrawType::Image;
+		ChartStyle.Segments[SegmentIndex].IconBrush.TintColor = FSlateColor(FLinearColor::White);
+		ChartStyle.Segments[SegmentIndex].IconBrush.SetImageSize(ChartStyle.IconSize);
+		// SRadarChart skips name labels when Name is empty (see CreateLabels).
+		ChartStyle.Segments[SegmentIndex].Name = FText::GetEmpty();
+	}
+	else
+	{
+		ChartStyle.Segments[SegmentIndex].Icon = nullptr;
+		ChartStyle.Segments[SegmentIndex].IconBrush.SetResourceObject(nullptr);
+	}
+}
+
+void UPURadarChart::ApplyAspectIconsFromTable(const TArray<FName>& AspectNamesInOrder, EOrderAspectType Category)
+{
+	if (!AspectRadarIconTable || !IsAspectRadarIconTableStructValid(AspectRadarIconTable) || AspectNamesInOrder.Num() != ChartStyle.Segments.Num())
+	{
+		return;
+	}
+
+	const FString ParentStr = (Category == EOrderAspectType::Flavor) ? TEXT("Profile.Flavor") : TEXT("Profile.Texture");
+	const TMap<FGameplayTag, UTexture2D*> IconByTag = BuildAspectIconLookup(AspectRadarIconTable);
+	ShowIcons(true);
+	for (int32 i = 0; i < AspectNamesInOrder.Num(); ++i)
+	{
+		const FGameplayTag FullTag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(*FString::Printf(TEXT("%s.%s"), *ParentStr, *AspectNamesInOrder[i].ToString())),
+			false);
+		if (UTexture2D* const* IconPtr = IconByTag.Find(FullTag))
+		{
+			SetSegmentIconWithoutRebuild(i, *IconPtr);
+		}
+		else
+		{
+			SetSegmentIconWithoutRebuild(i, nullptr);
+			ChartStyle.Segments[i].Name = FText::FromString(AspectNamesInOrder[i].ToString());
+		}
+	}
+	ForceRebuild();
+}
+
+void UPURadarChart::ApplyAspectIconsTwelveSegmentFlavorThenTexture()
+{
+	if (!AspectRadarIconTable || !IsAspectRadarIconTableStructValid(AspectRadarIconTable) || ChartStyle.Segments.Num() != 12)
+	{
+		return;
+	}
+
+	static const FName FlavorNames[6] = {
+		FName(TEXT("Umami")), FName(TEXT("Salt")), FName(TEXT("Sweet")), FName(TEXT("Sour")), FName(TEXT("Bitter")), FName(TEXT("Spicy"))
+	};
+	static const FName TextureNames[6] = {
+		FName(TEXT("Rich")), FName(TEXT("Juicy")), FName(TEXT("Tender")), FName(TEXT("Chewy")), FName(TEXT("Crispy")), FName(TEXT("Crumbly"))
+	};
+
+	const TMap<FGameplayTag, UTexture2D*> IconByTag = BuildAspectIconLookup(AspectRadarIconTable);
+	ShowIcons(true);
+	for (int32 i = 0; i < 6; ++i)
+	{
+		const FGameplayTag FullTag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(*FString::Printf(TEXT("Profile.Flavor.%s"), *FlavorNames[i].ToString())), false);
+		if (UTexture2D* const* IconPtr = IconByTag.Find(FullTag))
+		{
+			SetSegmentIconWithoutRebuild(i, *IconPtr);
+		}
+		else
+		{
+			SetSegmentIconWithoutRebuild(i, nullptr);
+			ChartStyle.Segments[i].Name = FText::FromString(FlavorNames[i].ToString());
+		}
+	}
+	for (int32 i = 0; i < 6; ++i)
+	{
+		const FGameplayTag FullTag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(*FString::Printf(TEXT("Profile.Texture.%s"), *TextureNames[i].ToString())), false);
+		if (UTexture2D* const* IconPtr = IconByTag.Find(FullTag))
+		{
+			SetSegmentIconWithoutRebuild(i + 6, *IconPtr);
+		}
+		else
+		{
+			SetSegmentIconWithoutRebuild(i + 6, nullptr);
+			ChartStyle.Segments[i + 6].Name = FText::FromString(TextureNames[i].ToString());
+		}
+	}
+	ForceRebuild();
+}
+
 void UPURadarChart::SetSegmentIcon(int32 SegmentIndex, UTexture2D* IconTexture)
 {
-    // Safety check: ensure segment index is valid
-    if (SegmentIndex < 0 || SegmentIndex >= ChartStyle.Segments.Num())
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("PURadarChart::SetSegmentIcon: Invalid segment index %d (max: %d)"), 
-        //    SegmentIndex, ChartStyle.Segments.Num() - 1);
-        return;
-    }
-    
-    // Safety check: ensure the segment exists
-    if (SegmentIndex >= ChartStyle.Segments.Num())
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("PURadarChart::SetSegmentIcon: Segment %d does not exist"), SegmentIndex);
-        return;
-    }
-    
-    if (IconTexture)
-    {
-        // Set up the icon and its brush
-        ChartStyle.Segments[SegmentIndex].Icon = IconTexture;
-        ChartStyle.Segments[SegmentIndex].IconBrush.SetResourceObject(IconTexture);
-        ChartStyle.Segments[SegmentIndex].IconBrush.DrawAs = ESlateBrushDrawType::Image;
-        ChartStyle.Segments[SegmentIndex].IconBrush.TintColor = FSlateColor(FLinearColor::White);
-        
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetSegmentIcon: Set icon for segment %d with texture %p"), 
-        //    SegmentIndex, IconTexture);
-    }
-    else
-    {
-        // Clear the icon
-        ChartStyle.Segments[SegmentIndex].Icon = nullptr;
-        ChartStyle.Segments[SegmentIndex].IconBrush.SetResourceObject(nullptr);
-        
-        //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetSegmentIcon: Cleared icon for segment %d"), SegmentIndex);
-    }
-    
-    // Force a rebuild of the chart to show the new icon
-    ForceRebuild();
+	SetSegmentIconWithoutRebuild(SegmentIndex, IconTexture);
+	ForceRebuild();
 }
 
 bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
@@ -716,6 +966,8 @@ bool UPURadarChart::SetValuesFromDishFlavorProfile(const FPUDishBase& Dish)
     {
         SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
     }
+
+    ApplyAspectIconsFromTable(FlavorAspectNames, EOrderAspectType::Flavor);
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfile: Completed setup with %d segments"), TotalSegments);
     return true;
@@ -826,6 +1078,8 @@ bool UPURadarChart::SetValuesFromDishTextureProfile(const FPUDishBase& Dish)
     {
         SetValuesAnimated(Values, 0.5f, 18, EEasingFunc::ExpoOut);
     }
+
+    ApplyAspectIconsFromTable(TextureAspectNames, EOrderAspectType::Texture);
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfile: Completed setup with %d segments"), TotalSegments);
     return true;
@@ -1009,7 +1263,7 @@ bool UPURadarChart::SetValuesFromOrderFlavorProfile(const FPUOrderBase& Order, c
     }
 
     UE_LOG(LogTemp, Display, TEXT("[Radar] Flavor: Layer0(hint) updated, Layer1(player) animated - scale %.0f"), NormalizationScale);
-    ForceRebuild();
+    ApplyAspectIconsFromTable(FlavorAspectNames, EOrderAspectType::Flavor);
     return true;
 }
 
@@ -1102,7 +1356,7 @@ bool UPURadarChart::SetValuesFromOrderTextureProfile(const FPUOrderBase& Order, 
     }
 
     UE_LOG(LogTemp, Display, TEXT("[Radar] Texture: Layer0(hint) updated, Layer1(player) animated - scale %.0f"), NormalizationScale);
-    ForceRebuild();
+    ApplyAspectIconsFromTable(TextureAspectNames, EOrderAspectType::Texture);
     return true;
 }
 
@@ -1197,6 +1451,7 @@ bool UPURadarChart::SetValuesFromDishFlavorProfileWithFluctuations(
     
     // Set the values with fluctuations animation
     SetValuesWithFluctuations(Values, InFluctuationIntensity, NumFluctuations, InFluctuationDuration, InSettleDuration, 18, EEasingFunc::ExpoOut);
+    ApplyAspectIconsFromTable(FlavorAspectNames, EOrderAspectType::Flavor);
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishFlavorProfileWithFluctuations: Completed setup with %d segments"), TotalSegments);
     return true;
@@ -1293,6 +1548,7 @@ bool UPURadarChart::SetValuesFromDishTextureProfileWithFluctuations(
     
     // Set the values with fluctuations animation
     SetValuesWithFluctuations(Values, InFluctuationIntensity, NumFluctuations, InFluctuationDuration, InSettleDuration, 18, EEasingFunc::ExpoOut);
+    ApplyAspectIconsFromTable(TextureAspectNames, EOrderAspectType::Texture);
     
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetValuesFromDishTextureProfileWithFluctuations: Completed setup with %d segments"), TotalSegments);
     return true;
@@ -1396,9 +1652,27 @@ void UPURadarChart::CancelFluctuationAnimation()
     FinalTargetValues.Empty();
 }
 
+void UPURadarChart::SanitizeChartObjectReferences()
+{
+    SanitizeRadarChartObjectReferences(this);
+}
+
+void UPURadarChart::PostLoad()
+{
+    Super::PostLoad();
+    SanitizeChartObjectReferences();
+}
+
+void UPURadarChart::SynchronizeProperties()
+{
+    SanitizeChartObjectReferences();
+    Super::SynchronizeProperties();
+}
+
 void UPURadarChart::BeginDestroy()
 {
     CancelFluctuationAnimation();
+    SanitizeChartObjectReferences();
     Super::BeginDestroy();
 }
 
