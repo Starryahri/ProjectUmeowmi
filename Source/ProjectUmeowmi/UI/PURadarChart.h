@@ -258,6 +258,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Radar Chart|Helpers")
     static void SanitizeObjectReferencesOnAnyRadar(class URadarChart* Chart);
 
+    /** Clears invalid UObject/Slate refs on every URadarChart under this widget tree (UMG designer preview + incremental GC). */
+    static void SanitizeRadarChartsInWidgetTree(class UWidgetTree* InWidgetTree);
+
     /**
      * Helper function to find a PURadarChart widget in a parent widget.
      * Useful for finding the radar chart from a parent widget blueprint.

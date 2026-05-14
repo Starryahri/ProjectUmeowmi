@@ -88,6 +88,26 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Stages")
     void GoToPreviousStage();
 
+    /** Remove the mounted pipeline vignette widget from StageModuleSlot. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void ClearStageModuleSlot();
+
+    /** Clears StageModuleSlot then adds Descriptor.StageWidgetClass as a child (requires StageModuleSlot). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    bool TryMountStageModuleFromDescriptor(const FPUDishCustomizationStageDescriptor& Descriptor);
+
+    /** Show or collapse IngredientRailSlot (shell-owned strip). No-op if slot unbound. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void SetIngredientRailSlotVisible(bool bVisible);
+
+    /** Apply CustomizationComponent active pipeline stage: rail visibility + StageWidgetClass mount. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    bool RefreshPipelineStagePresentation();
+
+    /** Calls AdvanceCustomizationPipeline on the component then RefreshPipelineStagePresentation. False if no pipeline or cannot advance. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    bool AdvancePipelineStageAndRefreshPresentation();
+
     // Blueprint events for controller input (allows animations to play first)
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Controller")
     void OnControllerNextStage();
@@ -453,6 +473,18 @@ protected:
     UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Recipe Log")
     TObjectPtr<UPanelWidget> RecipeLogPreppedScrollBox;
 
+    /** Center vignette / implement mount — bind name `StageModuleSlot` or find via hierarchy (see NativeConstruct). */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell")
+    TObjectPtr<UPanelWidget> StageModuleSlot;
+
+    /** Shell-owned ingredient rail — visibility toggled per pipeline row (`bIngredientRailVisible`). */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell")
+    TObjectPtr<UPanelWidget> IngredientRailSlot;
+
+    /** Widget spawned from active pipeline descriptor `StageWidgetClass` into StageModuleSlot. */
+    UPROPERTY(Transient, BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell")
+    TObjectPtr<UUserWidget> MountedPipelineStageWidget;
+
     // Pantry Management Properties
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     TArray<class UPUIngredientSlot*> CreatedPantrySlots;
@@ -664,6 +696,9 @@ private:
     UUserWidget* GetOrCreateCurrentRecipeLogPreppedShelvingWidget(UPanelWidget* ContainerToUse);
 
     bool AddSlotToCurrentRecipeLogPreppedShelvingWidget(class UPUIngredientSlot* IngredientSlot);
+
+    /** Resolve StageModuleSlot / IngredientRailSlot from BindWidgetOptional or WidgetTree / named lookups. */
+    void TryResolvePipelineShellSlotsFromHierarchy();
 
     /** Fills RecipeLog*Container weak ptrs from BindWidgetOptional panels or WidgetTree names (RecipeLogBaseScrollBox / RecipeLogBaseContainer, etc.). */
     void TryResolveRecipeLogPanelsFromHierarchy();

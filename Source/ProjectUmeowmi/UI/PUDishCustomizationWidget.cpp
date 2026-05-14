@@ -212,22 +212,6 @@ namespace
         return FSlateApplication::Get().GetKeyboardFocusedWidget();
     }
 
-    static void SanitizeRadarChartsInWidgetTree(UWidgetTree* InWidgetTree)
-    {
-        if (!InWidgetTree)
-        {
-            return;
-        }
-        TArray<UWidget*> AllWidgets;
-        InWidgetTree->GetAllWidgets(AllWidgets);
-        for (UWidget* W : AllWidgets)
-        {
-            if (URadarChart* Radar = Cast<URadarChart>(W))
-            {
-                UPURadarChart::SanitizeObjectReferencesOnAnyRadar(Radar);
-            }
-        }
-    }
 }
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
@@ -244,9 +228,11 @@ void UPUDishCustomizationWidget::NativeConstruct()
     
     Super::NativeConstruct();
 
-    SanitizeRadarChartsInWidgetTree(WidgetTree);
+    UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
 
     TryResolveRecipeLogPanelsFromHierarchy();
+
+    TryResolvePipelineShellSlotsFromHierarchy();
 
     // Recipe log: no timers/ticks — one synchronous build when allowed (PIE/game; never UMG design/preview).
     if (PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
@@ -314,6 +300,8 @@ void UPUDishCustomizationWidget::NativeDestruct()
 
 void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
 {
+    ClearStageModuleSlot();
+
     TeardownRecipeLogDynamicWidgets(false);
 
     TArray<UPUIngredientButton*> ButtonsToRelease;
@@ -479,6 +467,11 @@ void UPUDishCustomizationWidget::OnInitialDishDataReceived(const FPUDishBase& In
         //UE_LOG(LogTemp,Display, TEXT("📥 PUDishCustomizationWidget::OnInitialDishDataReceived - Calling Blueprint event OnDishDataReceived"));
     }
     OnDishDataReceived(InitialDishData);
+
+    if (CustomizationComponent && CustomizationComponent->HasActiveCustomizationPipeline())
+    {
+        RefreshPipelineStagePresentation();
+    }
     
     if (bPU_LogDishDataReceiveDebug)
     {
@@ -491,8 +484,18 @@ void UPUDishCustomizationWidget::OnDishDataUpdated(const FPUDishBase& UpdatedDis
     //UE_LOG(LogTemp,Display, TEXT("PUDishCustomizationWidget::OnDishDataUpdated - Received dish data update: %s with %d ingredients"), 
     //    *UpdatedDishData.DisplayName.ToString(), UpdatedDishData.IngredientInstances.Num());
     
+    FPUDishBase Merged = UpdatedDishData;
+    /* Match component: broadcasts may carry ingredient deltas without pipeline rows (partial struct). */
+    if (Merged.DishTag.IsValid()
+        && CurrentDishData.DishTag == Merged.DishTag
+        && CurrentDishData.CustomizationStages.Num() > 0
+        && Merged.CustomizationStages.Num() == 0)
+    {
+        Merged.CustomizationStages = CurrentDishData.CustomizationStages;
+    }
+
     // Update current dish data
-    CurrentDishData = UpdatedDishData;
+    CurrentDishData = Merged;
     
     // Update radar charts (flavor/texture) when dish changes - e.g. when preparations are applied
     RefreshRadarChartsFromDishData(UpdatedDishData);
@@ -551,19 +554,28 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
     //UE_LOG(LogTemp,Display, TEXT("PUDishCustomizationWidget::UpdateDishData - Updating dish data: %s with %d ingredients"), 
     //    *NewDishData.DisplayName.ToString(), NewDishData.IngredientInstances.Num());
     
+    FPUDishBase Merged = NewDishData;
+    if (Merged.DishTag.IsValid()
+        && CurrentDishData.DishTag == Merged.DishTag
+        && CurrentDishData.CustomizationStages.Num() > 0
+        && Merged.CustomizationStages.Num() == 0)
+    {
+        Merged.CustomizationStages = CurrentDishData.CustomizationStages;
+    }
+
     // Update local data
-    CurrentDishData = NewDishData;
+    CurrentDishData = Merged;
     
     // Sync back to the customization component (broadcasts OnDishDataUpdated -> radar charts + Blueprint OnDishDataChanged)
     if (CustomizationComponent)
     {
-        CustomizationComponent->SyncDishDataFromUI(NewDishData);
+        CustomizationComponent->SyncDishDataFromUI(Merged);
     }
     else
     {
         // No component - still trigger radar chart update so SetValuesFromOrder* in Blueprint gets the new dish
-        RefreshRadarChartsFromDishData(NewDishData);
-        OnDishDataChanged(NewDishData);
+        RefreshRadarChartsFromDishData(Merged);
+        OnDishDataChanged(Merged);
     }
 
     RefreshPreppedPantrySlots();
@@ -777,6 +789,84 @@ void UPUDishCustomizationWidget::GoToPreviousStage()
     {
         //UE_LOG(LogTemp,Warning, TEXT("🚫 PUDishCustomizationWidget::GoToPreviousStage - Previous stage class is not set"));
     }
+}
+
+void UPUDishCustomizationWidget::ClearStageModuleSlot()
+{
+    TryResolvePipelineShellSlotsFromHierarchy();
+    if (MountedPipelineStageWidget && IsValid(MountedPipelineStageWidget))
+    {
+        MountedPipelineStageWidget->RemoveFromParent();
+    }
+    MountedPipelineStageWidget = nullptr;
+    if (StageModuleSlot)
+    {
+        StageModuleSlot->ClearChildren();
+    }
+}
+
+bool UPUDishCustomizationWidget::TryMountStageModuleFromDescriptor(const FPUDishCustomizationStageDescriptor& Descriptor)
+{
+    ClearStageModuleSlot();
+    TryResolvePipelineShellSlotsFromHierarchy();
+    if (!StageModuleSlot || !Descriptor.StageWidgetClass)
+    {
+        return false;
+    }
+    UUserWidget* NewStage = CreateWidget<UUserWidget>(this, Descriptor.StageWidgetClass);
+    if (!IsValid(NewStage))
+    {
+        return false;
+    }
+    StageModuleSlot->AddChild(NewStage);
+    MountedPipelineStageWidget = NewStage;
+    return true;
+}
+
+void UPUDishCustomizationWidget::SetIngredientRailSlotVisible(bool bVisible)
+{
+    TryResolvePipelineShellSlotsFromHierarchy();
+    if (!IngredientRailSlot)
+    {
+        return;
+    }
+    IngredientRailSlot->SetVisibility(bVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+}
+
+bool UPUDishCustomizationWidget::RefreshPipelineStagePresentation()
+{
+    TryResolvePipelineShellSlotsFromHierarchy();
+    if (!CustomizationComponent || !CustomizationComponent->HasActiveCustomizationPipeline())
+    {
+        ClearStageModuleSlot();
+        return false;
+    }
+    FPUDishCustomizationStageDescriptor Stage;
+    if (!CustomizationComponent->TryGetActivePipelineStage(Stage))
+    {
+        ClearStageModuleSlot();
+        return false;
+    }
+    SetIngredientRailSlotVisible(Stage.bIngredientRailVisible);
+    if (!Stage.StageWidgetClass)
+    {
+        ClearStageModuleSlot();
+        return true;
+    }
+    return TryMountStageModuleFromDescriptor(Stage);
+}
+
+bool UPUDishCustomizationWidget::AdvancePipelineStageAndRefreshPresentation()
+{
+    if (!CustomizationComponent || !CustomizationComponent->HasActiveCustomizationPipeline())
+    {
+        return false;
+    }
+    if (!CustomizationComponent->AdvanceCustomizationPipeline())
+    {
+        return false;
+    }
+    return RefreshPipelineStagePresentation();
 }
 
 // Removed NativeOnKeyDown - now handled through Enhanced Input Actions in PUDishCustomizationComponent
@@ -1832,7 +1922,7 @@ void UPUDishCustomizationWidget::ToggleIngredientSelection(const FPUIngredientBa
 
 void UPUDishCustomizationWidget::RefreshRadarChartsFromDishData(const FPUDishBase& Dish)
 {
-    SanitizeRadarChartsInWidgetTree(WidgetTree);
+    UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
 
     // Update assigned radar charts (assign in Blueprint Details under "Radar Chart" category)
     if (FlavorRadarChart)
@@ -2826,6 +2916,48 @@ void UPUDishCustomizationWidget::TeardownRecipeLogDynamicWidgets(bool bFinishDes
 {
     TeardownRecipeLogBaseDynamicWidgets(bFinishDestroyInstances);
     TeardownRecipeLogPreppedDynamicWidgets(bFinishDestroyInstances);
+}
+
+void UPUDishCustomizationWidget::TryResolvePipelineShellSlotsFromHierarchy()
+{
+    static const FName StageSlotName(TEXT("StageModuleSlot"));
+    static const FName RailSlotName(TEXT("IngredientRailSlot"));
+
+    if (!StageModuleSlot)
+    {
+        if (WidgetTree)
+        {
+            if (UWidget* Found = WidgetTree->FindWidget(StageSlotName))
+            {
+                StageModuleSlot = Cast<UPanelWidget>(Found);
+            }
+        }
+        if (!StageModuleSlot)
+        {
+            if (UWidget* Found = GetWidgetFromName(StageSlotName))
+            {
+                StageModuleSlot = Cast<UPanelWidget>(Found);
+            }
+        }
+    }
+
+    if (!IngredientRailSlot)
+    {
+        if (WidgetTree)
+        {
+            if (UWidget* Found = WidgetTree->FindWidget(RailSlotName))
+            {
+                IngredientRailSlot = Cast<UPanelWidget>(Found);
+            }
+        }
+        if (!IngredientRailSlot)
+        {
+            if (UWidget* Found = GetWidgetFromName(RailSlotName))
+            {
+                IngredientRailSlot = Cast<UPanelWidget>(Found);
+            }
+        }
+    }
 }
 
 void UPUDishCustomizationWidget::TryResolveRecipeLogPanelsFromHierarchy()

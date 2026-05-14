@@ -1057,4 +1057,49 @@ FPUScorecardData UPUDishBlueprintLibrary::GetScorecardData(const FPUOrderBase& O
     UE_LOG(LogTemp, Display, TEXT("[Scorecard] GetScorecardData: Score=%.2f, SealTier=%d, BaseIngredients=%d, FlavorTopAspects=%d, TextureTopAspects=%d"),
         Score, (int32)Data.SealTier, Data.BaseIngredients.Num(), Data.FlavorProfile.TopAspects.Num(), Data.TextureProfile.TopAspects.Num());
     return Data;
+}
+
+bool UPUDishBlueprintLibrary::DishHasCustomizationPipeline(const FPUDishBase& Dish)
+{
+    return Dish.HasCustomizationPipeline();
+}
+
+TArray<FGameplayTag> UPUDishBlueprintLibrary::GetCustomizationPipelineStageIds(const FPUDishBase& Dish)
+{
+    TArray<FGameplayTag> OutIds;
+    OutIds.Reserve(Dish.CustomizationStages.Num());
+    for (const FPUDishCustomizationStageDescriptor& Row : Dish.CustomizationStages)
+    {
+        if (Row.StageId.IsValid())
+        {
+            OutIds.Add(Row.StageId);
+        }
+    }
+    return OutIds;
+}
+
+int32 UPUDishBlueprintLibrary::GetCustomizationPipelineStageCount(const FPUDishBase& Dish)
+{
+    return Dish.CustomizationStages.Num();
+}
+
+bool UPUDishBlueprintLibrary::TryGetCustomizationPipelineStage(const FPUDishBase& Dish, int32 StageIndex, FPUDishCustomizationStageDescriptor& OutStage)
+{
+    if (!Dish.CustomizationStages.IsValidIndex(StageIndex))
+    {
+        return false;
+    }
+    OutStage = Dish.CustomizationStages[StageIndex];
+    return true;
+}
+
+int32 UPUDishBlueprintLibrary::FindCustomizationPipelineStageIndex(const FPUDishBase& Dish, const FGameplayTag StageId)
+{
+    if (!StageId.IsValid())
+    {
+        return INDEX_NONE;
+    }
+    return Dish.CustomizationStages.IndexOfByPredicate([&StageId](const FPUDishCustomizationStageDescriptor& Row) {
+        return Row.StageId == StageId;
+    });
 } 

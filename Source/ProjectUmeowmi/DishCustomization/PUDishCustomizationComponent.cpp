@@ -1623,7 +1623,20 @@ void UPUDishCustomizationComponent::UpdateCurrentDishData(const FPUDishBase& New
     //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::UpdateCurrentDishData - Updating dish data with %d ingredients"), 
     //    NewDishData.IngredientInstances.Num());
     
-    CurrentDishData = NewDishData;
+    FPUDishBase Sanitized = NewDishData;
+
+    /* Ingredient/player-driven updates sometimes pass an FPUDishBase slice that omitted CustomizationStages
+     * (Blueprint "Make Dish Struct", merges, partial copies). Dropping stages clears HasCustomizationPipeline(),
+     * so AdvancePipeline + RefreshPresentation no-op — rail + vignette disappear on Next after adding ingredients. */
+    if (Sanitized.DishTag.IsValid()
+        && CurrentDishData.DishTag == Sanitized.DishTag
+        && CurrentDishData.CustomizationStages.Num() > 0
+        && Sanitized.CustomizationStages.Num() == 0)
+    {
+        Sanitized.CustomizationStages = CurrentDishData.CustomizationStages;
+    }
+
+    CurrentDishData = Sanitized;
 
     if (!CurrentDishData.HasCustomizationPipeline())
     {
@@ -1739,6 +1752,7 @@ void UPUDishCustomizationComponent::BroadcastInitialDishData(const FPUDishBase& 
     EnsureDishIngredientsInPantry(InitialDishData);
     
     CurrentDishData = InitialDishData;
+    ResetCustomizationPipelineProgress();
     OnInitialDishDataReceived.Broadcast(InitialDishData);
 }
 

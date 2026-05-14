@@ -9,6 +9,7 @@
 #include "../ProjectUmeowmiCharacter.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../PUProjectUmeowmiGameInstance.h"
+#include "PURadarChart.h"
 #include "UObject/UObjectIterator.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -103,6 +104,7 @@ UPUJournalWidget::UPUJournalWidget(const FObjectInitializer& ObjectInitializer)
 void UPUJournalWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
 	RegisterJournalTabs();
 }
 

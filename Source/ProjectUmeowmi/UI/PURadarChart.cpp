@@ -191,6 +191,23 @@ void UPURadarChart::SanitizeObjectReferencesOnAnyRadar(URadarChart* Chart)
 	SanitizeRadarChartObjectReferences(Chart);
 }
 
+void UPURadarChart::SanitizeRadarChartsInWidgetTree(UWidgetTree* InWidgetTree)
+{
+	if (!InWidgetTree)
+	{
+		return;
+	}
+	TArray<UWidget*> AllWidgets;
+	InWidgetTree->GetAllWidgets(AllWidgets);
+	for (UWidget* W : AllWidgets)
+	{
+		if (URadarChart* Radar = Cast<URadarChart>(W))
+		{
+			SanitizeObjectReferencesOnAnyRadar(Radar);
+		}
+	}
+}
+
 UPURadarChart::UPURadarChart()
     : CurrentFluctuationStep(0)
     , TotalFluctuationSteps(0)

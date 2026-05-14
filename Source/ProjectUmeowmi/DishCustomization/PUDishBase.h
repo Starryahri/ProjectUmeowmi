@@ -25,19 +25,27 @@ enum class EDishCustomizationWorkspaceMode : uint8
     RailVignette UMETA(DisplayName = "Rail + stage vignette"),
 };
 
-/** One step in a dish-authored customization pipeline (Phase 2+). */
+/** One ordered step in a dish customization pipeline (`FPUDishBase::CustomizationStages`). */
 USTRUCT(BlueprintType)
 struct PROJECTUMEOWMI_API FPUDishCustomizationStageDescriptor
 {
     GENERATED_BODY()
 
-    /** Stable id for branching/save (e.g. `Dish.Congee.Gather`). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
+    /** Stage type identity for modules / routing — use hierarchical tags such as `Stage.Gather`, `Stage.Chopping` (same tag can appear once per pipeline order; disambiguate with index when needed). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage", meta = (Categories = "Stage"))
     FGameplayTag StageId;
 
     /** Title for shell / banners. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
     FText StageDisplayName;
+
+    /** When advancing from the previous pipeline step, skip the triptych/cover animation (e.g. Gather → first chop). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Transition")
+    bool bSkipTriptychOnEnter = false;
+
+    /** Shell-owned ingredient rail (`IngredientRailSlot`). When false, the rail is collapsed for vignette-only stages. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Shell")
+    bool bIngredientRailVisible = true;
 
     /** Bridges existing camera / plating / planning behavior until shell replaces `GoToStage`. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
@@ -194,8 +202,8 @@ public:
     FVector PlatingDishCenter = FVector::ZeroVector;
 
     /**
-     * Optional ordered customization pipeline (Phase 2). When non-empty, Blueprint/C++ should prefer this over ad-hoc stage subclass chains.
-     * Example (Congee): Gather → Chop → Marinate → Cook → Garnish — each row sets StageId, LegacyStageKind, WorkspaceMode, StageWidgetClass, pantry filters.
+     * Optional ordered customization pipeline. When non-empty, prefer this for stage order and IDs (`Stage.*` tags via each row's StageId)
+     * over chaining separate `PUDishCustomizationWidget` Blueprint classes.
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish|Customization Pipeline")
     TArray<FPUDishCustomizationStageDescriptor> CustomizationStages;

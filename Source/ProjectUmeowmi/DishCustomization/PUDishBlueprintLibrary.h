@@ -192,4 +192,23 @@ public:
      */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Scorecard")
     static FPUScorecardData GetScorecardData(const FPUOrderBase& Order);
+
+    /** True when dish data defines `CustomizationStages` (ordered pipeline rows). */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline", meta = (DisplayName = "Has Customization Pipeline"))
+    static bool DishHasCustomizationPipeline(const FPUDishBase& Dish);
+
+    /** Ordered `StageId` tags from CustomizationStages (invalid tags omitted). Use with stage index when routing UI modules. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
+    static TArray<FGameplayTag> GetCustomizationPipelineStageIds(const FPUDishBase& Dish);
+
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
+    static int32 GetCustomizationPipelineStageCount(const FPUDishBase& Dish);
+
+    /** Pipeline row at index — false if index out of range. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
+    static bool TryGetCustomizationPipelineStage(const FPUDishBase& Dish, int32 StageIndex, FPUDishCustomizationStageDescriptor& OutStage);
+
+    /** Index of first row whose StageId matches, or INDEX_NONE. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
+    static int32 FindCustomizationPipelineStageIndex(const FPUDishBase& Dish, FGameplayTag StageId);
 }; 
