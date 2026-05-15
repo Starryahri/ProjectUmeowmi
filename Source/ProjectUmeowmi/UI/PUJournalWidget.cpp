@@ -104,8 +104,9 @@ UPUJournalWidget::UPUJournalWidget(const FObjectInitializer& ObjectInitializer)
 void UPUJournalWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-	UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
 	RegisterJournalTabs();
+	// After tabs spawn section UserWidgets (recipes, etc.); sanitization must recurse foreign WidgetTrees — see UPURadarChart::SanitizeRadarChartsInWidgetTree.
+	UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
 }
 
 void UPUJournalWidget::NativeDestruct()

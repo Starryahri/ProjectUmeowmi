@@ -197,15 +197,14 @@ void UPURadarChart::SanitizeRadarChartsInWidgetTree(UWidgetTree* InWidgetTree)
 	{
 		return;
 	}
-	TArray<UWidget*> AllWidgets;
-	InWidgetTree->GetAllWidgets(AllWidgets);
-	for (UWidget* W : AllWidgets)
-	{
+	// GetAllWidgets does not cross into nested UUserWidget trees (foreign WidgetTrees).
+	// Journal/recipes radar charts live inside spawned section widgets — ForEachWidgetAndDescendants reaches them.
+	InWidgetTree->ForEachWidgetAndDescendants([](UWidget* W) {
 		if (URadarChart* Radar = Cast<URadarChart>(W))
 		{
 			SanitizeObjectReferencesOnAnyRadar(Radar);
 		}
-	}
+	});
 }
 
 UPURadarChart::UPURadarChart()

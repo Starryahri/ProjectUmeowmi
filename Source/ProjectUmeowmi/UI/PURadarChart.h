@@ -258,7 +258,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Radar Chart|Helpers")
     static void SanitizeObjectReferencesOnAnyRadar(class URadarChart* Chart);
 
-    /** Clears invalid UObject/Slate refs on every URadarChart under this widget tree (UMG designer preview + incremental GC). */
+    /** Clears invalid UObject/Slate refs on every URadarChart under this tree and nested UserWidget subtrees (UMG preview / GC). */
     static void SanitizeRadarChartsInWidgetTree(class UWidgetTree* InWidgetTree);
 
     /**
