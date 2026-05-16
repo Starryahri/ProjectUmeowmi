@@ -1102,4 +1102,41 @@ int32 UPUDishBlueprintLibrary::FindCustomizationPipelineStageIndex(const FPUDish
     return Dish.CustomizationStages.IndexOfByPredicate([&StageId](const FPUDishCustomizationStageDescriptor& Row) {
         return Row.StageId == StageId;
     });
+}
+
+namespace
+{
+static FText ResolveCustomizationStageDisplayTitle(const FPUDishCustomizationStageDescriptor& Stage)
+{
+    if (!Stage.StageDisplayName.IsEmpty())
+    {
+        return Stage.StageDisplayName;
+    }
+    if (Stage.StageId.IsValid())
+    {
+        return FText::FromName(Stage.StageId.GetTagName());
+    }
+    return FText::GetEmpty();
+}
+} // namespace
+
+FText UPUDishBlueprintLibrary::GetCustomizationPipelineStageDisplayName(const FPUDishBase& Dish, const int32 StageIndex)
+{
+    FPUDishCustomizationStageDescriptor Stage;
+    if (!TryGetCustomizationPipelineStage(Dish, StageIndex, Stage))
+    {
+        return FText::GetEmpty();
+    }
+    return ResolveCustomizationStageDisplayTitle(Stage);
+}
+
+TArray<FText> UPUDishBlueprintLibrary::GetCustomizationPipelineStageDisplayNames(const FPUDishBase& Dish)
+{
+    TArray<FText> Names;
+    Names.Reserve(Dish.CustomizationStages.Num());
+    for (const FPUDishCustomizationStageDescriptor& Row : Dish.CustomizationStages)
+    {
+        Names.Add(ResolveCustomizationStageDisplayTitle(Row));
+    }
+    return Names;
 } 

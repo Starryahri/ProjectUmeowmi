@@ -86,6 +86,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
     bool TryGetPipelineStageByIndex(int32 Index, FPUDishCustomizationStageDescriptor& OutStage) const;
 
+    /** Convenience: active row's StageDisplayName, or readable StageId fallback. Empty when no active pipeline stage. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
+    FText GetActiveCustomizationPipelineStageDisplayName() const;
+
     /** Reset to stage 0 when the dish has a pipeline; otherwise INDEX_NONE. Call when entering customization. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Pipeline")
     void ResetCustomizationPipelineProgress();

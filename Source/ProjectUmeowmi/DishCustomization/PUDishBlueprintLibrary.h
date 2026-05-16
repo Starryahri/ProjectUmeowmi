@@ -211,4 +211,12 @@ public:
     /** Index of first row whose StageId matches, or INDEX_NONE. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
     static int32 FindCustomizationPipelineStageIndex(const FPUDishBase& Dish, FGameplayTag StageId);
+
+    /** Banner title for a pipeline row; empty index / out of range returns empty text. Uses `StageId` leaf as fallback when display name unset. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
+    static FText GetCustomizationPipelineStageDisplayName(const FPUDishBase& Dish, int32 StageIndex);
+
+    /** All stage titles in pipeline order (same fallback as row getter). */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
+    static TArray<FText> GetCustomizationPipelineStageDisplayNames(const FPUDishBase& Dish);
 }; 

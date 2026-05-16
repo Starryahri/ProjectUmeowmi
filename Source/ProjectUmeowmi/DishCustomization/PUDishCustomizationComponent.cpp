@@ -1585,6 +1585,24 @@ bool UPUDishCustomizationComponent::TryGetPipelineStageByIndex(int32 Index, FPUD
     return true;
 }
 
+FText UPUDishCustomizationComponent::GetActiveCustomizationPipelineStageDisplayName() const
+{
+    FPUDishCustomizationStageDescriptor Stage;
+    if (!TryGetActivePipelineStage(Stage))
+    {
+        return FText::GetEmpty();
+    }
+    if (!Stage.StageDisplayName.IsEmpty())
+    {
+        return Stage.StageDisplayName;
+    }
+    if (Stage.StageId.IsValid())
+    {
+        return FText::FromName(Stage.StageId.GetTagName());
+    }
+    return FText::GetEmpty();
+}
+
 void UPUDishCustomizationComponent::ResetCustomizationPipelineProgress()
 {
     ActiveCustomizationPipelineIndex = CurrentDishData.HasCustomizationPipeline() ? 0 : INDEX_NONE;

@@ -108,6 +108,18 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool AdvancePipelineStageAndRefreshPresentation();
 
+    /** Active pipeline stage title from the customization component (same as Dish Customization|Pipeline getter). */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline")
+    FText GetActiveCustomizationPipelineStageDisplayName() const;
+
+    /** Index into dish `CustomizationStages` for this session, or INDEX_NONE. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline")
+    int32 GetActiveCustomizationPipelineIndex() const;
+
+    /** Full descriptor for the active pipeline row; false if none. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline")
+    bool TryGetActivePipelineStage(FPUDishCustomizationStageDescriptor& OutStage) const;
+
     // Blueprint events for controller input (allows animations to play first)
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Controller")
     void OnControllerNextStage();
@@ -161,7 +173,11 @@ public:
     // Convenience function that uses CurrentDishData.IngredientInstances (no IngredientSource parameter needed).
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
     void CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots = 12, bool bUseShelvingWidgets = false, bool bCreateEmptySlots = true, bool bEnableDrag = true, float FirstSlotLeftPadding = 0.0f);
-    
+
+    /** Unbinds and removes dynamically spawned ingredient strip slots and shelving widgets (gather/cooking/plating via CreateSlots). Safe to call before rebuilding the rail on stage change. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
+    void ClearIngredientSlotStrip();
+
     // Helper function to convert ingredient data table to ingredient instances array
     // Takes a data table containing FPUIngredientBase rows and converts them to FIngredientInstance array
     // All instances will have quantity 0 and instance ID 0 (suitable for pantry/prep slots)
@@ -647,6 +663,8 @@ private:
 
     /** Removes dynamically spawned shelving/slots/delegate bindings before destruction so GC never traverses dangling UObject*s on this widget. */
     void ReleaseProgrammaticCustomizationSlots();
+
+    void TeardownDynamicCreatedIngredientSlotsStrip();
     
     // Helper function to update radar chart from planning data
     void UpdateRadarChartFromPlanningData();
@@ -716,6 +734,13 @@ private:
     int32 CachedRecipeLogMaxBaseForRecipeLog = -1;
     bool bRecipeLogBaseHierarchyBuilt = false;
     bool bRecipeLogPreppedHierarchyBuilt = false;
+
+    /** Ingredient InstanceIDs locked to the recipe-log base row when exiting gather (anything added later routes to prepped pane). Not UPROPERTY (no UObject refs). */
+    TSet<int32> RecipeLogGatherSnapshotInstanceIDs;
+    bool bRecipeLogGatherSnapshotCaptured = false;
+
+    void ResetRecipeLogGatherSnapshot();
+    void SyncRecipeLogGatherSnapshotWithGatherMode(bool bGatherEraSplit);
 
     uint32 CachedPreppedPantrySlotsContentSignature = 0;
     bool bPreppedPantrySlotsHierarchyBuilt = false;
