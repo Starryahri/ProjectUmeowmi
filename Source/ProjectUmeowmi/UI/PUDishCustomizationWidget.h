@@ -28,6 +28,8 @@ public:
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+    virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+    virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // Event handlers for dish data
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget")
@@ -100,6 +102,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     void SetIngredientRailSlotVisible(bool bVisible);
 
+    /**
+     * True when Widget is parented under IngredientRailSlot (pipeline strip).
+     * Planning gather-plate grids also use ActiveIngredientArea but are not under this panel — use this to tell them apart.
+     */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    bool IsWidgetUnderIngredientRailSlot(UWidget* Widget) const;
+
+    /** Ingredient rail strip slot under Slate user focus or keyboard focus, or nullptr. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    UPUIngredientSlot* FindFocusedIngredientRailStripSlot();
+
     /** Apply CustomizationComponent active pipeline stage: rail visibility + StageWidgetClass mount. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool RefreshPipelineStagePresentation();
@@ -107,6 +120,44 @@ public:
     /** Calls AdvanceCustomizationPipeline on the component then RefreshPipelineStagePresentation. False if no pipeline or cannot advance. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool AdvancePipelineStageAndRefreshPresentation();
+
+    /** Forwards strip-slot minigame toggle (e.g. Y) to `MountedPipelineStageWidget` when it implements `PUCustomizationStageModuleInterface`. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    bool TryTogglePipelineStageMinigameFromIngredientStripSlot(class UPUIngredientSlot* StripSlot);
+
+    /** Active strip minigame behavior allows opening on this slot (e.g. not already chopped). */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    bool CanIngredientStripSlotStartStageMinigame(const UPUIngredientSlot* StripSlot) const;
+
+    /** Forwards chop/finish keys to the mounted minigame module while `IsStripMinigameActive`. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    bool TryConsumeActiveStripMinigameKey(FKey Key);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    bool TryReleaseActiveStripMinigameKey(FKey Key);
+
+    /**
+     * Notifies `MountedPipelineStageWidget` when rail focus or focused slot contents change (see `OnIngredientStripSlotFocusChanged`).
+     * StripSlot nullptr = no rail slot focused (clears preview in chop module, etc.).
+     */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void NotifyMountedStageModuleOfStripSlotFocus(class UPUIngredientSlot* StripSlot);
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    bool IsStripMinigameLockingIngredientRail() const;
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    UPUIngredientSlot* GetLockedIngredientRailStripSlotForMinigame() const;
+
+    /** Disables rail slot input/focus while a strip minigame runs; pins preview to LockedStripSlot. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void SetIngredientRailStripInteractionLocked(bool bLocked, UPUIngredientSlot* LockedStripSlot);
+
+    /**
+     * Pushes the currently focused ingredient-rail strip slot (if any) to the mounted module. Call after mount if focus is already on the rail.
+     */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void SyncMountedStageModuleWithFocusedIngredientStripSlot();
 
     /** Active pipeline stage title from the customization component (same as Dish Customization|Pipeline getter). */
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline")
@@ -744,4 +795,15 @@ private:
 
     uint32 CachedPreppedPantrySlotsContentSignature = 0;
     bool bPreppedPantrySlotsHierarchyBuilt = false;
+
+    struct FPUIngredientRailSlotInteractionSnapshot
+    {
+        TWeakObjectPtr<UPUIngredientSlot> Slot;
+        bool bWasEnabled = true;
+        bool bWasFocusable = true;
+    };
+
+    TArray<FPUIngredientRailSlotInteractionSnapshot> IngredientRailInteractionLockSnapshots;
+
+    void ForEachIngredientRailStripSlot(TFunctionRef<void(UPUIngredientSlot*)> Visitor) const;
 }; 

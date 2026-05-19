@@ -31,10 +31,15 @@
 #include "Input/Events.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "GameplayTagsManager.h"
+#include "../Interfaces/PUCustomizationStageModuleInterface.h"
+#include "PUPipelineStageMinigameModuleWidget.h"
+#include "PUStripMinigameBehavior.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
 {
+    // Set false after verifying strip ↔ stage-module toggle wiring.
+    constexpr bool bPU_LogStageMinigameToggleTrace = true;
     // Enables verbose logging for dish/ingredient data reception and slot population.
     constexpr bool bPU_LogDishDataReceiveDebug = false;
 
@@ -213,6 +218,76 @@ namespace
         return FSlateApplication::Get().GetKeyboardFocusedWidget();
     }
 
+    static UPUIngredientSlot* PU_FindIngredientStripSlotAncestorUnderShell(UWidget* Leaf, UPUDishCustomizationWidget* Shell)
+    {
+        if (!Leaf || !Shell)
+        {
+            return nullptr;
+        }
+        for (UWidget* W = Leaf; W; W = W->GetParent())
+        {
+            if (UPUIngredientSlot* Slot = Cast<UPUIngredientSlot>(W))
+            {
+                if (IsWidgetDescendantOf(Slot, Shell))
+                {
+                    return Slot;
+                }
+                break;
+            }
+        }
+        return nullptr;
+    }
+
+    /** Slate may track user focus vs keyboard focus separately; rail strip must honor both so sync/preview sees the slot under cursor or D-pad. */
+    static UPUIngredientSlot* TryResolveIngredientRailStripFromFocusedSlate(
+        const TSharedPtr<SWidget>& FocusedWidget,
+        UPUDishCustomizationWidget* Shell)
+    {
+        if (!Shell || !FocusedWidget.IsValid() || !FSlateApplication::IsInitialized())
+        {
+            return nullptr;
+        }
+        UWidget* Leaf = GetWidgetObjectFromSlate(FocusedWidget);
+        UPUIngredientSlot* Candidate = PU_FindIngredientStripSlotAncestorUnderShell(Leaf, Shell);
+        if (!Candidate || !Shell->IsWidgetUnderIngredientRailSlot(Candidate))
+        {
+            return nullptr;
+        }
+        return Candidate;
+    }
+
+    static UPUIngredientSlot* PU_FindIngredientStripSlotUnderKeyboardFocus(UPUDishCustomizationWidget* Shell)
+    {
+        if (!Shell || !FSlateApplication::IsInitialized())
+        {
+            return nullptr;
+        }
+
+        uint32 UserIndex = 0;
+        if (const ULocalPlayer* LP = Shell->GetOwningLocalPlayer())
+        {
+            UserIndex = static_cast<uint32>(FMath::Max(0, LP->GetLocalPlayerIndex()));
+        }
+
+        const TSharedPtr<SWidget> UserFocus = FSlateApplication::Get().GetUserFocusedWidget(UserIndex);
+        const TSharedPtr<SWidget> KeyFocus = FSlateApplication::Get().GetKeyboardFocusedWidget();
+
+        if (UPUIngredientSlot* Strip = TryResolveIngredientRailStripFromFocusedSlate(UserFocus, Shell))
+        {
+            return Strip;
+        }
+        // Keyboard focus wins when distinct (e.g. mouse clicked strip child while stale user focus stayed on chrome).
+        if (KeyFocus.IsValid() && (!(UserFocus.IsValid()) || KeyFocus != UserFocus))
+        {
+            if (UPUIngredientSlot* Strip = TryResolveIngredientRailStripFromFocusedSlate(KeyFocus, Shell))
+            {
+                return Strip;
+            }
+        }
+
+        return nullptr;
+    }
+
 }
 
 UPUDishCustomizationWidget::UPUDishCustomizationWidget(const FObjectInitializer& ObjectInitializer)
@@ -280,6 +355,35 @@ void UPUDishCustomizationWidget::NativeConstruct()
     // Subscription will happen in SetCustomizationComponent()
     
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::NativeConstruct - WIDGET CONSTRUCTION COMPLETED"));
+}
+
+FReply UPUDishCustomizationWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    const FKey Key = InKeyEvent.GetKey();
+    if (TryConsumeActiveStripMinigameKey(Key))
+    {
+        return FReply::Handled();
+    }
+    if (IsStripMinigameLockingIngredientRail()
+        && (Key == EKeys::Y || Key == EKeys::Gamepad_FaceButton_Top))
+    {
+        if (UPUIngredientSlot* LockedStrip = GetLockedIngredientRailStripSlotForMinigame())
+        {
+            if (TryTogglePipelineStageMinigameFromIngredientStripSlot(LockedStrip))
+            {
+                return FReply::Handled();
+            }
+        }
+    }
+    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::Y || Key == EKeys::Gamepad_FaceButton_Top))
+    {
+        // Diagnostic only — toggling happens in `UPUIngredientSlot::NativeOnPreviewKeyDown` to avoid duplicate Execute on one key press.
+        UPUIngredientSlot* FocusSlot = PU_FindIngredientStripSlotUnderKeyboardFocus(this);
+        UE_LOG(LogTemp, Warning, TEXT("[StageMinigame] Dish Shell PreviewKey Key=%s FocusSlotUnderShell=%s"),
+            *Key.ToString(),
+            FocusSlot && IsValid(FocusSlot) ? *FocusSlot->GetName() : TEXT("(none)"));
+    }
+    return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
 }
 
 void UPUDishCustomizationWidget::NativeDestruct()
@@ -842,6 +946,11 @@ void UPUDishCustomizationWidget::GoToPreviousStage()
 void UPUDishCustomizationWidget::ClearStageModuleSlot()
 {
     TryResolvePipelineShellSlotsFromHierarchy();
+    UUserWidget* PrevMounted = MountedPipelineStageWidget.Get();
+    if (IsValid(PrevMounted) && PrevMounted->GetClass()->ImplementsInterface(UPUCustomizationStageModuleInterface::StaticClass()))
+    {
+        IPUCustomizationStageModuleInterface::Execute_ShutdownStageModule(PrevMounted);
+    }
     if (MountedPipelineStageWidget && IsValid(MountedPipelineStageWidget))
     {
         MountedPipelineStageWidget->RemoveFromParent();
@@ -868,6 +977,11 @@ bool UPUDishCustomizationWidget::TryMountStageModuleFromDescriptor(const FPUDish
     }
     StageModuleSlot->AddChild(NewStage);
     MountedPipelineStageWidget = NewStage;
+    if (NewStage->GetClass()->ImplementsInterface(UPUCustomizationStageModuleInterface::StaticClass()))
+    {
+        IPUCustomizationStageModuleInterface::Execute_InitializeStageModule(NewStage, this, CustomizationComponent, Descriptor);
+        SyncMountedStageModuleWithFocusedIngredientStripSlot();
+    }
     return true;
 }
 
@@ -879,6 +993,159 @@ void UPUDishCustomizationWidget::SetIngredientRailSlotVisible(bool bVisible)
         return;
     }
     IngredientRailSlot->SetVisibility(bVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+}
+
+bool UPUDishCustomizationWidget::IsWidgetUnderIngredientRailSlot(UWidget* Widget) const
+{
+    if (!Widget)
+    {
+        return false;
+    }
+    if (!IngredientRailSlot)
+    {
+        const_cast<UPUDishCustomizationWidget*>(this)->TryResolvePipelineShellSlotsFromHierarchy();
+    }
+    UPanelWidget* Rail = IngredientRailSlot;
+    if (!Rail)
+    {
+        return false;
+    }
+    for (UWidget* Walker = Widget; Walker; Walker = Walker->GetParent())
+    {
+        if (Walker == Rail)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+UPUIngredientSlot* UPUDishCustomizationWidget::FindFocusedIngredientRailStripSlot()
+{
+    return PU_FindIngredientStripSlotUnderKeyboardFocus(this);
+}
+
+namespace
+{
+    void VisitIngredientSlotsUnderPanel(const UPanelWidget* Panel, TFunctionRef<void(UPUIngredientSlot*)> Visitor)
+    {
+        if (!Panel)
+        {
+            return;
+        }
+
+        const int32 ChildCount = Panel->GetChildrenCount();
+        for (int32 ChildIndex = 0; ChildIndex < ChildCount; ++ChildIndex)
+        {
+            UWidget* Child = Panel->GetChildAt(ChildIndex);
+            if (UPUIngredientSlot* Slot = Cast<UPUIngredientSlot>(Child))
+            {
+                Visitor(Slot);
+            }
+            else if (UPanelWidget* ChildPanel = Cast<UPanelWidget>(Child))
+            {
+                VisitIngredientSlotsUnderPanel(ChildPanel, Visitor);
+            }
+        }
+    }
+}
+
+void UPUDishCustomizationWidget::ForEachIngredientRailStripSlot(TFunctionRef<void(UPUIngredientSlot*)> Visitor) const
+{
+    VisitIngredientSlotsUnderPanel(IngredientRailSlot, Visitor);
+}
+
+bool UPUDishCustomizationWidget::IsStripMinigameLockingIngredientRail() const
+{
+    const UPUPipelineStageMinigameModuleWidget* MinigameModule =
+        Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get());
+    return IsValid(MinigameModule) && MinigameModule->IsStripMinigameActive();
+}
+
+UPUIngredientSlot* UPUDishCustomizationWidget::GetLockedIngredientRailStripSlotForMinigame() const
+{
+    const UPUPipelineStageMinigameModuleWidget* MinigameModule =
+        Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get());
+    if (!IsValid(MinigameModule) || !MinigameModule->IsStripMinigameActive())
+    {
+        return nullptr;
+    }
+    return MinigameModule->GetStripMinigameContextStripSlot();
+}
+
+void UPUDishCustomizationWidget::SetIngredientRailStripInteractionLocked(bool bLocked, UPUIngredientSlot* LockedStripSlot)
+{
+    if (!bLocked)
+    {
+        for (const FPUIngredientRailSlotInteractionSnapshot& Snapshot : IngredientRailInteractionLockSnapshots)
+        {
+            if (UPUIngredientSlot* RailIngredientSlot = Snapshot.Slot.Get())
+            {
+                RailIngredientSlot->SetIsEnabled(Snapshot.bWasEnabled);
+                RailIngredientSlot->SetIsFocusable(Snapshot.bWasFocusable);
+            }
+        }
+        IngredientRailInteractionLockSnapshots.Reset();
+        return;
+    }
+
+    IngredientRailInteractionLockSnapshots.Reset();
+    ForEachIngredientRailStripSlot([this, LockedStripSlot](UPUIngredientSlot* RailIngredientSlot)
+    {
+        if (!IsValid(RailIngredientSlot))
+        {
+            return;
+        }
+
+        FPUIngredientRailSlotInteractionSnapshot Snapshot;
+        Snapshot.Slot = RailIngredientSlot;
+        Snapshot.bWasEnabled = RailIngredientSlot->GetIsEnabled();
+        Snapshot.bWasFocusable = RailIngredientSlot->IsFocusable();
+        IngredientRailInteractionLockSnapshots.Add(Snapshot);
+
+        RailIngredientSlot->SetIsEnabled(false);
+        RailIngredientSlot->SetIsFocusable(false);
+    });
+
+    (void)LockedStripSlot;
+}
+
+void UPUDishCustomizationWidget::NotifyMountedStageModuleOfStripSlotFocus(UPUIngredientSlot* StripSlot)
+{
+    UUserWidget* Module = MountedPipelineStageWidget.Get();
+    if (!IsValid(Module) ||
+        !Module->GetClass()->ImplementsInterface(UPUCustomizationStageModuleInterface::StaticClass()))
+    {
+        return;
+    }
+    if (StripSlot != nullptr && !IsWidgetUnderIngredientRailSlot(StripSlot))
+    {
+        return;
+    }
+
+    if (IsStripMinigameLockingIngredientRail())
+    {
+        StripSlot = GetLockedIngredientRailStripSlotForMinigame();
+    }
+
+    // Empty rail strip cells still receive Slate focus/hover — treat like no ingredient so vignettes don't flash a blank brush.
+    UPUIngredientSlot* EffectiveStrip = StripSlot;
+    if (EffectiveStrip != nullptr && EffectiveStrip->IsEmpty())
+    {
+        EffectiveStrip = nullptr;
+    }
+
+    IPUCustomizationStageModuleInterface::Execute_OnIngredientStripSlotFocusChanged(Module, EffectiveStrip);
+}
+
+void UPUDishCustomizationWidget::SyncMountedStageModuleWithFocusedIngredientStripSlot()
+{
+    if (IsStripMinigameLockingIngredientRail())
+    {
+        NotifyMountedStageModuleOfStripSlotFocus(GetLockedIngredientRailStripSlotForMinigame());
+        return;
+    }
+    NotifyMountedStageModuleOfStripSlotFocus(FindFocusedIngredientRailStripSlot());
 }
 
 bool UPUDishCustomizationWidget::RefreshPipelineStagePresentation()
@@ -918,6 +1185,96 @@ bool UPUDishCustomizationWidget::AdvancePipelineStageAndRefreshPresentation()
         return false;
     }
     return RefreshPipelineStagePresentation();
+}
+
+bool UPUDishCustomizationWidget::CanIngredientStripSlotStartStageMinigame(const UPUIngredientSlot* StripSlot) const
+{
+    if (!IsValid(StripSlot) || StripSlot->IsEmpty())
+    {
+        return false;
+    }
+
+    const UPUPipelineStageMinigameModuleWidget* MinigameModule =
+        Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get());
+    if (!IsValid(MinigameModule))
+    {
+        return false;
+    }
+
+    const UPUStripMinigameBehavior* Behavior = MinigameModule->GetActiveStripMinigameBehavior();
+    if (!IsValid(Behavior))
+    {
+        return false;
+    }
+
+    return Behavior->CanStartStripMinigameForSlot(StripSlot);
+}
+
+bool UPUDishCustomizationWidget::TryTogglePipelineStageMinigameFromIngredientStripSlot(UPUIngredientSlot* StripSlot)
+{
+    UUserWidget* ModuleWidget = MountedPipelineStageWidget.Get();
+    if (bPU_LogStageMinigameToggleTrace)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[StageMinigame] TryToggle StripSlot=%s Module=%s"),
+            StripSlot && IsValid(StripSlot) ? *StripSlot->GetName() : TEXT("(null/invalid)"),
+            ModuleWidget && IsValid(ModuleWidget) ? *ModuleWidget->GetClass()->GetName() : TEXT("(null/invalid)"));
+    }
+    if (!IsValid(ModuleWidget) || !IsValid(StripSlot))
+    {
+        if (bPU_LogStageMinigameToggleTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[StageMinigame] Abort TryToggle: invalid module widget or strip slot"));
+        }
+        return false;
+    }
+    if (!ModuleWidget->GetClass()->ImplementsInterface(UPUCustomizationStageModuleInterface::StaticClass()))
+    {
+        if (bPU_LogStageMinigameToggleTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[StageMinigame] Abort TryToggle: %s does not implement PUCustomizationStageModuleInterface"),
+                *ModuleWidget->GetClass()->GetName());
+        }
+        return false;
+    }
+    const bool bHandled =
+        IPUCustomizationStageModuleInterface::Execute_ToggleStageMinigameFromIngredientStripSlot(ModuleWidget, StripSlot);
+    if (bPU_LogStageMinigameToggleTrace)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[StageMinigame] Execute_ToggleStageMinigame -> %s"),
+            bHandled ? TEXT("HANDLED (true)") : TEXT("FALSE — override Toggle Stage Minigame… on module BP and Return True"));
+    }
+    return bHandled;
+}
+
+bool UPUDishCustomizationWidget::TryConsumeActiveStripMinigameKey(FKey Key)
+{
+    UPUPipelineStageMinigameModuleWidget* MinigameModule =
+        Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get());
+    if (!IsValid(MinigameModule) || !MinigameModule->IsStripMinigameActive())
+    {
+        return false;
+    }
+    return MinigameModule->TryConsumeStripMinigameKey(Key);
+}
+
+bool UPUDishCustomizationWidget::TryReleaseActiveStripMinigameKey(FKey Key)
+{
+    UPUPipelineStageMinigameModuleWidget* MinigameModule =
+        Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get());
+    if (!IsValid(MinigameModule) || !MinigameModule->IsStripMinigameActive())
+    {
+        return false;
+    }
+    return MinigameModule->TryReleaseStripMinigameKey(Key);
+}
+
+FReply UPUDishCustomizationWidget::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    if (TryReleaseActiveStripMinigameKey(InKeyEvent.GetKey()))
+    {
+        return FReply::Handled();
+    }
+    return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
 }
 
 FText UPUDishCustomizationWidget::GetActiveCustomizationPipelineStageDisplayName() const

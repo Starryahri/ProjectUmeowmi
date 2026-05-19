@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "InputCoreTypes.h"
 #include "Blueprint/UserWidget.h"
 #include "../DishCustomization/PUDishBase.h"
 #include "PUIngredientDragDropOperation.h"
@@ -208,6 +209,32 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
     void HandleControllerMenu(); // Called when X/Square button is pressed to open radial menu
 
+    /** Keys that toggle the mounted pipeline stage minigame from this strip slot (e.g. chop). Empty disables forwarding. Default includes gamepad Y and keyboard Y on strip slots. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ingredient Slot|Stage Module")
+    TArray<FKey> StageMinigameToggleKeys;
+
+    /** Strip slots only (active rail, not gather plate): focused slot may forward toggle keys to the stage module. */
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Stage Module")
+    bool CanUseStageMinigameHotkey() const;
+
+    /** Strip forwards configured keys (e.g. Y) to `MountedPipelineStageWidget`; safe from dish-shell PreviewKeyDown when focus is on a child widget. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Stage Module")
+    bool ConsumeStageMinigameToggleFromStrip(const FKey& Key);
+
+    /**
+     * Flat 2D icon the slot would use for its main Image (GetTextureForLocation).
+     * If false, hide the stage preview Image — a visible UMG Image with no brush draws as solid white.
+     */
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Stage Module")
+    bool TryGetIngredientIconTextureForMountedStagePreview(UPARAM(ref) UTexture2D*& OutTexture) const;
+
+    /** Used by pipeline stage minigames to commit prep to the dish + refresh this slot. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Stage Module")
+    bool ApplyPreparationFromStageModule(const FGameplayTag& PreparationTag);
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Stage Module")
+    bool RemovePreparationFromStageModule(const FGameplayTag& PreparationTag);
+
     // Navigation setup functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Navigation")
     void SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredientSlot* DownSlot, UPUIngredientSlot* LeftSlot, UPUIngredientSlot* RightSlot);
@@ -407,6 +434,8 @@ protected:
     // Track hover state for IngredientSelect visibility (hide on mouse leave only if not focused)
     bool bIsHovered = false;
 
+    bool IsIngredientRailInteractionBlockedByMinigame() const;
+
     // Plating-specific properties
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Plating")
     int32 RemainingQuantity = 0;
@@ -433,6 +462,10 @@ protected:
     // Native focus events
     virtual void NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent) override;
     virtual void NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusEvent) override;
+
+    /** Intercepts keys before focused children (Images, etc.) so strip hotkeys still work when a child has focus. */
+    virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+    virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // Native key/button events for controller support
     virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
@@ -485,6 +518,9 @@ private:
 
     // Update IngredientSelect image visibility (shown on hover or focus)
     void UpdateIngredientSelectVisibility(bool bShow);
+
+    /** Under `IngredientRailSlot`, while this slot owns focus (or a focused descendant), refresh mounted stage vignette preview. */
+    void MaybeNotifyMountedStageModuleRailPreviewFromSlot();
 
     // Update plate background opacity based on selection state
     void UpdatePlateBackgroundOpacity();

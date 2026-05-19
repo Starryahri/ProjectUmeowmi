@@ -29,6 +29,7 @@ namespace
     constexpr bool bPU_LogIngredientSlotDebug = false;
     /** Every key in NativeOnKeyDown (including right stick) — very noisy when a slot has focus. */
     constexpr bool bPU_LogNativeOnKeyDown = false;
+    constexpr bool bPU_LogStageMinigameToggleTrace = true;
 }
 
 UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer)
@@ -39,6 +40,8 @@ UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer
     , bRadialMenuVisible(false)
     , bDragEnabled(true)  // Enable drag by default for testing
 {
+    StageMinigameToggleKeys.Add(EKeys::Gamepad_FaceButton_Top);
+    StageMinigameToggleKeys.Add(EKeys::Y);
 }
 
 void UPUIngredientSlot::NativeConstruct()
@@ -306,6 +309,8 @@ void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngre
     {
         OnSlotIngredientChanged.Broadcast(IngredientInstance);
     }
+
+    MaybeNotifyMountedStageModuleRailPreviewFromSlot();
 }
 
 void UPUIngredientSlot::ClearSlot()
@@ -335,6 +340,8 @@ void UPUIngredientSlot::ClearSlot()
 
     // Call Blueprint event
     OnSlotEmptied();
+
+    MaybeNotifyMountedStageModuleRailPreviewFromSlot();
 }
 
 void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
@@ -934,6 +941,30 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
     }
 }
 
+bool UPUIngredientSlot::TryGetIngredientIconTextureForMountedStagePreview(UTexture2D*& OutTexture) const
+{
+    OutTexture = nullptr;
+
+    bool bShouldShowTexture = false;
+    if (Location == EPUIngredientSlotLocation::Pantry || Location == EPUIngredientSlotLocation::Prepped ||
+        IsPlanningGatherPlateSlot())
+    {
+        bShouldShowTexture = IngredientInstance.IngredientData.IngredientTag.IsValid();
+    }
+    else
+    {
+        bShouldShowTexture = bHasIngredient;
+    }
+
+    if (!bShouldShowTexture)
+    {
+        return false;
+    }
+
+    OutTexture = GetTextureForLocation();
+    return OutTexture != nullptr;
+}
+
 void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
 {
     if (!bHasIngredient)
@@ -1204,6 +1235,11 @@ FLinearColor UPUIngredientSlot::BoostColorSaturation(const FLinearColor& Color, 
 
 bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return false;
+    }
+
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
@@ -1228,6 +1264,11 @@ bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDra
 
 bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return false;
+    }
+
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
@@ -1386,6 +1427,11 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
 
 void UPUIngredientSlot::NativeOnDragEnter(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return;
+    }
+
     UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
@@ -1408,6 +1454,11 @@ void UPUIngredientSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent,
 
 FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return FReply::Handled();
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s, Location: %d)"),
     //    *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
@@ -1767,6 +1818,11 @@ void UPUIngredientSlot::SetRadialMenuContainer(UPanelWidget* InContainer)
 
 void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return;
+    }
+
     Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
 
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseEnter - Mouse entered slot: %s"),
@@ -1800,15 +1856,33 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
 {
     Super::NativeOnAddedToFocusPath(InFocusEvent);
 
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return;
+    }
+
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
     UpdateIngredientSelectVisibility(true);
+
+    if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+    {
+        if (DishWidget->IsWidgetUnderIngredientRailSlot(this))
+        {
+            DishWidget->NotifyMountedStageModuleOfStripSlotFocus(this);
+        }
+    }
 }
 
 void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusEvent)
 {
     Super::NativeOnRemovedFromFocusPath(InFocusEvent);
+
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return;
+    }
 
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnRemovedFromFocusPath - Focus removed from slot: %s"),
     //    *GetName());
@@ -1817,6 +1891,23 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
     UpdateHoverTextVisibility(false);
 
     UpdateIngredientSelectVisibility(bIsHovered);
+
+    if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+    {
+        if (DishWidget->IsWidgetUnderIngredientRailSlot(this))
+        {
+            // When moving rail→rail, Slate often focuses the next strip slot before Removed runs on the old slot.
+            // Skipping StripSlot=null avoids a pointless "invalid then valid" pair on the mounted module BP.
+            if (UPUIngredientSlot* FocusedRailStrip = DishWidget->FindFocusedIngredientRailStripSlot())
+            {
+                if (FocusedRailStrip != this)
+                {
+                    return;
+                }
+            }
+            DishWidget->NotifyMountedStageModuleOfStripSlotFocus(nullptr);
+        }
+    }
 }
 
 FText UPUIngredientSlot::GetIngredientDisplayText() const
@@ -1949,6 +2040,22 @@ void UPUIngredientSlot::UpdateIngredientSelectVisibility(bool bShow)
     {
         return;
     }
+
+    if (bShow && IsEmpty())
+    {
+        UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        const bool bEmptyRailStripChrome =
+            DishWidget && Location == EPUIngredientSlotLocation::ActiveIngredientArea && !IsPlanningGatherPlateSlot() &&
+            DishWidget->IsWidgetUnderIngredientRailSlot(this);
+        const bool bEmptyGatherPlateChrome = IsPlanningGatherPlateSlot();
+        const bool bEmptyPantryChrome = Location == EPUIngredientSlotLocation::Pantry;
+
+        if (bEmptyRailStripChrome || bEmptyGatherPlateChrome || bEmptyPantryChrome)
+        {
+            bShow = false;
+        }
+    }
+
     if (bShow)
     {
         IngredientSelect->SetVisibility(ESlateVisibility::Visible);
@@ -2065,6 +2172,11 @@ void UPUIngredientSlot::SetDragEnabled(bool bEnabled)
 
 FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return FReply::Handled();
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Preview mouse button down (Drag enabled: %s, HasIngredient: %s, Button: %s)"), 
     //    bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), 
     //    bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
@@ -3163,6 +3275,140 @@ void UPUIngredientSlot::SetTemperatureValue(float NewTemperatureValue)
     OnTimeTemperatureChanged(IngredientInstance.TimeValue, NewTemperatureValue);
 }
 
+bool UPUIngredientSlot::IsIngredientRailInteractionBlockedByMinigame() const
+{
+    const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    return DishWidget
+        && DishWidget->IsWidgetUnderIngredientRailSlot(const_cast<UPUIngredientSlot*>(this))
+        && DishWidget->IsStripMinigameLockingIngredientRail();
+}
+
+void UPUIngredientSlot::MaybeNotifyMountedStageModuleRailPreviewFromSlot()
+{
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return;
+    }
+
+    UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    if (!DishWidget || !DishWidget->IsWidgetUnderIngredientRailSlot(this))
+    {
+        return;
+    }
+    const bool bFocusRelevant = HasKeyboardFocus() || HasFocusedDescendants();
+    if (!bFocusRelevant)
+    {
+        return;
+    }
+    DishWidget->NotifyMountedStageModuleOfStripSlotFocus(this);
+}
+
+bool UPUIngredientSlot::CanUseStageMinigameHotkey() const
+{
+    if (StageMinigameToggleKeys.Num() == 0)
+    {
+        return false;
+    }
+    if (Location != EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        return false;
+    }
+    // Planning gather plate uses ActiveIngredientArea like the pipeline strip; only block true gather-grid slots.
+    if (IsPlanningGatherPlateSlot())
+    {
+        UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        if (!DishWidget || !DishWidget->IsWidgetUnderIngredientRailSlot(const_cast<UPUIngredientSlot*>(this)))
+        {
+            return false;
+        }
+    }
+    if (IsRecipeLogSlot())
+    {
+        return false;
+    }
+    if (!bHasIngredient || IngredientInstance.InstanceID == 0)
+    {
+        return false;
+    }
+    if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+    {
+        if (!DishWidget->CanIngredientStripSlotStartStageMinigame(this))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool UPUIngredientSlot::ConsumeStageMinigameToggleFromStrip(const FKey& Key)
+{
+    const bool bKeyListed = StageMinigameToggleKeys.Num() > 0 && StageMinigameToggleKeys.Contains(Key);
+    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::Y || Key == EKeys::Gamepad_FaceButton_Top || bKeyListed))
+    {
+        UPUDishCustomizationWidget* DishForRail = GetDishCustomizationWidget();
+        const int32 bUnderIngredientRail =
+            DishForRail && DishForRail->IsWidgetUnderIngredientRailSlot(const_cast<UPUIngredientSlot*>(this)) ? 1 : 0;
+        UE_LOG(LogTemp, Warning,
+            TEXT("[StageMinigame] Slot=%s Key=%s Listed=%d Loc=%d GatherPlate=%d UnderIngredientRail=%d RecipeLog=%d HasIng=%d InstId=%d Radial=%d"),
+            *GetName(),
+            *Key.ToString(),
+            bKeyListed ? 1 : 0,
+            (int32)Location,
+            IsPlanningGatherPlateSlot() ? 1 : 0,
+            bUnderIngredientRail,
+            IsRecipeLogSlot() ? 1 : 0,
+            bHasIngredient ? 1 : 0,
+            IngredientInstance.InstanceID,
+            (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible()) ? 1 : 0);
+    }
+
+    if (!bKeyListed)
+    {
+        return false;
+    }
+    const bool bRadialBlockingInput = bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible();
+    if (bRadialBlockingInput || !CanUseStageMinigameHotkey())
+    {
+        return false;
+    }
+    UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    return DishWidget && DishWidget->TryTogglePipelineStageMinigameFromIngredientStripSlot(this);
+}
+
+bool UPUIngredientSlot::ApplyPreparationFromStageModule(const FGameplayTag& PreparationTag)
+{
+    return ApplyPreparationToIngredient(PreparationTag);
+}
+
+bool UPUIngredientSlot::RemovePreparationFromStageModule(const FGameplayTag& PreparationTag)
+{
+    return RemovePreparationFromIngredient(PreparationTag);
+}
+
+FReply UPUIngredientSlot::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    if (DishWidget && DishWidget->TryConsumeActiveStripMinigameKey(InKeyEvent.GetKey()))
+    {
+        return FReply::Handled();
+    }
+    if (ConsumeStageMinigameToggleFromStrip(InKeyEvent.GetKey()))
+    {
+        return FReply::Handled();
+    }
+    return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
+}
+
+FReply UPUIngredientSlot::NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    if (DishWidget && DishWidget->TryReleaseActiveStripMinigameKey(InKeyEvent.GetKey()))
+    {
+        return FReply::Handled();
+    }
+    return Super::NativeOnKeyUp(InGeometry, InKeyEvent);
+}
+
 FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
     // Handle controller button presses
@@ -3194,7 +3440,9 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
         HandleControllerSelect();
         return FReply::Handled();
     }
-    
+
+    // Toggle keys are consumed in NativeOnPreviewKeyDown only (Preview + KeyDown would fire twice).
+
     // DISABLED FOR NOW - Focus on navigation only
     // Gamepad X button (Xbox) / Square button (PlayStation) - Open menu
     //if (Key == EKeys::Gamepad_FaceButton_Left)
@@ -3289,6 +3537,11 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
 
 void UPUIngredientSlot::HandleControllerSelect()
 {
+    if (IsIngredientRailInteractionBlockedByMinigame())
+    {
+        return;
+    }
+
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUIngredientSlot::HandleControllerSelect - Called (Slot: %s, Location: %d, Empty: %s)"),
         *GetName(), (int32)Location, IsEmpty() ? TEXT("YES") : TEXT("NO"));
 
