@@ -877,20 +877,7 @@ UTexture2D* UPUIngredientSlot::GetTextureForLocation() const
         // First, check if the ingredient has any preparations applied
         if (IngredientInstance.Preparations.Num() > 0)
         {
-            // Get the preparation data table
-            UDataTable* PrepDataTable = nullptr;
-            
-            // Try to get from the ingredient's data table first
-            if (IngredientInstance.IngredientData.PreparationDataTable.IsValid())
-            {
-                PrepDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
-            }
-            
-            // Fallback to the slot's preparation data table if available
-            if (!PrepDataTable && PreparationDataTable)
-            {
-                PrepDataTable = PreparationDataTable;
-            }
+            UDataTable* PrepDataTable = PreparationDataTable;
             
             if (PrepDataTable)
             {
@@ -1955,32 +1942,9 @@ FText UPUIngredientSlot::GetIngredientDisplayText() const
     
     //UE_LOG(LogTemp,Display, TEXT("🎯   PreparationDataTable set: %s"), PreparationDataTable ? TEXT("YES") : TEXT("NO"));
 
-    // Get preparation data table from slot property
     FPUIngredientBase IngredientDataCopy = IngredientInstance.IngredientData;
-    
-    // If we have a preparation data table set on the slot, use it
-    if (PreparationDataTable)
-    {
-        // Set the preparation data table on the ingredient data copy
-        IngredientDataCopy.PreparationDataTable = PreparationDataTable;
-        //UE_LOG(LogTemp,Display, TEXT("🎯   Set PreparationDataTable on ingredient data copy"));
-    }
-    else
-    {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️   PreparationDataTable not set on slot!"));
-    }
-
-    // Sync Preparations with ActivePreparations before calling GetCurrentDisplayName()
-    // GetCurrentDisplayName() uses ActivePreparations to look up preparations from the data table
     IngredientDataCopy.ActivePreparations = IngredientInstance.Preparations;
-    
-    //UE_LOG(LogTemp,Display, TEXT("🎯   After sync, ActivePreparations count: %d"), IngredientDataCopy.ActivePreparations.Num());
-    
-    // Use the ingredient's GetCurrentDisplayName() which already handles preparations correctly
-    // This method looks up preparations from the data table and uses NamePrefix properly
-    // It formats as "PrepName IngredientName" for single prep, combines prefixes for multiple preps,
-    // and uses "Suspicious IngredientName" for 2+ preparations
-    FText Result = IngredientDataCopy.GetCurrentDisplayName();
+    FText Result = IngredientDataCopy.GetCurrentDisplayName(PreparationDataTable);
     
     //UE_LOG(LogTemp,Display, TEXT("🎯   GetCurrentDisplayName() returned: %s"), *Result.ToString());
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::GetIngredientDisplayText - END"));

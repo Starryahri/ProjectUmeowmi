@@ -47,3 +47,12 @@ void UPUStripMinigameBehavior::RequestEndStripMinigameSession()
         OwnerModule->SetStripMinigameActive(false, nullptr);
     }
 }
+
+void UPUStripMinigameBehavior::DisconnectFromOwner(
+    UPUPipelineStageMinigameModuleWidget* OwnerWidget,
+    UObject* ProgressBarSubscriber)
+{
+    (void)OwnerWidget;
+    (void)ProgressBarSubscriber;
+    OwnerModule = nullptr;
+}

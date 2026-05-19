@@ -19,6 +19,48 @@ namespace
 
     // Enables tag-heavy logs (dish/ingredient gameplay tags) which can be noisy during customization startup.
     constexpr bool bPU_LogDishTagSpam = false;
+
+    void ApplyPrepTagModifiers(UDataTable* PrepTable, const FGameplayTag& PrepTag, FPUIngredientBase& IngredientData, const TCHAR* Context)
+    {
+        if (!PrepTable || !PrepTag.IsValid())
+        {
+            return;
+        }
+
+        FString PrepFullTag = PrepTag.ToString();
+        int32 PrepLastPeriodIndex = INDEX_NONE;
+        if (!PrepFullTag.FindLastChar(TEXT('.'), PrepLastPeriodIndex))
+        {
+            return;
+        }
+
+        const FName PrepRowName(*PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower());
+        if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, Context))
+        {
+            Preparation->ApplyModifiers(IngredientData.FlavorAspects, IngredientData.TextureAspects);
+        }
+    }
+
+    void RemovePrepTagModifiers(UDataTable* PrepTable, const FGameplayTag& PrepTag, FPUIngredientBase& IngredientData, const TCHAR* Context)
+    {
+        if (!PrepTable || !PrepTag.IsValid())
+        {
+            return;
+        }
+
+        FString PrepFullTag = PrepTag.ToString();
+        int32 PrepLastPeriodIndex = INDEX_NONE;
+        if (!PrepFullTag.FindLastChar(TEXT('.'), PrepLastPeriodIndex))
+        {
+            return;
+        }
+
+        const FName PrepRowName(*PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower());
+        if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, Context))
+        {
+            Preparation->RemoveModifiers(IngredientData.FlavorAspects, IngredientData.TextureAspects);
+        }
+    }
 }
 
 FName UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(const FGameplayTag& IngredientTag)
@@ -42,7 +84,11 @@ FName UPUDishBlueprintLibrary::GetIngredientRowNameFromTag(const FGameplayTag& I
     return FName(*FullTag);
 }
 
-FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations)
+FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(
+    FPUDishBase& Dish,
+    const FGameplayTag& IngredientTag,
+    const FGameplayTagContainer& Preparations,
+    UDataTable* PreparationDataTable)
 {
     // Validate the dish has an ingredient data table
     if (!Dish.IngredientDataTable.IsValid())
@@ -72,34 +118,13 @@ FIngredientInstance UPUDishBlueprintLibrary::AddIngredient(FPUDishBase& Dish, co
         NewInstance.IngredientTag = IngredientTag;
         NewInstance.Preparations = Preparations;
         
-        // Apply preparations to the ingredient data
-        if (NewInstance.IngredientData.PreparationDataTable.IsValid())
+        if (PreparationDataTable)
         {
-            UDataTable* LoadedPreparationDataTable = NewInstance.IngredientData.PreparationDataTable.LoadSynchronous();
-            if (LoadedPreparationDataTable)
+            TArray<FGameplayTag> PreparationTags;
+            Preparations.GetGameplayTagArray(PreparationTags);
+            for (const FGameplayTag& PrepTag : PreparationTags)
             {
-                TArray<FGameplayTag> PreparationTags;
-                Preparations.GetGameplayTagArray(PreparationTags);
-                
-                for (const FGameplayTag& PrepTag : PreparationTags)
-                {
-                    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                    FString PrepFullTag = PrepTag.ToString();
-                    int32 PrepLastPeriodIndex;
-                    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
-                    {
-                        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                        FName PrepRowName = FName(*PrepName);
-                        
-                        if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddIngredient")))
-                        {
-                            UE_LOG(LogTemp, Warning, TEXT("[Prep] AddIngredient: Applying %s to %s - %d modifiers"),
-                                *PrepName, *NewInstance.IngredientData.DisplayName.ToString(), Preparation->AspectModifiers.Num());
-                            // Apply preparation modifiers
-                            Preparation->ApplyModifiers(NewInstance.IngredientData.FlavorAspects, NewInstance.IngredientData.TextureAspects);
-                        }
-                    }
-                }
+                ApplyPrepTagModifiers(PreparationDataTable, PrepTag, NewInstance.IngredientData, TEXT("AddIngredient"));
             }
         }
         
@@ -300,7 +325,11 @@ TArray<int32> UPUDishBlueprintLibrary::GetInstanceIDsForIngredient(const FPUDish
     return IDs;
 }
 
-bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 InstanceIndex, const FGameplayTag& PreparationTag)
+bool UPUDishBlueprintLibrary::ApplyPreparation(
+    FPUDishBase& Dish,
+    int32 InstanceIndex,
+    const FGameplayTag& PreparationTag,
+    UDataTable* PreparationDataTable)
 {
     // Check if the instance index is valid
     if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
@@ -323,39 +352,19 @@ bool UPUDishBlueprintLibrary::ApplyPreparation(FPUDishBase& Dish, int32 Instance
     Instance.IngredientData.ActivePreparations.AddTag(PreparationTag);
     Instance.Preparations.AddTag(PreparationTag);
     
-    // Apply preparation modifiers to aspect values (e.g. chopped adds +6 to Crumbly)
-    if (Instance.IngredientData.PreparationDataTable.IsValid())
+    if (PreparationDataTable)
     {
-        if (UDataTable* PrepTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous())
-        {
-            FString PrepFullTag = PreparationTag.ToString();
-            int32 PrepLastPeriodIndex;
-            if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
-            {
-                FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                FName PrepRowName = FName(*PrepName);
-                if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("ApplyPreparation")))
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparation (Blueprint): Applying %s to %s (Instance %d) - %d modifiers"),
-                        *PrepName, *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Preparation->AspectModifiers.Num());
-                    Preparation->ApplyModifiers(Instance.IngredientData.FlavorAspects, Instance.IngredientData.TextureAspects);
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparation (Blueprint): Could not find row '%s' for %s"), *PrepName, *Instance.IngredientData.DisplayName.ToString());
-                }
-            }
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[Prep] ApplyPreparation (Blueprint): No PreparationDataTable on %s"), *Instance.IngredientData.DisplayName.ToString());
+        ApplyPrepTagModifiers(PreparationDataTable, PreparationTag, Instance.IngredientData, TEXT("ApplyPreparation"));
     }
     
     return true;
 }
 
-bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 InstanceIndex, const FGameplayTag& PreparationTag)
+bool UPUDishBlueprintLibrary::RemovePreparation(
+    FPUDishBase& Dish,
+    int32 InstanceIndex,
+    const FGameplayTag& PreparationTag,
+    UDataTable* PreparationDataTable)
 {
     // Check if the instance index is valid
     if (!Dish.IngredientInstances.IsValidIndex(InstanceIndex))
@@ -374,27 +383,11 @@ bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 Instanc
         return false;
     }
 
-    // Remove preparation modifiers from aspect values BEFORE removing the tag
-    if (Instance.IngredientData.PreparationDataTable.IsValid())
+    if (PreparationDataTable)
     {
-        if (UDataTable* PrepTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous())
-        {
-            FString PrepFullTag = PreparationTag.ToString();
-            int32 PrepLastPeriodIndex;
-            if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
-            {
-                FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                FName PrepRowName = FName(*PrepName);
-                if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("RemovePreparation")))
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparation (Blueprint): Removing %s from %s (Instance %d) - %d modifiers"),
-                        *PrepName, *Instance.IngredientData.DisplayName.ToString(), Instance.InstanceID, Preparation->AspectModifiers.Num());
-                    Preparation->RemoveModifiers(Instance.IngredientData.FlavorAspects, Instance.IngredientData.TextureAspects);
-                }
-            }
-        }
+        RemovePrepTagModifiers(PreparationDataTable, PreparationTag, Instance.IngredientData, TEXT("RemovePreparation"));
     }
-    
+
     // Remove the preparation from both fields to keep them in sync
     Instance.IngredientData.ActivePreparations.RemoveTag(PreparationTag);
     Instance.Preparations.RemoveTag(PreparationTag);
@@ -402,7 +395,11 @@ bool UPUDishBlueprintLibrary::RemovePreparation(FPUDishBase& Dish, int32 Instanc
     return true;
 }
 
-bool UPUDishBlueprintLibrary::ApplyPreparationByID(FPUDishBase& Dish, int32 InstanceID, const FGameplayTag& PreparationTag)
+bool UPUDishBlueprintLibrary::ApplyPreparationByID(
+    FPUDishBase& Dish,
+    int32 InstanceID,
+    const FGameplayTag& PreparationTag,
+    UDataTable* PreparationDataTable)
 {
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
@@ -410,10 +407,14 @@ bool UPUDishBlueprintLibrary::ApplyPreparationByID(FPUDishBase& Dish, int32 Inst
         //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::ApplyPreparationByID - Instance ID %d not found"), InstanceID);
         return false;
     }
-    return ApplyPreparation(Dish, InstanceIndex, PreparationTag);
+    return ApplyPreparation(Dish, InstanceIndex, PreparationTag, PreparationDataTable);
 }
 
-bool UPUDishBlueprintLibrary::RemovePreparationByID(FPUDishBase& Dish, int32 InstanceID, const FGameplayTag& PreparationTag)
+bool UPUDishBlueprintLibrary::RemovePreparationByID(
+    FPUDishBase& Dish,
+    int32 InstanceID,
+    const FGameplayTag& PreparationTag,
+    UDataTable* PreparationDataTable)
 {
     int32 InstanceIndex = Dish.FindInstanceIndexByID(InstanceID);
     if (InstanceIndex == INDEX_NONE)
@@ -421,7 +422,7 @@ bool UPUDishBlueprintLibrary::RemovePreparationByID(FPUDishBase& Dish, int32 Ins
         //UE_LOG(LogTemp,Warning, TEXT("UPUDishBlueprintLibrary::RemovePreparationByID - Instance ID %d not found"), InstanceID);
         return false;
     }
-    return RemovePreparation(Dish, InstanceIndex, PreparationTag);
+    return RemovePreparation(Dish, InstanceIndex, PreparationTag, PreparationDataTable);
 }
 
 bool UPUDishBlueprintLibrary::RemoveIngredientInstanceByID(FPUDishBase& Dish, int32 InstanceID)
@@ -515,7 +516,12 @@ bool UPUDishBlueprintLibrary::HasIngredient(const FPUDishBase& Dish, const FGame
     return Dish.HasIngredient(IngredientTag);
 }
 
-bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UDataTable* IngredientDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish)
+bool UPUDishBlueprintLibrary::GetDishFromDataTable(
+    UDataTable* DishDataTable,
+    UDataTable* IngredientDataTable,
+    const FGameplayTag& DishTag,
+    FPUDishBase& OutDish,
+    UDataTable* PreparationDataTable)
 {
     if (!DishDataTable)
     {
@@ -639,32 +645,13 @@ bool UPUDishBlueprintLibrary::GetDishFromDataTable(UDataTable* DishDataTable, UD
                             }
                             // If Instance.Preparations is empty but ActivePreparations has values, they're already synced above
                             
-                            // Apply each preparation's modifiers
-                            if (Instance.IngredientData.PreparationDataTable.IsValid())
+                            if (PreparationDataTable)
                             {
-                                UDataTable* LoadedPreparationDataTable = Instance.IngredientData.PreparationDataTable.LoadSynchronous();
-                                if (LoadedPreparationDataTable)
+                                TArray<FGameplayTag> PreparationTags;
+                                Instance.Preparations.GetGameplayTagArray(PreparationTags);
+                                for (const FGameplayTag& PrepTag : PreparationTags)
                                 {
-                                    TArray<FGameplayTag> PreparationTags;
-                                    Instance.Preparations.GetGameplayTagArray(PreparationTags);
-
-                                    for (const FGameplayTag& PrepTag : PreparationTags)
-                                    {
-                                        // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                                        FString PrepTagName = PrepTag.ToString();
-                                        int32 PrepLastPeriodIndex;
-                                        if (PrepTagName.FindLastChar('.', PrepLastPeriodIndex))
-                                        {
-                                            FString PrepName = PrepTagName.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                                            FName PrepRowName = FName(*PrepName);
-                                            
-                                            if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetDishFromDataTable")))
-                                            {
-                                                // Apply preparation modifiers
-                                                Preparation->ApplyModifiers(Instance.IngredientData.FlavorAspects, Instance.IngredientData.TextureAspects);
-                                            }
-                                        }
-                                    }
+                                    ApplyPrepTagModifiers(PreparationDataTable, PrepTag, Instance.IngredientData, TEXT("GetDishFromDataTable"));
                                 }
                             }
                             

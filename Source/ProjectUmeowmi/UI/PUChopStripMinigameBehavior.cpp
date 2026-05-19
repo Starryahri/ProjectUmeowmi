@@ -2,6 +2,7 @@
 
 #include "PUPipelineStageMinigameModuleWidget.h"
 #include "PUIngredientSlot.h"
+#include "../DishCustomization/PUIngredientBase.h"
 #include "InputCoreTypes.h"
 
 namespace
@@ -251,14 +252,21 @@ void UPUChopStripMinigameBehavior::RegisterChopInput()
     }
 
     const int32 PerTier = FMath::Max(1, ChopsPerTier);
+    bool bCompletedNewCutTier = false;
     ++ChopsTowardNextTier;
     if (ChopsTowardNextTier >= PerTier)
     {
         ChopsTowardNextTier = 0;
         ++CompletedCutTierCount;
+        bCompletedNewCutTier = true;
     }
 
     BroadcastChopProgress();
+
+    if (bCompletedNewCutTier)
+    {
+        NotifyChopFoodVisualTierChanged();
+    }
 }
 
 bool UPUChopStripMinigameBehavior::FinishChoppingAndApply()
@@ -294,10 +302,81 @@ void UPUChopStripMinigameBehavior::ResetChopSession()
     CompletedCutTierCount = 0;
     ChopsTowardNextTier = 0;
     BroadcastChopProgress();
+    NotifyChopFoodVisualTierChanged();
+}
+
+EPUIngredientCutVisualTier UPUChopStripMinigameBehavior::ChopTierToIngredientVisualTier(EPUChopCompletedCutTier Tier)
+{
+    return static_cast<EPUIngredientCutVisualTier>(static_cast<uint8>(Tier));
+}
+
+UTexture2D* UPUChopStripMinigameBehavior::GetMinigameIngredientDisplayTexture() const
+{
+    if (!IsValid(ActiveChopStripSlot))
+    {
+        return nullptr;
+    }
+
+    const FPUIngredientBase& IngredientData = ActiveChopStripSlot->GetIngredientInstance().IngredientData;
+    const EPUChopCompletedCutTier VisualTier = GetCompletedCutTier();
+    return IngredientData.GetCutVisualTexture(ChopTierToIngredientVisualTier(VisualTier));
+}
+
+FLinearColor UPUChopStripMinigameBehavior::GetMinigameIngredientDisplayTint() const
+{
+    if (!IsValid(ActiveChopStripSlot))
+    {
+        return FLinearColor::White;
+    }
+
+    return ActiveChopStripSlot->GetIngredientInstance().IngredientData.GetMinigameTintColor();
+}
+
+void UPUChopStripMinigameBehavior::NotifyChopFoodVisualTierChanged()
+{
+    if (!IsValid(OwnerModule))
+    {
+        return;
+    }
+
+    OwnerModule->ApplyStripMinigameFoodVisual();
+}
+
+void UPUChopStripMinigameBehavior::DisconnectFromOwner(
+    UPUPipelineStageMinigameModuleWidget* OwnerWidget,
+    UObject* ProgressBarSubscriber)
+{
+    DisconnectChopDelegates(OwnerWidget, ProgressBarSubscriber);
+    Super::DisconnectFromOwner(OwnerWidget, ProgressBarSubscriber);
+}
+
+void UPUChopStripMinigameBehavior::DisconnectChopDelegates(
+    UObject* OwnerWidget,
+    UObject* ProgressBarSubscriber)
+{
+    (void)OwnerWidget;
+    (void)ProgressBarSubscriber;
+
+    if (bChopStrikeKeyHeld)
+    {
+        bChopStrikeKeyHeld = false;
+    }
+
+    ActiveChopStripSlot = nullptr;
+    OnChopProgressUpdated.Clear();
+    OnChopFoodVisualUpdated.Clear();
+    OnChopStrokePlayed.Clear();
+    OnChopStrokeReleased.Clear();
+    OnChopCommitFinished.Clear();
 }
 
 void UPUChopStripMinigameBehavior::BroadcastChopProgress()
 {
+    if (!IsValid(OwnerModule))
+    {
+        return;
+    }
+
     const EPUChopCompletedCutTier CompletedTier = GetCompletedCutTier();
     const EPUChopCompletedCutTier TargetTier = GetTargetCutTier();
     const int32 PerTier = FMath::Max(1, ChopsPerTier);

@@ -2491,14 +2491,6 @@ void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order
 		{
 			Instance.IngredientData.MaterialInstance = nullptr;
 		}
-		if (Instance.IngredientData.IngredientMesh.IsValid())
-		{
-			Instance.IngredientData.IngredientMesh = nullptr;
-		}
-		if (Instance.IngredientData.PreparationDataTable.IsValid())
-		{
-			Instance.IngredientData.PreparationDataTable = nullptr;
-		}
 	}
 	
 	// Clear UObject references in the base dish
@@ -2521,14 +2513,6 @@ void AProjectUmeowmiCharacter::CleanupOrderUObjectReferences(FPUOrderBase& Order
 		if (Instance.IngredientData.MaterialInstance.IsValid())
 		{
 			Instance.IngredientData.MaterialInstance = nullptr;
-		}
-		if (Instance.IngredientData.IngredientMesh.IsValid())
-		{
-			Instance.IngredientData.IngredientMesh = nullptr;
-		}
-		if (Instance.IngredientData.PreparationDataTable.IsValid())
-		{
-			Instance.IngredientData.PreparationDataTable = nullptr;
 		}
 	}
 }

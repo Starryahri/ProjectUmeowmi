@@ -54,17 +54,12 @@ void UPUStripMinigameProgressBarWidget::BindToStripMinigameBehavior(UPUStripMini
 
 void UPUStripMinigameProgressBarWidget::UnbindFromStripMinigameBehavior()
 {
-    if (bBoundToChopProgressDelegate)
+    if (UPUChopStripMinigameBehavior* ChopBehavior = Cast<UPUChopStripMinigameBehavior>(BoundBehavior))
     {
-        if (UPUChopStripMinigameBehavior* ChopBehavior = Cast<UPUChopStripMinigameBehavior>(BoundBehavior))
-        {
-            ChopBehavior->OnChopProgressUpdated.RemoveDynamic(
-                this,
-                &UPUStripMinigameProgressBarWidget::HandleChopProgressUpdated);
-        }
-        bBoundToChopProgressDelegate = false;
+        ChopBehavior->OnChopProgressUpdated.RemoveAll(this);
     }
 
+    bBoundToChopProgressDelegate = false;
     BoundBehavior = nullptr;
 }
 

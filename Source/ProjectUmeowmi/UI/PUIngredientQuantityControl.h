@@ -35,6 +35,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     void SetPreparationCheckboxClass(TSubclassOf<UPUPreparationCheckbox> InPreparationCheckboxClass);
 
+    UFUNCTION(BlueprintCallable, Category = "Quantity Control")
+    void SetPreparationDataTable(UDataTable* InPreparationDataTable) { PreparationDataTable = InPreparationDataTable; }
+
     // Get the current ingredient instance data
     UFUNCTION(BlueprintCallable, Category = "Quantity Control")
     const FIngredientInstance& GetIngredientInstance() const { return IngredientInstance; }
@@ -128,6 +131,10 @@ protected:
     // Preparation checkbox class reference
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Widget Classes")
     TSubclassOf<UPUPreparationCheckbox> PreparationCheckboxClass;
+
+    /** Dish-level preparation table (from customization component / FPUDishBase). */
+    UPROPERTY()
+    UDataTable* PreparationDataTable = nullptr;
 
     // Whether drag functionality is enabled
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Quantity Control|Drag")

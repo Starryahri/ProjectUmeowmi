@@ -11,6 +11,8 @@
 #include "Components/SlateWrapperTypes.h"
 #include "GameplayTagContainer.h"
 #include "Engine/DataTable.h"
+#include "PUDishCustomizationWidget.h"
+#include "../DishCustomization/PUDishCustomizationComponent.h"
 
 
 UPUIngredientQuantityControl::UPUIngredientQuantityControl(const FObjectInitializer& ObjectInitializer)
@@ -82,10 +84,16 @@ void UPUIngredientQuantityControl::SetIngredientInstance(const FIngredientInstan
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUIngredientQuantityControl::SetIngredientInstance - Setting ingredient instance: %s (ID: %d)"), 
     //    *InIngredientInstance.IngredientData.DisplayName.ToString(), InIngredientInstance.InstanceID);
     
-    // Update ingredient instance data
     IngredientInstance = InIngredientInstance;
-    
-    // Update UI components
+
+    if (UPUDishCustomizationWidget* DishWidget = GetTypedOuter<UPUDishCustomizationWidget>())
+    {
+        if (UPUDishCustomizationComponent* Comp = DishWidget->GetCustomizationComponent())
+        {
+            PreparationDataTable = Comp->PreparationDataTable;
+        }
+    }
+
     UpdateIngredientDisplay();
     
     if (IngredientIcon && IngredientInstance.IngredientData.PreviewTexture)
@@ -176,41 +184,19 @@ void UPUIngredientQuantityControl::AddPreparation(const FGameplayTag& Preparatio
         IngredientInstance.IngredientData.ActivePreparations = IngredientInstance.Preparations;
         
         // Apply preparation modifiers to aspect values (e.g. chopped adds +6 to Crumbly)
-        if (IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+        if (PreparationDataTable)
         {
-            if (UDataTable* PrepTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous())
+            FString PrepFullTag = PreparationTag.ToString();
+            int32 PrepLastPeriodIndex;
+            if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
             {
-                FString PrepFullTag = PreparationTag.ToString();
-                int32 PrepLastPeriodIndex;
-                if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                FName PrepRowName = FName(*PrepName);
+                if (FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddPreparation")))
                 {
-                    FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                    FName PrepRowName = FName(*PrepName);
-                    if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("AddPreparation")))
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Applying %s to %s (Instance %d) - %d modifiers"),
-                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, Preparation->AspectModifiers.Num());
-                        Preparation->ApplyModifiers(IngredientInstance.IngredientData.FlavorAspects, IngredientInstance.IngredientData.TextureAspects);
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Could not find preparation row '%s' in data table for %s"),
-                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString());
-                    }
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Tag '%s' has no period - cannot extract row name"), *PrepFullTag);
+                    Preparation->ApplyModifiers(IngredientInstance.IngredientData.FlavorAspects, IngredientInstance.IngredientData.TextureAspects);
                 }
             }
-            else
-            {
-                UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: Failed to load PreparationDataTable for %s"), *IngredientInstance.IngredientData.DisplayName.ToString());
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("[Prep] AddPreparation: No PreparationDataTable on ingredient %s"), *IngredientInstance.IngredientData.DisplayName.ToString());
         }
         
         // Log the current preparation state
@@ -242,27 +228,17 @@ void UPUIngredientQuantityControl::RemovePreparation(const FGameplayTag& Prepara
         //    *PreparationTag.ToString());
         
         // Remove preparation modifiers from aspect values BEFORE removing the tag
-        if (IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+        if (PreparationDataTable)
         {
-            if (UDataTable* PrepTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous())
+            FString PrepFullTag = PreparationTag.ToString();
+            int32 PrepLastPeriodIndex;
+            if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
             {
-                FString PrepFullTag = PreparationTag.ToString();
-                int32 PrepLastPeriodIndex;
-                if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
+                FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
+                FName PrepRowName = FName(*PrepName);
+                if (FPUPreparationBase* Preparation = PreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("RemovePreparation")))
                 {
-                    FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                    FName PrepRowName = FName(*PrepName);
-                    if (FPUPreparationBase* Preparation = PrepTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("RemovePreparation")))
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparation: Removing %s from %s (Instance %d) - %d modifiers"),
-                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, Preparation->AspectModifiers.Num());
-                        Preparation->RemoveModifiers(IngredientInstance.IngredientData.FlavorAspects, IngredientInstance.IngredientData.TextureAspects);
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[Prep] RemovePreparation: Could not find preparation row '%s' in data table for %s"),
-                            *PrepName, *IngredientInstance.IngredientData.DisplayName.ToString());
-                    }
+                    Preparation->RemoveModifiers(IngredientInstance.IngredientData.FlavorAspects, IngredientInstance.IngredientData.TextureAspects);
                 }
             }
         }
@@ -414,13 +390,13 @@ void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
     ClearPreparationCheckboxes();
     
     // Check if we have a preparation data table
-    if (!IngredientInstance.IngredientData.PreparationDataTable.IsValid())
+    if (!PreparationDataTable)
     {
         //UE_LOG(LogTemp,Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - No preparation data table available"));
         return;
     }
     
-    UDataTable* LoadedPreparationDataTable = IngredientInstance.IngredientData.PreparationDataTable.LoadSynchronous();
+    UDataTable* LoadedPreparationDataTable = PreparationDataTable;
     if (!LoadedPreparationDataTable)
     {
         //UE_LOG(LogTemp,Warning, TEXT("🎯 PUIngredientQuantityControl::UpdatePreparationCheckboxes - Failed to load preparation data table"));
@@ -451,7 +427,7 @@ void UPUIngredientQuantityControl::UpdatePreparationCheckboxes()
 void UPUIngredientQuantityControl::UpdateIngredientDisplay()
 {
     // Get the current display name (which includes preparation modifications)
-    FText CurrentDisplayName = IngredientInstance.IngredientData.GetCurrentDisplayName();
+    FText CurrentDisplayName = IngredientInstance.IngredientData.GetCurrentDisplayName(PreparationDataTable);
     
     // Update the ingredient name text
     if (IngredientNameText)

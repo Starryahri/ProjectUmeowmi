@@ -48,6 +48,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPUOnChopStrokePlayed);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPUOnChopStrokeReleased);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
+    FPUOnChopFoodVisualUpdated,
+    UTexture2D*,
+    FoodTexture,
+    FLinearColor,
+    FoodTint);
+
 /**
  * Chop strip minigame: 3 chops per tier (whole → sliced → chopped → minced).
  * Chop: gamepad A / P. Finish: gamepad B / B — applies last completed tier only.
@@ -89,8 +96,20 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Chop")
     FPUOnChopStrokeReleased OnChopStrokeReleased;
 
+    /** Fired when a cut tier completes (not every chop stroke). Optional BP hook; C++ updates FoodToBeChopped directly. */
+    UPROPERTY(BlueprintAssignable, Category = "Chop|Presentation")
+    FPUOnChopFoodVisualUpdated OnChopFoodVisualUpdated;
+
     UFUNCTION(BlueprintPure, Category = "Chop")
     bool IsChopStrikeKeyHeld() const { return bChopStrikeKeyHeld; }
+
+    /** Cut art for the current completed tier (whole → prepped/preview; then sliced / chopped / minced). */
+    UFUNCTION(BlueprintPure, Category = "Chop|Presentation")
+    UTexture2D* GetMinigameIngredientDisplayTexture() const;
+
+    /** Multiply tint for cut-minigame food image (ingredient AverageTintColor). */
+    UFUNCTION(BlueprintPure, Category = "Chop|Presentation")
+    FLinearColor GetMinigameIngredientDisplayTint() const;
 
     UPROPERTY(BlueprintReadOnly, Category = "Chop")
     int32 CompletedCutTierCount = 0;
@@ -150,12 +169,20 @@ public:
 
     virtual bool CanStartStripMinigameForSlot_Implementation(const UPUIngredientSlot* StripSlot) const override;
 
+    virtual void DisconnectFromOwner(
+        UPUPipelineStageMinigameModuleWidget* OwnerWidget,
+        UObject* ProgressBarSubscriber) override;
+
 protected:
     void BeginChopStroke();
     void EndChopStroke();
 
     void ResetChopSession();
     void BroadcastChopProgress();
+    /** Updates FoodToBeChopped on the owner module — call only when CompletedCutTierCount changes or session resets. */
+    void NotifyChopFoodVisualTierChanged();
+    void DisconnectChopDelegates(UObject* OwnerWidget, UObject* ProgressBarSubscriber);
+    static EPUIngredientCutVisualTier ChopTierToIngredientVisualTier(EPUChopCompletedCutTier Tier);
     bool ApplyCompletedCutTierToStripSlot(UPUIngredientSlot* StripSlot, EPUChopCompletedCutTier Tier);
     void RemoveMutuallyExclusiveCutPreparations(UPUIngredientSlot* StripSlot);
     FGameplayTag GetPreparationTagForCompletedTier(EPUChopCompletedCutTier Tier) const;

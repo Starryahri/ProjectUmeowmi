@@ -1788,7 +1788,8 @@ void UPUDishCustomizationWidget::CreateIngredientInstance(const FPUIngredientBas
     //    *IngredientData.DisplayName.ToString());
     
     // Create a new ingredient instance using the blueprint library
-    FIngredientInstance NewInstance = UPUDishBlueprintLibrary::AddIngredient(CurrentDishData, IngredientData.IngredientTag);
+    UDataTable* PrepTable = CustomizationComponent ? CustomizationComponent->PreparationDataTable : nullptr;
+    FIngredientInstance NewInstance = UPUDishBlueprintLibrary::AddIngredient(CurrentDishData, IngredientData.IngredientTag, FGameplayTagContainer(), PrepTable);
     
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientInstance - Created instance with ID: %d"), NewInstance.InstanceID);
     
@@ -2547,7 +2548,8 @@ void UPUDishCustomizationWidget::FinishPlanningAndStartCooking()
         else
         {
             // Create new instance with default quantity of 1
-            FIngredientInstance NewInstance = UPUDishBlueprintLibrary::AddIngredient(CookingDishData, SelectedIngredient.IngredientTag);
+            UDataTable* PrepTable = CustomizationComponent ? CustomizationComponent->PreparationDataTable : nullptr;
+            FIngredientInstance NewInstance = UPUDishBlueprintLibrary::AddIngredient(CookingDishData, SelectedIngredient.IngredientTag, FGameplayTagContainer(), PrepTable);
             //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::FinishPlanningAndStartCooking - Created new instance for: %s (Qty: %d)"), 
             //    *SelectedIngredient.DisplayName.ToString(), NewInstance.Quantity);
         }

@@ -53,33 +53,6 @@ bool FPUDishBase::GetIngredient(const FGameplayTag& IngredientTag, FPUIngredient
         OutIngredient = *FoundIngredient;
         OutIngredient.ActivePreparations = PreparationsToApply;
         
-        // Load preparation data if available
-        if (OutIngredient.PreparationDataTable.IsValid())
-        {
-            UDataTable* LoadedPreparationDataTable = OutIngredient.PreparationDataTable.LoadSynchronous();
-            if (LoadedPreparationDataTable)
-            {
-                // Apply any active preparations to the ingredient
-                for (const FGameplayTag& PrepTag : OutIngredient.ActivePreparations)
-                {
-                    // Get the preparation name from the tag (everything after the last period) and convert to lowercase
-                    FString PrepFullTag = PrepTag.ToString();
-                    int32 PrepLastPeriodIndex;
-                    if (PrepFullTag.FindLastChar('.', PrepLastPeriodIndex))
-                    {
-                        FString PrepName = PrepFullTag.RightChop(PrepLastPeriodIndex + 1).ToLower();
-                        FName PrepRowName = FName(*PrepName);
-                        
-                        if (FPUPreparationBase* Preparation = LoadedPreparationDataTable->FindRow<FPUPreparationBase>(PrepRowName, TEXT("GetIngredient")))
-                        {
-                            // Apply preparation modifiers
-                            Preparation->ApplyModifiers(OutIngredient.FlavorAspects, OutIngredient.TextureAspects);
-                        }
-                    }
-                }
-            }
-        }
-        
         return true;
     }
     

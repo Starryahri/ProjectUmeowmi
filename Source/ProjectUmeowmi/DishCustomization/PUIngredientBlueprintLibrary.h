@@ -26,9 +26,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Preparation")
     static bool HasPreparation(const FPUIngredientBase& Ingredient, const FGameplayTag& PreparationTag);
 
-    /** Get the current display name of an ingredient (including preparation modifications) */
+    /** Get the current display name of an ingredient (including preparation modifications). */
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Preparation")
-    static FText GetCurrentDisplayName(const FPUIngredientBase& Ingredient);
+    static FText GetCurrentDisplayName(const FPUIngredientBase& Ingredient, UDataTable* PreparationTable = nullptr);
 
     /** Get the value of a specific flavor aspect for an ingredient */
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Aspects")
@@ -57,4 +57,10 @@ public:
     /** Get all special effects at a specific quantity */
     UFUNCTION(BlueprintCallable, Category = "Ingredient|Effects")
     static TArray<FGameplayTag> GetEffectsAtQuantity(const FPUIngredientBase& Ingredient, int32 Quantity);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Visual|Cut Minigame")
+    static UTexture2D* GetCutVisualTexture(const FPUIngredientBase& Ingredient, EPUIngredientCutVisualTier CutTier);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Visual|Cut Minigame")
+    static FLinearColor GetMinigameTintColor(const FPUIngredientBase& Ingredient);
 }; 

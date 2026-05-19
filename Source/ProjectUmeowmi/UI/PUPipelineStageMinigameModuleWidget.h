@@ -11,6 +11,7 @@ class UWidgetAnimation;
 class UPUDishCustomizationWidget;
 class UPUDishCustomizationComponent;
 class UPUIngredientSlot;
+class UImage;
 class UPUStripMinigameBehavior;
 class UPUStripMinigameProgressBarWidget;
 
@@ -18,7 +19,7 @@ class UPUStripMinigameProgressBarWidget;
  * Shared base for pipeline-mounted stage vignettes that run an interactive strip-minigame (chop, marinate, etc.).
  * Assign a StripMinigameBehavior (class or instanced) per widget — Blueprints stay parented here; no per-minigame reparent.
  *
- * BindWidgetOptional: StageMinigameUIPanel
+ * BindWidgetOptional: StageMinigameUIPanel, FoodToBeChopped (chop food image — required name in UMG)
  * Progress bar: nest WBP_ProgressBar (parent: Strip Minigame Progress Bar) under StageMinigameUIPanel — any instance name; C++ discovers it at runtime.
  */
 UCLASS(Abstract, Blueprintable, meta = (DisplayName = "Pipeline Stage Minigame Module"))
@@ -44,6 +45,19 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "Stage Minigame|Progress Bar", AdvancedDisplay)
     FName StripMinigameProgressBarWidgetName;
 
+    /** Primary chop food image — UMG widget name must be FoodToBeChopped. */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Food")
+    TObjectPtr<UImage> FoodToBeChopped;
+
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Food")
+    TObjectPtr<UImage> StripMinigameFoodImage;
+
+    UPROPERTY(Transient, BlueprintReadOnly, Category = "Stage Minigame|Food")
+    TObjectPtr<UImage> ResolvedStripMinigameFoodImage;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Stage Minigame|Food", AdvancedDisplay)
+    FName StripMinigameFoodImageWidgetName;
+
     UPROPERTY(BlueprintReadOnly, Category = "Stage Minigame")
     bool bStripMinigameActive = false;
 
@@ -59,7 +73,7 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stage Minigame|Behavior", meta = (Categories = "Stage"))
     TMap<FGameplayTag, TSubclassOf<UPUStripMinigameBehavior>> StripMinigameBehaviorByStageId;
 
-    UPROPERTY(BlueprintReadOnly, Category = "Stage Minigame|Behavior")
+    UPROPERTY(Transient, BlueprintReadOnly, Category = "Stage Minigame|Behavior")
     TObjectPtr<UPUStripMinigameBehavior> ActiveStripMinigameBehavior;
 
     UFUNCTION(BlueprintPure, Category = "Stage Minigame")
@@ -103,7 +117,21 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Progress Bar")
     void SyncStripMinigameProgressBarBinding();
 
+    /** Chop stage: food image texture for the active strip ingredient's current cut tier. */
+    UFUNCTION(BlueprintPure, Category = "Stage Minigame|Chop Presentation")
+    UTexture2D* GetStripMinigameFoodTexture() const;
+
+    /** Chop stage: multiply tint (AverageTintColor on the ingredient row). */
+    UFUNCTION(BlueprintPure, Category = "Stage Minigame|Chop Presentation")
+    FLinearColor GetStripMinigameFoodTint() const;
+
+    /** Pushes current chop food texture + tint to FoodToBeChopped (on minigame open and when a cut tier completes). */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Chop Presentation")
+    void ApplyStripMinigameFoodVisual();
+
     virtual void NativeConstruct() override;
+    virtual void NativeDestruct() override;
+    virtual void BeginDestroy() override;
 
 protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Presentation", meta = (DisplayName = "On Strip Minigame Chop Pressed"))
@@ -142,6 +170,8 @@ protected:
 
 private:
     void ResolveStripMinigameProgressBarWidget();
+    void ResolveStripMinigameFoodImageWidget();
+
     void ApplyStageMinigameUIPanelVisibility();
     void SetupStripMinigameBehavior(const FPUDishCustomizationStageDescriptor& StageDescriptor);
     void TeardownStripMinigameBehavior();

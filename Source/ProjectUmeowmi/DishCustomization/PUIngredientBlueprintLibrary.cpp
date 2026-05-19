@@ -15,9 +15,21 @@ bool UPUIngredientBlueprintLibrary::HasPreparation(const FPUIngredientBase& Ingr
     return Ingredient.HasPreparation(PreparationTag);
 }
 
-FText UPUIngredientBlueprintLibrary::GetCurrentDisplayName(const FPUIngredientBase& Ingredient)
+FText UPUIngredientBlueprintLibrary::GetCurrentDisplayName(const FPUIngredientBase& Ingredient, UDataTable* PreparationTable)
 {
-    return Ingredient.GetCurrentDisplayName();
+    return Ingredient.GetCurrentDisplayName(PreparationTable);
+}
+
+UTexture2D* UPUIngredientBlueprintLibrary::GetCutVisualTexture(
+    const FPUIngredientBase& Ingredient,
+    EPUIngredientCutVisualTier CutTier)
+{
+    return Ingredient.GetCutVisualTexture(CutTier);
+}
+
+FLinearColor UPUIngredientBlueprintLibrary::GetMinigameTintColor(const FPUIngredientBase& Ingredient)
+{
+    return Ingredient.GetMinigameTintColor();
 }
 
 float UPUIngredientBlueprintLibrary::GetFlavorAspect(const FPUIngredientBase& Ingredient, const FName& AspectName)

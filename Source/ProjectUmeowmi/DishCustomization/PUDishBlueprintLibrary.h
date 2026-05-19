@@ -16,7 +16,11 @@ class PROJECTUMEOWMI_API UPUDishBlueprintLibrary : public UBlueprintFunctionLibr
 public:
     // Add an ingredient to the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static FIngredientInstance AddIngredient(UPARAM(ref) FPUDishBase& Dish, const FGameplayTag& IngredientTag, const FGameplayTagContainer& Preparations = FGameplayTagContainer());
+    static FIngredientInstance AddIngredient(
+        UPARAM(ref) FPUDishBase& Dish,
+        const FGameplayTag& IngredientTag,
+        const FGameplayTagContainer& Preparations = FGameplayTagContainer(),
+        UDataTable* PreparationDataTable = nullptr);
 
     // Remove an ingredient from the dish
     UFUNCTION(BlueprintCallable, Category = "Dish")
@@ -44,11 +48,19 @@ public:
 
     // Apply a preparation to a specific ingredient instance
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static bool ApplyPreparation(UPARAM(ref) FPUDishBase& Dish, int32 InstanceIndex, const FGameplayTag& PreparationTag);
+    static bool ApplyPreparation(
+        UPARAM(ref) FPUDishBase& Dish,
+        int32 InstanceIndex,
+        const FGameplayTag& PreparationTag,
+        UDataTable* PreparationDataTable = nullptr);
 
     // Remove a preparation from a specific ingredient instance
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static bool RemovePreparation(UPARAM(ref) FPUDishBase& Dish, int32 InstanceIndex, const FGameplayTag& PreparationTag);
+    static bool RemovePreparation(
+        UPARAM(ref) FPUDishBase& Dish,
+        int32 InstanceIndex,
+        const FGameplayTag& PreparationTag,
+        UDataTable* PreparationDataTable = nullptr);
 
     // Get the number of instances for a specific ingredient
     UFUNCTION(BlueprintCallable, Category = "Dish")
@@ -64,11 +76,19 @@ public:
 
     // Apply a preparation to a specific ingredient instance by ID
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static bool ApplyPreparationByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, const FGameplayTag& PreparationTag);
+    static bool ApplyPreparationByID(
+        UPARAM(ref) FPUDishBase& Dish,
+        int32 InstanceID,
+        const FGameplayTag& PreparationTag,
+        UDataTable* PreparationDataTable = nullptr);
 
     // Remove a preparation from a specific ingredient instance by ID
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static bool RemovePreparationByID(UPARAM(ref) FPUDishBase& Dish, int32 InstanceID, const FGameplayTag& PreparationTag);
+    static bool RemovePreparationByID(
+        UPARAM(ref) FPUDishBase& Dish,
+        int32 InstanceID,
+        const FGameplayTag& PreparationTag,
+        UDataTable* PreparationDataTable = nullptr);
 
     // Remove a specific ingredient instance by ID
     UFUNCTION(BlueprintCallable, Category = "Dish")
@@ -100,7 +120,12 @@ public:
 
     // Get a dish from a data table by tag
     UFUNCTION(BlueprintCallable, Category = "Dish")
-    static bool GetDishFromDataTable(UDataTable* DishDataTable, UDataTable* IngredientDataTable, const FGameplayTag& DishTag, FPUDishBase& OutDish);
+    static bool GetDishFromDataTable(
+        UDataTable* DishDataTable,
+        UDataTable* IngredientDataTable,
+        const FGameplayTag& DishTag,
+        FPUDishBase& OutDish,
+        UDataTable* PreparationDataTable = nullptr);
 
     // Get a random dish tag from available dishes
     UFUNCTION(BlueprintCallable, Category = "Dish")

@@ -50,6 +50,9 @@ public:
     bool CanStartStripMinigameForSlot(const UPUIngredientSlot* StripSlot) const;
     virtual bool CanStartStripMinigameForSlot_Implementation(const UPUIngredientSlot* StripSlot) const;
 
+    /** Clears owner/slot refs and dynamic delegate bindings before the behavior or owner widget is destroyed. */
+    virtual void DisconnectFromOwner(UPUPipelineStageMinigameModuleWidget* OwnerWidget, UObject* ProgressBarSubscriber);
+
 protected:
     UFUNCTION(BlueprintCallable, Category = "Strip Minigame Behavior")
     void RequestEndStripMinigameSession();

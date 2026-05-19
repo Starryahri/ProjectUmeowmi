@@ -107,14 +107,6 @@ void UPUOrderComponent::ClearCurrentOrder()
         {
             Instance.IngredientData.MaterialInstance = nullptr;
         }
-        if (Instance.IngredientData.IngredientMesh.IsValid())
-        {
-            Instance.IngredientData.IngredientMesh = nullptr;
-        }
-        if (Instance.IngredientData.PreparationDataTable.IsValid())
-        {
-            Instance.IngredientData.PreparationDataTable = nullptr;
-        }
     }
     
     // Clear UObject references in the base dish
@@ -137,14 +129,6 @@ void UPUOrderComponent::ClearCurrentOrder()
         if (Instance.IngredientData.MaterialInstance.IsValid())
         {
             Instance.IngredientData.MaterialInstance = nullptr;
-        }
-        if (Instance.IngredientData.IngredientMesh.IsValid())
-        {
-            Instance.IngredientData.IngredientMesh = nullptr;
-        }
-        if (Instance.IngredientData.PreparationDataTable.IsValid())
-        {
-            Instance.IngredientData.PreparationDataTable = nullptr;
         }
     }
     
@@ -253,7 +237,7 @@ void UPUOrderComponent::GenerateSimpleOrder(FGameplayTag OptionalDishTag)
     bool bGotBaseDish = false;
     if (DishDataTable && IsValid(DishDataTable))
     {
-        bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, BaseDish);
+        bGotBaseDish = UPUDishBlueprintLibrary::GetDishFromDataTable(DishDataTable, IngredientDataTable, DishTag, BaseDish, PreparationDataTable);
     }
     UE_LOG(LogTemp, Display, TEXT("[OrderGen] GenerateSimpleOrder - Base dish from data table: %s (ingredients: %d)"), bGotBaseDish ? TEXT("yes") : TEXT("no"), BaseDish.IngredientInstances.Num());
     if (!bGotBaseDish)

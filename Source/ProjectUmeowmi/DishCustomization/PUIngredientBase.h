@@ -8,14 +8,21 @@
 // Forward declarations
 class UTexture2D;
 class UMaterialInterface;
-class UDataTable;
-class UStaticMesh;
-class UNiagaraSystem;
 struct FPUPreparationBase;
 
 // Forward declare enums from PUPreparationBase (to avoid circular dependency)
 enum class EAspectType : uint8;
 enum class EModificationType : uint8;
+
+/** Visual cut state for strip minigames (whole uses Preview/Prepped textures). */
+UENUM(BlueprintType)
+enum class EPUIngredientCutVisualTier : uint8
+{
+    Whole   UMETA(DisplayName = "Whole"),
+    Sliced  UMETA(DisplayName = "Sliced"),
+    Chopped UMETA(DisplayName = "Chopped"),
+    Minced  UMETA(DisplayName = "Minced")
+};
 
 // Time state enum for discrete mapping
 UENUM(BlueprintType)
@@ -221,32 +228,30 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     UTexture2D* PreppedTexture;
 
+    /** Grayscale or neutral art for the chopping minigame — tinted with AverageTintColor at runtime. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual|Cut Minigame")
+    UTexture2D* SlicedTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual|Cut Minigame")
+    UTexture2D* ChoppedTexture;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual|Cut Minigame")
+    UTexture2D* MincedTexture;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     TSoftObjectPtr<UMaterialInterface> MaterialInstance;
 
-    // Material for cut surfaces (caps) when chopped/minced; separate from MaterialInstance so caps don't interfere
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    TSoftObjectPtr<UMaterialInterface> CapMaterialInstance;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    TSoftObjectPtr<UStaticMesh> IngredientMesh;
-
-    /** If true, this ingredient uses a Niagara particle fill system instead of a static mesh when plated. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    bool bIsLiquid = false;
-
-    /** Niagara system for liquid fill effect (used when bIsLiquid is true). Particles should be configured to persist (no kill). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    TSoftObjectPtr<UNiagaraSystem> LiquidParticleSystem;
-
-    /** Per-ingredient mesh scale override. When set (any component > 0), overrides IngredientMeshScale and all other scale sources. Leave at (0,0,0) to use default scaling. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
-    FVector MeshScale = FVector::ZeroVector;
-
     /** Pre-computed average tint color from texture. Used in packaged builds where runtime texture sampling fails.
-     *  Set in editor (or leave default white). Run "Bake Average Color" in editor to populate from texture. */
+     *  Set in editor (or leave default white). Run "Bake Average Color" in editor to populate from texture.
+     *  Applied as a multiply tint on Sliced/Chopped/Minced textures during the chop minigame. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Visual")
     FLinearColor AverageTintColor = FLinearColor::White;
+
+    /** Texture for the given cut tier (whole → PreppedTexture / PreviewTexture). */
+    UTexture2D* GetCutVisualTexture(EPUIngredientCutVisualTier CutTier) const;
+
+    /** Tint for cut-minigame food images (from AverageTintColor). */
+    FLinearColor GetMinigameTintColor() const { return AverageTintColor; }
 
     // Flavor Aspects
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Aspects")
@@ -276,10 +281,6 @@ public:
     // Active Preparations
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Preparation", meta = (Categories = "Preparation"))
     FGameplayTagContainer ActivePreparations;
-
-    // Data Tables
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Data")
-    TSoftObjectPtr<UDataTable> PreparationDataTable;
 
     // Special Effects
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Effects")
@@ -313,7 +314,8 @@ public:
     bool ApplyPreparation(const FPUPreparationBase& Preparation);
     bool RemovePreparation(const FPUPreparationBase& Preparation);
     bool HasPreparation(const FGameplayTag& PreparationTag) const;
-    FText GetCurrentDisplayName() const;
+    /** Pass the station/component prep table at runtime (not stored on data-table rows). */
+    FText GetCurrentDisplayName(const UDataTable* PreparationTable = nullptr) const;
 
     // Time/Temperature Functions
     // Calculate modified aspects based on time and temperature values (0.0 to 1.0)

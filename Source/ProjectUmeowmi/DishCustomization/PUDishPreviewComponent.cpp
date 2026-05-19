@@ -171,40 +171,12 @@ void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
             FVector WorldPos = BaseWorldPos + OffsetFromOrigin;
             FRotator WorldRot = Entry.Rotation;
 
-            // Liquid path: spawn Niagara fill instead of mesh (use Entry.bIsLiquid or ingredient data)
-            if ((Entry.bIsLiquid || Instance.IngredientData.bIsLiquid) && Instance.IngredientData.LiquidParticleSystem.IsValid())
+            if (Entry.bIsLiquid)
             {
-                UNiagaraSystem* NiagaraSystem = Instance.IngredientData.LiquidParticleSystem.LoadSynchronous();
-                if (NiagaraSystem && Owner)
-                {
-                    UNiagaraComponent* NiagaraComp = NewObject<UNiagaraComponent>(Owner, UNiagaraComponent::StaticClass(), NAME_None, RF_Transient);
-                    if (NiagaraComp)
-                    {
-                        NiagaraComp->SetAsset(NiagaraSystem);
-                        NiagaraComp->SetAutoActivate(true);
-                        NiagaraComp->RegisterComponent();
-                        NiagaraComp->AttachToComponent(IngredientParent, FAttachmentTransformRules::KeepWorldTransform);
-                        NiagaraComp->SetWorldLocation(WorldPos);
-                        NiagaraComp->SetWorldRotation(WorldRot);
-                        NiagaraComp->SetWorldScale3D(FVector(1.0f));
-                        NiagaraComp->Activate(true);
-                        PreviewLiquidComponents.Add(NiagaraComp);
-                        SpawnedCount++;
-                    }
-                }
                 continue;
             }
 
-            // Solid path: spawn mesh (use captured rotation and scale - exact copy)
-            FVector EffectiveScale;
-            if (Instance.IngredientData.MeshScale.SizeSquared() > KINDA_SMALL_NUMBER)
-            {
-                EffectiveScale = Instance.IngredientData.MeshScale;
-            }
-            else
-            {
-                EffectiveScale = (Entry.Scale.SizeSquared() > KINDA_SMALL_NUMBER) ? Entry.Scale : FVector::OneVector;
-            }
+            const FVector EffectiveScale = (Entry.Scale.SizeSquared() > KINDA_SMALL_NUMBER) ? Entry.Scale : FVector::OneVector;
 
             APUIngredientMesh* Spawned = World->SpawnActor<APUIngredientMesh>(MeshClass, WorldPos, WorldRot, SpawnParams);
             if (!Spawned)
@@ -259,15 +231,8 @@ void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
                 OffsetFromOrigin.Z += IngredientZOffset;  // Move up slightly
                 WorldPos = BaseWorldPos + OffsetFromOrigin;
                 LocalRot = Instance.PlatingRotation;
-                if (Instance.IngredientData.MeshScale.SizeSquared() > KINDA_SMALL_NUMBER)
-                {
-                    InstanceScale = Instance.IngredientData.MeshScale;
-                }
-                else
-                {
-                    InstanceScale = (Instance.PlatingScale.SizeSquared() > KINDA_SMALL_NUMBER)
-                        ? Instance.PlatingScale : FVector::OneVector;
-                }
+                InstanceScale = (Instance.PlatingScale.SizeSquared() > KINDA_SMALL_NUMBER)
+                    ? Instance.PlatingScale : FVector::OneVector;
             }
             else
             {
@@ -277,36 +242,12 @@ void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
                 OffsetFromOrigin.Z += IngredientZOffset;
                 WorldPos = BaseWorldPos + OffsetFromOrigin;
                 LocalRot = FRotator::ZeroRotator;
-                InstanceScale = (Instance.IngredientData.MeshScale.SizeSquared() > KINDA_SMALL_NUMBER)
-                    ? Instance.IngredientData.MeshScale : FVector::OneVector;
+                InstanceScale = FVector::OneVector;
             }
 
             FVector EffectiveScale = InstanceScale;
             FRotator WorldRot = Instance.bIsPlated ? Instance.PlatingRotation : FRotator::ZeroRotator;
 
-            // Liquid path (fallback when PlatingEntries empty): spawn Niagara instead of mesh
-            if (Instance.IngredientData.bIsLiquid && Instance.IngredientData.LiquidParticleSystem.IsValid())
-            {
-                UNiagaraSystem* NiagaraSystem = Instance.IngredientData.LiquidParticleSystem.LoadSynchronous();
-                if (NiagaraSystem && Owner)
-                {
-                    UNiagaraComponent* NiagaraComp = NewObject<UNiagaraComponent>(Owner, UNiagaraComponent::StaticClass(), NAME_None, RF_Transient);
-                    if (NiagaraComp)
-                    {
-                        NiagaraComp->SetAsset(NiagaraSystem);
-                        NiagaraComp->SetAutoActivate(true);
-                        NiagaraComp->RegisterComponent();
-                        NiagaraComp->AttachToComponent(IngredientParent, FAttachmentTransformRules::KeepWorldTransform);
-                        NiagaraComp->SetWorldLocation(WorldPos);
-                        NiagaraComp->SetWorldRotation(WorldRot);
-                        NiagaraComp->SetWorldScale3D(FVector(1.0f));
-                        NiagaraComp->Activate(true);
-                        PreviewLiquidComponents.Add(NiagaraComp);
-                        SpawnedCount++;
-                    }
-                }
-            }
-            else
             {
                 APUIngredientMesh* Spawned = World->SpawnActor<APUIngredientMesh>(MeshClass, WorldPos, WorldRot, SpawnParams);
                 if (!Spawned)

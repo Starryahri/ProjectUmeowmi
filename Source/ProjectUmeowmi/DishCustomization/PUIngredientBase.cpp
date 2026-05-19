@@ -10,12 +10,38 @@ FPUIngredientBase::FPUIngredientBase()
     , PreviewTexture(nullptr)
     , PantryTexture(nullptr)
     , MaterialInstance(nullptr)
-    , IngredientMesh(nullptr)
     , MinQuantity(0)
     , MaxQuantity(5)
     , CurrentQuantity(0)
-    , PreparationDataTable(nullptr)
 {
+}
+
+UTexture2D* FPUIngredientBase::GetCutVisualTexture(EPUIngredientCutVisualTier CutTier) const
+{
+    switch (CutTier)
+    {
+    case EPUIngredientCutVisualTier::Minced:
+        if (MincedTexture)
+        {
+            return MincedTexture;
+        }
+        [[fallthrough]];
+    case EPUIngredientCutVisualTier::Chopped:
+        if (ChoppedTexture)
+        {
+            return ChoppedTexture;
+        }
+        [[fallthrough]];
+    case EPUIngredientCutVisualTier::Sliced:
+        if (SlicedTexture)
+        {
+            return SlicedTexture;
+        }
+        [[fallthrough]];
+    case EPUIngredientCutVisualTier::Whole:
+    default:
+        return PreppedTexture ? PreppedTexture : PreviewTexture;
+    }
 }
 
 float FPUIngredientBase::GetFlavorAspect(const FName& AspectName) const
@@ -164,12 +190,12 @@ bool FPUIngredientBase::HasPreparation(const FGameplayTag& PreparationTag) const
     return ActivePreparations.HasTag(PreparationTag);
 }
 
-FText FPUIngredientBase::GetCurrentDisplayName() const
+FText FPUIngredientBase::GetCurrentDisplayName(const UDataTable* PreparationTable) const
 {
     // If we have active preparations, try to get a modified name
-    if (ActivePreparations.Num() > 0 && PreparationDataTable.IsValid())
+    if (ActivePreparations.Num() > 0 && PreparationTable)
     {
-        UDataTable* LoadedPreparationDataTable = PreparationDataTable.LoadSynchronous();
+        const UDataTable* LoadedPreparationDataTable = PreparationTable;
         if (LoadedPreparationDataTable)
         {
             // Get all preparation tags
