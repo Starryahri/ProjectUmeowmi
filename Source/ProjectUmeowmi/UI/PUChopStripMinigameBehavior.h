@@ -107,7 +107,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "Chop|Presentation")
     UTexture2D* GetMinigameIngredientDisplayTexture() const;
 
-    /** Multiply tint for cut-minigame food image (ingredient AverageTintColor). */
+    /** Multiply tint for cut-minigame food image: white when whole; boosted AverageTintColor for cut tiers. */
     UFUNCTION(BlueprintPure, Category = "Chop|Presentation")
     FLinearColor GetMinigameIngredientDisplayTint() const;
 

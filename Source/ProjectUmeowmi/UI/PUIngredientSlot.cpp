@@ -21,6 +21,7 @@
 #include "GameplayTagContainer.h"
 #include "PURadialMenu.h"
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
+#include "../DishCustomization/PUIngredientBlueprintLibrary.h"
 #include "Framework/Application/SlateApplication.h"
 #include "PUUObjectSafety.h"
 #include "UObject/UObjectIterator.h"
@@ -445,6 +446,17 @@ bool UPUIngredientSlot::IsPlanningGatherPlateSlot() const
     return DishWidget != nullptr && DishWidget->GetStageType() == EDishCustomizationStageType::Planning;
 }
 
+bool UPUIngredientSlot::IsIngredientRailStripSlot() const
+{
+    if (Location != EPUIngredientSlotLocation::ActiveIngredientArea || IsPlanningGatherPlateSlot())
+    {
+        return false;
+    }
+    const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    return DishWidget != nullptr
+        && DishWidget->IsWidgetUnderIngredientRailSlot(const_cast<UPUIngredientSlot*>(this));
+}
+
 void UPUIngredientSlot::UpdateDisplay()
 {
     // //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateDisplay - Updating display (Slot: %s, Empty: %s, Location: %d)"),
@@ -468,19 +480,9 @@ void UPUIngredientSlot::UpdateDisplay()
         {
             ApplyPantryShelfEmptyVisual();
         }
-        // Strip slots collapse PlateBackground while occupied (prep bowls / icon). When the slot
-        // becomes empty we must show the plate again — otherwise the widget can retain zero useful
-        // hit geometry and LMB never reaches NativeOnMouseButtonDown (pantry won't open on click).
-        else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && PlateBackground)
+        else
         {
-            PlateBackground->SetVisibility(ESlateVisibility::Visible);
-        }
-        else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && !PlateBackground && IngredientIcon &&
-                 IsEmpty())
-        {
-            // No plate bound in BP: keep a hit-target-sized icon slot so hover/clicks still reach this widget.
-            IngredientIcon->SetVisibility(ESlateVisibility::Visible);
-            IngredientIcon->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.f));
+            EnsureEmptySlotHitTarget();
         }
     }
     else
@@ -544,17 +546,48 @@ void UPUIngredientSlot::UpdateIngredientIcon()
     UTexture2D* TextureToUse = GetTextureForLocation();
     if (TextureToUse)
     {
+        const bool bIsIngredientRailStrip = IsIngredientRailStripSlot();
+
         // Check if ingredient is suspicious (2+ preparations)
         TArray<FGameplayTag> PrepTags;
         IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
         bool bIsSuspicious = PrepTags.Num() >= 2;
         bool bHasPreparations = PrepTags.Num() > 0;
+
+        EPUIngredientCutVisualTier RecipeLogCutTier = EPUIngredientCutVisualTier::Whole;
+        const bool bUseRecipeLogCutMinigameVisual =
+            bRecipeLogSlot && !bIsSuspicious && TryGetAppliedCutVisualTier(RecipeLogCutTier)
+            && RecipeLogCutTier != EPUIngredientCutVisualTier::Whole;
+
+        if (bUseRecipeLogCutMinigameVisual)
+        {
+            if (UTexture2D* CutTexture = IngredientInstance.IngredientData.GetCutVisualTexture(RecipeLogCutTier))
+            {
+                TextureToUse = CutTexture;
+            }
+        }
+        else if (bIsIngredientRailStrip)
+        {
+            // Rail strip: full-color whole ingredient art only — no prep tint materials or cut-tier multiply tints.
+            UTexture2D* RailTexture = IngredientInstance.IngredientData.PreppedTexture;
+            if (!RailTexture)
+            {
+                RailTexture = IngredientInstance.IngredientData.PreviewTexture;
+            }
+            if (RailTexture)
+            {
+                TextureToUse = RailTexture;
+            }
+        }
+
         // Use preparation/suspicious materials in both Prepped (prep stage bowls) and
         // ActiveIngredientArea (cooking stage) so the main ingredient icon visually reflects
         // chopped/minced/pureed/suspicious state in cooking as well.
         bool bUsePrepMaterials =
-            (Location == EPUIngredientSlotLocation::Prepped ||
-             Location == EPUIngredientSlotLocation::ActiveIngredientArea);
+            !bUseRecipeLogCutMinigameVisual
+            && !bIsIngredientRailStrip
+            && (Location == EPUIngredientSlotLocation::Prepped ||
+                Location == EPUIngredientSlotLocation::ActiveIngredientArea);
         
         // Determine which material instance to use
         UMaterialInstanceDynamic* MaterialToUse = nullptr;
@@ -663,14 +696,18 @@ void UPUIngredientSlot::UpdateIngredientIcon()
         
         IngredientIcon->SetVisibility(ESlateVisibility::Visible);
         
-        // Grey out the icon if quantity is 0, but NOT for pantry, planning gather, or prepped bowls
+        // Grey out the icon if quantity is 0, but NOT for pantry, planning gather, prepped bowls, or recipe log
         if (IngredientInstance.Quantity <= 0 && Location != EPUIngredientSlotLocation::Pantry &&
-            Location != EPUIngredientSlotLocation::Prepped && !IsPlanningGatherPlateSlot())
+            Location != EPUIngredientSlotLocation::Prepped && !IsPlanningGatherPlateSlot() && !bRecipeLogSlot)
         {
             // Grey color: 0.5, 0.5, 0.5, 1.0
             IngredientIcon->SetColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f));
             //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::UpdateIngredientIcon - Set texture and GREYED OUT (quantity is 0) for location: %d (Texture: %s)"),
             //    (int32)Location, *TextureToUse->GetName());
+        }
+        else if (bUseRecipeLogCutMinigameVisual)
+        {
+            IngredientIcon->SetColorAndOpacity(GetMinigameTintColorForCutTier(RecipeLogCutTier));
         }
         else
         {
@@ -1202,92 +1239,7 @@ void UPUIngredientSlot::GetAverageColorFromIngredientTexture()
 
 FLinearColor UPUIngredientSlot::BoostColorSaturation(const FLinearColor& Color, float SaturationMultiplier) const
 {
-    // Clamp multiplier to valid range
-    float Multiplier = FMath::Clamp(SaturationMultiplier, 1.0f, 3.0f);
-    
-    // If multiplier is 1.0, no change needed
-    if (FMath::IsNearlyEqual(Multiplier, 1.0f))
-    {
-        return Color;
-    }
-
-    // Convert RGB to HSV
-    // FLinearColor uses RGB, we need to manually convert to HSV
-    float R = Color.R;
-    float G = Color.G;
-    float B = Color.B;
-    
-    float Max = FMath::Max3(R, G, B);
-    float Min = FMath::Min3(R, G, B);
-    float Delta = Max - Min;
-    
-    float H = 0.0f;
-    float S = (Max > 0.0f) ? (Delta / Max) : 0.0f;
-    float V = Max;
-    
-    // Calculate Hue
-    if (Delta > 0.0f)
-    {
-        if (FMath::IsNearlyEqual(Max, R))
-        {
-            H = 60.0f * FMath::Fmod(((G - B) / Delta), 6.0f);
-        }
-        else if (FMath::IsNearlyEqual(Max, G))
-        {
-            H = 60.0f * (((B - R) / Delta) + 2.0f);
-        }
-        else // Max == B
-        {
-            H = 60.0f * (((R - G) / Delta) + 4.0f);
-        }
-        
-        if (H < 0.0f)
-        {
-            H += 360.0f;
-        }
-    }
-    
-    // Boost saturation
-    S = FMath::Clamp(S * Multiplier, 0.0f, 1.0f);
-    
-    // Convert HSV back to RGB
-    float C = V * S;
-    float X = C * (1.0f - FMath::Abs(FMath::Fmod(H / 60.0f, 2.0f) - 1.0f));
-    float m = V - C;
-    
-    float NewR = 0.0f, NewG = 0.0f, NewB = 0.0f;
-    
-    if (H < 60.0f)
-    {
-        NewR = C; NewG = X; NewB = 0.0f;
-    }
-    else if (H < 120.0f)
-    {
-        NewR = X; NewG = C; NewB = 0.0f;
-    }
-    else if (H < 180.0f)
-    {
-        NewR = 0.0f; NewG = C; NewB = X;
-    }
-    else if (H < 240.0f)
-    {
-        NewR = 0.0f; NewG = X; NewB = C;
-    }
-    else if (H < 300.0f)
-    {
-        NewR = X; NewG = 0.0f; NewB = C;
-    }
-    else // H < 360.0f
-    {
-        NewR = C; NewG = 0.0f; NewB = X;
-    }
-    
-    // Add the lightness component
-    NewR = FMath::Clamp(NewR + m, 0.0f, 1.0f);
-    NewG = FMath::Clamp(NewG + m, 0.0f, 1.0f);
-    NewB = FMath::Clamp(NewB + m, 0.0f, 1.0f);
-    
-    return FLinearColor(NewR, NewG, NewB, Color.A);
+    return UPUIngredientBlueprintLibrary::BoostColorSaturation(Color, SaturationMultiplier);
 }
 
 bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
@@ -2068,26 +2020,27 @@ void UPUIngredientSlot::UpdateHoverTextVisibility(bool bShow)
     }
 }
 
+void UPUIngredientSlot::EnsureEmptySlotHitTarget()
+{
+    if (PlateBackground)
+    {
+        PlateBackground->SetVisibility(ESlateVisibility::Visible);
+        return;
+    }
+
+    if (IngredientIcon)
+    {
+        // No plate in BP: invisible icon preserves slot bounds for hover/click.
+        IngredientIcon->SetVisibility(ESlateVisibility::Visible);
+        IngredientIcon->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, 0.f));
+    }
+}
+
 void UPUIngredientSlot::UpdateIngredientSelectVisibility(bool bShow)
 {
     if (!IngredientSelect)
     {
         return;
-    }
-
-    if (bShow && IsEmpty())
-    {
-        UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
-        const bool bEmptyRailStripChrome =
-            DishWidget && Location == EPUIngredientSlotLocation::ActiveIngredientArea && !IsPlanningGatherPlateSlot() &&
-            DishWidget->IsWidgetUnderIngredientRailSlot(this);
-        const bool bEmptyGatherPlateChrome = IsPlanningGatherPlateSlot();
-        const bool bEmptyPantryChrome = Location == EPUIngredientSlotLocation::Pantry;
-
-        if (bEmptyRailStripChrome || bEmptyGatherPlateChrome || bEmptyPantryChrome)
-        {
-            bShow = false;
-        }
     }
 
     if (bShow)
@@ -3307,6 +3260,54 @@ void UPUIngredientSlot::SetTemperatureValue(float NewTemperatureValue)
 
     OnSlotIngredientChanged.Broadcast(IngredientInstance);
     OnTimeTemperatureChanged(IngredientInstance.TimeValue, NewTemperatureValue);
+}
+
+FLinearColor UPUIngredientSlot::GetMinigameTintColorForCutTier(EPUIngredientCutVisualTier CutTier) const
+{
+    TArray<FGameplayTag> PrepTags;
+    IngredientInstance.Preparations.GetGameplayTagArray(PrepTags);
+    const bool bApplySaturationBoost = PrepTags.Num() < 2;
+
+    return UPUIngredientBlueprintLibrary::GetMinigameTintColorForCutTier(
+        IngredientInstance.IngredientData,
+        CutTier,
+        ColorSaturationMultiplier,
+        bApplySaturationBoost);
+}
+
+bool UPUIngredientSlot::TryGetAppliedCutVisualTier(EPUIngredientCutVisualTier& OutTier) const
+{
+    static const FGameplayTag MincedTag = FGameplayTag::RequestGameplayTag(FName("Prep.Mince"), false);
+    static const FGameplayTag ChoppedTag = FGameplayTag::RequestGameplayTag(FName("Prep.Chop"), false);
+    static const FGameplayTag SlicedTag = FGameplayTag::RequestGameplayTag(FName("Prep.Slice"), false);
+
+    auto HasCutTag = [this](const FGameplayTag& Tag) -> bool
+    {
+        if (!Tag.IsValid())
+        {
+            return false;
+        }
+        return IngredientInstance.Preparations.HasTag(Tag)
+            || IngredientInstance.IngredientData.ActivePreparations.HasTag(Tag);
+    };
+
+    if (HasCutTag(MincedTag))
+    {
+        OutTier = EPUIngredientCutVisualTier::Minced;
+        return true;
+    }
+    if (HasCutTag(ChoppedTag))
+    {
+        OutTier = EPUIngredientCutVisualTier::Chopped;
+        return true;
+    }
+    if (HasCutTag(SlicedTag))
+    {
+        OutTier = EPUIngredientCutVisualTier::Sliced;
+        return true;
+    }
+
+    return false;
 }
 
 bool UPUIngredientSlot::IsIngredientRailInteractionBlockedByMinigame() const

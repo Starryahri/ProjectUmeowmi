@@ -61,6 +61,19 @@ public:
     UFUNCTION(BlueprintPure, Category = "Ingredient|Visual|Cut Minigame")
     static UTexture2D* GetCutVisualTexture(const FPUIngredientBase& Ingredient, EPUIngredientCutVisualTier CutTier);
 
+    /** Whole tier = white (full-color art). Sliced+ = AverageTintColor with optional saturation boost (matches ingredient slot prep visuals). */
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Visual|Cut Minigame", meta = (AdvancedDisplay = "SaturationMultiplier,bApplySaturationBoost"))
+    static FLinearColor GetMinigameTintColorForCutTier(
+        const FPUIngredientBase& Ingredient,
+        EPUIngredientCutVisualTier CutTier,
+        float SaturationMultiplier = 1.5f,
+        bool bApplySaturationBoost = true);
+
+    /** Same as GetMinigameTintColorForCutTier(..., Whole) — no average tint on whole / to-be-chopped preview art. */
     UFUNCTION(BlueprintPure, Category = "Ingredient|Visual|Cut Minigame")
     static FLinearColor GetMinigameTintColor(const FPUIngredientBase& Ingredient);
+
+    /** HSV saturation boost used by ingredient slots and cut-minigame tier tints. */
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Color")
+    static FLinearColor BoostColorSaturation(FLinearColor Color, float SaturationMultiplier = 1.5f);
 }; 

@@ -147,7 +147,7 @@ public:
 
     /**
      * Notifies `MountedPipelineStageWidget` when rail focus or focused slot contents change (see `OnIngredientStripSlotFocusChanged`).
-     * StripSlot nullptr = no rail slot focused (clears preview in chop module, etc.).
+     * StripSlot nullptr normally means focus left the rail; on strip-minigame stages (e.g. chopping) the last focused slot is kept for preview.
      */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     void NotifyMountedStageModuleOfStripSlotFocus(class UPUIngredientSlot* StripSlot);
@@ -824,6 +824,11 @@ private:
     };
 
     TArray<FPUIngredientRailSlotInteractionSnapshot> IngredientRailInteractionLockSnapshots;
+
+    /** Last non-empty ingredient-rail strip slot focused; reused for vignette preview when focus leaves the rail during strip-minigame stages. */
+    TWeakObjectPtr<UPUIngredientSlot> LastFocusedIngredientRailStripSlot;
+
+    UPUIngredientSlot* ResolveIngredientRailStripSlotForStageModulePreview(UPUIngredientSlot* StripSlot);
 
     void ForEachIngredientRailStripSlot(TFunctionRef<void(UPUIngredientSlot*)> Visitor) const;
 }; 

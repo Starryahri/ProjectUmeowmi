@@ -330,7 +330,8 @@ FLinearColor UPUChopStripMinigameBehavior::GetMinigameIngredientDisplayTint() co
         return FLinearColor::White;
     }
 
-    return ActiveChopStripSlot->GetIngredientInstance().IngredientData.GetMinigameTintColor();
+    return ActiveChopStripSlot->GetMinigameTintColorForCutTier(
+        ChopTierToIngredientVisualTier(GetCompletedCutTier()));
 }
 
 void UPUChopStripMinigameBehavior::NotifyChopFoodVisualTierChanged()

@@ -250,8 +250,8 @@ public:
     /** Texture for the given cut tier (whole → PreppedTexture / PreviewTexture). */
     UTexture2D* GetCutVisualTexture(EPUIngredientCutVisualTier CutTier) const;
 
-    /** Tint for cut-minigame food images (from AverageTintColor). */
-    FLinearColor GetMinigameTintColor() const { return AverageTintColor; }
+    /** Whole / to-be-chopped art uses no multiply tint; sliced+ tiers use AverageTintColor (see GetMinigameTintColorForCutTier). */
+    FLinearColor GetMinigameTintColor() const { return FLinearColor::White; }
 
     // Flavor Aspects
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Aspects")

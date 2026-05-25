@@ -126,7 +126,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "Stage Minigame|Chop Presentation")
     UTexture2D* GetStripMinigameFoodTexture() const;
 
-    /** Chop stage: multiply tint (AverageTintColor on the ingredient row). */
+    /** Chop stage: multiply tint — white for whole; boosted AverageTintColor for sliced/chopped/minced grayscale art. */
     UFUNCTION(BlueprintPure, Category = "Stage Minigame|Chop Presentation")
     FLinearColor GetStripMinigameFoodTint() const;
 
@@ -176,6 +176,9 @@ protected:
 private:
     void ResolveStripMinigameProgressBarWidget();
     void ResolveStripMinigameFoodImageWidget();
+
+    /** Browsing preview on `FoodToBeChopped` while minigame is inactive — whole art, white tint (clears stale cut-tier multiply). */
+    void ApplyStripSlotFocusPreviewVisual(UPUIngredientSlot* StripSlot);
 
     void ApplyStageMinigameUIPanelVisibility();
     void SetupStripMinigameBehavior(const FPUDishCustomizationStageDescriptor& StageDescriptor);

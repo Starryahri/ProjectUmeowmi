@@ -68,6 +68,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     bool IsPlanningGatherPlateSlot() const;
 
+    /** Pipeline ingredient rail strip (under shell `IngredientRailSlot`), not planning gather grid. */
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot")
+    bool IsIngredientRailStripSlot() const;
+
     // Set selection state
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     void SetSelected(bool bSelected);
@@ -261,6 +265,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
     float GetTemperatureValue() const { return IngredientInstance.TemperatureValue; }
+
+    /** Whole = white; sliced+ = boosted AverageTintColor (matches prep slot saturation rules). */
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Visual|Cut Minigame")
+    FLinearColor GetMinigameTintColorForCutTier(EPUIngredientCutVisualTier CutTier) const;
 
     // Events
     UPROPERTY(BlueprintAssignable, Category = "Ingredient Slot|Events")
@@ -524,6 +532,9 @@ private:
     // Update IngredientSelect image visibility (shown on hover or focus)
     void UpdateIngredientSelectVisibility(bool bShow);
 
+    /** Keeps plate or invisible icon visible so empty slots still receive hover/click. */
+    void EnsureEmptySlotHitTarget();
+
     /** Under `IngredientRailSlot`, while this slot owns focus (or a focused descendant), refresh mounted stage vignette preview. */
     void MaybeNotifyMountedStageModuleRailPreviewFromSlot();
 
@@ -538,6 +549,9 @@ private:
 
     // Get average color from ingredient texture
     void GetAverageColorFromIngredientTexture();
+
+    /** Highest cut prep on this slot (Prep.Mince > Prep.Chop > Prep.Slice), or false if none. */
+    bool TryGetAppliedCutVisualTier(EPUIngredientCutVisualTier& OutTier) const;
 
     // Boost color saturation using HSV conversion
     FLinearColor BoostColorSaturation(const FLinearColor& Color, float SaturationMultiplier) const;

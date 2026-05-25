@@ -1,5 +1,6 @@
 #include "PUPipelineStageMinigameModuleWidget.h"
 
+#include "../DishCustomization/PUIngredientBase.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "PUDishCustomizationWidget.h"
 #include "PUChopStripMinigameBehavior.h"
@@ -203,6 +204,32 @@ void UPUPipelineStageMinigameModuleWidget::ApplyStripMinigameFoodVisual()
     FoodImage->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 }
 
+void UPUPipelineStageMinigameModuleWidget::ApplyStripSlotFocusPreviewVisual(UPUIngredientSlot* StripSlot)
+{
+    ResolveStripMinigameFoodImageWidget();
+    UImage* FoodImage = ResolvedStripMinigameFoodImage.Get();
+    if (!FoodImage)
+    {
+        return;
+    }
+
+    // Always clear a prior cut-tier multiply tint before applying the next preview frame.
+    FoodImage->SetColorAndOpacity(FLinearColor::White);
+
+    if (!IsValid(StripSlot) || StripSlot->IsEmpty())
+    {
+        return;
+    }
+
+    const FPUIngredientBase& IngredientData = StripSlot->GetIngredientInstance().IngredientData;
+    if (UTexture2D* WholeTexture = IngredientData.GetCutVisualTexture(EPUIngredientCutVisualTier::Whole))
+    {
+        FoodImage->SetBrushFromTexture(WholeTexture, true);
+    }
+
+    FoodImage->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+}
+
 void UPUPipelineStageMinigameModuleWidget::InitializeStageModule_Implementation(
     UPUDishCustomizationWidget* InOwnerShell,
     UPUDishCustomizationComponent* InCustomizationComponent,
@@ -238,7 +265,12 @@ void UPUPipelineStageMinigameModuleWidget::OnIngredientStripSlotFocusChanged_Imp
 
 void UPUPipelineStageMinigameModuleWidget::HandleIngredientStripSlotFocusChanged_Implementation(UPUIngredientSlot* StripSlot)
 {
-    (void)StripSlot;
+    if (bStripMinigameActive)
+    {
+        return;
+    }
+
+    ApplyStripSlotFocusPreviewVisual(StripSlot);
 }
 
 bool UPUPipelineStageMinigameModuleWidget::ToggleStageMinigameFromIngredientStripSlot_Implementation(UPUIngredientSlot* StripSlot)
@@ -315,6 +347,18 @@ void UPUPipelineStageMinigameModuleWidget::SetStripMinigameActive(bool bActive, 
     if (bActive)
     {
         ApplyStripMinigameFoodVisual();
+    }
+    else
+    {
+        UPUIngredientSlot* BrowsingPreviewSlot = ContextStripSlot;
+        if (IsValid(OwnerShell))
+        {
+            if (UPUIngredientSlot* FocusedStrip = OwnerShell->FindFocusedIngredientRailStripSlot())
+            {
+                BrowsingPreviewSlot = FocusedStrip;
+            }
+        }
+        ApplyStripSlotFocusPreviewVisual(BrowsingPreviewSlot);
     }
 
     ReceiveStripMinigamePresentationChanged(bActive, ContextStripSlot);

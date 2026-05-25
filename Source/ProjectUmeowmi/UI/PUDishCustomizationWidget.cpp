@@ -1180,6 +1180,7 @@ void UPUDishCustomizationWidget::ClearStageModuleSlot()
         PrevMounted->ReleaseSlateResources(true);
     }
     MountedPipelineStageWidget = nullptr;
+    LastFocusedIngredientRailStripSlot.Reset();
     if (StageModuleSlot)
     {
         StageModuleSlot->ClearChildren();
@@ -1334,6 +1335,42 @@ void UPUDishCustomizationWidget::SetIngredientRailStripInteractionLocked(bool bL
     (void)LockedStripSlot;
 }
 
+UPUIngredientSlot* UPUDishCustomizationWidget::ResolveIngredientRailStripSlotForStageModulePreview(
+    UPUIngredientSlot* StripSlot)
+{
+    if (StripSlot != nullptr && !IsWidgetUnderIngredientRailSlot(StripSlot))
+    {
+        return nullptr;
+    }
+
+    if (IsStripMinigameLockingIngredientRail())
+    {
+        return GetLockedIngredientRailStripSlotForMinigame();
+    }
+
+    if (IsValid(StripSlot) && !StripSlot->IsEmpty())
+    {
+        return StripSlot;
+    }
+
+    // Empty rail strip cells still receive Slate focus/hover — treat like no ingredient so vignettes don't flash a blank brush.
+    if (IsValid(StripSlot) && StripSlot->IsEmpty())
+    {
+        return nullptr;
+    }
+
+    if (Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get()))
+    {
+        UPUIngredientSlot* Cached = LastFocusedIngredientRailStripSlot.Get();
+        if (IsValid(Cached) && IsWidgetUnderIngredientRailSlot(Cached) && !Cached->IsEmpty())
+        {
+            return Cached;
+        }
+    }
+
+    return nullptr;
+}
+
 void UPUDishCustomizationWidget::NotifyMountedStageModuleOfStripSlotFocus(UPUIngredientSlot* StripSlot)
 {
     UUserWidget* Module = MountedPipelineStageWidget.Get();
@@ -1342,33 +1379,18 @@ void UPUDishCustomizationWidget::NotifyMountedStageModuleOfStripSlotFocus(UPUIng
     {
         return;
     }
-    if (StripSlot != nullptr && !IsWidgetUnderIngredientRailSlot(StripSlot))
+
+    if (IsValid(StripSlot) && IsWidgetUnderIngredientRailSlot(StripSlot) && !StripSlot->IsEmpty())
     {
-        return;
+        LastFocusedIngredientRailStripSlot = StripSlot;
     }
 
-    if (IsStripMinigameLockingIngredientRail())
-    {
-        StripSlot = GetLockedIngredientRailStripSlotForMinigame();
-    }
-
-    // Empty rail strip cells still receive Slate focus/hover — treat like no ingredient so vignettes don't flash a blank brush.
-    UPUIngredientSlot* EffectiveStrip = StripSlot;
-    if (EffectiveStrip != nullptr && EffectiveStrip->IsEmpty())
-    {
-        EffectiveStrip = nullptr;
-    }
-
+    UPUIngredientSlot* EffectiveStrip = ResolveIngredientRailStripSlotForStageModulePreview(StripSlot);
     IPUCustomizationStageModuleInterface::Execute_OnIngredientStripSlotFocusChanged(Module, EffectiveStrip);
 }
 
 void UPUDishCustomizationWidget::SyncMountedStageModuleWithFocusedIngredientStripSlot()
 {
-    if (IsStripMinigameLockingIngredientRail())
-    {
-        NotifyMountedStageModuleOfStripSlotFocus(GetLockedIngredientRailStripSlotForMinigame());
-        return;
-    }
     NotifyMountedStageModuleOfStripSlotFocus(FindFocusedIngredientRailStripSlot());
 }
 
