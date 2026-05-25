@@ -99,6 +99,11 @@ public:
 
     virtual void ShutdownStageModule_Implementation() override;
 
+    /** Clears dead shell/component/behavior refs (safe before GC). */
+    void SanitizeStaleObjectReferences();
+
+    static void SanitizeAllLiveStageMinigameModules();
+
     virtual void OnIngredientStripSlotFocusChanged_Implementation(UPUIngredientSlot* StripSlot) override;
 
     virtual bool ToggleStageMinigameFromIngredientStripSlot_Implementation(UPUIngredientSlot* StripSlot) override;

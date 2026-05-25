@@ -1,4 +1,6 @@
 #include "PURadarChart.h"
+#include "PURadialMenu.h"
+#include "PURadialMenuItemButton.h"
 #include "RadarChart.h"
 #include "RadarChartStyle.h"
 #include "RadarChartTypes.h"
@@ -16,6 +18,9 @@
 #include "Fonts/SlateFontInfo.h"
 #include "Sound/SlateSound.h"
 #include "Styling/SlateTypes.h"
+#include "UObject/UObjectIterator.h"
+#include "UObject/GarbageCollection.h"
+#include "PUUObjectSafety.h"
 
 namespace
 {
@@ -54,7 +59,7 @@ namespace
 	{
 		if (UObject* Res = Brush.GetResourceObject())
 		{
-			if (!IsValid(Res))
+			if (!PUObjectReferenceSafety::IsLiveObject(Res))
 			{
 				Brush.SetResourceObject(nullptr);
 			}
@@ -65,7 +70,7 @@ namespace
 	{
 		if (UObject* Res = Sound.GetResourceObject())
 		{
-			if (!IsValid(Res))
+			if (!PUObjectReferenceSafety::IsLiveObject(Res))
 			{
 				Sound.SetResourceObject(nullptr);
 			}
@@ -84,15 +89,15 @@ namespace
 
 	void SanitizeSlateFont(FSlateFontInfo& Font)
 	{
-		if (Font.FontObject != nullptr && !IsValid(Font.FontObject))
+		if (Font.FontObject != nullptr && !PUObjectReferenceSafety::IsLiveObject(Font.FontObject))
 		{
 			Font.FontObject = nullptr;
 		}
-		if (Font.FontMaterial != nullptr && !IsValid(Font.FontMaterial))
+		if (Font.FontMaterial != nullptr && !PUObjectReferenceSafety::IsLiveObject(Font.FontMaterial))
 		{
 			Font.FontMaterial = nullptr;
 		}
-		if (Font.OutlineSettings.OutlineMaterial != nullptr && !IsValid(Font.OutlineSettings.OutlineMaterial))
+		if (Font.OutlineSettings.OutlineMaterial != nullptr && !PUObjectReferenceSafety::IsLiveObject(Font.OutlineSettings.OutlineMaterial))
 		{
 			Font.OutlineSettings.OutlineMaterial = nullptr;
 		}
@@ -100,11 +105,11 @@ namespace
 
 	void SanitizeAppearance(FRadarChartAppearance& App)
 	{
-		if (App.ShapeTexture != nullptr && !IsValid(App.ShapeTexture))
+		if (App.ShapeTexture != nullptr && !PUObjectReferenceSafety::IsLiveObject(App.ShapeTexture))
 		{
 			App.ShapeTexture = nullptr;
 		}
-		if (App.ActiveMaterial != nullptr && !IsValid(App.ActiveMaterial))
+		if (App.ActiveMaterial != nullptr && !PUObjectReferenceSafety::IsLiveObject(App.ActiveMaterial))
 		{
 			App.ActiveMaterial = nullptr;
 		}
@@ -115,14 +120,14 @@ namespace
 	/** Core sanitizer for marketplace URadarChart / UPURadarChart (style + value layers + segments). */
 	void SanitizeRadarChartObjectReferences(URadarChart* Chart)
 	{
-		if (Chart == nullptr || !Chart->IsValidLowLevel())
+		if (!PUObjectReferenceSafety::CanQueryUObject(Chart))
 		{
 			return;
 		}
 
 		if (UPURadarChart* PU = Cast<UPURadarChart>(Chart))
 		{
-			if (PU->AspectRadarIconTable && !IsValid(PU->AspectRadarIconTable))
+			if (PU->AspectRadarIconTable != nullptr && !PUObjectReferenceSafety::IsLiveObject(PU->AspectRadarIconTable))
 			{
 				PU->AspectRadarIconTable = nullptr;
 			}
@@ -144,25 +149,13 @@ namespace
 
 		for (FRadarChartSegment& Seg : ChartStyle.Segments)
 		{
-			UObject* IconObj = Seg.Icon;
-			UObject* BrushObj = Seg.IconBrush.GetResourceObject();
-
-			if (IconObj != nullptr && !IsValid(IconObj))
+			if (UObject* IconObj = Seg.Icon)
 			{
-				Seg.Icon = nullptr;
-				IconObj = nullptr;
-			}
-			if (BrushObj != nullptr && !IsValid(BrushObj))
-			{
-				Seg.IconBrush.SetResourceObject(nullptr);
-				BrushObj = nullptr;
-			}
-
-			if (Seg.Icon == nullptr && BrushObj != nullptr && IsValid(BrushObj))
-			{
-				if (UTexture2D* AsTex = Cast<UTexture2D>(BrushObj))
+				if (PUObjectReferenceSafety::IsLiveObject(IconObj))
 				{
-					Seg.Icon = AsTex;
+					Seg.IconBrush.SetResourceObject(IconObj);
+					Seg.IconBrush.DrawAs = ESlateBrushDrawType::Image;
+					Seg.IconBrush.SetImageSize(ChartStyle.IconSize);
 				}
 				else
 				{
@@ -170,17 +163,14 @@ namespace
 				}
 			}
 
-			if (Seg.Icon != nullptr)
+			Seg.Icon = nullptr;
+
+			if (UObject* BrushObj = Seg.IconBrush.GetResourceObject())
 			{
-				if (Seg.IconBrush.GetResourceObject() != Seg.Icon)
+				if (!PUObjectReferenceSafety::IsLiveObject(BrushObj))
 				{
-					Seg.IconBrush.SetResourceObject(Seg.Icon);
-					Seg.IconBrush.DrawAs = ESlateBrushDrawType::Image;
+					Seg.IconBrush.SetResourceObject(nullptr);
 				}
-			}
-			else
-			{
-				Seg.IconBrush.SetResourceObject(nullptr);
 			}
 		}
 	}
@@ -205,6 +195,33 @@ void UPURadarChart::SanitizeRadarChartsInWidgetTree(UWidgetTree* InWidgetTree)
 			SanitizeObjectReferencesOnAnyRadar(Radar);
 		}
 	});
+}
+
+void UPURadarChart::SanitizeAllLiveRadarCharts()
+{
+	for (TObjectIterator<URadarChart> It; It; ++It)
+	{
+		URadarChart* Chart = *It;
+		if (!Chart || Chart->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+		{
+			continue;
+		}
+		if (UPURadarChart* PUChart = Cast<UPURadarChart>(Chart))
+		{
+			PUChart->ClearSegmentIconPropertyRefsForGC();
+		}
+		else
+		{
+			SanitizeObjectReferencesOnAnyRadar(Chart);
+		}
+	}
+}
+
+void UPURadarChart::SynchronizeProperties()
+{
+    SanitizeChartObjectReferences();
+    Super::SynchronizeProperties();
+    ClearSegmentIconPropertyRefsForGC();
 }
 
 UPURadarChart::UPURadarChart()
@@ -265,8 +282,10 @@ bool UPURadarChart::SetSegmentCount(int32 NewSegmentCount)
     for (int32 i = 0; i < NewSegmentCount; ++i)
     {
         ChartStyle.Segments.AddZeroed();
-        ChartStyle.Segments.Last().Name = FText::FromString(FString::Printf(TEXT("Segment %d"), i));
-        ChartStyle.Segments.Last().SegmentColor = FLinearColor::White;
+        FRadarChartSegment& NewSeg = ChartStyle.Segments.Last();
+        NewSeg.Name = FText::FromString(FString::Printf(TEXT("Segment %d"), i));
+        NewSeg.SegmentColor = FLinearColor::White;
+        NewSeg.Icon = nullptr;
     }
 
     //UE_LOG(LogTemp,Log, TEXT("PURadarChart::SetSegmentCount: Created %d new segments"), ChartStyle.Segments.Num());
@@ -289,6 +308,8 @@ int32 UPURadarChart::GetSegmentCount() const
 
 void UPURadarChart::SetValues(const TArray<float>& InValues)
 {
+    SanitizeChartObjectReferences();
+
     // Validate input array size matches segment count
     if (InValues.Num() != ChartStyle.Segments.Num())
     {
@@ -329,6 +350,8 @@ void UPURadarChart::SetValues(const TArray<float>& InValues)
 
 void UPURadarChart::SetValuesAnimated(const TArray<float>& InValues, float Duration, uint8 Fps, TEnumAsByte<EEasingFunc::Type> Ease)
 {
+    SanitizeChartObjectReferences();
+
     // Validate input array size matches segment count
     if (InValues.Num() != ChartStyle.Segments.Num())
     {
@@ -774,6 +797,8 @@ void UPURadarChart::SetSegmentIconWithoutRebuild(int32 SegmentIndex, UTexture2D*
 		return;
 	}
 
+	FRadarChartSegment& Seg = ChartStyle.Segments[SegmentIndex];
+
 	if (IconTexture != nullptr && !IsValid(IconTexture))
 	{
 		IconTexture = nullptr;
@@ -781,19 +806,18 @@ void UPURadarChart::SetSegmentIconWithoutRebuild(int32 SegmentIndex, UTexture2D*
 
 	if (IconTexture)
 	{
-		ChartStyle.Segments[SegmentIndex].Icon = IconTexture;
-		ChartStyle.Segments[SegmentIndex].IconBrush.SetResourceObject(IconTexture);
-		ChartStyle.Segments[SegmentIndex].IconBrush.DrawAs = ESlateBrushDrawType::Image;
-		ChartStyle.Segments[SegmentIndex].IconBrush.TintColor = FSlateColor(FLinearColor::White);
-		ChartStyle.Segments[SegmentIndex].IconBrush.SetImageSize(ChartStyle.IconSize);
-		// SRadarChart skips name labels when Name is empty (see CreateLabels).
-		ChartStyle.Segments[SegmentIndex].Name = FText::GetEmpty();
+		Seg.IconBrush.SetResourceObject(IconTexture);
+		Seg.IconBrush.DrawAs = ESlateBrushDrawType::Image;
+		Seg.IconBrush.TintColor = FSlateColor(FLinearColor::White);
+		Seg.IconBrush.SetImageSize(ChartStyle.IconSize);
+		Seg.Name = FText::GetEmpty();
 	}
 	else
 	{
-		ChartStyle.Segments[SegmentIndex].Icon = nullptr;
-		ChartStyle.Segments[SegmentIndex].IconBrush.SetResourceObject(nullptr);
+		Seg.IconBrush.SetResourceObject(nullptr);
 	}
+	// GC traverses ChartStyle.Segments[].Icon (UPROPERTY); render via IconBrush only.
+	Seg.Icon = nullptr;
 }
 
 void UPURadarChart::ApplyAspectIconsFromTable(const TArray<FName>& AspectNamesInOrder, EOrderAspectType Category)
@@ -1611,6 +1635,8 @@ void UPURadarChart::SetValuesWithFluctuations(
     uint8 Fps,
     TEnumAsByte<EEasingFunc::Type> Ease)
 {
+    SanitizeChartObjectReferences();
+
     // Validate input array size matches segment count
     if (InValues.Num() != ChartStyle.Segments.Num())
     {
@@ -1677,12 +1703,12 @@ void UPURadarChart::PostLoad()
 {
     Super::PostLoad();
     SanitizeChartObjectReferences();
+    ClearSegmentIconPropertyRefsForGC();
 }
 
-void UPURadarChart::SynchronizeProperties()
+void UPURadarChart::ClearSegmentIconPropertyRefsForGC()
 {
-    SanitizeChartObjectReferences();
-    Super::SynchronizeProperties();
+	SanitizeObjectReferencesOnAnyRadar(this);
 }
 
 void UPURadarChart::BeginDestroy()

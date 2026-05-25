@@ -6,6 +6,8 @@
 #include "PUIngredientSlot.h"
 #include "PUStripMinigameBehavior.h"
 #include "PUStripMinigameProgressBarWidget.h"
+#include "PUUObjectSafety.h"
+#include "UObject/UObjectIterator.h"
 #include "Animation/WidgetAnimation.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Image.h"
@@ -381,14 +383,18 @@ void UPUPipelineStageMinigameModuleWidget::SetupStripMinigameBehavior(
         StripMinigameProgressBar->UnbindFromStripMinigameBehavior();
     }
 
-    if (UPUStripMinigameBehavior* PreviousBehavior = ActiveStripMinigameBehavior.Get())
+    UPUStripMinigameBehavior* PreviousBehavior = ActiveStripMinigameBehavior.Get();
+    ActiveStripMinigameBehavior = nullptr;
+
+    if (IsValid(PreviousBehavior) && PreviousBehavior != StripMinigameBehavior)
     {
         PreviousBehavior->DisconnectFromOwner(this, StripMinigameProgressBar);
-        if (PreviousBehavior != StripMinigameBehavior)
-        {
-            PreviousBehavior->MarkAsGarbage();
-        }
-        ActiveStripMinigameBehavior = nullptr;
+    }
+
+    TSubclassOf<UPUStripMinigameBehavior> BehaviorClass = StripMinigameBehaviorClass;
+    if (!BehaviorClass)
+    {
+        BehaviorClass = ResolveStripMinigameBehaviorClass(StageDescriptor);
     }
 
     UPUStripMinigameBehavior* Behavior = nullptr;
@@ -396,17 +402,13 @@ void UPUPipelineStageMinigameModuleWidget::SetupStripMinigameBehavior(
     {
         Behavior = StripMinigameBehavior;
     }
-    else
+    else if (IsValid(PreviousBehavior) && PreviousBehavior->GetClass() == BehaviorClass)
     {
-        TSubclassOf<UPUStripMinigameBehavior> BehaviorClass = StripMinigameBehaviorClass;
-        if (!BehaviorClass)
-        {
-            BehaviorClass = ResolveStripMinigameBehaviorClass(StageDescriptor);
-        }
-        if (BehaviorClass)
-        {
-            Behavior = NewObject<UPUStripMinigameBehavior>(this, BehaviorClass);
-        }
+        Behavior = PreviousBehavior;
+    }
+    else if (BehaviorClass)
+    {
+        Behavior = NewObject<UPUStripMinigameBehavior>(this, BehaviorClass);
     }
 
     if (!Behavior)
@@ -443,9 +445,61 @@ void UPUPipelineStageMinigameModuleWidget::TeardownStripMinigameBehavior()
     }
 
     Behavior->DisconnectFromOwner(this, StripMinigameProgressBar);
-    if (Behavior != StripMinigameBehavior)
+}
+
+void UPUPipelineStageMinigameModuleWidget::SanitizeStaleObjectReferences()
+{
+    if (OwnerShell != nullptr && !PUObjectReferenceSafety::IsLiveObject(OwnerShell))
     {
-        Behavior->MarkAsGarbage();
+        OwnerShell = nullptr;
+    }
+    if (CustomizationComponent != nullptr && !PUObjectReferenceSafety::IsLiveObject(CustomizationComponent))
+    {
+        CustomizationComponent = nullptr;
+    }
+    if (StripMinigameProgressBar != nullptr && !PUObjectReferenceSafety::IsLiveObject(StripMinigameProgressBar))
+    {
+        StripMinigameProgressBar = nullptr;
+    }
+    else if (StripMinigameProgressBar)
+    {
+        StripMinigameProgressBar->SanitizeBoundBehaviorReference();
+    }
+    if (StripMinigameContextStripSlot != nullptr && !PUObjectReferenceSafety::IsLiveObject(StripMinigameContextStripSlot))
+    {
+        StripMinigameContextStripSlot = nullptr;
+    }
+    if (ActiveStripMinigameBehavior != nullptr && !PUObjectReferenceSafety::IsLiveObject(ActiveStripMinigameBehavior))
+    {
+        ActiveStripMinigameBehavior = nullptr;
+    }
+    else if (ActiveStripMinigameBehavior)
+    {
+        ActiveStripMinigameBehavior->SanitizeStaleObjectReferences();
+    }
+    if (ResolvedStripMinigameFoodImage != nullptr && !PUObjectReferenceSafety::IsLiveObject(ResolvedStripMinigameFoodImage))
+    {
+        ResolvedStripMinigameFoodImage = nullptr;
+    }
+    if (FoodToBeChopped != nullptr && !PUObjectReferenceSafety::IsLiveObject(FoodToBeChopped))
+    {
+        FoodToBeChopped = nullptr;
+    }
+    if (StripMinigameFoodImage != nullptr && !PUObjectReferenceSafety::IsLiveObject(StripMinigameFoodImage))
+    {
+        StripMinigameFoodImage = nullptr;
+    }
+}
+
+void UPUPipelineStageMinigameModuleWidget::SanitizeAllLiveStageMinigameModules()
+{
+    for (TObjectIterator<UPUPipelineStageMinigameModuleWidget> It; It; ++It)
+    {
+        UPUPipelineStageMinigameModuleWidget* Module = *It;
+        if (PUObjectReferenceSafety::CanQueryUObject(Module) && !Module->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+        {
+            Module->SanitizeStaleObjectReferences();
+        }
     }
 }
 

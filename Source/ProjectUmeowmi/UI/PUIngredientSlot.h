@@ -181,6 +181,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot")
     void SetDishCustomizationWidget(class UPUDishCustomizationWidget* InDishWidget);
 
+    /** Clears dead radial-menu / container UObject*s (safe before GC). */
+    void SanitizeStaleObjectReferences();
+
+    static void SanitizeAllLiveIngredientSlots();
+
     /** When true, pantry slots show InventoryEmptyDot instead of PlateBackground (shelf padding cells only). */
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Pantry")
     void SetPantryShelfPaddingCell(bool bPadding);

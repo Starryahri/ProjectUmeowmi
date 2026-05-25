@@ -83,6 +83,7 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void BeginDestroy() override;
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
     virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
@@ -167,6 +168,12 @@ public:
     // Get the preparation data table
     UFUNCTION(BlueprintCallable, Category = "Radial Menu|Data")
     UDataTable* GetPreparationDataTable() const { return PreparationDataTable; }
+
+    /** Nulls stale Icon textures on menu items and buttons (safe before GC). */
+    void SanitizeStaleObjectReferences();
+
+    /** Runs SanitizeStaleObjectReferences on every live UPURadialMenu / item button. */
+    static void SanitizeAllLiveRadialMenus();
 
 protected:
     // Current menu items

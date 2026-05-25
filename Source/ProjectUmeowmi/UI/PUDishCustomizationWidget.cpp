@@ -23,17 +23,26 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelWidget.h"
 #include "UObject/GarbageCollection.h"
+#include "UObject/UObjectIterator.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Slate/SObjectWidget.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "PUUObjectSafety.h"
 #include "Input/Events.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "GameplayTagsManager.h"
 #include "../Interfaces/PUCustomizationStageModuleInterface.h"
 #include "PUPipelineStageMinigameModuleWidget.h"
 #include "PUStripMinigameBehavior.h"
+#include "HAL/IConsoleManager.h"
+
+static TAutoConsoleVariable<int32> CVarPUDisableRadarChartUpdates(
+    TEXT("pu.DisableRadarChartUpdates"),
+    0,
+    TEXT("When non-zero, skips C++ RefreshRadarChartsFromDishData updates (for GC crash isolation)."),
+    ECVF_Default);
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -42,6 +51,88 @@ namespace
     constexpr bool bPU_LogStageMinigameToggleTrace = true;
     // Enables verbose logging for dish/ingredient data reception and slot population.
     constexpr bool bPU_LogDishDataReceiveDebug = false;
+    // Logs stale UObject* cleared from dish widget arrays/maps during pre-GC sanitization.
+    constexpr bool bPU_LogPreGCSanitize = false;
+
+    template<typename T>
+    static int32 SanitizeObjectPointerArray(TArray<T*>& Arr, const TCHAR* Label)
+    {
+        int32 Cleared = 0;
+        for (int32 Index = Arr.Num() - 1; Index >= 0; --Index)
+        {
+            T* Ptr = Arr[Index];
+            if (Ptr != nullptr && !PUObjectReferenceSafety::IsLiveObject(Ptr))
+            {
+                if (bPU_LogPreGCSanitize)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[PreGC] %s: removed stale ptr[%d]=%p"), Label, Index, Ptr);
+                }
+                Arr.RemoveAtSwap(Index);
+                ++Cleared;
+            }
+        }
+        return Cleared;
+    }
+
+    template<typename KeyType, typename ValueType>
+    static int32 SanitizeObjectPointerValueMap(TMap<KeyType, ValueType*>& Map, const TCHAR* Label)
+    {
+        int32 Cleared = 0;
+        for (auto It = Map.CreateIterator(); It; ++It)
+        {
+            ValueType* Ptr = It.Value();
+            if (Ptr != nullptr && !PUObjectReferenceSafety::IsLiveObject(Ptr))
+            {
+                if (bPU_LogPreGCSanitize)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("[PreGC] %s: removed stale map entry ptr=%p"), Label, Ptr);
+                }
+                It.RemoveCurrent();
+                ++Cleared;
+            }
+        }
+        return Cleared;
+    }
+
+    static void ReleaseDynamicUserWidget(UUserWidget* Widget)
+    {
+        if (!IsValid(Widget))
+        {
+            return;
+        }
+        Widget->RemoveFromParent();
+        Widget->ReleaseSlateResources(true);
+    }
+
+    static void DestroyDynamicUserWidget(UUserWidget* Widget)
+    {
+        ReleaseDynamicUserWidget(Widget);
+        if (IsValid(Widget))
+        {
+            Widget->ConditionalBeginDestroy();
+        }
+    }
+
+    static void ReleaseDynamicIngredientSlot(UPUIngredientSlot* Slot)
+    {
+        if (!IsValid(Slot))
+        {
+            return;
+        }
+        Slot->SanitizeStaleObjectReferences();
+        Slot->HideRadialMenu();
+        Slot->RemoveFromParent();
+        Slot->ReleaseSlateResources(true);
+    }
+
+    static void DestroyDynamicIngredientSlot(UPUIngredientSlot* Slot)
+    {
+        ReleaseDynamicIngredientSlot(Slot);
+        if (IsValid(Slot))
+        {
+            Slot->ConditionalBeginDestroy();
+        }
+    }
 
     static UWidget* GetWidgetObjectFromSlate(const TSharedPtr<SWidget>& SlateWidget)
     {
@@ -117,7 +208,7 @@ namespace
     {
         for (UPUIngredientSlot* SlotWidget : Slots)
         {
-            if (!IsValid(SlotWidget))
+            if (!PUObjectReferenceSafety::IsLiveObject(SlotWidget))
             {
                 return false;
             }
@@ -305,6 +396,14 @@ void UPUDishCustomizationWidget::NativeConstruct()
     Super::NativeConstruct();
 
     UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
+    if (FlavorRadarChart)
+    {
+        FlavorRadarChart->ClearSegmentIconPropertyRefsForGC();
+    }
+    if (TextureRadarChart)
+    {
+        TextureRadarChart->ClearSegmentIconPropertyRefsForGC();
+    }
 
     TryResolveRecipeLogPanelsFromHierarchy();
 
@@ -386,19 +485,138 @@ FReply UPUDishCustomizationWidget::NativeOnPreviewKeyDown(const FGeometry& InGeo
     return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
 }
 
+void UPUDishCustomizationWidget::PrepareForCustomizationShutdown()
+{
+    if (bProgrammaticCustomizationSlotsReleased)
+    {
+        return;
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        FTimerManager& TimerManager = World->GetTimerManager();
+        TimerManager.ClearTimer(InitialFocusTimerHandle);
+        TimerManager.ClearTimer(DeferredFocusTimerHandle);
+        TimerManager.ClearTimer(PantryFocusTimerHandle);
+        TimerManager.ClearTimer(FocusRetryTimerHandle);
+    }
+
+    SanitizeStaleObjectReferences();
+
+    SetIngredientRailStripInteractionLocked(false, nullptr);
+    UnsubscribeFromEvents();
+    ReleaseProgrammaticCustomizationSlots();
+}
+
+void UPUDishCustomizationWidget::SanitizeStaleObjectReferences()
+{
+    UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
+
+    int32 ClearedTotal = 0;
+
+    ClearedTotal += SanitizeObjectPointerArray(CreatedIngredientSlots, TEXT("CreatedIngredientSlots"));
+    ClearedTotal += SanitizeObjectPointerArray(CreatedPantrySlots, TEXT("CreatedPantrySlots"));
+    ClearedTotal += SanitizeObjectPointerArray(CreatedPreppedSlots, TEXT("CreatedPreppedSlots"));
+    ClearedTotal += SanitizeObjectPointerArray(CreatedPreppedPantrySlots, TEXT("CreatedPreppedPantrySlots"));
+    ClearedTotal += SanitizeObjectPointerArray(CreatedRecipeLogBaseSlots, TEXT("CreatedRecipeLogBaseSlots"));
+    ClearedTotal += SanitizeObjectPointerArray(CreatedRecipeLogPreppedSlots, TEXT("CreatedRecipeLogPreppedSlots"));
+
+    auto SanitizeShelvingArray = [&](TArray<UUserWidget*>& Arr, const TCHAR* Label)
+    {
+        ClearedTotal += SanitizeObjectPointerArray(Arr, Label);
+    };
+    SanitizeShelvingArray(CreatedShelvingWidgets, TEXT("CreatedShelvingWidgets"));
+    SanitizeShelvingArray(CreatedPantryShelvingWidgets, TEXT("CreatedPantryShelvingWidgets"));
+    SanitizeShelvingArray(CreatedPreppedPantryShelvingWidgets, TEXT("CreatedPreppedPantryShelvingWidgets"));
+    SanitizeShelvingArray(CreatedRecipeLogBaseShelvingWidgets, TEXT("CreatedRecipeLogBaseShelvingWidgets"));
+    SanitizeShelvingArray(CreatedRecipeLogPreppedShelvingWidgets, TEXT("CreatedRecipeLogPreppedShelvingWidgets"));
+
+    ClearedTotal += SanitizeObjectPointerValueMap(IngredientSlotMap, TEXT("IngredientSlotMap"));
+    ClearedTotal += SanitizeObjectPointerValueMap(PantrySlotMap, TEXT("PantrySlotMap"));
+    ClearedTotal += SanitizeObjectPointerValueMap(PreppedSlotMap, TEXT("PreppedSlotMap"));
+    ClearedTotal += SanitizeObjectPointerValueMap(IngredientButtonMap, TEXT("IngredientButtonMap"));
+
+    if (CustomizationComponent != nullptr && !PUObjectReferenceSafety::IsLiveObject(CustomizationComponent))
+    {
+        if (bPU_LogPreGCSanitize)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PreGC] CustomizationComponent: cleared stale ptr=%p"), CustomizationComponent);
+        }
+        CustomizationComponent = nullptr;
+        ++ClearedTotal;
+    }
+
+    if (MountedPipelineStageWidget != nullptr && !PUObjectReferenceSafety::IsLiveObject(MountedPipelineStageWidget))
+    {
+        if (bPU_LogPreGCSanitize)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PreGC] MountedPipelineStageWidget: cleared stale ptr=%p"), MountedPipelineStageWidget.Get());
+        }
+        MountedPipelineStageWidget = nullptr;
+        ++ClearedTotal;
+    }
+    else if (UPUPipelineStageMinigameModuleWidget* StageModule = Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get()))
+    {
+        StageModule->SanitizeStaleObjectReferences();
+    }
+
+    if (FlavorRadarChart != nullptr && !PUObjectReferenceSafety::IsLiveObject(FlavorRadarChart))
+    {
+        FlavorRadarChart = nullptr;
+        ++ClearedTotal;
+    }
+    else if (UPURadarChart* Chart = FlavorRadarChart.Get())
+    {
+        UPURadarChart::SanitizeObjectReferencesOnAnyRadar(Chart);
+    }
+
+    if (TextureRadarChart != nullptr && !PUObjectReferenceSafety::IsLiveObject(TextureRadarChart))
+    {
+        TextureRadarChart = nullptr;
+        ++ClearedTotal;
+    }
+    else if (UPURadarChart* Chart = TextureRadarChart.Get())
+    {
+        UPURadarChart::SanitizeObjectReferencesOnAnyRadar(Chart);
+    }
+
+    if (CurrentShelvingWidget.IsValid() && !PUObjectReferenceSafety::IsLiveObject(CurrentShelvingWidget.Get()))
+    {
+        CurrentShelvingWidget.Reset();
+        ++ClearedTotal;
+    }
+    if (CurrentPantryShelvingWidget.IsValid() && !PUObjectReferenceSafety::IsLiveObject(CurrentPantryShelvingWidget.Get()))
+    {
+        CurrentPantryShelvingWidget.Reset();
+        ++ClearedTotal;
+    }
+    if (CurrentPreppedPantryShelvingWidget.IsValid() && !PUObjectReferenceSafety::IsLiveObject(CurrentPreppedPantryShelvingWidget.Get()))
+    {
+        CurrentPreppedPantryShelvingWidget.Reset();
+        ++ClearedTotal;
+    }
+    if (CurrentRecipeLogBaseShelvingWidget.IsValid() && !PUObjectReferenceSafety::IsLiveObject(CurrentRecipeLogBaseShelvingWidget.Get()))
+    {
+        CurrentRecipeLogBaseShelvingWidget.Reset();
+        ++ClearedTotal;
+    }
+    if (CurrentRecipeLogPreppedShelvingWidget.IsValid() && !PUObjectReferenceSafety::IsLiveObject(CurrentRecipeLogPreppedShelvingWidget.Get()))
+    {
+        CurrentRecipeLogPreppedShelvingWidget.Reset();
+        ++ClearedTotal;
+    }
+
+    if (bPU_LogPreGCSanitize && ClearedTotal > 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[DishWidget] %s: cleared %d stale refs"), *GetName(), ClearedTotal);
+    }
+}
+
 void UPUDishCustomizationWidget::NativeDestruct()
 {
     // //UE_LOG(LogTemp,Display, TEXT("PUDishCustomizationWidget::NativeDestruct - Widget destructing"));
 
-    // Clear any pending timers
-    if (UWorld* World = GetWorld())
-    {
-        World->GetTimerManager().ClearTimer(InitialFocusTimerHandle);
-    }
-
-    UnsubscribeFromEvents();
-
-    ReleaseProgrammaticCustomizationSlots();
+    PrepareForCustomizationShutdown();
 
     Super::NativeDestruct();
 }
@@ -415,8 +633,7 @@ void UPUDishCustomizationWidget::TeardownDynamicCreatedIngredientSlotsStrip()
         S->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
         S->OnSlotIngredientChanged.RemoveDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
         S->OnIngredientDroppedOnSlot.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPlatingIngredientDropped);
-        S->RemoveFromParent();
-        S->ReleaseSlateResources(true);
+        DestroyDynamicIngredientSlot(S);
     };
 
     for (UPUIngredientSlot* S : CreatedIngredientSlots)
@@ -427,11 +644,7 @@ void UPUDishCustomizationWidget::TeardownDynamicCreatedIngredientSlotsStrip()
 
     for (UUserWidget* W : CreatedShelvingWidgets)
     {
-        if (IsValid(W))
-        {
-            W->RemoveFromParent();
-            W->ReleaseSlateResources(true);
-        }
+        DestroyDynamicUserWidget(W);
     }
     CreatedShelvingWidgets.Empty();
     CurrentShelvingWidget.Reset();
@@ -448,9 +661,19 @@ void UPUDishCustomizationWidget::ClearIngredientSlotStrip()
 
 void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
 {
+    if (bProgrammaticCustomizationSlotsReleased)
+    {
+        return;
+    }
+    bProgrammaticCustomizationSlotsReleased = true;
+
     ClearStageModuleSlot();
 
-    TeardownRecipeLogDynamicWidgets(false);
+    IngredientSlotMap.Empty();
+    PantrySlotMap.Empty();
+    PreppedSlotMap.Empty();
+
+    TeardownRecipeLogDynamicWidgets(true);
 
     TArray<UPUIngredientButton*> ButtonsToRelease;
     IngredientButtonMap.GenerateValueArray(ButtonsToRelease);
@@ -460,8 +683,7 @@ void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
         if (IsValid(Btn))
         {
             Btn->OnIngredientButtonClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnIngredientButtonClicked);
-            Btn->RemoveFromParent();
-            Btn->ReleaseSlateResources(true);
+            DestroyDynamicUserWidget(Btn);
         }
     }
 
@@ -477,19 +699,14 @@ void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
         S->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
         S->OnSlotIngredientChanged.RemoveDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
         S->OnIngredientDroppedOnSlot.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPlatingIngredientDropped);
-        S->RemoveFromParent();
-        S->ReleaseSlateResources(true);
+        DestroyDynamicIngredientSlot(S);
     };
 
     auto TearDownShelving = [&](TArray<UUserWidget*>& ShelvingArray, TWeakObjectPtr<UUserWidget>& CurrentShelving, int32& CurrentCount)
     {
         for (UUserWidget* W : ShelvingArray)
         {
-            if (IsValid(W))
-            {
-                W->RemoveFromParent();
-                W->ReleaseSlateResources(true);
-            }
+            DestroyDynamicUserWidget(W);
         }
         ShelvingArray.Empty();
         CurrentShelving.Reset();
@@ -520,8 +737,6 @@ void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
     CachedPreppedPantrySlotsContentSignature = 0;
     bPreppedPantrySlotsHierarchyBuilt = false;
 
-    PantrySlotMap.Empty();
-    PreppedSlotMap.Empty();
     PendingEmptySlot.Reset();
     bIngredientSlotsCreated = false;
 
@@ -531,6 +746,10 @@ void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
     CachedRecipeLogMaxBaseForRecipeLog = -1;
     bRecipeLogBaseHierarchyBuilt = false;
     bRecipeLogPreppedHierarchyBuilt = false;
+
+    CustomizationComponent = nullptr;
+    FlavorRadarChart = nullptr;
+    TextureRadarChart = nullptr;
 }
 
 void UPUDishCustomizationWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -947,13 +1166,18 @@ void UPUDishCustomizationWidget::ClearStageModuleSlot()
 {
     TryResolvePipelineShellSlotsFromHierarchy();
     UUserWidget* PrevMounted = MountedPipelineStageWidget.Get();
-    if (IsValid(PrevMounted) && PrevMounted->GetClass()->ImplementsInterface(UPUCustomizationStageModuleInterface::StaticClass()))
+    if (IsValid(PrevMounted))
     {
-        IPUCustomizationStageModuleInterface::Execute_ShutdownStageModule(PrevMounted);
-    }
-    if (MountedPipelineStageWidget && IsValid(MountedPipelineStageWidget))
-    {
-        MountedPipelineStageWidget->RemoveFromParent();
+        if (PrevMounted->WidgetTree)
+        {
+            UPURadarChart::SanitizeRadarChartsInWidgetTree(PrevMounted->WidgetTree);
+        }
+        if (PrevMounted->GetClass()->ImplementsInterface(UPUCustomizationStageModuleInterface::StaticClass()))
+        {
+            IPUCustomizationStageModuleInterface::Execute_ShutdownStageModule(PrevMounted);
+        }
+        PrevMounted->RemoveFromParent();
+        PrevMounted->ReleaseSlateResources(true);
     }
     MountedPipelineStageWidget = nullptr;
     if (StageModuleSlot)
@@ -1954,38 +2178,47 @@ void UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry(const FI
 
     if (UWorld* World = GetWorld())
     {
-        FTimerHandle FocusRestoreTimerHandle;
-        World->GetTimerManager().SetTimer(FocusRestoreTimerHandle, [PrepSlotToFocus, this]()
-        {
-            if (PrepSlotToFocus.IsValid() && !IsDialogueVisible())
+        FTimerManager& TimerManager = World->GetTimerManager();
+        TimerManager.ClearTimer(DeferredFocusTimerHandle);
+        TimerManager.SetTimer(
+            DeferredFocusTimerHandle,
+            FTimerDelegate::CreateWeakLambda(this, [PrepSlotToFocus, this]()
             {
-                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry - Restoring focus to prep slot: %s"),
-                    *PrepSlotToFocus->GetName());
-
-                PrepSlotToFocus->SetIsFocusable(true);
-                PrepSlotToFocus->SetKeyboardFocus();
-                FSlateApplication::Get().SetUserFocus(0, PrepSlotToFocus->TakeWidget());
-
-                PrepSlotToFocus->ShowFocusVisuals();
-                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-
-                if (!PrepSlotToFocus->HasKeyboardFocus())
+                if (PrepSlotToFocus.IsValid() && !IsDialogueVisible())
                 {
-                    FTimerHandle RetryTimerHandle;
-                    GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [PrepSlotToFocus, this]()
+                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry - Restoring focus to prep slot: %s"),
+                        *PrepSlotToFocus->GetName());
+
+                    PrepSlotToFocus->SetIsFocusable(true);
+                    PrepSlotToFocus->SetKeyboardFocus();
+                    FSlateApplication::Get().SetUserFocus(0, PrepSlotToFocus->TakeWidget());
+
+                    PrepSlotToFocus->ShowFocusVisuals();
+                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+
+                    if (!PrepSlotToFocus->HasKeyboardFocus())
                     {
-                        if (PrepSlotToFocus.IsValid())
+                        if (UWorld* RetryWorld = GetWorld())
                         {
-                            PrepSlotToFocus->SetKeyboardFocus();
-                            PrepSlotToFocus->ShowFocusVisuals();
-                            ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry - Retry: Focus restored to %s (HasFocus: %s)"),
-                                *PrepSlotToFocus->GetName(), PrepSlotToFocus->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                            RetryWorld->GetTimerManager().SetTimer(
+                                FocusRetryTimerHandle,
+                                FTimerDelegate::CreateWeakLambda(this, [PrepSlotToFocus, this]()
+                                {
+                                    if (PrepSlotToFocus.IsValid())
+                                    {
+                                        PrepSlotToFocus->SetKeyboardFocus();
+                                        PrepSlotToFocus->ShowFocusVisuals();
+                                        ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+                                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry - Retry: Focus restored to %s (HasFocus: %s)"),
+                                            *PrepSlotToFocus->GetName(), PrepSlotToFocus->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                    }
+                                }),
+                                0.1f, false);
                         }
-                    }, 0.1f, false);
+                    }
                 }
-            }
-        }, 0.3f, false);
+            }),
+            0.3f, false);
     }
 }
 
@@ -2336,6 +2569,11 @@ void UPUDishCustomizationWidget::ToggleIngredientSelection(const FPUIngredientBa
 
 void UPUDishCustomizationWidget::RefreshRadarChartsFromDishData(const FPUDishBase& Dish)
 {
+    if (CVarPUDisableRadarChartUpdates.GetValueOnAnyThread() != 0)
+    {
+        return;
+    }
+
     UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
 
     // Update assigned radar charts (assign in Blueprint Details under "Radar Chart" category)
@@ -3268,8 +3506,8 @@ void UPUDishCustomizationWidget::TeardownRecipeLogBaseDynamicWidgets(bool bFinis
         {
             continue;
         }
-        SlotWidget->RemoveFromParent();
-        SlotWidget->ReleaseSlateResources(true);
+        SlotWidget->HideRadialMenu();
+        ReleaseDynamicIngredientSlot(SlotWidget);
     }
     CreatedRecipeLogBaseSlots.Empty();
 
@@ -3278,12 +3516,7 @@ void UPUDishCustomizationWidget::TeardownRecipeLogBaseDynamicWidgets(bool bFinis
 
     for (UUserWidget* Shelving : CreatedRecipeLogBaseShelvingWidgets)
     {
-        if (!IsValid(Shelving))
-        {
-            continue;
-        }
-        Shelving->RemoveFromParent();
-        Shelving->ReleaseSlateResources(true);
+        ReleaseDynamicUserWidget(Shelving);
     }
     CreatedRecipeLogBaseShelvingWidgets.Empty();
 }
@@ -3297,8 +3530,8 @@ void UPUDishCustomizationWidget::TeardownRecipeLogPreppedDynamicWidgets(bool bFi
         {
             continue;
         }
-        SlotWidget->RemoveFromParent();
-        SlotWidget->ReleaseSlateResources(true);
+        SlotWidget->HideRadialMenu();
+        ReleaseDynamicIngredientSlot(SlotWidget);
     }
     CreatedRecipeLogPreppedSlots.Empty();
 
@@ -3307,12 +3540,7 @@ void UPUDishCustomizationWidget::TeardownRecipeLogPreppedDynamicWidgets(bool bFi
 
     for (UUserWidget* Shelving : CreatedRecipeLogPreppedShelvingWidgets)
     {
-        if (!IsValid(Shelving))
-        {
-            continue;
-        }
-        Shelving->RemoveFromParent();
-        Shelving->ReleaseSlateResources(true);
+        ReleaseDynamicUserWidget(Shelving);
     }
     CreatedRecipeLogPreppedShelvingWidgets.Empty();
 }
@@ -4024,19 +4252,11 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
     {
         for (UPUIngredientSlot* PreppedPantrySlotWidget : CreatedPreppedPantrySlots)
         {
-            if (!IsValid(PreppedPantrySlotWidget))
-            {
-                continue;
-            }
-            if (PreppedPantrySlotWidget->IsPreppedPantryPickerSlot())
+            if (PreppedPantrySlotWidget && PreppedPantrySlotWidget->IsPreppedPantryPickerSlot())
             {
                 PreppedPantrySlotWidget->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
             }
-            if (PreppedPantrySlotWidget->GetParent())
-            {
-                PreppedPantrySlotWidget->RemoveFromParent();
-            }
-            PreppedPantrySlotWidget->ReleaseSlateResources(true);
+            ReleaseDynamicIngredientSlot(PreppedPantrySlotWidget);
         }
         CreatedPreppedPantrySlots.Empty();
 
@@ -4044,15 +4264,7 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
 
         for (UUserWidget* Shelving : CreatedPreppedPantryShelvingWidgets)
         {
-            if (!IsValid(Shelving))
-            {
-                continue;
-            }
-            if (Shelving->GetParent())
-            {
-                Shelving->RemoveFromParent();
-            }
-            Shelving->ReleaseSlateResources(true);
+            ReleaseDynamicUserWidget(Shelving);
         }
         CreatedPreppedPantryShelvingWidgets.Empty();
         CurrentPreppedPantryShelvingWidgetSlotCount = 0;
@@ -4073,19 +4285,11 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
 
     for (UPUIngredientSlot* PreppedPantrySlotWidget : CreatedPreppedPantrySlots)
     {
-        if (!IsValid(PreppedPantrySlotWidget))
-        {
-            continue;
-        }
-        if (PreppedPantrySlotWidget->IsPreppedPantryPickerSlot())
+        if (PreppedPantrySlotWidget && PreppedPantrySlotWidget->IsPreppedPantryPickerSlot())
         {
             PreppedPantrySlotWidget->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
         }
-        if (PreppedPantrySlotWidget->GetParent())
-        {
-            PreppedPantrySlotWidget->RemoveFromParent();
-        }
-        PreppedPantrySlotWidget->ReleaseSlateResources(true);
+        ReleaseDynamicIngredientSlot(PreppedPantrySlotWidget);
     }
     CreatedPreppedPantrySlots.Empty();
 
@@ -4093,15 +4297,7 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
 
     for (UUserWidget* Shelving : CreatedPreppedPantryShelvingWidgets)
     {
-        if (!IsValid(Shelving))
-        {
-            continue;
-        }
-        if (Shelving->GetParent())
-        {
-            Shelving->RemoveFromParent();
-        }
-        Shelving->ReleaseSlateResources(true);
+        ReleaseDynamicUserWidget(Shelving);
     }
     CreatedPreppedPantryShelvingWidgets.Empty();
     CurrentPreppedPantryShelvingWidgetSlotCount = 0;
@@ -4462,7 +4658,7 @@ void UPUDishCustomizationWidget::OpenPantry()
     // Set up navigation for pantry slots (for controller support)
     SetupPantrySlotNavigation();
     SetupPreppedPantrySlotNavigation();
-    
+
     // Set pantry open flag
     bPantryOpen = true;
     
@@ -4493,7 +4689,22 @@ void UPUDishCustomizationWidget::ClosePantry()
     // Call Blueprint event to trigger UMG animation (normal close - play forward or hide)
     OnPantryClosed();
     
+    SanitizeStaleObjectReferences();
+    
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::ClosePantry - Pantry closed (Blueprint will handle animation)"));
+}
+
+void UPUDishCustomizationWidget::SanitizeAllLiveDishCustomizationWidgets()
+{
+    for (TObjectIterator<UPUDishCustomizationWidget> It; It; ++It)
+    {
+        UPUDishCustomizationWidget* Widget = *It;
+        if (PUObjectReferenceSafety::CanQueryUObject(Widget)
+            && !Widget->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+        {
+            Widget->SanitizeStaleObjectReferences();
+        }
+    }
 }
 
 void UPUDishCustomizationWidget::ClosePantryFromDrag()
@@ -5129,41 +5340,50 @@ void UPUDishCustomizationWidget::SetInitialFocusForPantry()
             PantrySlot->SetIsFocusable(true);
             
             // Use a delayed timer to set focus after the widget is fully visible
-            FTimerHandle FocusTimerHandle;
-            GetWorld()->GetTimerManager().SetTimer(FocusTimerHandle, [WeakSlot = TWeakObjectPtr<UPUIngredientSlot>(PantrySlot), this]()
+            if (UWorld* World = GetWorld())
             {
-                if (WeakSlot.IsValid() && !IsDialogueVisible())
-                {
-                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Setting focus to pantry slot: %s"), 
-                        *WeakSlot->GetName());
-                    
-                    // Set focus using both methods for robustness
-                    WeakSlot->SetIsFocusable(true);
-                    WeakSlot->SetKeyboardFocus();
-                    FSlateApplication::Get().SetUserFocus(0, WeakSlot->TakeWidget());
-                    
-                    // Manually trigger visual feedback
-                    WeakSlot->ShowFocusVisuals();
-                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                    
-                    // Retry if focus wasn't set
-                    if (!WeakSlot->HasKeyboardFocus())
+                FTimerManager& TimerManager = World->GetTimerManager();
+                TimerManager.ClearTimer(PantryFocusTimerHandle);
+                TimerManager.SetTimer(
+                    PantryFocusTimerHandle,
+                    FTimerDelegate::CreateWeakLambda(this, [WeakSlot = TWeakObjectPtr<UPUIngredientSlot>(PantrySlot), this]()
                     {
-                        FTimerHandle RetryTimerHandle;
-                        GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [WeakSlot, this]()
+                        if (WeakSlot.IsValid() && !IsDialogueVisible())
                         {
-                            if (WeakSlot.IsValid())
+                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Setting focus to pantry slot: %s"),
+                                *WeakSlot->GetName());
+
+                            WeakSlot->SetIsFocusable(true);
+                            WeakSlot->SetKeyboardFocus();
+                            FSlateApplication::Get().SetUserFocus(0, WeakSlot->TakeWidget());
+
+                            WeakSlot->ShowFocusVisuals();
+                            ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+
+                            if (!WeakSlot->HasKeyboardFocus())
                             {
-                                WeakSlot->SetKeyboardFocus();
-                                WeakSlot->ShowFocusVisuals();
-                                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Retry: Focus set to %s (HasFocus: %s)"), 
-                                    *WeakSlot->GetName(), WeakSlot->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                if (UWorld* RetryWorld = GetWorld())
+                                {
+                                    RetryWorld->GetTimerManager().SetTimer(
+                                        FocusRetryTimerHandle,
+                                        FTimerDelegate::CreateWeakLambda(this, [WeakSlot, this]()
+                                        {
+                                            if (WeakSlot.IsValid())
+                                            {
+                                                WeakSlot->SetKeyboardFocus();
+                                                WeakSlot->ShowFocusVisuals();
+                                                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+                                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Retry: Focus set to %s (HasFocus: %s)"),
+                                                    *WeakSlot->GetName(), WeakSlot->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                            }
+                                        }),
+                                        0.1f, false);
+                                }
                             }
-                        }, 0.1f, false);
-                    }
-                }
-            }, 0.2f, false);
+                        }
+                    }),
+                    0.2f, false);
+            }
             
             return;
         }
@@ -5175,34 +5395,46 @@ void UPUDishCustomizationWidget::SetInitialFocusForPantry()
         {
             PickSlot->SetIsFocusable(true);
 
-            FTimerHandle FocusTimerHandle;
-            GetWorld()->GetTimerManager().SetTimer(FocusTimerHandle, [WeakSlot = TWeakObjectPtr<UPUIngredientSlot>(PickSlot), this]()
+            if (UWorld* World = GetWorld())
             {
-                if (WeakSlot.IsValid() && !IsDialogueVisible())
-                {
-                    WeakSlot->SetIsFocusable(true);
-                    WeakSlot->SetKeyboardFocus();
-                    FSlateApplication::Get().SetUserFocus(0, WeakSlot->TakeWidget());
-                    WeakSlot->ShowFocusVisuals();
-                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-
-                    if (!WeakSlot->HasKeyboardFocus())
+                FTimerManager& TimerManager = World->GetTimerManager();
+                TimerManager.ClearTimer(PantryFocusTimerHandle);
+                TimerManager.SetTimer(
+                    PantryFocusTimerHandle,
+                    FTimerDelegate::CreateWeakLambda(this, [WeakSlot = TWeakObjectPtr<UPUIngredientSlot>(PickSlot), this]()
                     {
-                        FTimerHandle RetryTimerHandle;
-                        GetWorld()->GetTimerManager().SetTimer(RetryTimerHandle, [WeakSlot, this]()
+                        if (WeakSlot.IsValid() && !IsDialogueVisible())
                         {
-                            if (WeakSlot.IsValid())
+                            WeakSlot->SetIsFocusable(true);
+                            WeakSlot->SetKeyboardFocus();
+                            FSlateApplication::Get().SetUserFocus(0, WeakSlot->TakeWidget());
+                            WeakSlot->ShowFocusVisuals();
+                            ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+
+                            if (!WeakSlot->HasKeyboardFocus())
                             {
-                                WeakSlot->SetKeyboardFocus();
-                                WeakSlot->ShowFocusVisuals();
-                                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Retry: Focus set to %s (HasFocus: %s)"),
-                                    *WeakSlot->GetName(), WeakSlot->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                if (UWorld* RetryWorld = GetWorld())
+                                {
+                                    RetryWorld->GetTimerManager().SetTimer(
+                                        FocusRetryTimerHandle,
+                                        FTimerDelegate::CreateWeakLambda(this, [WeakSlot, this]()
+                                        {
+                                            if (WeakSlot.IsValid())
+                                            {
+                                                WeakSlot->SetKeyboardFocus();
+                                                WeakSlot->ShowFocusVisuals();
+                                                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+                                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - Retry: Focus set to %s (HasFocus: %s)"),
+                                                    *WeakSlot->GetName(), WeakSlot->HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
+                                            }
+                                        }),
+                                        0.1f, false);
+                                }
                             }
-                        }, 0.1f, false);
-                    }
-                }
-            }, 0.2f, false);
+                        }
+                    }),
+                    0.2f, false);
+            }
 
             return;
         }
@@ -5335,45 +5567,50 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
     {
         World->GetTimerManager().ClearTimer(InitialFocusTimerHandle);
         TWeakObjectPtr<UPUIngredientSlot> WeakSlot = FirstSlot;
-        
-        World->GetTimerManager().SetTimer(InitialFocusTimerHandle, [WeakSlot, this]()
-        {
-            if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel() && !IsDialogueVisible())
+
+        World->GetTimerManager().SetTimer(
+            InitialFocusTimerHandle,
+            FTimerDelegate::CreateWeakLambda(this, [WeakSlot, this]()
             {
-                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
-                
-                WeakSlot->SetIsFocusable(true);
-                WeakSlot->SetKeyboardFocus();
-                
-                if (APlayerController* PC = GetOwningPlayer())
+                if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel() && !IsDialogueVisible())
                 {
-                    if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
+
+                    WeakSlot->SetIsFocusable(true);
+                    WeakSlot->SetKeyboardFocus();
+
+                    if (APlayerController* PC = GetOwningPlayer())
                     {
-                        FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), WeakSlot->TakeWidget(), EFocusCause::SetDirectly);
-                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Set user focus via Slate"));
+                        if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+                        {
+                            FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), WeakSlot->TakeWidget(), EFocusCause::SetDirectly);
+                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Set user focus via Slate"));
+                        }
+                    }
+
+                    WeakSlot->ShowFocusVisuals();
+                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+
+                    if (!WeakSlot->HasKeyboardFocus() && GetWorld())
+                    {
+                        GetWorld()->GetTimerManager().SetTimer(
+                            FocusRetryTimerHandle,
+                            FTimerDelegate::CreateWeakLambda(this, [WeakSlot, this]()
+                            {
+                                if (WeakSlot.IsValid())
+                                {
+                                    WeakSlot->SetIsFocusable(true);
+                                    WeakSlot->SetKeyboardFocus();
+                                    WeakSlot->ShowFocusVisuals();
+                                    ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+                                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
+                                }
+                            }),
+                            0.2f, false);
                     }
                 }
-                
-                WeakSlot->ShowFocusVisuals();
-                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                
-                if (!WeakSlot->HasKeyboardFocus() && GetWorld())
-                {
-                    FTimerHandle RetryTimer;
-                    GetWorld()->GetTimerManager().SetTimer(RetryTimer, [WeakSlot, this]()
-                    {
-                        if (WeakSlot.IsValid())
-                        {
-                            WeakSlot->SetIsFocusable(true);
-                            WeakSlot->SetKeyboardFocus();
-                            WeakSlot->ShowFocusVisuals();
-                            ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
-                        }
-                    }, 0.2f, false);
-                }
-            }
-                }, 0.3f, false); // Slightly longer than prep (0.15f) to allow cooking stage entrance animations
+            }),
+            0.3f, false); // Slightly longer than prep (0.15f) to allow cooking stage entrance animations
     }
     else
     {
@@ -5416,60 +5653,57 @@ void UPUDishCustomizationWidget::SetInitialFocusForPrepStage()
                 // Store weak pointer to avoid issues if slot is destroyed
                 TWeakObjectPtr<UPUIngredientSlot> WeakSlot = PrepSlot;
                 
-                World->GetTimerManager().SetTimer(InitialFocusTimerHandle, [WeakSlot, this]()
-                {
-                    if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel() && !IsDialogueVisible())
+                World->GetTimerManager().SetTimer(
+                    InitialFocusTimerHandle,
+                    FTimerDelegate::CreateWeakLambda(this, [WeakSlot, this]()
                     {
-                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
-                        
-                        // Ensure the slot is still focusable
-                        WeakSlot->SetIsFocusable(true);
-                        
-                        // Set keyboard focus - this should trigger NativeOnAddedToFocusPath which shows the outline
-                        WeakSlot->SetKeyboardFocus();
-                        
-                        // Also try setting user focus (for gamepad)
-                        APlayerController* PC = GetOwningPlayer();
-                        if (PC)
+                        if (WeakSlot.IsValid() && WeakSlot->IsValidLowLevel() && !IsDialogueVisible())
                         {
-                            if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Delayed focus set to slot: %s"), *WeakSlot->GetName());
+
+                            WeakSlot->SetIsFocusable(true);
+                            WeakSlot->SetKeyboardFocus();
+
+                            APlayerController* PC = GetOwningPlayer();
+                            if (PC)
                             {
-                                FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), WeakSlot->TakeWidget(), EFocusCause::SetDirectly);
-                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Also set user focus via Slate"));
-                            }
-                        }
-                        
-                        // Manually trigger focus visuals to ensure outline is shown
-                        // This is a backup in case NativeOnAddedToFocusPath doesn't fire immediately
-                        WeakSlot->ShowFocusVisuals();
-                        ReassertVirtualCursorAfterSlotFocus(this, PC);
-                        
-                        // Verify focus was set
-                        if (WeakSlot->HasKeyboardFocus())
-                        {
-                            UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Focus successfully set! Outline should be visible now."));
-                        }
-                        else
-                        {
-                            UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Focus was NOT set (widget may not be focusable or visible)"));
-                            // Try one more time after another small delay
-                            if (UWorld* RetryWorld = GetWorld())
-                            {
-                                FTimerHandle RetryTimer;
-                                RetryWorld->GetTimerManager().SetTimer(RetryTimer, [WeakSlot, this]()
+                                if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
                                 {
-                                    if (WeakSlot.IsValid())
-                                    {
-                                        WeakSlot->SetIsFocusable(true);
-                                        WeakSlot->SetKeyboardFocus();
-                                        ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
-                                        UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
-                                    }
-                                }, 0.2f, false);
+                                    FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), WeakSlot->TakeWidget(), EFocusCause::SetDirectly);
+                                    UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Also set user focus via Slate"));
+                                }
+                            }
+
+                            WeakSlot->ShowFocusVisuals();
+                            ReassertVirtualCursorAfterSlotFocus(this, PC);
+
+                            if (WeakSlot->HasKeyboardFocus())
+                            {
+                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Focus successfully set! Outline should be visible now."));
+                            }
+                            else
+                            {
+                                UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Focus was NOT set (widget may not be focusable or visible)"));
+                                if (UWorld* RetryWorld = GetWorld())
+                                {
+                                    RetryWorld->GetTimerManager().SetTimer(
+                                        FocusRetryTimerHandle,
+                                        FTimerDelegate::CreateWeakLambda(this, [WeakSlot, this]()
+                                        {
+                                            if (WeakSlot.IsValid())
+                                            {
+                                                WeakSlot->SetIsFocusable(true);
+                                                WeakSlot->SetKeyboardFocus();
+                                                ReassertVirtualCursorAfterSlotFocus(this, GetOwningPlayer());
+                                                UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPrepStage - Retry: Focus set to slot: %s"), *WeakSlot->GetName());
+                                            }
+                                        }),
+                                        0.2f, false);
+                                }
                             }
                         }
-                    }
-                }, 0.15f, false); // 0.15 second delay
+                    }),
+                    0.15f, false); // 0.15 second delay
             }
             else
             {

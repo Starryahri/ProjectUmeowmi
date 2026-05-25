@@ -8,6 +8,8 @@
 #include "PUChopStripMinigameBehavior.h"
 #include "PUStripMinigameBehavior.h"
 #include "TimerManager.h"
+#include "PUUObjectSafety.h"
+#include "UObject/UObjectIterator.h"
 
 float UPUStripMinigameProgressBarWidget::ComputeEvenTierAnchorPercent(int32 TierIconIndex, int32 TierIconCount)
 {
@@ -61,6 +63,26 @@ void UPUStripMinigameProgressBarWidget::UnbindFromStripMinigameBehavior()
 
     bBoundToChopProgressDelegate = false;
     BoundBehavior = nullptr;
+}
+
+void UPUStripMinigameProgressBarWidget::SanitizeBoundBehaviorReference()
+{
+    if (BoundBehavior != nullptr && !PUObjectReferenceSafety::IsLiveObject(BoundBehavior))
+    {
+        UnbindFromStripMinigameBehavior();
+    }
+}
+
+void UPUStripMinigameProgressBarWidget::SanitizeAllLiveStripMinigameProgressBars()
+{
+    for (TObjectIterator<UPUStripMinigameProgressBarWidget> It; It; ++It)
+    {
+        UPUStripMinigameProgressBarWidget* ProgressBar = *It;
+        if (PUObjectReferenceSafety::CanQueryUObject(ProgressBar) && !ProgressBar->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+        {
+            ProgressBar->SanitizeBoundBehaviorReference();
+        }
+    }
 }
 
 void UPUStripMinigameProgressBarWidget::RefreshFromBoundStripMinigameBehavior()

@@ -173,6 +173,8 @@ public:
         UPUPipelineStageMinigameModuleWidget* OwnerWidget,
         UObject* ProgressBarSubscriber) override;
 
+    virtual void SanitizeStaleObjectReferences() override;
+
 protected:
     void BeginChopStroke();
     void EndChopStroke();

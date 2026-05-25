@@ -116,6 +116,7 @@ void UPUJournalWidget::NativeDestruct()
 	{
 		TabList->OnTabButtonCreation.RemoveDynamic(this, &UPUJournalWidget::OnTabButtonCreated);
 	}
+	UPURadarChart::SanitizeRadarChartsInWidgetTree(WidgetTree);
 	SectionWidgets.Empty();
 	SectionTabIds.Empty();
 	ResolvedTabEntries.Empty();

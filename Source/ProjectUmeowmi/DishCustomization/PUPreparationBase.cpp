@@ -14,6 +14,8 @@ FName FAspectModifier::GetAspectName() const
 FPUPreparationBase::FPUPreparationBase()
     : DisplayName(FText::GetEmpty())
     , Description(FText::GetEmpty())
+    , IconTexture(nullptr)
+    , PrepTexture(nullptr)
     , NamePrefix(FText::GetEmpty())
     , NameSuffix(FText::GetEmpty())
     , OverridesBaseName(false)

@@ -4,6 +4,7 @@
 #include "PUIngredientSlot.h"
 #include "../DishCustomization/PUIngredientBase.h"
 #include "InputCoreTypes.h"
+#include "PUUObjectSafety.h"
 
 namespace
 {
@@ -368,6 +369,16 @@ void UPUChopStripMinigameBehavior::DisconnectChopDelegates(
     OnChopStrokePlayed.Clear();
     OnChopStrokeReleased.Clear();
     OnChopCommitFinished.Clear();
+}
+
+void UPUChopStripMinigameBehavior::SanitizeStaleObjectReferences()
+{
+    Super::SanitizeStaleObjectReferences();
+
+    if (ActiveChopStripSlot != nullptr && !PUObjectReferenceSafety::IsLiveObject(ActiveChopStripSlot))
+    {
+        ActiveChopStripSlot = nullptr;
+    }
 }
 
 void UPUChopStripMinigameBehavior::BroadcastChopProgress()

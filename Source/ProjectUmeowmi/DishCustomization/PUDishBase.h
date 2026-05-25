@@ -76,6 +76,11 @@ struct FIngredientInstance
     FIngredientInstance()
         : InstanceID(0)
         , Quantity(1)
+        , PlacementPosition(FVector::ZeroVector)
+        , PlacementRotation(FRotator::ZeroRotator)
+        , PlatingPosition(FVector::ZeroVector)
+        , PlatingRotation(FRotator::ZeroRotator)
+        , PlatingScale(FVector::OneVector)
     {}
 
     // Unique identifier for this instance (never changes)

@@ -13,6 +13,8 @@
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/World.h"
+#include "../UI/PUUObjectSafety.h"
+#include "UObject/GarbageCollection.h"
 #include "Engine/EngineBaseTypes.h"
 #include "EngineUtils.h"
 #include "InputMappingContext.h"
@@ -233,6 +235,17 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
     if (bIsDragging)
     {
         UpdateMouseDrag();
+    }
+
+    if (CurrentCharacter && !IsGarbageCollecting())
+    {
+        CustomizationUIGCSanitizeAccumulator += DeltaTime;
+        if (CustomizationUIGCSanitizeAccumulator >= 0.25f)
+        {
+            CustomizationUIGCSanitizeAccumulator = 0.f;
+            PUObjectReferenceSafety::SanitizeAllCustomizationUIObjectReferencesBeforeGC();
+            SanitizeStaleWidgetReferences();
+        }
     }
 }
 
@@ -736,6 +749,10 @@ void UPUDishCustomizationComponent::EndCustomization()
     // Clean up the customization widget
     if (CustomizationWidget)
     {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            DishWidget->PrepareForCustomizationShutdown();
+        }
         CustomizationWidget->RemoveFromParent();
         CustomizationWidget = nullptr;
         //UE_LOG(LogTemp,Log, TEXT("Customization UI Widget Removed"));
@@ -744,6 +761,7 @@ void UPUDishCustomizationComponent::EndCustomization()
     // Clean up the cooking stage widget
     if (CookingStageWidget)
     {
+        CookingStageWidget->PrepareForCustomizationShutdown();
         CookingStageWidget->RemoveFromParent();
         CookingStageWidget = nullptr;
         //UE_LOG(LogTemp,Log, TEXT("Cooking Stage Widget Removed"));
@@ -1730,6 +1748,18 @@ void UPUDishCustomizationComponent::SetActiveCustomizationWidget(UPUDishCustomiz
     }
 }
 
+void UPUDishCustomizationComponent::SanitizeStaleWidgetReferences()
+{
+    if (CustomizationWidget != nullptr && !PUObjectReferenceSafety::IsLiveObject(CustomizationWidget))
+    {
+        CustomizationWidget = nullptr;
+    }
+    if (CookingStageWidget != nullptr && !PUObjectReferenceSafety::IsLiveObject(CookingStageWidget))
+    {
+        CookingStageWidget = nullptr;
+    }
+}
+
 void UPUDishCustomizationComponent::SetInitialDishData(const FPUDishBase& InitialDishData)
 {
     //UE_LOG(LogTemp,Display, TEXT("UPUDishCustomizationComponent::SetInitialDishData - Setting initial dish data: %s with %d ingredients"), 
@@ -1860,6 +1890,10 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
     // Remove the current customization widget
     if (CustomizationWidget)
     {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            DishWidget->PrepareForCustomizationShutdown();
+        }
         CustomizationWidget->RemoveFromParent();
         CustomizationWidget = nullptr;
     }
@@ -2223,6 +2257,10 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
         if (CustomizationWidget)
         {
             //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::TransitionToPlatingStage - Removing current widget"));
+            if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+            {
+                DishWidget->PrepareForCustomizationShutdown();
+            }
             CustomizationWidget->RemoveFromParent();
             CustomizationWidget = nullptr;
         }
@@ -2309,6 +2347,10 @@ void UPUDishCustomizationComponent::EndPlatingStage()
     if (CustomizationWidget)
     {
         //UE_LOG(LogTemp,Display, TEXT("🍽️ UPUDishCustomizationComponent::EndPlatingStage - Removing plating widget from viewport"));
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            DishWidget->PrepareForCustomizationShutdown();
+        }
         CustomizationWidget->RemoveFromParent();
         CustomizationWidget = nullptr;
     }

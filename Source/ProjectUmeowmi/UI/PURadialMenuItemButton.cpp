@@ -61,8 +61,10 @@ void UPURadialMenuItemButton::SetMenuItemData(const FRadialMenuItem& MenuItem, i
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenuItemButton::SetMenuItemData - Set data for item %d: %s (Enabled: %s)"),
     //    ItemIndex, *MenuItem.Label.ToString(), MenuItem.bIsEnabled ? TEXT("YES") : TEXT("NO"));
 
-    // Call Blueprint event
+    // Call Blueprint event (may read Icon from MenuItem before we drop the UPROPERTY ref)
     OnMenuItemDataSet(MenuItemData, ItemIndex);
+
+    MenuItemData.Icon = nullptr;
 }
 
 void UPURadialMenuItemButton::ClearMenuItemData()

@@ -27,6 +27,15 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+
+    /** Proactive teardown before RemoveFromParent — safe to call from EndCustomization and NativeDestruct. */
+    void PrepareForCustomizationShutdown();
+
+    /** Clears dead UObject* entries from Created* arrays/maps. */
+    void SanitizeStaleObjectReferences();
+
+    /** Runs SanitizeStaleObjectReferences on every live dish customization widget. */
+    static void SanitizeAllLiveDishCustomizationWidgets();
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
     virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
     virtual FReply NativeOnKeyUp(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
@@ -705,15 +714,26 @@ private:
     UPROPERTY()
     UPUDishCustomizationComponent* CustomizationComponent;
 
-    // Timer handle for delayed focus setting
+    // Timer handles for delayed focus setting (must be cleared on shutdown; never use stack-local FTimerHandle)
     UPROPERTY()
     FTimerHandle InitialFocusTimerHandle;
+
+    UPROPERTY()
+    FTimerHandle DeferredFocusTimerHandle;
+
+    UPROPERTY()
+    FTimerHandle PantryFocusTimerHandle;
+
+    UPROPERTY()
+    FTimerHandle FocusRetryTimerHandle;
 
     void SubscribeToEvents();
     void UnsubscribeFromEvents();
 
     /** Removes dynamically spawned shelving/slots/delegate bindings before destruction so GC never traverses dangling UObject*s on this widget. */
     void ReleaseProgrammaticCustomizationSlots();
+
+    bool bProgrammaticCustomizationSlotsReleased = false;
 
     void TeardownDynamicCreatedIngredientSlotsStrip();
     

@@ -3,6 +3,8 @@
 #include "../DishCustomization/PUDishBase.h"
 #include "PUPipelineStageMinigameModuleWidget.h"
 #include "PUIngredientSlot.h"
+#include "PUUObjectSafety.h"
+#include "UObject/UObjectIterator.h"
 
 void UPUStripMinigameBehavior::InitializeBehavior(UPUPipelineStageMinigameModuleWidget* InOwnerModule)
 {
@@ -55,4 +57,24 @@ void UPUStripMinigameBehavior::DisconnectFromOwner(
     (void)OwnerWidget;
     (void)ProgressBarSubscriber;
     OwnerModule = nullptr;
+}
+
+void UPUStripMinigameBehavior::SanitizeStaleObjectReferences()
+{
+    if (OwnerModule != nullptr && !PUObjectReferenceSafety::IsLiveObject(OwnerModule))
+    {
+        OwnerModule = nullptr;
+    }
+}
+
+void UPUStripMinigameBehavior::SanitizeAllLiveStripMinigameBehaviors()
+{
+    for (TObjectIterator<UPUStripMinigameBehavior> It; It; ++It)
+    {
+        UPUStripMinigameBehavior* Behavior = *It;
+        if (PUObjectReferenceSafety::CanQueryUObject(Behavior) && !Behavior->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+        {
+            Behavior->SanitizeStaleObjectReferences();
+        }
+    }
 }

@@ -1,4 +1,5 @@
 #include "PURadialMenu.h"
+#include "PURadialMenuItemButton.h"
 #include "PUScorecardWidget.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
@@ -8,6 +9,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Engine/Texture2D.h"
 #include "Engine/DataTable.h"
+#include "UObject/UObjectIterator.h"
 #include "Blueprint/WidgetTree.h"
 #include "PURadialMenuItemButton.h"
 #include "Input/Events.h"
@@ -27,6 +29,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Fonts/FontMeasure.h"
 #include "Engine/Engine.h"
+#include "PUUObjectSafety.h"
 
 UPURadialMenu::UPURadialMenu(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -51,6 +54,8 @@ void UPURadialMenu::NativeDestruct()
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPURadialMenu::NativeDestruct - Radial menu widget destroyed: %s"), *GetName());
 
+    SanitizeStaleObjectReferences();
+
     // Clear delegates first to break any circular references
     OnMenuItemSelected.Clear();
     OnMenuClosed.Clear();
@@ -67,6 +72,73 @@ void UPURadialMenu::NativeDestruct()
     Super::NativeDestruct();
 }
 
+void UPURadialMenu::BeginDestroy()
+{
+    SanitizeStaleObjectReferences();
+    Super::BeginDestroy();
+}
+
+void UPURadialMenu::SanitizeStaleObjectReferences()
+{
+    for (FRadialMenuItem& Item : MenuItems)
+    {
+        if (Item.Icon != nullptr && !PUObjectReferenceSafety::IsLiveObject(Item.Icon))
+        {
+            Item.Icon = nullptr;
+        }
+    }
+
+    if (PreparationDataTable != nullptr && !PUObjectReferenceSafety::IsLiveObject(PreparationDataTable))
+    {
+        PreparationDataTable = nullptr;
+    }
+
+    for (int32 Index = MenuItemButtons.Num() - 1; Index >= 0; --Index)
+    {
+        UPURadialMenuItemButton* Button = MenuItemButtons[Index];
+        if (Button != nullptr && !PUObjectReferenceSafety::IsLiveObject(Button))
+        {
+            MenuItemButtons.RemoveAtSwap(Index);
+            continue;
+        }
+
+        if (PUObjectReferenceSafety::IsLiveObject(Button))
+        {
+            const FRadialMenuItem& Data = Button->GetMenuItemData();
+            if (Data.Icon != nullptr && !PUObjectReferenceSafety::IsLiveObject(Data.Icon))
+            {
+                Button->ClearMenuItemData();
+            }
+        }
+    }
+}
+
+void UPURadialMenu::SanitizeAllLiveRadialMenus()
+{
+    for (TObjectIterator<UPURadialMenu> It; It; ++It)
+    {
+        UPURadialMenu* Menu = *It;
+        if (PUObjectReferenceSafety::CanQueryUObject(Menu) && !Menu->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+        {
+            Menu->SanitizeStaleObjectReferences();
+        }
+    }
+
+    for (TObjectIterator<UPURadialMenuItemButton> It; It; ++It)
+    {
+        UPURadialMenuItemButton* Button = *It;
+        if (!PUObjectReferenceSafety::CanQueryUObject(Button) || Button->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+        {
+            continue;
+        }
+        const FRadialMenuItem& Data = Button->GetMenuItemData();
+        if (Data.Icon != nullptr && !PUObjectReferenceSafety::IsLiveObject(Data.Icon))
+        {
+            Button->ClearMenuItemData();
+        }
+    }
+}
+
 void UPURadialMenu::SetMenuItems(const TArray<FRadialMenuItem>& InMenuItems)
 {
     MenuItems = InMenuItems;
@@ -78,6 +150,11 @@ void UPURadialMenu::SetMenuItems(const TArray<FRadialMenuItem>& InMenuItems)
 
     // Update the menu layout (this will create and position buttons)
     UpdateMenuLayout();
+
+    for (FRadialMenuItem& Item : MenuItems)
+    {
+        Item.Icon = nullptr;
+    }
 
     // Call Blueprint event
     OnMenuItemsSet(MenuItems);

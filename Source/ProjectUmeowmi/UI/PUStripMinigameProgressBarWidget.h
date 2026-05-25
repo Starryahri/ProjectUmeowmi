@@ -36,6 +36,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Strip Minigame Progress Bar")
     void UnbindFromStripMinigameBehavior();
 
+    void SanitizeBoundBehaviorReference();
+
+    static void SanitizeAllLiveStripMinigameProgressBars();
+
     UFUNCTION(BlueprintCallable, Category = "Strip Minigame Progress Bar")
     void RefreshFromBoundStripMinigameBehavior();
 

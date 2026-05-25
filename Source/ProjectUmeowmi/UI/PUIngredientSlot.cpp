@@ -22,6 +22,8 @@
 #include "PURadialMenu.h"
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
 #include "Framework/Application/SlateApplication.h"
+#include "PUUObjectSafety.h"
+#include "UObject/UObjectIterator.h"
 
 // Debug output toggles (kept in code, but disabled by default to avoid log spam).
 namespace
@@ -196,7 +198,75 @@ void UPUIngredientSlot::NativeDestruct()
     // Clean up dynamic material instance
     SuspiciousDynamicMaterial = nullptr;
 
+    CachedDishWidget.Reset();
+    NavigationUp.Reset();
+    NavigationDown.Reset();
+    NavigationLeft.Reset();
+    NavigationRight.Reset();
+
     Super::NativeDestruct();
+}
+
+void UPUIngredientSlot::SanitizeStaleObjectReferences()
+{
+    if (RadialMenuContainer != nullptr && !PUObjectReferenceSafety::IsLiveObject(RadialMenuContainer))
+    {
+        RadialMenuContainer = nullptr;
+    }
+
+    if (RadialMenuWidget != nullptr && !PUObjectReferenceSafety::IsLiveObject(RadialMenuWidget))
+    {
+        bRadialMenuEventsBound = false;
+        bRadialMenuVisible = false;
+        RadialMenuWidget = nullptr;
+    }
+    else if (UPURadialMenu* Menu = RadialMenuWidget)
+    {
+        Menu->SanitizeStaleObjectReferences();
+    }
+
+    if (SuspiciousDynamicMaterial != nullptr && !PUObjectReferenceSafety::IsLiveObject(SuspiciousDynamicMaterial))
+    {
+        SuspiciousDynamicMaterial = nullptr;
+    }
+
+    if (PreparationDynamicMaterial != nullptr && !PUObjectReferenceSafety::IsLiveObject(PreparationDynamicMaterial))
+    {
+        PreparationDynamicMaterial = nullptr;
+    }
+
+    if (CachedDishWidget.IsStale())
+    {
+        CachedDishWidget.Reset();
+    }
+    if (NavigationUp.IsStale())
+    {
+        NavigationUp.Reset();
+    }
+    if (NavigationDown.IsStale())
+    {
+        NavigationDown.Reset();
+    }
+    if (NavigationLeft.IsStale())
+    {
+        NavigationLeft.Reset();
+    }
+    if (NavigationRight.IsStale())
+    {
+        NavigationRight.Reset();
+    }
+}
+
+void UPUIngredientSlot::SanitizeAllLiveIngredientSlots()
+{
+    for (TObjectIterator<UPUIngredientSlot> It; It; ++It)
+    {
+        UPUIngredientSlot* Slot = *It;
+        if (PUObjectReferenceSafety::CanQueryUObject(Slot) && !Slot->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed))
+        {
+            Slot->SanitizeStaleObjectReferences();
+        }
+    }
 }
 
 void UPUIngredientSlot::SetIngredientInstance(const FIngredientInstance& InIngredientInstance)

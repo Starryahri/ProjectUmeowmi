@@ -53,6 +53,11 @@ public:
     /** Clears owner/slot refs and dynamic delegate bindings before the behavior or owner widget is destroyed. */
     virtual void DisconnectFromOwner(UPUPipelineStageMinigameModuleWidget* OwnerWidget, UObject* ProgressBarSubscriber);
 
+    /** Clears dead owner/slot refs (safe before GC). */
+    virtual void SanitizeStaleObjectReferences();
+
+    static void SanitizeAllLiveStripMinigameBehaviors();
+
 protected:
     UFUNCTION(BlueprintCallable, Category = "Strip Minigame Behavior")
     void RequestEndStripMinigameSession();

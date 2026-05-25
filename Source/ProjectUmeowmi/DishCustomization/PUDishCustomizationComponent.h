@@ -118,6 +118,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
     void SetActiveCustomizationWidget(UPUDishCustomizationWidget* ActiveWidget);
 
+    /** Clears dead widget pointers held on this component (shutdown). */
+    void SanitizeStaleWidgetReferences();
+
     // Function to set the initial dish data from an order
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Orders")
     void SetInitialDishData(const FPUDishBase& InitialDishData);
@@ -387,6 +390,8 @@ private:
     /** Last extents used for virtual cursor clamp (see TryGetVirtualCursorViewportPixelExtents); detect resize without stick input. */
     int32 CachedVirtualCursorViewportExtentsX = 0;
     int32 CachedVirtualCursorViewportExtentsY = 0;
+
+    float CustomizationUIGCSanitizeAccumulator = 0.f;
 
     bool TryComputeVirtualCursorDesktopAbsolute(APlayerController* PC, FVector2D& OutDesktopAbs) const;
 

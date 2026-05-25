@@ -27,6 +27,9 @@ class PROJECTUMEOWMI_API UPURadarChart : public URadarChart
 public:
     UPURadarChart();
 
+    /** Nulls dead Segments[].Icon refs and migrates live icons into IconBrush (GC only traverses Icon UPROPERTY). */
+    void ClearSegmentIconPropertyRefsForGC();
+
     /**
      * Shows or hides the icons in the radar chart.
      * @param bShow - Whether to show the icons
@@ -260,6 +263,9 @@ public:
 
     /** Clears invalid UObject/Slate refs on every URadarChart under this tree and nested UserWidget subtrees (UMG preview / GC). */
     static void SanitizeRadarChartsInWidgetTree(class UWidgetTree* InWidgetTree);
+
+    /** Clears stale segment/style refs on every live URadarChart instance (call before GC / on shutdown). */
+    static void SanitizeAllLiveRadarCharts();
 
     /**
      * Helper function to find a PURadarChart widget in a parent widget.
