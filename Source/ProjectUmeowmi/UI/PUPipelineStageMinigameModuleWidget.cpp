@@ -244,6 +244,19 @@ void UPUPipelineStageMinigameModuleWidget::InitializeStageModule_Implementation(
     ApplyStageMinigameUIPanelVisibility();
 }
 
+int32 UPUPipelineStageMinigameModuleWidget::GetCurrentStageIndex() const
+{
+    if (IsValid(CustomizationComponent))
+    {
+        return CustomizationComponent->GetActiveCustomizationPipelineIndex();
+    }
+    if (IsValid(OwnerShell))
+    {
+        return OwnerShell->GetActiveCustomizationPipelineIndex();
+    }
+    return INDEX_NONE;
+}
+
 void UPUPipelineStageMinigameModuleWidget::ShutdownStageModule_Implementation()
 {
     if (bStripMinigameActive)

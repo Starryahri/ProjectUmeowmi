@@ -80,6 +80,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
     int32 GetActiveCustomizationPipelineIndex() const { return ActiveCustomizationPipelineIndex; }
 
+    /** Alias for GetActiveCustomizationPipelineIndex — 0-based pipeline row during customization. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline", meta = (DisplayName = "Get Current Stage Index"))
+    int32 GetCurrentStageIndex() const { return GetActiveCustomizationPipelineIndex(); }
+
     UFUNCTION(BlueprintPure, Category = "Dish Customization|Pipeline")
     bool TryGetActivePipelineStage(FPUDishCustomizationStageDescriptor& OutStage) const;
 
@@ -101,6 +105,9 @@ public:
     /** Clamp Index into pipeline range or noop when invalid / no pipeline. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Pipeline")
     void SetActiveCustomizationPipelineIndex(int32 Index);
+
+    /** Refreshes rail + mounted stage module on the active customization widget after pipeline index changes. */
+    void RefreshActiveWidgetPipelinePresentation();
 
     // Blueprint-callable function for UI to sync dish data
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|UI")
@@ -132,6 +139,16 @@ public:
     // Function to get ingredient data for the widget
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
     TArray<FPUIngredientBase> GetIngredientData() const;
+
+    /** Unlocked ingredients filtered for pantry display. Slot type filter supersedes stage parent tags when non-empty. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
+    TArray<FPUIngredientBase> GetPantryEligibleIngredients(
+        const FGameplayTagContainer& SlotRequiredTypes,
+        const FGameplayTagContainer& StageParentTags,
+        const FGameplayTag& TutorialAllowedIngredientTag) const;
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Data Tables")
+    UDataTable* GetIngredientTypeDataTable() const { return IngredientTypeDataTable; }
 
     // Function to get preparation data for the widget
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
@@ -313,6 +330,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
     UDataTable* PreparationDataTable;
+
+    /** Icons/labels for Ingredient.Type.* tags (optional; also configurable on Game Instance). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* IngredientTypeDataTable;
 
 protected:
     // Internal state management

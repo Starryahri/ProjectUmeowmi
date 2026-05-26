@@ -176,6 +176,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline")
     int32 GetActiveCustomizationPipelineIndex() const;
 
+    /** Alias for GetActiveCustomizationPipelineIndex — 0-based pipeline row during customization. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline", meta = (DisplayName = "Get Current Stage Index"))
+    int32 GetCurrentStageIndex() const { return GetActiveCustomizationPipelineIndex(); }
+
     /** Full descriptor for the active pipeline row; false if none. */
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline")
     bool TryGetActivePipelineStage(FPUDishCustomizationStageDescriptor& OutStage) const;
@@ -225,14 +229,50 @@ public:
     //   - bUseShelvingWidgets: If true, slots will be organized into shelving widgets (3 slots per shelf). If false, slots added directly to container
     //   - bCreateEmptySlots: If true, creates empty slots up to MaxSlots. If false, only creates slots for existing ingredients
     //   - bEnableDrag: Whether to enable drag functionality on the slots
-    //   - IngredientSource: Array of ingredient instances to use. If empty, uses CurrentDishData.IngredientInstances (except for Prep location, which always creates empty slots)
+    //   - IngredientSource: Array of ingredient instances to use. If empty, uses CurrentDishData.IngredientInstances unless bUseEmptyIngredientSource is true (pipeline rail rebuild).
     //   - FirstSlotLeftPadding: Left padding to apply to the first slot when added directly to container (not using shelving widgets). Useful for aligning with skewed backgrounds.
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
-    void CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding = 0.0f);
-    
+    //   - SlotRequiredTypeTags: One Ingredient.Type tag per slot index (index 0 = first slot). Unlisted indices are open.
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients", meta = (AutoCreateRefTerm = "SlotRequiredTypeTags"))
+    void CreateSlots(
+        UPanelWidget* Container,
+        EPUIngredientSlotLocation Location,
+        int32 MaxSlots,
+        bool bUseShelvingWidgets,
+        bool bCreateEmptySlots,
+        bool bEnableDrag,
+        const TArray<FIngredientInstance>& IngredientSource,
+        float FirstSlotLeftPadding,
+        const TArray<FGameplayTag>& SlotRequiredTypeTags,
+        bool bUseEmptyIngredientSource = false);
+
+    /** Convenience: same as CreateSlots with FirstSlotLeftPadding defaulting to 0. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients", meta = (AutoCreateRefTerm = "SlotRequiredTypeTags"))
+    void CreateSlotsWithTypeTags(
+        UPanelWidget* Container,
+        EPUIngredientSlotLocation Location,
+        int32 MaxSlots,
+        bool bUseShelvingWidgets,
+        bool bCreateEmptySlots,
+        bool bEnableDrag,
+        const TArray<FIngredientInstance>& IngredientSource,
+        const TArray<FGameplayTag>& SlotRequiredTypeTags,
+        float FirstSlotLeftPadding = 0.0f);
+
     // Convenience function that uses CurrentDishData.IngredientInstances (no IngredientSource parameter needed).
-    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
-    void CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots = 12, bool bUseShelvingWidgets = false, bool bCreateEmptySlots = true, bool bEnableDrag = true, float FirstSlotLeftPadding = 0.0f);
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients", meta = (AutoCreateRefTerm = "SlotRequiredTypeTags"))
+    void CreateSlotsFromDishData(
+        UPanelWidget* Container,
+        EPUIngredientSlotLocation Location,
+        int32 MaxSlots,
+        bool bUseShelvingWidgets,
+        bool bCreateEmptySlots,
+        bool bEnableDrag,
+        float FirstSlotLeftPadding,
+        const TArray<FGameplayTag>& SlotRequiredTypeTags);
+
+    /** Rebuild IngredientRailSlot (or override container) using active pipeline stage slot types (empty typed slots; not pre-filled from dish instances). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline")
+    void RebuildIngredientRailForActiveStage(UPanelWidget* ContainerOverride = nullptr);
 
     /** Unbinds and removes dynamically spawned ingredient strip slots and shelving widgets (gather/cooking/plating via CreateSlots). Safe to call before rebuilding the rail on stage change. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Ingredients")
@@ -350,6 +390,10 @@ public:
     // Pantry Functions
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
     void PopulatePantrySlots();
+
+    /** DT_IngredientTypes from customization component, else Game Instance. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pantry")
+    class UDataTable* ResolveIngredientTypeDataTable() const;
 
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
     void OpenPantry();
@@ -617,6 +661,10 @@ protected:
     UPROPERTY()
     TWeakObjectPtr<class UPUIngredientSlot> PendingEmptySlot;
 
+    /** Snapshot of PendingEmptySlot type filter when pantry opens (used for PopulatePantrySlots even if weak ptr hiccups). */
+    UPROPERTY()
+    FGameplayTagContainer ActivePantrySlotRequiredTypes;
+
     // Shelving widget management (for pantry slots)
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Dish Customization Widget|Pantry")
     TArray<UUserWidget*> CreatedPantryShelvingWidgets;
@@ -797,6 +845,21 @@ private:
 
     /** Tear down dynamically spawned recipe log slots/shelving (detach Slate, clear TArray refs); UObject lifetime follows normal GC. */
     void TeardownRecipeLogDynamicWidgets(bool bFinishDestroyInstances);
+
+    void ClearPantrySlots();
+    FGameplayTagContainer GetActivePantrySlotTypeFilter() const;
+    void SetActivePantryContextFromSlot(class UPUIngredientSlot* IngredientSlot);
+    void ClearActivePantrySlotTypeFilter();
+    void RefreshPantryForActiveSlotContext();
+    FGameplayTagContainer GetActivePantryStageParentTags() const;
+    FGameplayTag GetActivePantryTutorialAllowedTag() const;
+    TArray<FPUIngredientBase> GetPantryEligibleIngredients() const;
+    bool DoesIngredientPassActivePantryFilters(const FPUIngredientBase& Ingredient) const;
+
+    static FGameplayTagContainer ResolveSlotRequiredIngredientTypes(
+        int32 SlotIndex,
+        const TArray<FGameplayTag>& SlotRequiredTypeTags,
+        const FIngredientInstance* IngredientInstance);
 
     /** Skip full rebuild when dish recipe-log slice unchanged (avoids flashing base when only prepped rows change). */
     uint32 CachedRecipeLogBaseSignature = 0;

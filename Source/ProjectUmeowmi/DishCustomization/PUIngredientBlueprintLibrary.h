@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "PUIngredientBase.h"
+#include "PUIngredientType.h"
 #include "PUIngredientBlueprintLibrary.generated.h"
 
 /**
@@ -76,4 +77,24 @@ public:
     /** HSV saturation boost used by ingredient slots and cut-minigame tier tints. */
     UFUNCTION(BlueprintPure, Category = "Ingredient|Color")
     static FLinearColor BoostColorSaturation(FLinearColor Color, float SaturationMultiplier = 1.5f);
+
+    /** True when RequiredTypes is empty, or any ingredient type hierarchically matches any required type (OR). */
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Type")
+    static bool IngredientMatchesTypeFilter(const FPUIngredientBase& Ingredient, const FGameplayTagContainer& RequiredTypes);
+
+    /** True when FilterTags is empty, or IngredientTag matches any filter tag (hierarchical OR). */
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Type")
+    static bool IngredientMatchesParentTagFilter(const FPUIngredientBase& Ingredient, const FGameplayTagContainer& FilterTags);
+
+    /** Lookup a type metadata row by tag (exact row TypeTag match, then row name). */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient|Type")
+    static bool TryGetIngredientTypeRow(UDataTable* TypeDataTable, FGameplayTag TypeTag, FPUIngredientTypeBase& OutRow);
+
+    /** Icon for a type tag from DT_IngredientTypes; nullptr when missing. */
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Type")
+    static UTexture2D* GetTypeIconForTag(UDataTable* TypeDataTable, FGameplayTag TypeTag);
+
+    /** First matching icon for any tag in RequiredTypes (slot hint). */
+    UFUNCTION(BlueprintPure, Category = "Ingredient|Type")
+    static UTexture2D* GetTypeIconForRequiredTypes(UDataTable* TypeDataTable, const FGameplayTagContainer& RequiredTypes);
 }; 

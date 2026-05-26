@@ -58,9 +58,20 @@ struct PROJECTUMEOWMI_API FPUDishCustomizationStageDescriptor
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage")
     TSubclassOf<UUserWidget> StageWidgetClass;
 
-    /** Pantry shows ingredients matching these tags (OR). Empty = no extra tag filter beyond unlock rules. */
+    /** Pantry shows ingredients matching these tags (OR). Empty = no extra tag filter beyond unlock rules. Superseded when filling a typed slot. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Pantry", meta = (Categories = "Ingredient"))
     FGameplayTagContainer PantryIngredientParentTags;
+
+    /**
+     * Per-slot Ingredient.Type tag for the ingredient rail / gather grid (index 0 = first slot).
+     * Shorter array → remaining slots accept any ingredient. Example: Protein + MaxSlots 4 → slot 0 protein, slots 1–3 open.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Slots", meta = (Categories = "Ingredient.Type"))
+    TArray<FGameplayTag> SlotRequiredTypeTags;
+
+    /** Rail/gather slot count for this stage (1–12). When <= 0, uses max(4, instance count, SlotRequiredTypeTags count). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Slots", meta = (ClampMin = "0", ClampMax = "12"))
+    int32 IngredientRailMaxSlots = 0;
 
     /** Optional gate — BP/gameplay can require this tag before advancing (Phase 5+). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Advance", meta = (Categories = "Dish"))
@@ -102,6 +113,10 @@ struct FIngredientInstance
     // Preparations for easy template creation (redundant with IngredientData.ActivePreparations but convenient)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Preparation"))
     FGameplayTagContainer Preparations;
+
+    /** When set on a gather/rail slot template, pantry only shows ingredients matching these types (OR). Empty = any ingredient. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient", meta = (Categories = "Ingredient.Type"))
+    FGameplayTagContainer RequiredIngredientTypes;
 
     // Optional: Placement data for this instance
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient")

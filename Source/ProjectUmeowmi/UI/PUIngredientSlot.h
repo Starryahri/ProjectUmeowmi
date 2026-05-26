@@ -211,6 +211,16 @@ public:
     UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Pantry")
     bool IsRecipeLogSlot() const { return bRecipeLogSlot; }
 
+    /** Pantry filter: when non-empty, only ingredients whose IngredientTypes overlap these tags (OR) may fill this slot. */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Type")
+    void SetRequiredIngredientTypes(const FGameplayTagContainer& InRequiredTypes);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Type")
+    const FGameplayTagContainer& GetRequiredIngredientTypes() const { return RequiredIngredientTypes; }
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Type")
+    bool HasRequiredIngredientTypes() const { return RequiredIngredientTypes.Num() > 0; }
+
     // Controller input functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
     void HandleControllerSelect(); // Called when A/X button is pressed on focused slot
@@ -337,6 +347,10 @@ protected:
     UPROPERTY(meta = (BindWidgetOptional))
     UImage* InventoryEmptyDot;
 
+    /** Optional: type hint icon on empty gather/rail slots (name must match IngredientTypeIcon in WBP). */
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* IngredientTypeIcon;
+
     /** Texture for pantry shelf padding cells; assign on the ingredient slot widget class (InventoryEmptyDot brush optional if set here). */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ingredient Slot|Pantry")
     TObjectPtr<UTexture2D> PantryShelfEmptyDotTexture = nullptr;
@@ -421,6 +435,10 @@ protected:
     bool bPreppedPantryPickerSlot = false;
 
     bool bRecipeLogSlot = false;
+
+    /** Slot accepts only ingredients whose IngredientTypes overlap this set (OR). Empty = any ingredient. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Type")
+    FGameplayTagContainer RequiredIngredientTypes;
 
     // Cached reference to the dish customization widget (set when slot is created)
     UPROPERTY()
@@ -519,6 +537,7 @@ private:
     UTexture2D* GetPreparationPrepTexture(const FGameplayTag& PreparationTag, UDataTable* PrepDataTable) const;
     void ClearDisplay();
     void ApplyPantryShelfEmptyVisual();
+    void UpdateTypeSlotVisual();
 
     // Get the appropriate texture based on location
     UTexture2D* GetTextureForLocation() const;

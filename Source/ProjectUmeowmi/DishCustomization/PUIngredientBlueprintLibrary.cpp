@@ -180,4 +180,117 @@ float UPUIngredientBlueprintLibrary::GetTotalTextureValue(const FPUIngredientBas
 TArray<FGameplayTag> UPUIngredientBlueprintLibrary::GetEffectsAtQuantity(const FPUIngredientBase& Ingredient, int32 Quantity)
 {
     return Ingredient.GetEffectsAtQuantity(Quantity);
-} 
+}
+
+bool UPUIngredientBlueprintLibrary::IngredientMatchesTypeFilter(
+    const FPUIngredientBase& Ingredient,
+    const FGameplayTagContainer& RequiredTypes)
+{
+    if (RequiredTypes.IsEmpty())
+    {
+        return true;
+    }
+
+    if (Ingredient.IngredientTypes.IsEmpty())
+    {
+        return false;
+    }
+
+    // UE 5.5 HasAny is hierarchical: ingredient Ingredient.Type.Protein.Beef matches required Ingredient.Type.Protein.
+    if (Ingredient.IngredientTypes.HasAny(RequiredTypes))
+    {
+        return true;
+    }
+
+    // Reverse direction: required tag is more specific than ingredient category tag.
+    if (RequiredTypes.HasAny(Ingredient.IngredientTypes))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+bool UPUIngredientBlueprintLibrary::IngredientMatchesParentTagFilter(
+    const FPUIngredientBase& Ingredient,
+    const FGameplayTagContainer& FilterTags)
+{
+    if (FilterTags.IsEmpty())
+    {
+        return true;
+    }
+
+    if (!Ingredient.IngredientTag.IsValid())
+    {
+        return false;
+    }
+
+    TArray<FGameplayTag> FilterArray;
+    FilterTags.GetGameplayTagArray(FilterArray);
+    for (const FGameplayTag& FilterTag : FilterArray)
+    {
+        if (Ingredient.IngredientTag.MatchesTag(FilterTag) || FilterTag.MatchesTag(Ingredient.IngredientTag))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool UPUIngredientBlueprintLibrary::TryGetIngredientTypeRow(
+    UDataTable* TypeDataTable,
+    FGameplayTag TypeTag,
+    FPUIngredientTypeBase& OutRow)
+{
+    if (!TypeDataTable || !TypeTag.IsValid())
+    {
+        return false;
+    }
+
+    const TArray<FName> RowNames = TypeDataTable->GetRowNames();
+    for (const FName& RowName : RowNames)
+    {
+        if (FPUIngredientTypeBase* Row = TypeDataTable->FindRow<FPUIngredientTypeBase>(RowName, TEXT("TryGetIngredientTypeRow")))
+        {
+            if (Row->TypeTag == TypeTag)
+            {
+                OutRow = *Row;
+                return true;
+            }
+        }
+    }
+
+    if (FPUIngredientTypeBase* RowByName = TypeDataTable->FindRow<FPUIngredientTypeBase>(TypeTag.GetTagName(), TEXT("TryGetIngredientTypeRow")))
+    {
+        OutRow = *RowByName;
+        return true;
+    }
+
+    return false;
+}
+
+UTexture2D* UPUIngredientBlueprintLibrary::GetTypeIconForTag(UDataTable* TypeDataTable, FGameplayTag TypeTag)
+{
+    FPUIngredientTypeBase Row;
+    if (TryGetIngredientTypeRow(TypeDataTable, TypeTag, Row))
+    {
+        return Row.TypeIcon;
+    }
+    return nullptr;
+}
+
+UTexture2D* UPUIngredientBlueprintLibrary::GetTypeIconForRequiredTypes(
+    UDataTable* TypeDataTable,
+    const FGameplayTagContainer& RequiredTypes)
+{
+    TArray<FGameplayTag> RequiredArray;
+    RequiredTypes.GetGameplayTagArray(RequiredArray);
+    for (const FGameplayTag& TypeTag : RequiredArray)
+    {
+        if (UTexture2D* Icon = GetTypeIconForTag(TypeDataTable, TypeTag))
+        {
+            return Icon;
+        }
+    }
+    return nullptr;
+}

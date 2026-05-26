@@ -197,6 +197,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
 	class UDataTable* GetIngredientDataTable() const { return IngredientDataTable; }
 
+	/** Metadata for Ingredient.Type.* (icons/labels). Optional fallback when station component table is unset. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
+	class UDataTable* GetIngredientTypeDataTable() const { return IngredientTypeDataTable; }
+
 	/** Dish data table (journal recipes, cooking). */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Recipe Journal")
 	class UDataTable* GetDishDataTable() const { return DishDataTable; }
@@ -618,6 +622,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
 	TObjectPtr<class UDataTable> IngredientDataTable;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Recipe Journal")
+	TObjectPtr<class UDataTable> IngredientTypeDataTable;
 
 	// Dialogue State (stubbed for future use)
 	UPROPERTY(BlueprintReadOnly, Category = "Dialogue State")

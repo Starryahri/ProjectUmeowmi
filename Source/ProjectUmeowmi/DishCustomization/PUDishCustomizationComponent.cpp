@@ -1,4 +1,5 @@
 #include "PUDishCustomizationComponent.h"
+#include "PUIngredientBlueprintLibrary.h"
 #include "Math/Box.h"
 #include "PUDishPreviewComponent.h"
 #include "EnhancedInputComponent.h"
@@ -1642,6 +1643,7 @@ bool UPUDishCustomizationComponent::AdvanceCustomizationPipeline()
         return false;
     }
     ActiveCustomizationPipelineIndex = Next;
+    RefreshActiveWidgetPipelinePresentation();
     return true;
 }
 
@@ -1652,6 +1654,15 @@ void UPUDishCustomizationComponent::SetActiveCustomizationPipelineIndex(int32 In
         return;
     }
     ActiveCustomizationPipelineIndex = Index;
+    RefreshActiveWidgetPipelinePresentation();
+}
+
+void UPUDishCustomizationComponent::RefreshActiveWidgetPipelinePresentation()
+{
+    if (UPUDishCustomizationWidget* Widget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        Widget->RefreshPipelineStagePresentation();
+    }
 }
 
 void UPUDishCustomizationComponent::UpdateCurrentDishData(const FPUDishBase& NewDishData)
@@ -1993,6 +2004,40 @@ TArray<FPUIngredientBase> UPUDishCustomizationComponent::GetIngredientData() con
     }
     
     return IngredientData;
+}
+
+TArray<FPUIngredientBase> UPUDishCustomizationComponent::GetPantryEligibleIngredients(
+    const FGameplayTagContainer& SlotRequiredTypes,
+    const FGameplayTagContainer& StageParentTags,
+    const FGameplayTag& TutorialAllowedIngredientTag) const
+{
+    TArray<FPUIngredientBase> Filtered;
+    const TArray<FPUIngredientBase> AllUnlocked = GetIngredientData();
+    const bool bHasSlotTypeFilter = SlotRequiredTypes.Num() > 0;
+
+    for (const FPUIngredientBase& Ingredient : AllUnlocked)
+    {
+        if (TutorialAllowedIngredientTag.IsValid() && Ingredient.IngredientTag != TutorialAllowedIngredientTag)
+        {
+            continue;
+        }
+
+        if (bHasSlotTypeFilter)
+        {
+            if (!UPUIngredientBlueprintLibrary::IngredientMatchesTypeFilter(Ingredient, SlotRequiredTypes))
+            {
+                continue;
+            }
+        }
+        else if (!UPUIngredientBlueprintLibrary::IngredientMatchesParentTagFilter(Ingredient, StageParentTags))
+        {
+            continue;
+        }
+
+        Filtered.Add(Ingredient);
+    }
+
+    return Filtered;
 }
 
 TArray<FPUPreparationBase> UPUDishCustomizationComponent::GetPreparationData() const

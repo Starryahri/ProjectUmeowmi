@@ -208,6 +208,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic", meta = (Categories = "Ingredient"))
     FGameplayTag IngredientTag;
 
+    /** Category tags for pantry filtering (e.g. Ingredient.Type.Protein). OR-matched against slot RequiredIngredientTypes. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic", meta = (Categories = "Ingredient.Type"))
+    FGameplayTagContainer IngredientTypes;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient|Basic")
     FName IngredientName;
 

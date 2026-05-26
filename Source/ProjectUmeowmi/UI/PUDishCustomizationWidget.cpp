@@ -6,6 +6,7 @@
 #include "PUJournalWidget.h"
 #include "Kismet/GameplayStatics.h"
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
+#include "../DishCustomization/PUIngredientBlueprintLibrary.h"
 #include "../PUProjectUmeowmiGameInstance.h"
 #include "PUPopupData.h"
 #include "PUIngredientButton.h"
@@ -738,6 +739,7 @@ void UPUDishCustomizationWidget::ReleaseProgrammaticCustomizationSlots()
     bPreppedPantrySlotsHierarchyBuilt = false;
 
     PendingEmptySlot.Reset();
+    ClearActivePantrySlotTypeFilter();
     bIngredientSlotsCreated = false;
 
     CachedRecipeLogBaseSignature = 0;
@@ -1399,16 +1401,39 @@ bool UPUDishCustomizationWidget::RefreshPipelineStagePresentation()
     TryResolvePipelineShellSlotsFromHierarchy();
     if (!CustomizationComponent || !CustomizationComponent->HasActiveCustomizationPipeline())
     {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RefreshPipelineStagePresentation — skipped: no active customization pipeline."));
         ClearStageModuleSlot();
         return false;
     }
     FPUDishCustomizationStageDescriptor Stage;
     if (!CustomizationComponent->TryGetActivePipelineStage(Stage))
     {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RefreshPipelineStagePresentation — skipped: TryGetActivePipelineStage failed (index=%d)."),
+            CustomizationComponent->GetActiveCustomizationPipelineIndex());
         ClearStageModuleSlot();
         return false;
     }
+
+    const int32 PipeIdx = CustomizationComponent->GetActiveCustomizationPipelineIndex();
+    UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RefreshPipelineStagePresentation — stage index=%d id=%s display=\"%s\" railVisible=%s typedTags=%d railMaxSlots=%d"),
+        PipeIdx,
+        Stage.StageId.IsValid() ? *Stage.StageId.ToString() : TEXT("(none)"),
+        *Stage.StageDisplayName.ToString(),
+        Stage.bIngredientRailVisible ? TEXT("true") : TEXT("false"),
+        Stage.SlotRequiredTypeTags.Num(),
+        Stage.IngredientRailMaxSlots);
+
     SetIngredientRailSlotVisible(Stage.bIngredientRailVisible);
+    if (Stage.bIngredientRailVisible)
+    {
+        RebuildIngredientRailForActiveStage(nullptr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] Rail hidden for stage \"%s\" — tearing down strip slots."),
+            *Stage.StageDisplayName.ToString());
+        TeardownDynamicCreatedIngredientSlotsStrip();
+    }
     if (!Stage.StageWidgetClass)
     {
         ClearStageModuleSlot();
@@ -1426,11 +1451,7 @@ bool UPUDishCustomizationWidget::AdvancePipelineStageAndRefreshPresentation()
     {
         return false;
     }
-    if (!CustomizationComponent->AdvanceCustomizationPipeline())
-    {
-        return false;
-    }
-    return RefreshPipelineStagePresentation();
+    return CustomizationComponent->AdvanceCustomizationPipeline();
 }
 
 bool UPUDishCustomizationWidget::CanIngredientStripSlotStartStageMinigame(const UPUIngredientSlot* StripSlot) const
@@ -1690,7 +1711,7 @@ void UPUDishCustomizationWidget::CreateIngredientSlots()
     }
     
     // Use unified CreateSlots function with shelving widgets enabled
-    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::ActiveIngredientArea, AvailableIngredients.Num(), true, false, false, PantryInstances, 0.0f);
+    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::ActiveIngredientArea, AvailableIngredients.Num(), true, false, false, PantryInstances, 0.0f, TArray<FGameplayTag>());
     
     // Post-process: Set up special logic for prep stage slots (selection state, pantry click handler)
     for (int32 i = 0; i < CreatedIngredientSlots.Num() && i < AvailableIngredients.Num(); ++i)
@@ -1799,7 +1820,7 @@ void UPUDishCustomizationWidget::CreatePlatingIngredientSlots()
     // Use unified CreateSlots function
     // For plating, we want to create slots for each ingredient instance (no empty slots)
     // Use Plating location (not ActiveIngredientArea)
-    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Plating, 12, false, false, true, DishData.IngredientInstances, 0.0f);
+    CreateSlots(ContainerToUse, EPUIngredientSlotLocation::Plating, 12, false, false, true, DishData.IngredientInstances, 0.0f, TArray<FGameplayTag>());
     
     // Tutorial: advance step 3 to 4 when plating stage is shown. User handles BAO "I'm thinking we put the gochujang..." in Blueprint.
     if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
@@ -2172,6 +2193,7 @@ void UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry(const FI
     UpdateDishData(CurrentDishData);
 
     PendingEmptySlot.Reset();
+    ClearActivePantrySlotTypeFilter();
 
     if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
     {
@@ -2280,6 +2302,17 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
         return false;
     };
 
+    auto PassesPendingSlotTypeGate = [this](const FPUIngredientBase& IngredientData) -> bool
+    {
+        if (!PendingEmptySlot.IsValid())
+        {
+            return true;
+        }
+        return UPUIngredientBlueprintLibrary::IngredientMatchesTypeFilter(
+            IngredientData,
+            PendingEmptySlot->GetRequiredIngredientTypes());
+    };
+
     if (IngredientSlot->IsPreppedPantryPickerSlot())
     {
         const FIngredientInstance& Pick = IngredientSlot->GetIngredientInstance();
@@ -2288,6 +2321,10 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
             return;
         }
         if (!PassesTutorialIngredientGate(Pick.IngredientData.IngredientTag))
+        {
+            return;
+        }
+        if (!PassesPendingSlotTypeGate(Pick.IngredientData))
         {
             return;
         }
@@ -2321,6 +2358,11 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
         }
 
         if (!PassesTutorialIngredientGate(PantryInstance.IngredientData.IngredientTag))
+        {
+            return;
+        }
+
+        if (!PassesPendingSlotTypeGate(PantryInstance.IngredientData))
         {
             return;
         }
@@ -2841,7 +2883,7 @@ void UPUDishCustomizationWidget::CreateIngredientSlotsInContainer(UPanelWidget* 
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateIngredientSlotsInContainer - DEPRECATED: Use CreateSlots() instead"));
     
     // Use unified CreateSlotsFromDishData function (uses CurrentDishData.IngredientInstances)
-    CreateSlotsFromDishData(Container, SlotLocation, MaxSlots, false, true, true, 0.0f);
+    CreateSlotsFromDishData(Container, SlotLocation, MaxSlots, false, true, true, 0.0f, TArray<FGameplayTag>());
 }
 
 UUserWidget* UPUDishCustomizationWidget::GetOrCreateCurrentShelvingWidget(UPanelWidget* ContainerToUse)
@@ -2944,7 +2986,7 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentShelvingWidget(UPUIngredientSlo
     return false;
 }
 
-void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding)
+void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, const TArray<FIngredientInstance>& IngredientSource, float FirstSlotLeftPadding, const TArray<FGameplayTag>& SlotRequiredTypeTags, bool bUseEmptyIngredientSource)
 {
     UE_LOG(LogTemp, Warning, TEXT("🎯🎯🎯 PUDishCustomizationWidget::CreateSlots - FUNCTION CALLED! Location: %d, MaxSlots: %d"),
         (int32)Location, MaxSlots);
@@ -2975,16 +3017,15 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
     TeardownDynamicCreatedIngredientSlotsStrip();
     
     // Determine ingredient source
+    static const TArray<FIngredientInstance> EmptyIngredientInstances;
     const TArray<FIngredientInstance>* IngredientInstancesToUse = nullptr;
-    if (IngredientSource.Num() > 0)
+    if (bUseEmptyIngredientSource || IngredientSource.Num() > 0)
     {
-        IngredientInstancesToUse = &IngredientSource;
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Using provided ingredient source (%d instances)"), IngredientSource.Num());
+        IngredientInstancesToUse = IngredientSource.Num() > 0 ? &IngredientSource : &EmptyIngredientInstances;
     }
     else
     {
         IngredientInstancesToUse = &CurrentDishData.IngredientInstances;
-        //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Using CurrentDishData.IngredientInstances (%d instances)"), CurrentDishData.IngredientInstances.Num());
     }
     
     // Calculate how many slots to create
@@ -3043,32 +3084,25 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
         {
             IngredientSlot->OnIngredientDroppedOnSlot.AddDynamic(this, &UPUDishCustomizationWidget::OnPlatingIngredientDropped);
         }
+
+        const FIngredientInstance* InstanceForSlot =
+            (i < IngredientInstancesToUse->Num()) ? &(*IngredientInstancesToUse)[i] : nullptr;
+        IngredientSlot->SetRequiredIngredientTypes(
+            ResolveSlotRequiredIngredientTypes(i, SlotRequiredTypeTags, InstanceForSlot));
         
         // Set ingredient instance if we have one
-        if (i < IngredientInstancesToUse->Num())
+        if (InstanceForSlot && InstanceForSlot->IngredientData.IngredientTag.IsValid())
         {
-            const FIngredientInstance& IngredientInstance = (*IngredientInstancesToUse)[i];
-            
-            // Validate ingredient instance
-            if (IngredientInstance.IngredientData.IngredientTag.IsValid())
-            {
-                IngredientSlot->SetIngredientInstance(IngredientInstance);
-                IngredientSlot->UpdateDisplay();
-                
-                //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Created slot %d with ingredient: %s (ID: %d, Qty: %d)"), 
-                //    i, *IngredientInstance.IngredientData.DisplayName.ToString(), IngredientInstance.InstanceID, IngredientInstance.Quantity);
-            }
-            else
-            {
-                //UE_LOG(LogTemp,Warning, TEXT("⚠️ PUDishCustomizationWidget::CreateSlots - Invalid ingredient instance at index %d, creating empty slot"), i);
-                IngredientSlot->UpdateDisplay();
-            }
+            IngredientSlot->SetIngredientInstance(*InstanceForSlot);
+            IngredientSlot->UpdateDisplay();
+        }
+        else if (InstanceForSlot)
+        {
+            IngredientSlot->UpdateDisplay();
         }
         else
         {
-            // Create empty slot
             IngredientSlot->UpdateDisplay();
-            //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::CreateSlots - Created empty slot %d"), i);
         }
         
         // Add to our array
@@ -3166,6 +3200,23 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
     // Mark that slots have been created
     bIngredientSlotsCreated = true;
     
+    if (SlotRequiredTypeTags.Num() > 0 && Location == EPUIngredientSlotLocation::ActiveIngredientArea)
+    {
+        for (int32 SlotIdx = 0; SlotIdx < CreatedIngredientSlots.Num(); ++SlotIdx)
+        {
+            UPUIngredientSlot* IngredientSlotWidget = CreatedIngredientSlots[SlotIdx];
+            if (!IngredientSlotWidget)
+            {
+                continue;
+            }
+            const FGameplayTagContainer& RequiredTypes = IngredientSlotWidget->GetRequiredIngredientTypes();
+            UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] CreateSlots — slot[%d] empty=%s requiredTypes=%s"),
+                SlotIdx,
+                IngredientSlotWidget->IsEmpty() ? TEXT("true") : TEXT("false"),
+                RequiredTypes.Num() > 0 ? *RequiredTypes.ToStringSimple() : TEXT("(any)"));
+        }
+    }
+    
     // Planning gather plate vs cooking strip both use ActiveIngredientArea — disambiguate with StageType
     if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && StageType == EDishCustomizationStageType::Planning)
     {
@@ -3182,11 +3233,146 @@ void UPUDishCustomizationWidget::CreateSlots(UPanelWidget* Container, EPUIngredi
     }
 }
 
-void UPUDishCustomizationWidget::CreateSlotsFromDishData(UPanelWidget* Container, EPUIngredientSlotLocation Location, int32 MaxSlots, bool bUseShelvingWidgets, bool bCreateEmptySlots, bool bEnableDrag, float FirstSlotLeftPadding)
+void UPUDishCustomizationWidget::CreateSlotsWithTypeTags(
+    UPanelWidget* Container,
+    EPUIngredientSlotLocation Location,
+    int32 MaxSlots,
+    bool bUseShelvingWidgets,
+    bool bCreateEmptySlots,
+    bool bEnableDrag,
+    const TArray<FIngredientInstance>& IngredientSource,
+    const TArray<FGameplayTag>& SlotRequiredTypeTags,
+    float FirstSlotLeftPadding)
 {
-    // CreateSlots with empty IngredientSource selects CurrentDishData.IngredientInstances.
+    CreateSlots(
+        Container,
+        Location,
+        MaxSlots,
+        bUseShelvingWidgets,
+        bCreateEmptySlots,
+        bEnableDrag,
+        IngredientSource,
+        FirstSlotLeftPadding,
+        SlotRequiredTypeTags);
+}
+
+void UPUDishCustomizationWidget::CreateSlotsFromDishData(
+    UPanelWidget* Container,
+    EPUIngredientSlotLocation Location,
+    int32 MaxSlots,
+    bool bUseShelvingWidgets,
+    bool bCreateEmptySlots,
+    bool bEnableDrag,
+    float FirstSlotLeftPadding,
+    const TArray<FGameplayTag>& SlotRequiredTypeTags)
+{
     TArray<FIngredientInstance> EmptyArray;
-    CreateSlots(Container, Location, MaxSlots, bUseShelvingWidgets, bCreateEmptySlots, bEnableDrag, EmptyArray, FirstSlotLeftPadding);
+    CreateSlots(
+        Container,
+        Location,
+        MaxSlots,
+        bUseShelvingWidgets,
+        bCreateEmptySlots,
+        bEnableDrag,
+        EmptyArray,
+        FirstSlotLeftPadding,
+        SlotRequiredTypeTags);
+}
+
+FGameplayTagContainer UPUDishCustomizationWidget::ResolveSlotRequiredIngredientTypes(
+    int32 SlotIndex,
+    const TArray<FGameplayTag>& SlotRequiredTypeTags,
+    const FIngredientInstance* IngredientInstance)
+{
+    if (SlotRequiredTypeTags.Num() > 0)
+    {
+        if (SlotIndex < SlotRequiredTypeTags.Num() && SlotRequiredTypeTags[SlotIndex].IsValid())
+        {
+            FGameplayTagContainer SingleTagContainer;
+            SingleTagContainer.AddTag(SlotRequiredTypeTags[SlotIndex]);
+            return SingleTagContainer;
+        }
+        return FGameplayTagContainer();
+    }
+
+    if (IngredientInstance)
+    {
+        return IngredientInstance->RequiredIngredientTypes;
+    }
+
+    return FGameplayTagContainer();
+}
+
+void UPUDishCustomizationWidget::RebuildIngredientRailForActiveStage(UPanelWidget* ContainerOverride)
+{
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RebuildIngredientRailForActiveStage — skipped: not in PIE/game world."));
+        return;
+    }
+
+    if (!CustomizationComponent || !CustomizationComponent->HasActiveCustomizationPipeline())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RebuildIngredientRailForActiveStage — skipped: no active customization pipeline."));
+        return;
+    }
+
+    FPUDishCustomizationStageDescriptor Stage;
+    if (!CustomizationComponent->TryGetActivePipelineStage(Stage))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RebuildIngredientRailForActiveStage — skipped: TryGetActivePipelineStage failed."));
+        return;
+    }
+
+    TryResolvePipelineShellSlotsFromHierarchy();
+    UPanelWidget* Container = ContainerOverride ? ContainerOverride : IngredientRailSlot.Get();
+    if (!Container)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RebuildIngredientRailForActiveStage — FAILED: IngredientRailSlot panel not found in widget hierarchy. Add a panel named \"IngredientRailSlot\" to the shell widget."));
+        return;
+    }
+
+    const int32 InstanceCount = CurrentDishData.IngredientInstances.Num();
+    const int32 TypeSlotCount = Stage.SlotRequiredTypeTags.Num();
+    int32 MaxSlots = Stage.IngredientRailMaxSlots;
+    if (MaxSlots <= 0)
+    {
+        MaxSlots = FMath::Max(4, FMath::Max(InstanceCount, TypeSlotCount));
+    }
+    else
+    {
+        MaxSlots = FMath::Clamp(MaxSlots, 1, 12);
+        MaxSlots = FMath::Max(MaxSlots, FMath::Max(InstanceCount, TypeSlotCount));
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RebuildIngredientRailForActiveStage — rebuilding container=\"%s\" maxSlots=%d typedTags=%d dishInstances=%d (slots start empty; types from stage)"),
+        *Container->GetName(),
+        MaxSlots,
+        TypeSlotCount,
+        InstanceCount);
+    for (int32 TypeIdx = 0; TypeIdx < Stage.SlotRequiredTypeTags.Num(); ++TypeIdx)
+    {
+        const FGameplayTag& TypeTag = Stage.SlotRequiredTypeTags[TypeIdx];
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail]   SlotRequiredTypeTags[%d] = %s"),
+            TypeIdx,
+            TypeTag.IsValid() ? *TypeTag.ToString() : TEXT("(invalid/open)"));
+    }
+
+    TArray<FIngredientInstance> EmptyArray;
+    CreateSlots(
+        Container,
+        EPUIngredientSlotLocation::ActiveIngredientArea,
+        MaxSlots,
+        false,
+        true,
+        true,
+        EmptyArray,
+        0.0f,
+        Stage.SlotRequiredTypeTags,
+        true);
+
+    UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RebuildIngredientRailForActiveStage — done, created %d strip slot(s)."),
+        CreatedIngredientSlots.Num());
 }
 
 TArray<FIngredientInstance> UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable(UDataTable* IngredientDataTable)
@@ -3195,36 +3381,23 @@ TArray<FIngredientInstance> UPUDishCustomizationWidget::GetIngredientInstancesFr
     
     if (!IngredientDataTable)
     {
-        //UE_LOG(LogTemp,Warning, TEXT("⚠️ UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable - IngredientDataTable is NULL"));
         return IngredientInstances;
     }
     
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable - Getting ingredient instances from table: %s"), 
-    //    *IngredientDataTable->GetName());
-    
-    // Get all row names from the data table
-    TArray<FName> RowNames = IngredientDataTable->GetRowNames();
-    
-    // Convert each ingredient base to an ingredient instance
+    const TArray<FName> RowNames = IngredientDataTable->GetRowNames();
     for (const FName& RowName : RowNames)
     {
         if (FPUIngredientBase* Ingredient = IngredientDataTable->FindRow<FPUIngredientBase>(RowName, TEXT("GetIngredientInstancesFromDataTable")))
         {
-            // Create an ingredient instance with quantity 0 and instance ID 0
-            // This is suitable for pantry/prep slots that display ingredients but aren't "active" instances
             FIngredientInstance Instance;
             Instance.IngredientData = *Ingredient;
             Instance.IngredientTag = Ingredient->IngredientTag;
-            Instance.Quantity = 0; // Empty slot, but has ingredient data for display
-            Instance.InstanceID = 0; // Not a real instance, just for display
-            Instance.Preparations = FGameplayTagContainer(); // No preparations initially
-            
+            Instance.Quantity = 0;
+            Instance.InstanceID = 0;
+            Instance.Preparations = FGameplayTagContainer();
             IngredientInstances.Add(Instance);
         }
     }
-    
-    //UE_LOG(LogTemp,Display, TEXT("🎯 UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable - Converted %d ingredients to instances"), 
-    //    IngredientInstances.Num());
     
     return IngredientInstances;
 }
@@ -4262,6 +4435,15 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
     {
         if (IngredientInstanceHasAnyPreparation(Inst))
         {
+            if (PendingEmptySlot.IsValid() && PendingEmptySlot->HasRequiredIngredientTypes())
+            {
+                if (!UPUIngredientBlueprintLibrary::IngredientMatchesTypeFilter(
+                    Inst.IngredientData,
+                    PendingEmptySlot->GetRequiredIngredientTypes()))
+                {
+                    continue;
+                }
+            }
             PreppedInstances.Add(Inst);
         }
     }
@@ -4466,6 +4648,148 @@ bool UPUDishCustomizationWidget::AddSlotToCurrentPreppedPantryShelvingWidget(UPU
     return false;
 }
 
+UDataTable* UPUDishCustomizationWidget::ResolveIngredientTypeDataTable() const
+{
+    if (CustomizationComponent && CustomizationComponent->GetIngredientTypeDataTable())
+    {
+        return CustomizationComponent->GetIngredientTypeDataTable();
+    }
+
+    if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+    {
+        return GI->GetIngredientTypeDataTable();
+    }
+
+    return nullptr;
+}
+
+void UPUDishCustomizationWidget::ClearPantrySlots()
+{
+    if (!PU_ShouldSpawnDishPantryLikeDynamicWidgets(GetWorld(), this))
+    {
+        return;
+    }
+
+    auto UnbindPantrySlot = [&](UPUIngredientSlot* S)
+    {
+        if (!IsValid(S))
+        {
+            return;
+        }
+        S->OnEmptySlotClicked.RemoveDynamic(this, &UPUDishCustomizationWidget::OnPantrySlotClicked);
+    };
+
+    for (UPUIngredientSlot* S : CreatedPantrySlots)
+    {
+        UnbindPantrySlot(S);
+        if (IsValid(S))
+        {
+            S->RemoveFromParent();
+        }
+    }
+    CreatedPantrySlots.Empty();
+    PantrySlotMap.Empty();
+
+    for (UUserWidget* ShelvingWidget : CreatedPantryShelvingWidgets)
+    {
+        if (IsValid(ShelvingWidget))
+        {
+            ShelvingWidget->RemoveFromParent();
+        }
+    }
+    CreatedPantryShelvingWidgets.Empty();
+    CurrentPantryShelvingWidget.Reset();
+    CurrentPantryShelvingWidgetSlotCount = 0;
+    bPantrySlotsCreated = false;
+}
+
+FGameplayTagContainer UPUDishCustomizationWidget::GetActivePantrySlotTypeFilter() const
+{
+    if (ActivePantrySlotRequiredTypes.Num() > 0)
+    {
+        return ActivePantrySlotRequiredTypes;
+    }
+
+    if (PendingEmptySlot.IsValid())
+    {
+        return PendingEmptySlot->GetRequiredIngredientTypes();
+    }
+
+    return FGameplayTagContainer();
+}
+
+void UPUDishCustomizationWidget::SetActivePantryContextFromSlot(UPUIngredientSlot* IngredientSlot)
+{
+    PendingEmptySlot = IngredientSlot;
+    ActivePantrySlotRequiredTypes = IngredientSlot ? IngredientSlot->GetRequiredIngredientTypes() : FGameplayTagContainer();
+}
+
+void UPUDishCustomizationWidget::ClearActivePantrySlotTypeFilter()
+{
+    ActivePantrySlotRequiredTypes.Reset();
+}
+
+void UPUDishCustomizationWidget::RefreshPantryForActiveSlotContext()
+{
+    if (!bPantryOpen)
+    {
+        return;
+    }
+
+    ClearPantrySlots();
+    PopulatePantrySlots();
+    RefreshPreppedPantrySlots();
+    SetupPantrySlotNavigation();
+    SetupPreppedPantrySlotNavigation();
+}
+
+FGameplayTagContainer UPUDishCustomizationWidget::GetActivePantryStageParentTags() const
+{
+    if (CustomizationComponent)
+    {
+        FPUDishCustomizationStageDescriptor Stage;
+        if (CustomizationComponent->TryGetActivePipelineStage(Stage))
+        {
+            return Stage.PantryIngredientParentTags;
+        }
+    }
+    return FGameplayTagContainer();
+}
+
+FGameplayTag UPUDishCustomizationWidget::GetActivePantryTutorialAllowedTag() const
+{
+    if (UPUProjectUmeowmiGameInstance* GI = GetWorld() ? GetWorld()->GetGameInstance<UPUProjectUmeowmiGameInstance>() : nullptr)
+    {
+        if (GI->IsTutorialModeEnabled())
+        {
+            return GI->GetTutorialAllowedIngredientTag();
+        }
+    }
+    return FGameplayTag();
+}
+
+TArray<FPUIngredientBase> UPUDishCustomizationWidget::GetPantryEligibleIngredients() const
+{
+    if (!CustomizationComponent)
+    {
+        return TArray<FPUIngredientBase>();
+    }
+
+    return CustomizationComponent->GetPantryEligibleIngredients(
+        GetActivePantrySlotTypeFilter(),
+        GetActivePantryStageParentTags(),
+        GetActivePantryTutorialAllowedTag());
+}
+
+bool UPUDishCustomizationWidget::DoesIngredientPassActivePantryFilters(const FPUIngredientBase& Ingredient) const
+{
+    const TArray<FPUIngredientBase> Eligible = GetPantryEligibleIngredients();
+    return Eligible.ContainsByPredicate([&Ingredient](const FPUIngredientBase& Candidate)
+    {
+        return Candidate.IngredientTag == Ingredient.IngredientTag;
+    });
+}
+
 void UPUDishCustomizationWidget::PopulatePantrySlots()
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::PopulatePantrySlots - Populating pantry slots"));
@@ -4501,8 +4825,14 @@ void UPUDishCustomizationWidget::PopulatePantrySlots()
         return;
     }
     
-    // Get all available ingredients from the component
-    TArray<FPUIngredientBase> AvailableIngredients = CustomizationComponent->GetIngredientData();
+    // Get filtered ingredients for the current pantry context (slot type supersedes stage tags).
+    TArray<FPUIngredientBase> AvailableIngredients = GetPantryEligibleIngredients();
+    const FGameplayTagContainer ActiveSlotTypes = GetActivePantrySlotTypeFilter();
+    if (ActiveSlotTypes.Num() > 0 && AvailableIngredients.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PUDishCustomizationWidget::PopulatePantrySlots - Type filter active (%s) but no unlocked ingredients matched. Ensure DT_Ingredients rows have IngredientTypes set (not just DT_IngredientTypes)."),
+            *ActiveSlotTypes.ToStringSimple());
+    }
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::PopulatePantrySlots - Found %d available ingredients"), AvailableIngredients.Num());
     
     // Get the container to use
@@ -4626,12 +4956,9 @@ void UPUDishCustomizationWidget::PopulatePantrySlots()
 void UPUDishCustomizationWidget::OpenPantry()
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OpenPantry - Opening pantry"));
-    
-    // Populate pantry slots if not already populated
-    if (!bPantrySlotsCreated)
-    {
-        PopulatePantrySlots();
-    }
+
+    ClearPantrySlots();
+    PopulatePantrySlots();
 
     RefreshPreppedPantrySlots();
     RefreshRecipeLog();
@@ -4707,6 +5034,7 @@ void UPUDishCustomizationWidget::ClosePantry()
     
     // Clear pending empty slot
     PendingEmptySlot.Reset();
+    ClearActivePantrySlotTypeFilter();
     
     // Call Blueprint event to trigger UMG animation (normal close - play forward or hide)
     OnPantryClosed();
@@ -4736,8 +5064,9 @@ void UPUDishCustomizationWidget::ClosePantryFromDrag()
     // Set pantry open flag
     bPantryOpen = false;
     
-    // Clear pending empty slot
+    // Clear pending empty slot and slot type filter snapshot
     PendingEmptySlot.Reset();
+    ClearActivePantrySlotTypeFilter();
     
     // Call Blueprint event to trigger UMG animation in reverse
     OnPantryClosedFromDrag();
@@ -4755,6 +5084,8 @@ void UPUDishCustomizationWidget::OnPantryButtonClicked()
     }
     else
     {
+        PendingEmptySlot.Reset();
+        ClearActivePantrySlotTypeFilter();
         OpenPantry();
     }
 }
@@ -4776,14 +5107,20 @@ void UPUDishCustomizationWidget::OnEmptySlotClicked(UPUIngredientSlot* Ingredien
         return;
     }
 
-    // Strip slot click toggles pantry (same expectation as the pantry button).
     if (bPantryOpen)
     {
-        ClosePantry();
+        if (PendingEmptySlot.Get() == IngredientSlot)
+        {
+            ClosePantry();
+            return;
+        }
+
+        SetActivePantryContextFromSlot(IngredientSlot);
+        RefreshPantryForActiveSlotContext();
         return;
     }
 
-    PendingEmptySlot = IngredientSlot;
+    SetActivePantryContextFromSlot(IngredientSlot);
     OpenPantry();
 }
 

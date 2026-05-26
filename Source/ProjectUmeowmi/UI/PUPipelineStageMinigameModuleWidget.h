@@ -86,6 +86,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "Stage Minigame|Behavior")
     UPUStripMinigameBehavior* GetActiveStripMinigameBehavior() const { return ActiveStripMinigameBehavior; }
 
+    /** 0-based index into the dish CustomizationStages array for the active pipeline step, or INDEX_NONE. */
+    UFUNCTION(BlueprintPure, Category = "Stage Minigame|Pipeline", meta = (DisplayName = "Get Current Stage Index"))
+    int32 GetCurrentStageIndex() const;
+
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame")
     virtual void SetStripMinigameActive(bool bActive, UPUIngredientSlot* ContextStripSlot);
 

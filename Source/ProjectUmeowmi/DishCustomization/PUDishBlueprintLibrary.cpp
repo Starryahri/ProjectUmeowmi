@@ -1,5 +1,6 @@
 #include "PUDishBlueprintLibrary.h"
 #include "PUDishBase.h"
+#include "PUDishCustomizationComponent.h"
 #include "PUIngredientBase.h"
 #include "PUPreparationBase.h"
 #include "PUOrderBase.h"
@@ -1126,4 +1127,11 @@ TArray<FText> UPUDishBlueprintLibrary::GetCustomizationPipelineStageDisplayNames
         Names.Add(ResolveCustomizationStageDisplayTitle(Row));
     }
     return Names;
+}
+
+int32 UPUDishBlueprintLibrary::GetCurrentCustomizationStageIndex(const UPUDishCustomizationComponent* CustomizationComponent)
+{
+    return IsValid(CustomizationComponent)
+        ? CustomizationComponent->GetActiveCustomizationPipelineIndex()
+        : INDEX_NONE;
 } 

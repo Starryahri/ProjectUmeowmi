@@ -8,6 +8,8 @@
 
 #include "PUDishBlueprintLibrary.generated.h"
 
+class UPUDishCustomizationComponent;
+
 UCLASS()
 class PROJECTUMEOWMI_API UPUDishBlueprintLibrary : public UBlueprintFunctionLibrary
 {
@@ -244,4 +246,8 @@ public:
     /** All stage titles in pipeline order (same fallback as row getter). */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline")
     static TArray<FText> GetCustomizationPipelineStageDisplayNames(const FPUDishBase& Dish);
+
+    /** Active pipeline stage index during a customization session (0-based), or INDEX_NONE if no pipeline. */
+    UFUNCTION(BlueprintPure, Category = "Dish|Customization Pipeline", meta = (DisplayName = "Get Current Stage Index"))
+    static int32 GetCurrentCustomizationStageIndex(const UPUDishCustomizationComponent* CustomizationComponent);
 }; 

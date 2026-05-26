@@ -1,4 +1,6 @@
 #include "PUIngredientSlot.h"
+#include "../DishCustomization/PUIngredientBlueprintLibrary.h"
+#include "../DishCustomization/PUIngredientType.h"
 #include "Animation/WidgetAnimation.h"
 #include "Components/Image.h"
 #include "Components/Button.h"
@@ -415,6 +417,12 @@ void UPUIngredientSlot::ClearSlot()
     MaybeNotifyMountedStageModuleRailPreviewFromSlot();
 }
 
+void UPUIngredientSlot::SetRequiredIngredientTypes(const FGameplayTagContainer& InRequiredTypes)
+{
+    RequiredIngredientTypes = InRequiredTypes;
+    UpdateTypeSlotVisual();
+}
+
 void UPUIngredientSlot::SetLocation(EPUIngredientSlotLocation InLocation)
 {
     if (Location != InLocation)
@@ -484,6 +492,7 @@ void UPUIngredientSlot::UpdateDisplay()
         {
             EnsureEmptySlotHitTarget();
         }
+        UpdateTypeSlotVisual();
     }
     else
     {
@@ -492,6 +501,7 @@ void UPUIngredientSlot::UpdateDisplay()
         UpdatePrepBowls();
 
         UpdatePreparationDisplay();
+        UpdateTypeSlotVisual();
 
         // For prepped slots, always show hover text
         if (Location == EPUIngredientSlotLocation::Prepped)
@@ -899,6 +909,49 @@ void UPUIngredientSlot::ClearDisplay()
         InventoryEmptyDot->SetVisibility(ESlateVisibility::Collapsed);
     }
 
+    if (IngredientTypeIcon)
+    {
+        IngredientTypeIcon->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+}
+
+void UPUIngredientSlot::UpdateTypeSlotVisual()
+{
+    if (!IngredientTypeIcon)
+    {
+        return;
+    }
+
+    const bool bShowTypeHint =
+        Location == EPUIngredientSlotLocation::ActiveIngredientArea
+        && !bHasIngredient
+        && !IngredientInstance.IngredientData.IngredientTag.IsValid()
+        && RequiredIngredientTypes.Num() > 0
+        && !bPantryShelfPaddingCell
+        && !bRecipeLogSlot;
+
+    if (!bShowTypeHint)
+    {
+        IngredientTypeIcon->SetVisibility(ESlateVisibility::Collapsed);
+        return;
+    }
+
+    UDataTable* TypeTable = nullptr;
+    if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+    {
+        TypeTable = DishWidget->ResolveIngredientTypeDataTable();
+    }
+
+    if (UTexture2D* Icon = UPUIngredientBlueprintLibrary::GetTypeIconForRequiredTypes(TypeTable, RequiredIngredientTypes))
+    {
+        IngredientTypeIcon->SetBrushFromTexture(Icon);
+        IngredientTypeIcon->SetVisibility(ESlateVisibility::Visible);
+    }
+    else
+    {
+        IngredientTypeIcon->SetVisibility(ESlateVisibility::Collapsed);
+    }
 }
 
 void UPUIngredientSlot::ApplyPantryShelfEmptyVisual()
