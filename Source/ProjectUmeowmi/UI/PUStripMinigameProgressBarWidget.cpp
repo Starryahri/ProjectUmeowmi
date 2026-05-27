@@ -157,6 +157,29 @@ EPUStripMinigameTierIconState UPUStripMinigameProgressBarWidget::GetTierIconStat
     return TierIconStates.IsValidIndex(TierIconIndex) ? TierIconStates[TierIconIndex] : EPUStripMinigameTierIconState::Upcoming;
 }
 
+void UPUStripMinigameProgressBarWidget::ReceiveTierIconStateChanged_Implementation(
+    int32 TierIconIndex,
+    EPUStripMinigameTierIconState IconState)
+{
+    if (UImage* const Icon = GetTierIconWidget(TierIconIndex))
+    {
+        Icon->SetColorAndOpacity(GetTierIconTintForState(IconState));
+    }
+}
+
+FLinearColor UPUStripMinigameProgressBarWidget::GetTierIconTintForState(EPUStripMinigameTierIconState IconState) const
+{
+    switch (IconState)
+    {
+    case EPUStripMinigameTierIconState::Completed:
+        return CompletedTierIconTint;
+    case EPUStripMinigameTierIconState::InProgress:
+        return InProgressTierIconTint;
+    default:
+        return UpcomingTierIconTint;
+    }
+}
+
 float UPUStripMinigameProgressBarWidget::GetTierAnchorPercent(int32 TierIconIndex) const
 {
     return TierAnchorPercents.IsValidIndex(TierIconIndex) ? TierAnchorPercents[TierIconIndex] : 0.f;
@@ -274,7 +297,7 @@ void UPUStripMinigameProgressBarWidget::PositionWidgetAlongTrack(
         return;
     }
 
-    const float AnchorX = CachedTrackWidth * FMath::Clamp(AnchorPercent, 0.f, 1.f);
+    const float ClampedAnchor = FMath::Clamp(AnchorPercent, 0.f, 1.f);
 
     FVector2D WidgetSize = Widget->GetCachedGeometry().GetLocalSize();
     if (WidgetSize.X <= KINDA_SMALL_NUMBER)
@@ -302,19 +325,24 @@ void UPUStripMinigameProgressBarWidget::PositionWidgetAlongTrack(
         WidgetSize.Y = 32.f;
     }
 
-    const float PadLeft = FMath::Max(0.f, AnchorX - WidgetSize.X * 0.5f);
+    // Map anchor 0..1 to left padding so the full icon fits inside the track. Centering via
+    // (AnchorX - halfWidth) leaves icons near the end with only partial slot width, which squashes them.
+    const float MaxPadLeft = FMath::Max(0.f, CachedTrackWidth - WidgetSize.X);
+    const float PadLeft = MaxPadLeft * ClampedAnchor;
+    const float PadRight = FMath::Max(0.f, CachedTrackWidth - PadLeft - WidgetSize.X);
+    const float CenterX = PadLeft + WidgetSize.X * 0.5f;
 
     if (UOverlaySlot* const OverlaySlot = Cast<UOverlaySlot>(Widget->Slot))
     {
         OverlaySlot->SetHorizontalAlignment(HAlign_Left);
         OverlaySlot->SetVerticalAlignment(bMarkerAboveTrack ? VAlign_Top : VAlign_Center);
         const float TopPad = bMarkerAboveTrack ? -WidgetSize.Y : 0.f;
-        OverlaySlot->SetPadding(FMargin(PadLeft, TopPad, 0.f, 0.f));
+        OverlaySlot->SetPadding(FMargin(PadLeft, TopPad, PadRight, 0.f));
         return;
     }
 
     Widget->SetRenderTransformPivot(FVector2D(0.5f, bMarkerAboveTrack ? 1.f : 0.5f));
-    Widget->SetRenderTranslation(FVector2D(PadLeft, Widget->GetRenderTransform().Translation.Y));
+    Widget->SetRenderTranslation(FVector2D(CenterX, Widget->GetRenderTransform().Translation.Y));
 }
 
 UImage* UPUStripMinigameProgressBarWidget::GetTierIconWidget(int32 TierIconIndex) const

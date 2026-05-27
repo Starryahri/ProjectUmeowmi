@@ -1134,4 +1134,59 @@ int32 UPUDishBlueprintLibrary::GetCurrentCustomizationStageIndex(const UPUDishCu
     return IsValid(CustomizationComponent)
         ? CustomizationComponent->GetActiveCustomizationPipelineIndex()
         : INDEX_NONE;
+}
+
+bool UPUDishBlueprintLibrary::TryGetTriptychRowForStage(
+    UDataTable* TriptychDataTable,
+    const FPUDishCustomizationStageDescriptor& Stage,
+    FPUDishCustomizationTriptychRow& OutTriptychRow)
+{
+    if (!TriptychDataTable)
+    {
+        return false;
+    }
+
+    static const FString Context(TEXT("TryGetTriptychRowForStage"));
+
+    if (!Stage.TriptychRowName.IsNone())
+    {
+        if (const FPUDishCustomizationTriptychRow* Row =
+                TriptychDataTable->FindRow<FPUDishCustomizationTriptychRow>(Stage.TriptychRowName, Context, false))
+        {
+            OutTriptychRow = *Row;
+            return true;
+        }
+    }
+
+    if (Stage.StageId.IsValid())
+    {
+        const FName StageRowName = Stage.StageId.GetTagName();
+        if (const FPUDishCustomizationTriptychRow* Row =
+                TriptychDataTable->FindRow<FPUDishCustomizationTriptychRow>(StageRowName, Context, false))
+        {
+            OutTriptychRow = *Row;
+            return true;
+        }
+
+        for (const FName& RowName : TriptychDataTable->GetRowNames())
+        {
+            const FPUDishCustomizationTriptychRow* Row =
+                TriptychDataTable->FindRow<FPUDishCustomizationTriptychRow>(RowName, Context, false);
+            if (Row && Row->StageId == Stage.StageId)
+            {
+                OutTriptychRow = *Row;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool UPUDishBlueprintLibrary::StageHasTriptychData(
+    UDataTable* TriptychDataTable,
+    const FPUDishCustomizationStageDescriptor& Stage)
+{
+    FPUDishCustomizationTriptychRow UnusedRow;
+    return TryGetTriptychRowForStage(TriptychDataTable, Stage, UnusedRow);
 } 

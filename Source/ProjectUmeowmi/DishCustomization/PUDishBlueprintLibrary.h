@@ -250,4 +250,17 @@ public:
     /** Active pipeline stage index during a customization session (0-based), or INDEX_NONE if no pipeline. */
     UFUNCTION(BlueprintPure, Category = "Dish|Customization Pipeline", meta = (DisplayName = "Get Current Stage Index"))
     static int32 GetCurrentCustomizationStageIndex(const UPUDishCustomizationComponent* CustomizationComponent);
+
+    /** True when TriptychDataTable has a row for this stage descriptor. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline|Triptych")
+    static bool StageHasTriptychData(
+        UDataTable* TriptychDataTable,
+        const FPUDishCustomizationStageDescriptor& Stage);
+
+    /** Resolve triptych cover row: TriptychRowName → StageId row name → scan StageId column. */
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish|Customization Pipeline|Triptych")
+    static bool TryGetTriptychRowForStage(
+        UDataTable* TriptychDataTable,
+        const FPUDishCustomizationStageDescriptor& Stage,
+        FPUDishCustomizationTriptychRow& OutTriptychRow);
 }; 

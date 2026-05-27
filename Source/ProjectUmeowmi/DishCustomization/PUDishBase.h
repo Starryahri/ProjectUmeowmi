@@ -5,6 +5,7 @@
 #include "Engine/DataTable.h"
 #include "GameplayTagContainer.h"
 #include "PUIngredientBase.h"
+#include "PUDishCustomizationTriptych.h"
 #include "PUDishBase.generated.h"
 
 /** Legacy stage kinds — used by widget navigation and camera/plating hooks until data pipeline fully replaces hardcoded flows. */
@@ -42,6 +43,13 @@ struct PROJECTUMEOWMI_API FPUDishCustomizationStageDescriptor
     /** When advancing from the previous pipeline step, skip the triptych/cover animation (e.g. Gather → first chop). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Transition")
     bool bSkipTriptychOnEnter = false;
+
+    /**
+     * Optional row in TriptychDataTable (`FPUDishCustomizationTriptychRow`).
+     * None = resolve by StageId tag name, then scan rows for matching StageId.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Transition")
+    FName TriptychRowName;
 
     /** Shell-owned ingredient rail (`IngredientRailSlot`). When false, the rail is collapsed for vignette-only stages. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Shell")

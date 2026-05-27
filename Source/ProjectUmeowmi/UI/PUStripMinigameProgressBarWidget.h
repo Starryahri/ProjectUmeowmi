@@ -21,7 +21,7 @@ enum class EPUStripMinigameTierIconState : uint8
 
 /**
  * Reusable strip minigame progress bar (parent Blueprint: WBP_ProgressBar).
- * C++ drives UProgressBar fill percent, marker, and tier-icon X positions (BP tints icons in ReceiveTierIconStateChanged).
+ * C++ drives UProgressBar fill percent, marker, tier-icon X positions, and per-state icon tint.
  * Place BarFill (Progress Bar), tier icons, and ProgressMarker in one Overlay (left-aligned).
  */
 UCLASS(Abstract, Blueprintable, meta = (DisplayName = "Strip Minigame Progress Bar"))
@@ -79,8 +79,9 @@ protected:
         const TArray<float>& TierAnchorPercents,
         const TArray<EPUStripMinigameTierIconState>& TierIconStates);
 
-    UFUNCTION(BlueprintImplementableEvent, Category = "Strip Minigame Progress Bar", meta = (DisplayName = "On Tier Icon State Changed"))
+    UFUNCTION(BlueprintNativeEvent, Category = "Strip Minigame Progress Bar", meta = (DisplayName = "On Tier Icon State Changed"))
     void ReceiveTierIconStateChanged(int32 TierIconIndex, EPUStripMinigameTierIconState IconState);
+    virtual void ReceiveTierIconStateChanged_Implementation(int32 TierIconIndex, EPUStripMinigameTierIconState IconState);
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Strip Minigame Progress Bar", meta = (DisplayName = "On Unsupported Minigame Behavior"))
     void ReceiveUnsupportedMinigameBehavior(UPUStripMinigameBehavior* Behavior);
@@ -107,6 +108,15 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Strip Minigame Progress Bar|Layout", meta = (ClampMin = "1", ClampMax = "8"))
     int32 MaxTierIcons = 4;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Strip Minigame Progress Bar|Appearance")
+    FLinearColor CompletedTierIconTint = FLinearColor(0.5f, 0.5f, 0.5f, 1.f);
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Strip Minigame Progress Bar|Appearance")
+    FLinearColor InProgressTierIconTint = FLinearColor::White;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Strip Minigame Progress Bar|Appearance")
+    FLinearColor UpcomingTierIconTint = FLinearColor::White;
 
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Strip Minigame Progress Bar")
     TObjectPtr<UPUStripMinigameBehavior> BoundBehavior;
@@ -140,6 +150,7 @@ private:
     void RefreshTrackLayout();
     void PositionWidgetAlongTrack(UWidget* Widget, float AnchorPercent, bool bMarkerAboveTrack) const;
     UImage* GetTierIconWidget(int32 TierIconIndex) const;
+    FLinearColor GetTierIconTintForState(EPUStripMinigameTierIconState IconState) const;
     static EPUStripMinigameTierIconState FromChopTierIconState(uint8 ChopState);
 
     float CachedTrackWidth = 0.f;

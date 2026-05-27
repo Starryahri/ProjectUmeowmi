@@ -23,6 +23,8 @@
 #include "Components/WrapBoxSlot.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelWidget.h"
+#include "Components/Image.h"
+#include "TimerManager.h"
 #include "UObject/GarbageCollection.h"
 #include "UObject/UObjectIterator.h"
 #include "Framework/Application/SlateApplication.h"
@@ -500,7 +502,11 @@ void UPUDishCustomizationWidget::PrepareForCustomizationShutdown()
         TimerManager.ClearTimer(DeferredFocusTimerHandle);
         TimerManager.ClearTimer(PantryFocusTimerHandle);
         TimerManager.ClearTimer(FocusRetryTimerHandle);
+        TimerManager.ClearTimer(TriptychTransitionTimerHandle);
     }
+
+    bTriptychTransitionPending = false;
+    LastPresentedPipelineStageIndex = INDEX_NONE;
 
     SanitizeStaleObjectReferences();
 
@@ -1412,20 +1418,144 @@ void UPUDishCustomizationWidget::SyncMountedStageModuleWithFocusedIngredientStri
     NotifyMountedStageModuleOfStripSlotFocus(FindFocusedIngredientRailStripSlot());
 }
 
+UDataTable* UPUDishCustomizationWidget::ResolveTriptychDataTable() const
+{
+    return CustomizationComponent ? CustomizationComponent->GetTriptychDataTable() : nullptr;
+}
+
+void UPUDishCustomizationWidget::CancelTriptychTransitionTimer()
+{
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(TriptychTransitionTimerHandle);
+    }
+}
+
+void UPUDishCustomizationWidget::ApplyTriptychCoverPanelVisuals(const FPUDishCustomizationTriptychRow& TriptychRow)
+{
+    auto ApplyPanel = [](UImage* ImageWidget, const FPUDishCustomizationTriptychPanel& Panel)
+    {
+        if (!ImageWidget)
+        {
+            return;
+        }
+
+        if (!Panel.PanelImage.IsNull())
+        {
+            ImageWidget->SetBrushFromSoftTexture(Panel.PanelImage);
+        }
+
+        ImageWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    };
+
+    ApplyPanel(TriptychLeftCover, TriptychRow.LeftPanel);
+    ApplyPanel(TriptychCenterCover, TriptychRow.CenterPanel);
+    ApplyPanel(TriptychRightCover, TriptychRow.RightPanel);
+}
+
+void UPUDishCustomizationWidget::ApplyPipelineStagePresentation(const FPUDishCustomizationStageDescriptor& Stage)
+{
+    TryResolvePipelineShellSlotsFromHierarchy();
+
+    SetIngredientRailSlotVisible(Stage.bIngredientRailVisible);
+    if (Stage.bIngredientRailVisible)
+    {
+        RebuildIngredientRailForActiveStage(nullptr);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] Rail hidden for stage \"%s\" — tearing down strip slots."),
+            *Stage.StageDisplayName.ToString());
+        TeardownDynamicCreatedIngredientSlotsStrip();
+    }
+
+    if (!Stage.StageWidgetClass)
+    {
+        ClearStageModuleSlot();
+        RefreshRecipeLog();
+        return;
+    }
+
+    TryMountStageModuleFromDescriptor(Stage);
+    RefreshRecipeLog();
+}
+
+void UPUDishCustomizationWidget::PlayTriptychStageTransition_Implementation(
+    int32 FromStageIndex,
+    int32 ToStageIndex,
+    const FPUDishCustomizationStageDescriptor& TargetStage,
+    const FPUDishCustomizationTriptychRow& TriptychRow,
+    bool bSkipAnimation)
+{
+    (void)FromStageIndex;
+    (void)ToStageIndex;
+    (void)TargetStage;
+
+    ApplyTriptychCoverPanelVisuals(TriptychRow);
+
+    if (bSkipAnimation || TriptychRow.SuggestedTransitionSeconds <= KINDA_SMALL_NUMBER)
+    {
+        CompleteTriptychStageTransition();
+        return;
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().SetTimer(
+            TriptychTransitionTimerHandle,
+            this,
+            &UPUDishCustomizationWidget::CompleteTriptychStageTransition,
+            TriptychRow.SuggestedTransitionSeconds,
+            false);
+        return;
+    }
+
+    CompleteTriptychStageTransition();
+}
+
+void UPUDishCustomizationWidget::CompleteTriptychStageTransition()
+{
+    CancelTriptychTransitionTimer();
+
+    if (!bTriptychTransitionPending)
+    {
+        return;
+    }
+
+    ApplyPipelineStagePresentation(PendingTriptychStagePresentation);
+    if (CustomizationComponent)
+    {
+        LastPresentedPipelineStageIndex = CustomizationComponent->GetActiveCustomizationPipelineIndex();
+    }
+    bTriptychTransitionPending = false;
+}
+
+void UPUDishCustomizationWidget::SkipTriptychStageTransition()
+{
+    CompleteTriptychStageTransition();
+}
+
 bool UPUDishCustomizationWidget::RefreshPipelineStagePresentation()
 {
     TryResolvePipelineShellSlotsFromHierarchy();
     if (!CustomizationComponent || !CustomizationComponent->HasActiveCustomizationPipeline())
     {
         UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RefreshPipelineStagePresentation — skipped: no active customization pipeline."));
+        CancelTriptychTransitionTimer();
+        bTriptychTransitionPending = false;
+        LastPresentedPipelineStageIndex = INDEX_NONE;
         ClearStageModuleSlot();
         return false;
     }
+
     FPUDishCustomizationStageDescriptor Stage;
     if (!CustomizationComponent->TryGetActivePipelineStage(Stage))
     {
         UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RefreshPipelineStagePresentation — skipped: TryGetActivePipelineStage failed (index=%d)."),
             CustomizationComponent->GetActiveCustomizationPipelineIndex());
+        CancelTriptychTransitionTimer();
+        bTriptychTransitionPending = false;
+        LastPresentedPipelineStageIndex = INDEX_NONE;
         ClearStageModuleSlot();
         return false;
     }
@@ -1439,26 +1569,37 @@ bool UPUDishCustomizationWidget::RefreshPipelineStagePresentation()
         Stage.SlotRequiredTypeTags.Num(),
         Stage.IngredientRailMaxSlots);
 
-    SetIngredientRailSlotVisible(Stage.bIngredientRailVisible);
-    if (Stage.bIngredientRailVisible)
+    if (bTriptychTransitionPending)
     {
-        RebuildIngredientRailForActiveStage(nullptr);
+        CancelTriptychTransitionTimer();
+        bTriptychTransitionPending = false;
     }
-    else
+
+    const bool bIsInitialPresentation = LastPresentedPipelineStageIndex == INDEX_NONE;
+    const bool bStageIndexChanged = !bIsInitialPresentation && PipeIdx != LastPresentedPipelineStageIndex;
+
+    FPUDishCustomizationTriptychRow TriptychRow;
+    const bool bHasTriptych =
+        UPUDishBlueprintLibrary::TryGetTriptychRowForStage(ResolveTriptychDataTable(), Stage, TriptychRow);
+    const bool bShouldPlayTriptych =
+        bStageIndexChanged && bHasTriptych && !Stage.bSkipTriptychOnEnter;
+
+    if (!bShouldPlayTriptych)
     {
-        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] Rail hidden for stage \"%s\" — tearing down strip slots."),
-            *Stage.StageDisplayName.ToString());
-        TeardownDynamicCreatedIngredientSlotsStrip();
-    }
-    if (!Stage.StageWidgetClass)
-    {
-        ClearStageModuleSlot();
-        RefreshRecipeLog();
+        ApplyPipelineStagePresentation(Stage);
+        LastPresentedPipelineStageIndex = PipeIdx;
         return true;
     }
-    const bool bMountedStage = TryMountStageModuleFromDescriptor(Stage);
-    RefreshRecipeLog();
-    return bMountedStage;
+
+    PendingTriptychStagePresentation = Stage;
+    bTriptychTransitionPending = true;
+    PlayTriptychStageTransition(
+        LastPresentedPipelineStageIndex,
+        PipeIdx,
+        Stage,
+        TriptychRow,
+        false);
+    return true;
 }
 
 bool UPUDishCustomizationWidget::AdvancePipelineStageAndRefreshPresentation()

@@ -174,6 +174,21 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     void SyncMountedStageModuleWithFocusedIngredientStripSlot();
 
+    /** Call when a triptych cover animation finishes — applies deferred rail/stage mount. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
+    void CompleteTriptychStageTransition();
+
+    /** Instantly finish any in-flight triptych (same as CompleteTriptychStageTransition). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
+    void SkipTriptychStageTransition();
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
+    bool IsTriptychStageTransitionPending() const { return bTriptychTransitionPending; }
+
+    /** Push triptych row textures onto optional cover images (TriptychLeftCover, etc.). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
+    void ApplyTriptychCoverPanelVisuals(const FPUDishCustomizationTriptychRow& TriptychRow);
+
     /** Active pipeline stage title from the customization component (same as Dish Customization|Pipeline getter). */
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline")
     FText GetActiveCustomizationPipelineStageDisplayName() const;
@@ -607,6 +622,16 @@ protected:
     UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell")
     TObjectPtr<UPanelWidget> IngredientRailSlot;
 
+    /** Optional cover images for triptych transitions (left / center / right). */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
+    TObjectPtr<class UImage> TriptychLeftCover;
+
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
+    TObjectPtr<class UImage> TriptychCenterCover;
+
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
+    TObjectPtr<class UImage> TriptychRightCover;
+
     /** Widget spawned from active pipeline descriptor `StageWidgetClass` into StageModuleSlot. */
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell")
     TObjectPtr<UUserWidget> MountedPipelineStageWidget;
@@ -762,6 +787,20 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Dish Customization Widget|Pantry")
     void OnPantryClosedFromDrag();
 
+    UFUNCTION(BlueprintNativeEvent, Category = "Dish Customization Widget|Pipeline Shell|Triptych", meta = (DisplayName = "Play Triptych Stage Transition"))
+    void PlayTriptychStageTransition(
+        int32 FromStageIndex,
+        int32 ToStageIndex,
+        const FPUDishCustomizationStageDescriptor& TargetStage,
+        const FPUDishCustomizationTriptychRow& TriptychRow,
+        bool bSkipAnimation);
+    virtual void PlayTriptychStageTransition_Implementation(
+        int32 FromStageIndex,
+        int32 ToStageIndex,
+        const FPUDishCustomizationStageDescriptor& TargetStage,
+        const FPUDishCustomizationTriptychRow& TriptychRow,
+        bool bSkipAnimation);
+
 
 private:
     // Internal component reference for event subscription only
@@ -843,6 +882,12 @@ private:
     /** Resolve StageModuleSlot / IngredientRailSlot from BindWidgetOptional or WidgetTree / named lookups. */
     void TryResolvePipelineShellSlotsFromHierarchy();
 
+    /** Mount rail + stage module for a pipeline row (no triptych gate). */
+    void ApplyPipelineStagePresentation(const FPUDishCustomizationStageDescriptor& Stage);
+
+    void CancelTriptychTransitionTimer();
+    class UDataTable* ResolveTriptychDataTable() const;
+
     /** Fills RecipeLog*Container weak ptrs from BindWidgetOptional panels or WidgetTree names (RecipeLogBaseScrollBox / RecipeLogBaseContainer, etc.). */
     void TryResolveRecipeLogPanelsFromHierarchy();
 
@@ -896,6 +941,11 @@ private:
 
     /** Last non-empty ingredient-rail strip slot focused; reused for vignette preview when focus leaves the rail during strip-minigame stages. */
     TWeakObjectPtr<UPUIngredientSlot> LastFocusedIngredientRailStripSlot;
+
+    int32 LastPresentedPipelineStageIndex = INDEX_NONE;
+    bool bTriptychTransitionPending = false;
+    FPUDishCustomizationStageDescriptor PendingTriptychStagePresentation;
+    FTimerHandle TriptychTransitionTimerHandle;
 
     UPUIngredientSlot* ResolveIngredientRailStripSlotForStageModulePreview(UPUIngredientSlot* StripSlot);
 

@@ -150,6 +150,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dish Customization|Data Tables")
     UDataTable* GetIngredientTypeDataTable() const { return IngredientTypeDataTable; }
 
+    /** Cover art for pipeline stage triptych transitions (`FPUDishCustomizationTriptychRow`). */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization|Data Tables")
+    UDataTable* GetTriptychDataTable() const { return TriptychDataTable; }
+
     // Function to get preparation data for the widget
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Data Tables")
     TArray<FPUPreparationBase> GetPreparationData() const;
@@ -334,6 +338,10 @@ public:
     /** Icons/labels for Ingredient.Type.* tags (optional; also configurable on Game Instance). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
     UDataTable* IngredientTypeDataTable;
+
+    /** Three-panel cover art per pipeline stage (`FPUDishCustomizationTriptychRow`). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data Tables")
+    UDataTable* TriptychDataTable = nullptr;
 
 protected:
     // Internal state management

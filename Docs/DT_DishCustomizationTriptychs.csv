@@ -1,0 +1,6 @@
+---,StageId,LeftPanel.PanelImage,LeftPanel.PanelCaption,CenterPanel.PanelImage,CenterPanel.PanelCaption,RightPanel.PanelImage,RightPanel.PanelCaption,SuggestedTransitionSeconds
+Stage.Gather,Stage.Gather,,Gather (left),,Gather (center),,Gather (right),0.65
+Stage.Chopping,Stage.Chopping,,Chop (left),,Chop (center),,Chop (right),0.65
+Stage.Marinating,Stage.Marinating,,Marinate (left),,Marinate (center),,Marinate (right),0.65
+Stage.Cooking,Stage.Cooking,,Cook (left),,Cook (center),,Cook (right),0.65
+Stage.Garnish,Stage.Garnish,,Garnish (left),,Garnish (center),,Garnish (right),0.65
