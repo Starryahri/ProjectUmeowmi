@@ -166,6 +166,42 @@ namespace
         return Inst.Preparations.Num() > 0 || Inst.IngredientData.ActivePreparations.Num() > 0;
     }
 
+    static bool DishHasPreppedInstanceForIngredientTag(const FPUDishBase& Dish, const FGameplayTag& IngredientTag)
+    {
+        if (!IngredientTag.IsValid())
+        {
+            return false;
+        }
+
+        for (const FIngredientInstance& Inst : Dish.IngredientInstances)
+        {
+            if (Inst.IngredientData.IngredientTag == IngredientTag && IngredientInstanceHasAnyPreparation(Inst))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    static bool DishContainsInstanceID(const FPUDishBase& Dish, int32 InstanceID)
+    {
+        if (InstanceID == 0)
+        {
+            return false;
+        }
+
+        for (const FIngredientInstance& Inst : Dish.IngredientInstances)
+        {
+            if (Inst.InstanceID == InstanceID)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     static uint32 HashGameplayTagContainerStable(const FGameplayTagContainer& Container)
     {
         TArray<FGameplayTag> Tags;
@@ -959,6 +995,11 @@ void UPUDishCustomizationWidget::UpdateDishData(const FPUDishBase& NewDishData)
 
     RefreshPreppedPantrySlots();
     RefreshRecipeLog();
+
+    if (bPantryOpen)
+    {
+        RefreshPantryForActiveSlotContext();
+    }
 }
 
 FText UPUDishCustomizationWidget::GetEndingStageTextForCurrentDish() const
@@ -1286,6 +1327,49 @@ namespace
 void UPUDishCustomizationWidget::ForEachIngredientRailStripSlot(TFunctionRef<void(UPUIngredientSlot*)> Visitor) const
 {
     VisitIngredientSlotsUnderPanel(IngredientRailSlot, Visitor);
+}
+
+void UPUDishCustomizationWidget::CollectOccupiedPantrySelections(
+    TSet<int32>& OutOccupiedInstanceIDs,
+    TSet<FGameplayTag>& OutOccupiedIngredientTags) const
+{
+    OutOccupiedInstanceIDs.Reset();
+    OutOccupiedIngredientTags.Reset();
+
+    auto ConsiderWorkSlot = [&](UPUIngredientSlot* WorkSlot)
+    {
+        if (!IsValid(WorkSlot) || WorkSlot->IsEmpty())
+        {
+            return;
+        }
+
+        const FIngredientInstance& Inst = WorkSlot->GetIngredientInstance();
+        if (Inst.InstanceID != 0)
+        {
+            OutOccupiedInstanceIDs.Add(Inst.InstanceID);
+        }
+
+        if (Inst.IngredientData.IngredientTag.IsValid())
+        {
+            OutOccupiedIngredientTags.Add(Inst.IngredientData.IngredientTag);
+        }
+        else if (Inst.IngredientTag.IsValid())
+        {
+            OutOccupiedIngredientTags.Add(Inst.IngredientTag);
+        }
+    };
+
+    ForEachIngredientRailStripSlot(ConsiderWorkSlot);
+
+    for (UPUIngredientSlot* WorkSlot : CreatedIngredientSlots)
+    {
+        if (!IsValid(WorkSlot) || WorkSlot->GetLocation() != EPUIngredientSlotLocation::ActiveIngredientArea)
+        {
+            continue;
+        }
+
+        ConsiderWorkSlot(WorkSlot);
+    }
 }
 
 bool UPUDishCustomizationWidget::IsStripMinigameLockingIngredientRail() const
@@ -2335,13 +2419,16 @@ void UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry(const FI
     {
         const FIngredientInstance OldInstance = EmptySlot->GetIngredientInstance();
         RemovePreppedSlot(OldInstance);
-        if (OldInstance.InstanceID != 0)
+        if (OldInstance.InstanceID != 0 && OldInstance.InstanceID != NewInstance.InstanceID)
         {
             RemoveIngredientInstance(OldInstance.InstanceID);
         }
     }
 
-    CurrentDishData.IngredientInstances.Add(NewInstance);
+    if (!DishContainsInstanceID(CurrentDishData, NewInstance.InstanceID))
+    {
+        CurrentDishData.IngredientInstances.Add(NewInstance);
+    }
 
     EmptySlot->OnSlotIngredientChanged.AddUniqueDynamic(this, &UPUDishCustomizationWidget::OnQuantityControlChanged);
 
@@ -2488,11 +2575,18 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
             return;
         }
 
+        TSet<int32> OccupiedInstanceIDs;
+        TSet<FGameplayTag> OccupiedIngredientTags;
+        CollectOccupiedPantrySelections(OccupiedInstanceIDs, OccupiedIngredientTags);
+        if (Pick.InstanceID != 0 && OccupiedInstanceIDs.Contains(Pick.InstanceID))
+        {
+            return;
+        }
+
         if (PendingEmptySlot.IsValid())
         {
             FIngredientInstance NewInstance = Pick;
-            NewInstance.InstanceID = GenerateGUIDBasedInstanceID();
-            NewInstance.Quantity = 1;
+            NewInstance.Quantity = FMath::Max(1, Pick.Quantity);
             if (!NewInstance.IngredientTag.IsValid())
             {
                 NewInstance.IngredientTag = NewInstance.IngredientData.IngredientTag;
@@ -2522,6 +2616,16 @@ void UPUDishCustomizationWidget::OnPantrySlotClicked(UPUIngredientSlot* Ingredie
         }
 
         if (!PassesPendingSlotTypeGate(PantryInstance.IngredientData))
+        {
+            return;
+        }
+
+        TSet<int32> OccupiedInstanceIDs;
+        TSet<FGameplayTag> OccupiedIngredientTags;
+        CollectOccupiedPantrySelections(OccupiedInstanceIDs, OccupiedIngredientTags);
+
+        if (DishHasPreppedInstanceForIngredientTag(CurrentDishData, PantryInstance.IngredientData.IngredientTag)
+            || OccupiedIngredientTags.Contains(PantryInstance.IngredientData.IngredientTag))
         {
             return;
         }
@@ -4215,7 +4319,7 @@ void UPUDishCustomizationWidget::RefreshRecipeLog()
             const bool bBelongsOnGatherBaseline =
                 Inst.InstanceID != 0 && RecipeLogGatherSnapshotInstanceIDs.Contains(Inst.InstanceID);
 
-            if (bBelongsOnGatherBaseline)
+            if (bBelongsOnGatherBaseline && !IngredientInstanceHasAnyPreparation(Inst))
             {
                 BaseInstances.Add(Inst);
             }
@@ -4589,11 +4693,20 @@ void UPUDishCustomizationWidget::RefreshPreppedPantrySlots()
 
     UPanelWidget* ContainerToUse = PreppedPantryContainer.IsValid() ? PreppedPantryContainer.Get() : nullptr;
 
+    TSet<int32> OccupiedInstanceIDs;
+    TSet<FGameplayTag> UnusedOccupiedTags;
+    CollectOccupiedPantrySelections(OccupiedInstanceIDs, UnusedOccupiedTags);
+
     TArray<FIngredientInstance> PreppedInstances;
     for (const FIngredientInstance& Inst : CurrentDishData.IngredientInstances)
     {
         if (IngredientInstanceHasAnyPreparation(Inst))
         {
+            if (Inst.InstanceID != 0 && OccupiedInstanceIDs.Contains(Inst.InstanceID))
+            {
+                continue;
+            }
+
             if (PendingEmptySlot.IsValid() && PendingEmptySlot->HasRequiredIngredientTypes())
             {
                 if (!UPUIngredientBlueprintLibrary::IngredientMatchesTypeFilter(
@@ -4934,10 +5047,22 @@ TArray<FPUIngredientBase> UPUDishCustomizationWidget::GetPantryEligibleIngredien
         return TArray<FPUIngredientBase>();
     }
 
-    return CustomizationComponent->GetPantryEligibleIngredients(
+    TArray<FPUIngredientBase> Filtered = CustomizationComponent->GetPantryEligibleIngredients(
         GetActivePantrySlotTypeFilter(),
         GetActivePantryStageParentTags(),
         GetActivePantryTutorialAllowedTag());
+
+    TSet<int32> OccupiedInstanceIDs;
+    TSet<FGameplayTag> OccupiedIngredientTags;
+    CollectOccupiedPantrySelections(OccupiedInstanceIDs, OccupiedIngredientTags);
+
+    Filtered.RemoveAll([&](const FPUIngredientBase& Ingredient)
+    {
+        return DishHasPreppedInstanceForIngredientTag(CurrentDishData, Ingredient.IngredientTag)
+               || OccupiedIngredientTags.Contains(Ingredient.IngredientTag);
+    });
+
+    return Filtered;
 }
 
 bool UPUDishCustomizationWidget::DoesIngredientPassActivePantryFilters(const FPUIngredientBase& Ingredient) const

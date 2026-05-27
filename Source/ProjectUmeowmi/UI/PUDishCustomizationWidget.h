@@ -950,4 +950,7 @@ private:
     UPUIngredientSlot* ResolveIngredientRailStripSlotForStageModulePreview(UPUIngredientSlot* StripSlot);
 
     void ForEachIngredientRailStripSlot(TFunctionRef<void(UPUIngredientSlot*)> Visitor) const;
+
+    /** Instance IDs / tags already assigned to a non-empty work slot (rail strip or active prep slot). */
+    void CollectOccupiedPantrySelections(TSet<int32>& OutOccupiedInstanceIDs, TSet<FGameplayTag>& OutOccupiedIngredientTags) const;
 }; 
