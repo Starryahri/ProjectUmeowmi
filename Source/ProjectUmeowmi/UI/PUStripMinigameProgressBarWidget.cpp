@@ -6,6 +6,7 @@
 #include "Components/Widget.h"
 #include "Engine/World.h"
 #include "PUChopStripMinigameBehavior.h"
+#include "PUMarinateStripMinigameBehavior.h"
 #include "PUStripMinigameBehavior.h"
 #include "TimerManager.h"
 #include "PUUObjectSafety.h"
@@ -50,6 +51,11 @@ void UPUStripMinigameProgressBarWidget::BindToStripMinigameBehavior(UPUStripMini
         ChopBehavior->OnChopProgressUpdated.AddDynamic(this, &UPUStripMinigameProgressBarWidget::HandleChopProgressUpdated);
         bBoundToChopProgressDelegate = true;
     }
+    else if (UPUMarinateStripMinigameBehavior* MarinateBehavior = Cast<UPUMarinateStripMinigameBehavior>(BoundBehavior))
+    {
+        MarinateBehavior->OnMarinateProgressUpdated.AddDynamic(this, &UPUStripMinigameProgressBarWidget::HandleMarinateProgressUpdated);
+        bBoundToMarinateProgressDelegate = true;
+    }
 
     RefreshFromBoundStripMinigameBehavior();
 }
@@ -60,8 +66,13 @@ void UPUStripMinigameProgressBarWidget::UnbindFromStripMinigameBehavior()
     {
         ChopBehavior->OnChopProgressUpdated.RemoveAll(this);
     }
+    else if (UPUMarinateStripMinigameBehavior* MarinateBehavior = Cast<UPUMarinateStripMinigameBehavior>(BoundBehavior))
+    {
+        MarinateBehavior->OnMarinateProgressUpdated.RemoveAll(this);
+    }
 
     bBoundToChopProgressDelegate = false;
+    bBoundToMarinateProgressDelegate = false;
     BoundBehavior = nullptr;
 }
 
@@ -117,6 +128,13 @@ void UPUStripMinigameProgressBarWidget::SyncVisualsFromBoundBehavior_Implementat
 
         const float Overall = ChopBehavior->GetOverallChopProgressNormalized();
         ApplyProgressVisuals(Overall, Overall, IconCount, Anchors, States);
+        return;
+    }
+
+    if (UPUMarinateStripMinigameBehavior* MarinateBehavior = Cast<UPUMarinateStripMinigameBehavior>(BoundBehavior))
+    {
+        const float Overall = MarinateBehavior->GetOverallMarinateProgressNormalized();
+        ApplyProgressVisuals(Overall, Overall, 0, TArray<float>(), TArray<EPUStripMinigameTierIconState>());
         return;
     }
 
@@ -195,6 +213,13 @@ void UPUStripMinigameProgressBarWidget::HandleChopProgressUpdated(
     (void)ChopsTowardNextTier;
     (void)ChopsPerTier;
     (void)TargetTier;
+    RefreshFromBoundStripMinigameBehavior();
+}
+
+void UPUStripMinigameProgressBarWidget::HandleMarinateProgressUpdated(int32 MixStrokesCompleted, int32 MixStrokesRequired)
+{
+    (void)MixStrokesCompleted;
+    (void)MixStrokesRequired;
     RefreshFromBoundStripMinigameBehavior();
 }
 

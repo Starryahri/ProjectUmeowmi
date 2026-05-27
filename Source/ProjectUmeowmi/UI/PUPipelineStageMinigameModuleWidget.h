@@ -17,12 +17,24 @@ class UTexture2D;
 class UPUStripMinigameBehavior;
 class UPUStripMinigameProgressBarWidget;
 
+/** Runtime-spawned bowl images for one ingredient layer (2nd rail ingredient = layer 0, etc.). */
+USTRUCT()
+struct FPUMarinationBowlSpawnedLayer
+{
+    GENERATED_BODY()
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UImage>> SlotImages;
+};
+
 /**
  * Shared base for pipeline-mounted stage vignettes that run an interactive strip-minigame (chop, marinate, etc.).
  * Assign a StripMinigameBehavior (class or instanced) per widget — Blueprints stay parented here; no per-minigame reparent.
  *
  * BindWidgetOptional: StageMinigameUIPanel, FoodToBeChopped (chop food image — required name in UMG)
- * Marination: MarinationBowlSlot0 … MarinationBowlSlot4 (or nest Images under MarinationBowlSlotPanel)
+ * Marination bowl: place anchor images MarinationBowlSlot0 … MarinationBowlSlot4 (or nest under MarinationBowlSlotPanel).
+ *   1st rail ingredient fills those anchors; each later ingredient spawns UImage children at every anchor at runtime.
+ *   Place BowlFront (foreground rim) in the same panel — C++ keeps it above all ingredient images.
  * Progress bar: nest WBP_ProgressBar (parent: Strip Minigame Progress Bar) under StageMinigameUIPanel — any instance name; C++ discovers it at runtime.
  */
 UCLASS(Abstract, Blueprintable, meta = (DisplayName = "Pipeline Stage Minigame Module"))
@@ -62,8 +74,9 @@ public:
     FName StripMinigameFoodImageWidgetName;
 
     static constexpr int32 DefaultMarinationBowlVisualCount = 5;
+    static constexpr float MarinationBowlImageDrawSize = 64.f;
 
-    /** How many bowl slot images receive the same ingredient texture per rail add (marination). */
+    /** How many bowl slot anchors exist (MarinationBowlSlot0 … N-1). */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl", meta = (ClampMin = "1", ClampMax = "5"))
     int32 MarinationBowlVisualCount = DefaultMarinationBowlVisualCount;
 
@@ -86,12 +99,23 @@ public:
     UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl")
     TObjectPtr<UImage> MarinationBowlSlot4;
 
+    /** Foreground bowl rim/frame — always kept above ingredient slot images. */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl")
+    TObjectPtr<UImage> BowlFront;
+
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl")
     TArray<TObjectPtr<UImage>> ResolvedMarinationBowlSlotImages;
 
     /** Bowl targets that are ingredient-slot widgets (MarinationBowlSlot0 … 4 by name). */
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl")
     TArray<TObjectPtr<UPUIngredientSlot>> ResolvedMarinationBowlIngredientSlots;
+
+    /** Runtime UImages spawned for 2nd+ rail ingredients (one image per anchor slot). */
+    UPROPERTY(Transient)
+    TArray<FPUMarinationBowlSpawnedLayer> SpawnedMarinationBowlLayerImages;
+
+    UPROPERTY(Transient, BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl")
+    TObjectPtr<UImage> ResolvedMarinationBowlFrontImage;
 
     UPROPERTY(BlueprintReadOnly, Category = "Stage Minigame")
     bool bStripMinigameActive = false;
@@ -177,14 +201,19 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Chop Presentation")
     void ApplyStripMinigameFoodVisual();
 
-    /** Marination: push ingredient texture into all resolved bowl slot images (5 copies). */
+    /** Marination: 1st ingredient fills anchor images; later ones spawn images at every anchor slot. */
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Marination Bowl")
     void ApplyMarinationBowlVisualsForIngredient(
         const FIngredientInstance& IngredientInstance,
-        UPUIngredientSlot* SourceStripSlot = nullptr);
+        UPUIngredientSlot* SourceStripSlot = nullptr,
+        int32 BowlIngredientIndex = 0);
 
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Marination Bowl")
     void ClearMarinationBowlVisuals();
+
+    /** Clears one rail-ingredient layer (0 = base MarinationBowlSlot images). */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Marination Bowl")
+    void ClearMarinationBowlLayerVisuals(int32 BowlIngredientIndex);
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
@@ -229,10 +258,27 @@ private:
     void ResolveStripMinigameProgressBarWidget();
     void ResolveStripMinigameFoodImageWidget();
     void ResolveMarinationBowlSlotTargets();
+    void ResolveMarinationBowlFrontImage();
+    void EnsureMarinationBowlFrontOnTop();
     static bool TryGetMarinationBowlDisplayVisual(
         const FIngredientInstance& IngredientInstance,
         UTexture2D*& OutTexture,
         FLinearColor& OutTint);
+    bool ResolveMarinationIngredientVisual(
+        const FIngredientInstance& IngredientInstance,
+        UPUIngredientSlot* SourceStripSlot,
+        UTexture2D*& OutTexture,
+        FLinearColor& OutTint) const;
+    UWidget* GetMarinationBowlAnchorWidget(int32 SlotIndex) const;
+    void ApplyMarinationBowlImageVisual(UImage* BowlImage, UTexture2D* Texture, const FLinearColor& Tint);
+    void ApplyMarinationBaseBowlVisuals(UTexture2D* Texture, const FLinearColor& Tint, const FIngredientInstance& IngredientInstance);
+    void SpawnMarinationBowlImageAtSlot(
+        int32 LayerIndex,
+        int32 SlotIndex,
+        UTexture2D* Texture,
+        const FLinearColor& Tint,
+        UWidget* AnchorWidget);
+    void ClearSpawnedMarinationBowlImages();
 
     /** Browsing preview on `FoodToBeChopped` while minigame is inactive — whole art, white tint (clears stale cut-tier multiply). */
     void ApplyStripSlotFocusPreviewVisual(UPUIngredientSlot* StripSlot);

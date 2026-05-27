@@ -144,6 +144,9 @@ private:
         int32 ChopsPerTier,
         EPUChopCompletedCutTier TargetTier);
 
+    UFUNCTION()
+    void HandleMarinateProgressUpdated(int32 MixStrokesCompleted, int32 MixStrokesRequired);
+
     void ApplyLayoutVisuals();
     void UpdateCachedTrackWidth();
     void ScheduleLayoutRefresh();
@@ -155,5 +158,6 @@ private:
 
     float CachedTrackWidth = 0.f;
     bool bBoundToChopProgressDelegate = false;
+    bool bBoundToMarinateProgressDelegate = false;
     FTimerHandle LayoutRefreshTimerHandle;
 };
