@@ -201,6 +201,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Chop Presentation")
     void ApplyStripMinigameFoodVisual();
 
+    /** P / gamepad A pressed during marinate minigame — plays mix animation, then ReceiveStripMinigameMixPressed. */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Marinate Presentation")
+    void NotifyStripMinigameMixPressed();
+
+    /** P / gamepad A released: ReceiveStripMinigameMixReleased (restore brush here — no reverse animation). */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Marinate Presentation")
+    void NotifyStripMinigameMixReleased();
+
     /** Marination: 1st ingredient fills anchor images; later ones spawn images at every anchor slot. */
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Marination Bowl")
     void ApplyMarinationBowlVisualsForIngredient(
@@ -229,6 +237,12 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Presentation", meta = (DisplayName = "On Strip Minigame Chop Played", DeprecatedFunction, DeprecationMessage = "Use On Strip Minigame Chop Pressed"))
     void ReceiveStripMinigameChopPlayed();
 
+    UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Marinate Presentation", meta = (DisplayName = "On Strip Minigame Mix Pressed"))
+    void ReceiveStripMinigameMixPressed();
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Marinate Presentation", meta = (DisplayName = "On Strip Minigame Mix Released"))
+    void ReceiveStripMinigameMixReleased();
+
     /** Single chop animation (e.g. knife down). BindWidgetAnim name must match the animation asset name in the UMG designer. */
     UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
     TObjectPtr<UWidgetAnimation> ChopStrikeAnimation;
@@ -240,9 +254,24 @@ protected:
     UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
     TObjectPtr<UWidgetAnimation> ChopStrikeAnimationB;
 
+    /** Single mix animation for marinate minigame (e.g. spoon stir). */
+    UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
+    TObjectPtr<UWidgetAnimation> MixStrikeAnimation;
+
+    /** Optional A/B mix animations (alternate each press when both are set). */
+    UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
+    TObjectPtr<UWidgetAnimation> MixStrikeAnimationA;
+
+    UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
+    TObjectPtr<UWidgetAnimation> MixStrikeAnimationB;
+
     UFUNCTION(BlueprintNativeEvent, Category = "Stage Minigame|Presentation", meta = (DisplayName = "Play Strip Minigame Chop Animation"))
     void PlayStripMinigameChopAnimation();
     virtual void PlayStripMinigameChopAnimation_Implementation();
+
+    UFUNCTION(BlueprintNativeEvent, Category = "Stage Minigame|Marinate Presentation", meta = (DisplayName = "Play Strip Minigame Mix Animation"))
+    void PlayStripMinigameMixAnimation();
+    virtual void PlayStripMinigameMixAnimation_Implementation();
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame", meta = (DisplayName = "On Strip Minigame Presentation Changed"))
     void ReceiveStripMinigamePresentationChanged(bool bActive, UPUIngredientSlot* StripSlot);
@@ -294,4 +323,5 @@ private:
     TObjectPtr<UPUIngredientSlot> StripMinigameContextStripSlot;
 
     bool bNextChopStrikeUsesAnimationA = true;
+    bool bNextMixStrikeUsesAnimationA = true;
 };

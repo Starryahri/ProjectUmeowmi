@@ -93,6 +93,8 @@ public:
 
     virtual bool TryConsumeMinigameKey_Implementation(FKey Key) override;
 
+    virtual bool TryReleaseMinigameKey_Implementation(FKey Key) override;
+
     virtual bool CanStartStripMinigameForSlot_Implementation(const UPUIngredientSlot* StripSlot) const override;
 
     virtual void HandleIngredientAddedToStripSlot_Implementation(
@@ -110,6 +112,8 @@ protected:
     UPROPERTY()
     TObjectPtr<UPUIngredientSlot> ActiveMarinateStripSlot;
 
+    bool bMixStrikeKeyHeld = false;
+
     UFUNCTION()
     void HandleMarinationRailStripSlotIngredientChanged(const FIngredientInstance& IngredientInstance);
 
@@ -122,6 +126,6 @@ protected:
     void BroadcastMarinateProgress();
     bool ApplyMarinatedPreparationToBowlRailSlots();
     bool IngredientHasMarinatedPreparation(const FIngredientInstance& IngredientInstance) const;
-    static bool IsMixKey(FKey Key);
+    static bool IsMarinateMixKey(FKey Key);
     void DisconnectMarinateDelegates(UObject* ProgressBarSubscriber);
 };

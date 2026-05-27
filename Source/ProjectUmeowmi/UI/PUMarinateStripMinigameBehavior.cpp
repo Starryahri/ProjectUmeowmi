@@ -41,6 +41,12 @@ void UPUMarinateStripMinigameBehavior::HandleStripMinigameSessionChanged_Impleme
     }
     else
     {
+        if (bMixStrikeKeyHeld && IsValid(OwnerModule))
+        {
+            bMixStrikeKeyHeld = false;
+            OwnerModule->NotifyStripMinigameMixReleased();
+        }
+
         ActiveMarinateStripSlot = nullptr;
     }
 }
@@ -52,13 +58,35 @@ bool UPUMarinateStripMinigameBehavior::TryConsumeMinigameKey_Implementation(FKey
         return false;
     }
 
-    if (IsMixKey(Key))
+    if (IsMarinateMixKey(Key))
     {
+        if (bMixStrikeKeyHeld)
+        {
+            return true;
+        }
+
+        bMixStrikeKeyHeld = true;
         RegisterMixInput();
         return true;
     }
 
     return false;
+}
+
+bool UPUMarinateStripMinigameBehavior::TryReleaseMinigameKey_Implementation(FKey Key)
+{
+    if (!IsValid(OwnerModule) || !OwnerModule->IsStripMinigameActive() || !IsMarinateMixKey(Key))
+    {
+        return false;
+    }
+
+    if (bMixStrikeKeyHeld)
+    {
+        bMixStrikeKeyHeld = false;
+        OwnerModule->NotifyStripMinigameMixReleased();
+    }
+
+    return true;
 }
 
 bool UPUMarinateStripMinigameBehavior::CanStartStripMinigameForSlot_Implementation(const UPUIngredientSlot* StripSlot) const
@@ -105,7 +133,7 @@ void UPUMarinateStripMinigameBehavior::RegisterMixInput()
         return;
     }
 
-    OwnerModule->NotifyStripMinigameChopPressed();
+    OwnerModule->NotifyStripMinigameMixPressed();
     ++MixStrokesCompleted;
     BroadcastMarinateProgress();
 
@@ -136,6 +164,7 @@ bool UPUMarinateStripMinigameBehavior::FinishMarinationAndApply()
 
 void UPUMarinateStripMinigameBehavior::ResetMarinateSession()
 {
+    bMixStrikeKeyHeld = false;
     MixStrokesCompleted = 0;
     BroadcastMarinateProgress();
 }
@@ -195,7 +224,7 @@ bool UPUMarinateStripMinigameBehavior::IngredientHasMarinatedPreparation(const F
         || IngredientInstance.IngredientData.ActivePreparations.HasTag(MarinateTag);
 }
 
-bool UPUMarinateStripMinigameBehavior::IsMixKey(FKey Key)
+bool UPUMarinateStripMinigameBehavior::IsMarinateMixKey(FKey Key)
 {
     return Key == EKeys::P || Key == EKeys::Gamepad_FaceButton_Bottom;
 }

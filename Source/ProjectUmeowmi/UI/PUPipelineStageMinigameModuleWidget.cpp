@@ -1038,7 +1038,14 @@ void UPUPipelineStageMinigameModuleWidget::SetStripMinigameActive(bool bActive, 
     StripMinigameContextStripSlot = bActive ? ContextStripSlot : nullptr;
     if (bActive)
     {
-        bNextChopStrikeUsesAnimationA = true;
+        if (Cast<UPUChopStripMinigameBehavior>(ActiveStripMinigameBehavior))
+        {
+            bNextChopStrikeUsesAnimationA = true;
+        }
+        else if (Cast<UPUMarinateStripMinigameBehavior>(ActiveStripMinigameBehavior))
+        {
+            bNextMixStrikeUsesAnimationA = true;
+        }
     }
     ApplyStageMinigameUIPanelVisibility();
 
@@ -1060,7 +1067,10 @@ void UPUPipelineStageMinigameModuleWidget::SetStripMinigameActive(bool bActive, 
 
     if (bActive)
     {
-        ApplyStripMinigameFoodVisual();
+        if (Cast<UPUChopStripMinigameBehavior>(ActiveStripMinigameBehavior))
+        {
+            ApplyStripMinigameFoodVisual();
+        }
     }
     else
     {
@@ -1277,6 +1287,17 @@ void UPUPipelineStageMinigameModuleWidget::ApplyStageMinigameUIPanelVisibility()
         bStripMinigameActive ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 }
 
+void UPUPipelineStageMinigameModuleWidget::NotifyStripMinigameMixPressed()
+{
+    PlayStripMinigameMixAnimation();
+    ReceiveStripMinigameMixPressed();
+}
+
+void UPUPipelineStageMinigameModuleWidget::NotifyStripMinigameMixReleased()
+{
+    ReceiveStripMinigameMixReleased();
+}
+
 void UPUPipelineStageMinigameModuleWidget::NotifyStripMinigameChopPressed()
 {
     PlayStripMinigameChopAnimation();
@@ -1309,6 +1330,34 @@ void UPUPipelineStageMinigameModuleWidget::PlayStripMinigameChopAnimation_Implem
     else if (ChopStrikeAnimationB)
     {
         AnimationToPlay = ChopStrikeAnimationB;
+    }
+
+    if (AnimationToPlay)
+    {
+        PlayAnimation(AnimationToPlay, 0.f, 1, EUMGSequencePlayMode::Forward, 1.f, false);
+    }
+}
+
+void UPUPipelineStageMinigameModuleWidget::PlayStripMinigameMixAnimation_Implementation()
+{
+    UWidgetAnimation* AnimationToPlay = nullptr;
+
+    if (MixStrikeAnimationA && MixStrikeAnimationB)
+    {
+        AnimationToPlay = bNextMixStrikeUsesAnimationA ? MixStrikeAnimationA.Get() : MixStrikeAnimationB.Get();
+        bNextMixStrikeUsesAnimationA = !bNextMixStrikeUsesAnimationA;
+    }
+    else if (MixStrikeAnimation)
+    {
+        AnimationToPlay = MixStrikeAnimation;
+    }
+    else if (MixStrikeAnimationA)
+    {
+        AnimationToPlay = MixStrikeAnimationA;
+    }
+    else if (MixStrikeAnimationB)
+    {
+        AnimationToPlay = MixStrikeAnimationB;
     }
 
     if (AnimationToPlay)
