@@ -152,6 +152,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     void NotifyMountedStageModuleOfStripSlotFocus(class UPUIngredientSlot* StripSlot);
 
+    /** Forwards strip fill to `OnIngredientAddedToStripSlot` on the mounted stage module (marination bowl, etc.). */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void NotifyMountedStageModuleOfStripSlotIngredientAdded(
+        class UPUIngredientSlot* StripSlot,
+        const FIngredientInstance& IngredientInstance);
+
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
     bool IsStripMinigameLockingIngredientRail() const;
 

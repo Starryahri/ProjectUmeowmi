@@ -50,6 +50,13 @@ public:
     bool CanStartStripMinigameForSlot(const UPUIngredientSlot* StripSlot) const;
     virtual bool CanStartStripMinigameForSlot_Implementation(const UPUIngredientSlot* StripSlot) const;
 
+    /** Rail strip filled from pantry/prepped picker — marinate behavior mirrors into bowl visuals. */
+    UFUNCTION(BlueprintNativeEvent, Category = "Strip Minigame Behavior")
+    void HandleIngredientAddedToStripSlot(UPUIngredientSlot* StripSlot, const FIngredientInstance& IngredientInstance);
+    virtual void HandleIngredientAddedToStripSlot_Implementation(
+        UPUIngredientSlot* StripSlot,
+        const FIngredientInstance& IngredientInstance);
+
     /** Clears owner/slot refs and dynamic delegate bindings before the behavior or owner widget is destroyed. */
     virtual void DisconnectFromOwner(UPUPipelineStageMinigameModuleWidget* OwnerWidget, UObject* ProgressBarSubscriber);
 

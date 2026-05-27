@@ -46,4 +46,11 @@ public:
      */
     UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Dish Customization|Stage Module")
     bool ToggleStageMinigameFromIngredientStripSlot(UPUIngredientSlot* StripSlot);
+
+    /**
+     * Ingredient rail strip slot filled from pantry/prepped picker (see `CompletePendingStripFillAndClosePantry`).
+     * Marination stage uses this to mirror the ingredient into bowl visuals.
+     */
+    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Dish Customization|Stage Module")
+    void OnIngredientAddedToStripSlot(UPUIngredientSlot* StripSlot, const FIngredientInstance& IngredientInstance);
 };

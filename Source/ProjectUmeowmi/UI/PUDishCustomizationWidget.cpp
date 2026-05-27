@@ -1391,6 +1391,22 @@ void UPUDishCustomizationWidget::NotifyMountedStageModuleOfStripSlotFocus(UPUIng
     IPUCustomizationStageModuleInterface::Execute_OnIngredientStripSlotFocusChanged(Module, EffectiveStrip);
 }
 
+void UPUDishCustomizationWidget::NotifyMountedStageModuleOfStripSlotIngredientAdded(
+    UPUIngredientSlot* StripSlot,
+    const FIngredientInstance& IngredientInstance)
+{
+    UUserWidget* Module = MountedPipelineStageWidget.Get();
+    if (!IsValid(Module) ||
+        !Module->GetClass()->ImplementsInterface(UPUCustomizationStageModuleInterface::StaticClass()) ||
+        !IsValid(StripSlot) ||
+        !IsWidgetUnderIngredientRailSlot(StripSlot))
+    {
+        return;
+    }
+
+    IPUCustomizationStageModuleInterface::Execute_OnIngredientAddedToStripSlot(Module, StripSlot, IngredientInstance);
+}
+
 void UPUDishCustomizationWidget::SyncMountedStageModuleWithFocusedIngredientStripSlot()
 {
     NotifyMountedStageModuleOfStripSlotFocus(FindFocusedIngredientRailStripSlot());
@@ -2191,6 +2207,8 @@ void UPUDishCustomizationWidget::CompletePendingStripFillAndClosePantry(const FI
     EmptySlot->SetIngredientInstance(NewInstance);
 
     UpdateDishData(CurrentDishData);
+
+    NotifyMountedStageModuleOfStripSlotIngredientAdded(EmptySlot, NewInstance);
 
     PendingEmptySlot.Reset();
     ClearActivePantrySlotTypeFilter();

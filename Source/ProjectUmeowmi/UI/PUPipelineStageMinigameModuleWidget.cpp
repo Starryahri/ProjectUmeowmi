@@ -4,6 +4,7 @@
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "PUDishCustomizationWidget.h"
 #include "PUChopStripMinigameBehavior.h"
+#include "PUMarinateStripMinigameBehavior.h"
 #include "PUIngredientSlot.h"
 #include "PUStripMinigameBehavior.h"
 #include "PUStripMinigameProgressBarWidget.h"
@@ -91,6 +92,119 @@ namespace
 
         return nullptr;
     }
+
+    UImage* FindImageByWidgetName(UUserWidget* Owner, FName WidgetName)
+    {
+        if (!Owner || WidgetName.IsNone())
+        {
+            return nullptr;
+        }
+
+        UWidget* NamedWidget = nullptr;
+        if (Owner->WidgetTree)
+        {
+            NamedWidget = Owner->WidgetTree->FindWidget(WidgetName);
+        }
+        if (!NamedWidget)
+        {
+            NamedWidget = Owner->GetWidgetFromName(WidgetName);
+        }
+        return Cast<UImage>(NamedWidget);
+    }
+
+    void CollectOrderedPanelImages(UPanelWidget* Panel, TArray<UImage*>& OutImages, int32 MaxCount)
+    {
+        if (!Panel || MaxCount <= 0)
+        {
+            return;
+        }
+
+        const int32 ChildCount = Panel->GetChildrenCount();
+        for (int32 ChildIndex = 0; ChildIndex < ChildCount && OutImages.Num() < MaxCount; ++ChildIndex)
+        {
+            UWidget* Child = Panel->GetChildAt(ChildIndex);
+            if (UImage* Image = Cast<UImage>(Child))
+            {
+                OutImages.Add(Image);
+            }
+            else if (UPanelWidget* ChildPanel = Cast<UPanelWidget>(Child))
+            {
+                CollectOrderedPanelImages(ChildPanel, OutImages, MaxCount);
+            }
+        }
+    }
+
+    UWidget* FindWidgetByName(UUserWidget* Owner, FName WidgetName)
+    {
+        if (!Owner || WidgetName.IsNone())
+        {
+            return nullptr;
+        }
+
+        if (Owner->WidgetTree)
+        {
+            if (UWidget* Found = Owner->WidgetTree->FindWidget(WidgetName))
+            {
+                return Found;
+            }
+        }
+        return Owner->GetWidgetFromName(WidgetName);
+    }
+
+    bool TryParseMarinationBowlSlotIndex(FName WidgetName, int32& OutIndex)
+    {
+        const FString Name = WidgetName.ToString();
+        static const TCHAR* Prefixes[] = {
+            TEXT("MarinationBowlSlot"),
+            TEXT("MarinateBowlSlot")};
+
+        for (const TCHAR* Prefix : Prefixes)
+        {
+            if (!Name.StartsWith(Prefix))
+            {
+                continue;
+            }
+
+            FString Suffix = Name.Mid(FCString::Strlen(Prefix));
+            Suffix.TrimStartAndEndInline();
+            if (Suffix.StartsWith(TEXT("_")))
+            {
+                Suffix = Suffix.Mid(1);
+            }
+            if (Suffix.IsEmpty() || !Suffix.IsNumeric())
+            {
+                continue;
+            }
+
+            OutIndex = FCString::Atoi(*Suffix);
+            return true;
+        }
+
+        return false;
+    }
+
+    void CollectMarinationBowlNamedWidgets(UWidget* Widget, TArray<TPair<int32, UWidget*>>& OutWidgets)
+    {
+        if (!Widget)
+        {
+            return;
+        }
+
+        int32 SlotIndex = INDEX_NONE;
+        if (TryParseMarinationBowlSlotIndex(Widget->GetFName(), SlotIndex))
+        {
+            OutWidgets.Add(TPair<int32, UWidget*>(SlotIndex, Widget));
+        }
+
+        if (UPanelWidget* Panel = Cast<UPanelWidget>(Widget))
+        {
+            const int32 ChildCount = Panel->GetChildrenCount();
+            for (int32 ChildIndex = 0; ChildIndex < ChildCount; ++ChildIndex)
+            {
+                CollectMarinationBowlNamedWidgets(Panel->GetChildAt(ChildIndex), OutWidgets);
+            }
+        }
+    }
 }
 
 void UPUPipelineStageMinigameModuleWidget::NativeConstruct()
@@ -98,6 +212,7 @@ void UPUPipelineStageMinigameModuleWidget::NativeConstruct()
     Super::NativeConstruct();
     ResolveStripMinigameProgressBarWidget();
     ResolveStripMinigameFoodImageWidget();
+    ResolveMarinationBowlSlotTargets();
     SyncStripMinigameProgressBarBinding();
 }
 
@@ -180,6 +295,205 @@ void UPUPipelineStageMinigameModuleWidget::ResolveStripMinigameFoodImageWidget()
         {
             ResolvedStripMinigameFoodImage = NamedImage;
             return;
+        }
+    }
+}
+
+void UPUPipelineStageMinigameModuleWidget::ResolveMarinationBowlSlotTargets()
+{
+    ResolvedMarinationBowlSlotImages.Empty();
+    ResolvedMarinationBowlIngredientSlots.Empty();
+
+    const int32 DesiredCount = FMath::Clamp(MarinationBowlVisualCount, 1, DefaultMarinationBowlVisualCount);
+    TArray<TPair<int32, UWidget*>> NamedWidgets;
+    TSet<UWidget*> SeenWidgets;
+
+    auto TryAddNamedWidget = [&](UWidget* Widget)
+    {
+        if (!Widget || SeenWidgets.Contains(Widget))
+        {
+            return;
+        }
+
+        int32 SlotIndex = INDEX_NONE;
+        if (!TryParseMarinationBowlSlotIndex(Widget->GetFName(), SlotIndex))
+        {
+            return;
+        }
+
+        SeenWidgets.Add(Widget);
+        NamedWidgets.Add(TPair<int32, UWidget*>(SlotIndex, Widget));
+    };
+
+    UImage* ExplicitImageSlots[] = {
+        MarinationBowlSlot0.Get(),
+        MarinationBowlSlot1.Get(),
+        MarinationBowlSlot2.Get(),
+        MarinationBowlSlot3.Get(),
+        MarinationBowlSlot4.Get()};
+
+    for (int32 SlotIndex = 0; SlotIndex < DesiredCount; ++SlotIndex)
+    {
+        if (IsValid(ExplicitImageSlots[SlotIndex]))
+        {
+            TryAddNamedWidget(ExplicitImageSlots[SlotIndex]);
+            continue;
+        }
+
+        const FName FallbackName(*FString::Printf(TEXT("MarinationBowlSlot%d"), SlotIndex));
+        TryAddNamedWidget(FindWidgetByName(this, FallbackName));
+    }
+
+    if (WidgetTree && WidgetTree->RootWidget)
+    {
+        CollectMarinationBowlNamedWidgets(WidgetTree->RootWidget, NamedWidgets);
+    }
+
+    if (MarinationBowlSlotPanel)
+    {
+        CollectMarinationBowlNamedWidgets(MarinationBowlSlotPanel, NamedWidgets);
+    }
+
+    NamedWidgets.Sort([](const TPair<int32, UWidget*>& A, const TPair<int32, UWidget*>& B)
+    {
+        if (A.Key != B.Key)
+        {
+            return A.Key < B.Key;
+        }
+        return A.Value < B.Value;
+    });
+
+    SeenWidgets.Empty();
+    for (const TPair<int32, UWidget*>& Entry : NamedWidgets)
+    {
+        UWidget* Widget = Entry.Value;
+        if (!Widget || SeenWidgets.Contains(Widget))
+        {
+            continue;
+        }
+        SeenWidgets.Add(Widget);
+
+        if (UPUIngredientSlot* IngredientSlot = Cast<UPUIngredientSlot>(Widget))
+        {
+            if (ResolvedMarinationBowlIngredientSlots.Num() < DesiredCount)
+            {
+                ResolvedMarinationBowlIngredientSlots.Add(IngredientSlot);
+            }
+            continue;
+        }
+
+        if (UImage* Image = Cast<UImage>(Widget))
+        {
+            if (ResolvedMarinationBowlSlotImages.Num() < DesiredCount)
+            {
+                ResolvedMarinationBowlSlotImages.Add(Image);
+            }
+        }
+    }
+
+    if (ResolvedMarinationBowlSlotImages.Num() + ResolvedMarinationBowlIngredientSlots.Num() < DesiredCount
+        && MarinationBowlSlotPanel)
+    {
+        TArray<UImage*> PanelImages;
+        CollectOrderedPanelImages(MarinationBowlSlotPanel, PanelImages, DesiredCount);
+        for (UImage* PanelImage : PanelImages)
+        {
+            if (!IsValid(PanelImage) || ResolvedMarinationBowlSlotImages.Contains(PanelImage))
+            {
+                continue;
+            }
+            ResolvedMarinationBowlSlotImages.Add(PanelImage);
+            if (ResolvedMarinationBowlSlotImages.Num() + ResolvedMarinationBowlIngredientSlots.Num() >= DesiredCount)
+            {
+                break;
+            }
+        }
+    }
+}
+
+bool UPUPipelineStageMinigameModuleWidget::TryGetMarinationBowlDisplayVisual(
+    const FIngredientInstance& IngredientInstance,
+    UTexture2D*& OutTexture,
+    FLinearColor& OutTint)
+{
+    OutTexture = nullptr;
+    OutTint = FLinearColor::White;
+
+    if (!IngredientInstance.IngredientData.IngredientTag.IsValid())
+    {
+        return false;
+    }
+
+    const FPUIngredientBase& IngredientData = IngredientInstance.IngredientData;
+    OutTexture = IngredientData.GetCutVisualTexture(EPUIngredientCutVisualTier::Whole);
+    if (!OutTexture)
+    {
+        OutTexture = IngredientData.PreppedTexture;
+    }
+    if (!OutTexture)
+    {
+        OutTexture = IngredientData.PreviewTexture;
+    }
+
+    return OutTexture != nullptr;
+}
+
+void UPUPipelineStageMinigameModuleWidget::ApplyMarinationBowlVisualsForIngredient(
+    const FIngredientInstance& IngredientInstance,
+    UPUIngredientSlot* SourceStripSlot)
+{
+    ResolveMarinationBowlSlotTargets();
+
+    UTexture2D* Texture = nullptr;
+    FLinearColor Tint = FLinearColor::White;
+    const bool bHasImageTexture =
+        (IsValid(SourceStripSlot)
+            && SourceStripSlot->TryGetIngredientIconTextureForMountedStagePreview(Texture)
+            && Texture)
+        || TryGetMarinationBowlDisplayVisual(IngredientInstance, Texture, Tint);
+
+    for (UImage* BowlImage : ResolvedMarinationBowlSlotImages)
+    {
+        if (!IsValid(BowlImage) || !bHasImageTexture || !Texture)
+        {
+            continue;
+        }
+
+        BowlImage->SetBrushFromTexture(Texture, true);
+        BowlImage->SetColorAndOpacity(Tint);
+        BowlImage->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+
+    for (UPUIngredientSlot* BowlSlot : ResolvedMarinationBowlIngredientSlots)
+    {
+        if (!IsValid(BowlSlot))
+        {
+            continue;
+        }
+
+        BowlSlot->SetIngredientInstance(IngredientInstance);
+        BowlSlot->UpdateDisplay();
+        BowlSlot->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+}
+
+void UPUPipelineStageMinigameModuleWidget::ClearMarinationBowlVisuals()
+{
+    for (UImage* BowlImage : ResolvedMarinationBowlSlotImages)
+    {
+        if (IsValid(BowlImage))
+        {
+            BowlImage->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+
+    for (UPUIngredientSlot* BowlSlot : ResolvedMarinationBowlIngredientSlots)
+    {
+        if (IsValid(BowlSlot))
+        {
+            const FIngredientInstance EmptyInstance;
+            BowlSlot->SetIngredientInstance(EmptyInstance);
+            BowlSlot->UpdateDisplay();
         }
     }
 }
@@ -284,6 +598,16 @@ void UPUPipelineStageMinigameModuleWidget::HandleIngredientStripSlotFocusChanged
     }
 
     ApplyStripSlotFocusPreviewVisual(StripSlot);
+}
+
+void UPUPipelineStageMinigameModuleWidget::OnIngredientAddedToStripSlot_Implementation(
+    UPUIngredientSlot* StripSlot,
+    const FIngredientInstance& IngredientInstance)
+{
+    if (IsValid(ActiveStripMinigameBehavior))
+    {
+        ActiveStripMinigameBehavior->HandleIngredientAddedToStripSlot(StripSlot, IngredientInstance);
+    }
 }
 
 bool UPUPipelineStageMinigameModuleWidget::ToggleStageMinigameFromIngredientStripSlot_Implementation(UPUIngredientSlot* StripSlot)
@@ -426,6 +750,12 @@ TSubclassOf<UPUStripMinigameBehavior> UPUPipelineStageMinigameModuleWidget::Reso
         if (StageChoppingTag.IsValid() && StageDescriptor.StageId.MatchesTag(StageChoppingTag))
         {
             return UPUChopStripMinigameBehavior::StaticClass();
+        }
+
+        static const FGameplayTag StageMarinateTag = FGameplayTag::RequestGameplayTag(FName("Stage.Marinate"), false);
+        if (StageMarinateTag.IsValid() && StageDescriptor.StageId.MatchesTag(StageMarinateTag))
+        {
+            return UPUMarinateStripMinigameBehavior::StaticClass();
         }
     }
 

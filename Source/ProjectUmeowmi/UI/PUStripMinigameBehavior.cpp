@@ -42,6 +42,14 @@ bool UPUStripMinigameBehavior::CanStartStripMinigameForSlot_Implementation(const
     return IsValid(StripSlot) && !StripSlot->IsEmpty();
 }
 
+void UPUStripMinigameBehavior::HandleIngredientAddedToStripSlot_Implementation(
+    UPUIngredientSlot* StripSlot,
+    const FIngredientInstance& IngredientInstance)
+{
+    (void)StripSlot;
+    (void)IngredientInstance;
+}
+
 void UPUStripMinigameBehavior::RequestEndStripMinigameSession()
 {
     if (IsValid(OwnerModule) && OwnerModule->IsStripMinigameActive())
