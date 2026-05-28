@@ -3368,7 +3368,8 @@ bool UPUIngredientSlot::IsIngredientRailInteractionBlockedByMinigame() const
     const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
     return DishWidget
         && DishWidget->IsWidgetUnderIngredientRailSlot(const_cast<UPUIngredientSlot*>(this))
-        && DishWidget->IsStripMinigameLockingIngredientRail();
+        && DishWidget->IsStripMinigameLockingIngredientRail()
+        && !DishWidget->IsIngredientRailSlotInteractableDuringStripMinigame(this);
 }
 
 void UPUIngredientSlot::MaybeNotifyMountedStageModuleRailPreviewFromSlot()

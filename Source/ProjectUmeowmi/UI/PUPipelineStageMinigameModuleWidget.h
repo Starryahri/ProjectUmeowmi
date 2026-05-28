@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "../Interfaces/PUCustomizationStageModuleInterface.h"
+#include "PUCookingStripMinigameBehavior.h"
 #include "PUPipelineStageMinigameModuleWidget.generated.h"
 
 struct FKey;
@@ -145,6 +146,18 @@ public:
     UFUNCTION(BlueprintPure, Category = "Stage Minigame|Behavior")
     UPUStripMinigameBehavior* GetActiveStripMinigameBehavior() const { return ActiveStripMinigameBehavior; }
 
+    /** Cast helper when Stage.Cooking (or a cooking behavior subclass) is active. */
+    UFUNCTION(BlueprintPure, Category = "Stage Minigame|Cooking")
+    UPUCookingStripMinigameBehavior* GetActiveCookingStripMinigameBehavior() const;
+
+    /** Forwards to the active cooking behavior when present. */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Cooking")
+    void AdvanceCookingStep();
+
+    /** Forwards to the active cooking behavior when present. */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Cooking")
+    void ConfirmCookingStep();
+
     /** 0-based index into the dish CustomizationStages array for the active pipeline step, or INDEX_NONE. */
     UFUNCTION(BlueprintPure, Category = "Stage Minigame|Pipeline", meta = (DisplayName = "Get Current Stage Index"))
     int32 GetCurrentStageIndex() const;
@@ -243,6 +256,23 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Marinate Presentation", meta = (DisplayName = "On Strip Minigame Mix Released"))
     void ReceiveStripMinigameMixReleased();
 
+    /** Fired when the active cooking behavior enters a new step (bind on your cooking stage Blueprint). */
+    UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Cooking", meta = (DisplayName = "On Cooking Step Changed"))
+    void ReceiveCookingStepChanged(int32 StepIndex, FPUCookingMinigameStepDescriptor StepDescriptor);
+
+    /** Fired while the active cooking step advances (bar listens internally; use for extra VFX). */
+    UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Cooking", meta = (DisplayName = "On Cooking Progress Updated"))
+    void ReceiveCookingProgressUpdated(
+        int32 StepIndex,
+        int32 StepProgressCompleted,
+        int32 StepProgressRequired,
+        float OverallProgressNormalized,
+        int32 TotalStepCount);
+
+    /** Fired when the cooking session commits Prep.Cook and closes. */
+    UFUNCTION(BlueprintImplementableEvent, Category = "Stage Minigame|Cooking", meta = (DisplayName = "On Cooking Commit Finished"))
+    void ReceiveCookingCommitFinished(bool bAppliedPreparation);
+
     /** Single chop animation (e.g. knife down). BindWidgetAnim name must match the animation asset name in the UMG designer. */
     UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
     TObjectPtr<UWidgetAnimation> ChopStrikeAnimation;
@@ -315,6 +345,22 @@ private:
     void ApplyStageMinigameUIPanelVisibility();
     void SetupStripMinigameBehavior(const FPUDishCustomizationStageDescriptor& StageDescriptor);
     void TeardownStripMinigameBehavior();
+    void BindCookingStripMinigamePresentation(UPUCookingStripMinigameBehavior* CookingBehavior);
+    void UnbindCookingStripMinigamePresentation(UPUCookingStripMinigameBehavior* CookingBehavior);
+
+    UFUNCTION()
+    void HandleCookingStepChangedForwarded(int32 StepIndex, FPUCookingMinigameStepDescriptor StepDescriptor);
+
+    UFUNCTION()
+    void HandleCookingProgressUpdatedForwarded(
+        int32 StepIndex,
+        int32 StepProgressCompleted,
+        int32 StepProgressRequired,
+        float OverallProgressNormalized,
+        int32 TotalStepCount);
+
+    UFUNCTION()
+    void HandleCookingCommitFinishedForwarded(bool bAppliedPreparation);
 
     FPUDishCustomizationStageDescriptor CachedStageDescriptor;
     bool bHasCachedStageDescriptor = false;

@@ -1157,6 +1157,92 @@ TSubclassOf<UPUStripMinigameBehavior> UPUPipelineStageMinigameModuleWidget::Reso
     return nullptr;
 }
 
+UPUCookingStripMinigameBehavior* UPUPipelineStageMinigameModuleWidget::GetActiveCookingStripMinigameBehavior() const
+{
+    return Cast<UPUCookingStripMinigameBehavior>(ActiveStripMinigameBehavior);
+}
+
+void UPUPipelineStageMinigameModuleWidget::AdvanceCookingStep()
+{
+    if (UPUCookingStripMinigameBehavior* CookingBehavior = GetActiveCookingStripMinigameBehavior())
+    {
+        CookingBehavior->AdvanceCookingStep();
+    }
+}
+
+void UPUPipelineStageMinigameModuleWidget::ConfirmCookingStep()
+{
+    if (UPUCookingStripMinigameBehavior* CookingBehavior = GetActiveCookingStripMinigameBehavior())
+    {
+        CookingBehavior->ConfirmCurrentStep();
+    }
+}
+
+void UPUPipelineStageMinigameModuleWidget::BindCookingStripMinigamePresentation(
+    UPUCookingStripMinigameBehavior* CookingBehavior)
+{
+    if (!IsValid(CookingBehavior))
+    {
+        return;
+    }
+
+    CookingBehavior->OnCookingStepChanged.AddUniqueDynamic(
+        this,
+        &UPUPipelineStageMinigameModuleWidget::HandleCookingStepChangedForwarded);
+    CookingBehavior->OnCookingProgressUpdated.AddUniqueDynamic(
+        this,
+        &UPUPipelineStageMinigameModuleWidget::HandleCookingProgressUpdatedForwarded);
+    CookingBehavior->OnCookingCommitFinished.AddUniqueDynamic(
+        this,
+        &UPUPipelineStageMinigameModuleWidget::HandleCookingCommitFinishedForwarded);
+}
+
+void UPUPipelineStageMinigameModuleWidget::UnbindCookingStripMinigamePresentation(
+    UPUCookingStripMinigameBehavior* CookingBehavior)
+{
+    if (!IsValid(CookingBehavior))
+    {
+        return;
+    }
+
+    CookingBehavior->OnCookingStepChanged.RemoveDynamic(
+        this,
+        &UPUPipelineStageMinigameModuleWidget::HandleCookingStepChangedForwarded);
+    CookingBehavior->OnCookingProgressUpdated.RemoveDynamic(
+        this,
+        &UPUPipelineStageMinigameModuleWidget::HandleCookingProgressUpdatedForwarded);
+    CookingBehavior->OnCookingCommitFinished.RemoveDynamic(
+        this,
+        &UPUPipelineStageMinigameModuleWidget::HandleCookingCommitFinishedForwarded);
+}
+
+void UPUPipelineStageMinigameModuleWidget::HandleCookingStepChangedForwarded(
+    int32 StepIndex,
+    FPUCookingMinigameStepDescriptor StepDescriptor)
+{
+    ReceiveCookingStepChanged(StepIndex, StepDescriptor);
+}
+
+void UPUPipelineStageMinigameModuleWidget::HandleCookingProgressUpdatedForwarded(
+    int32 StepIndex,
+    int32 StepProgressCompleted,
+    int32 StepProgressRequired,
+    float OverallProgressNormalized,
+    int32 TotalStepCount)
+{
+    ReceiveCookingProgressUpdated(
+        StepIndex,
+        StepProgressCompleted,
+        StepProgressRequired,
+        OverallProgressNormalized,
+        TotalStepCount);
+}
+
+void UPUPipelineStageMinigameModuleWidget::HandleCookingCommitFinishedForwarded(bool bAppliedPreparation)
+{
+    ReceiveCookingCommitFinished(bAppliedPreparation);
+}
+
 void UPUPipelineStageMinigameModuleWidget::SetupStripMinigameBehavior(
     const FPUDishCustomizationStageDescriptor& StageDescriptor)
 {
@@ -1167,6 +1253,11 @@ void UPUPipelineStageMinigameModuleWidget::SetupStripMinigameBehavior(
 
     UPUStripMinigameBehavior* PreviousBehavior = ActiveStripMinigameBehavior.Get();
     ActiveStripMinigameBehavior = nullptr;
+
+    if (UPUCookingStripMinigameBehavior* PreviousCooking = Cast<UPUCookingStripMinigameBehavior>(PreviousBehavior))
+    {
+        UnbindCookingStripMinigamePresentation(PreviousCooking);
+    }
 
     if (IsValid(PreviousBehavior) && PreviousBehavior != StripMinigameBehavior)
     {
@@ -1201,6 +1292,12 @@ void UPUPipelineStageMinigameModuleWidget::SetupStripMinigameBehavior(
     ActiveStripMinigameBehavior = Behavior;
     ActiveStripMinigameBehavior->InitializeBehavior(this);
     ActiveStripMinigameBehavior->HandleStageModuleInitialized(StageDescriptor);
+
+    if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(ActiveStripMinigameBehavior))
+    {
+        BindCookingStripMinigamePresentation(CookingBehavior);
+    }
+
     SyncStripMinigameProgressBarBinding();
 }
 
@@ -1220,6 +1317,11 @@ void UPUPipelineStageMinigameModuleWidget::TeardownStripMinigameBehavior()
     ActiveStripMinigameBehavior = nullptr;
     StripMinigameContextStripSlot = nullptr;
     ResolvedStripMinigameFoodImage = nullptr;
+
+    if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(Behavior))
+    {
+        UnbindCookingStripMinigamePresentation(CookingBehavior);
+    }
 
     if (!IsValid(Behavior))
     {

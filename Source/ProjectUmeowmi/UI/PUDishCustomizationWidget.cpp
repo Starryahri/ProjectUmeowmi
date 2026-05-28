@@ -1,4 +1,7 @@
-#include "PUDishCustomizationWidget.h"
+namespace
+{
+    constexpr bool bPU_LogCookingAddIngredientTrace = true;
+}
 #include "PURadarChart.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../ProjectUmeowmiCharacter.h"
@@ -38,6 +41,7 @@
 #include "GameplayTagsManager.h"
 #include "../Interfaces/PUCustomizationStageModuleInterface.h"
 #include "PUPipelineStageMinigameModuleWidget.h"
+#include "PUCookingStripMinigameBehavior.h"
 #include "PUStripMinigameBehavior.h"
 #include "HAL/IConsoleManager.h"
 
@@ -1427,6 +1431,337 @@ void UPUDishCustomizationWidget::SetIngredientRailStripInteractionLocked(bool bL
     (void)LockedStripSlot;
 }
 
+void UPUDishCustomizationWidget::SetStripMinigameMainPantrySuppressed(bool bSuppressed)
+{
+    bStripMinigameMainPantrySuppressed = bSuppressed;
+    if (bSuppressed && bPantryOpen)
+    {
+        ClosePantry();
+    }
+}
+
+bool UPUDishCustomizationWidget::IsIngredientRailSlotInteractableDuringStripMinigame(
+    const UPUIngredientSlot* RailSlot) const
+{
+    if (!IsValid(RailSlot) || !IsStripMinigameLockingIngredientRail())
+    {
+        return false;
+    }
+
+    return bCookingAddIngredientRailStepActive
+        && ActiveCookingAddIngredientRailSlot.IsValid()
+        && ActiveCookingAddIngredientRailSlot.Get() == RailSlot
+        && !IsRailSlotConsumedForCookingAddIngredient(RailSlot);
+}
+
+bool UPUDishCustomizationWidget::IsRailSlotConsumedForCookingAddIngredient(const UPUIngredientSlot* RailSlot) const
+{
+    if (!IsValid(RailSlot))
+    {
+        return false;
+    }
+
+    for (const TWeakObjectPtr<UPUIngredientSlot>& ConsumedSlot : CookingAddIngredientConsumedRailSlots)
+    {
+        if (ConsumedSlot.Get() == RailSlot)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool UPUDishCustomizationWidget::DoesRailSlotMatchCookingAddIngredientFilter(const UPUIngredientSlot* RailSlot) const
+{
+    if (!IsValid(RailSlot) || RailSlot->IsEmpty())
+    {
+        return false;
+    }
+
+    if (!CookingAddIngredientRequiredType.IsValid())
+    {
+        return true;
+    }
+
+    FGameplayTagContainer TypeFilter;
+    TypeFilter.AddTag(CookingAddIngredientRequiredType);
+    return UPUIngredientBlueprintLibrary::IngredientMatchesTypeFilter(
+        RailSlot->GetIngredientInstance().IngredientData,
+        TypeFilter);
+}
+
+UPUIngredientSlot* UPUDishCustomizationWidget::FindCookingAddIngredientTargetRailSlot() const
+{
+    UPUIngredientSlot* FoundSlot = nullptr;
+    int32 RailIndex = 0;
+
+    ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+    {
+        if (FoundSlot != nullptr || !IsValid(RailSlot))
+        {
+            return;
+        }
+
+        if (CookingAddIngredientTargetRailSlotIndex != INDEX_NONE
+            && CookingAddIngredientTargetRailSlotIndex != RailIndex)
+        {
+            ++RailIndex;
+            return;
+        }
+
+        if (IsRailSlotConsumedForCookingAddIngredient(RailSlot) || RailSlot->IsEmpty())
+        {
+            ++RailIndex;
+            return;
+        }
+
+        if (!DoesRailSlotMatchCookingAddIngredientFilter(RailSlot))
+        {
+            ++RailIndex;
+            return;
+        }
+
+        FoundSlot = RailSlot;
+        ++RailIndex;
+    });
+
+    return FoundSlot;
+}
+
+void UPUDishCustomizationWidget::ApplyCookingAddIngredientRailInteractionState()
+{
+    UPUIngredientSlot* TargetSlot = FindCookingAddIngredientTargetRailSlot();
+    ActiveCookingAddIngredientRailSlot = TargetSlot;
+
+    ForEachIngredientRailStripSlot([this, TargetSlot](UPUIngredientSlot* RailSlot)
+    {
+        if (!IsValid(RailSlot))
+        {
+            return;
+        }
+
+        const bool bAllowInteraction = RailSlot == TargetSlot
+            && !IsRailSlotConsumedForCookingAddIngredient(RailSlot);
+        RailSlot->SetIsEnabled(bAllowInteraction);
+        RailSlot->SetIsFocusable(bAllowInteraction);
+    });
+}
+
+void UPUDishCustomizationWidget::ApplyCookingAddIngredientConsumedRailSlotLocks()
+{
+    ForEachIngredientRailStripSlot([this](UPUIngredientSlot* RailSlot)
+    {
+        if (IsValid(RailSlot) && IsRailSlotConsumedForCookingAddIngredient(RailSlot))
+        {
+            RailSlot->SetIsEnabled(false);
+            RailSlot->SetIsFocusable(false);
+        }
+    });
+}
+
+void UPUDishCustomizationWidget::RestoreStripMinigameRailLockAfterCookingAddIngredientStep()
+{
+    ActiveCookingAddIngredientRailSlot.Reset();
+    PendingEmptySlot.Reset();
+    ClearActivePantrySlotTypeFilter();
+
+    if (IsStripMinigameLockingIngredientRail())
+    {
+        SetIngredientRailStripInteractionLocked(true, GetLockedIngredientRailStripSlotForMinigame());
+    }
+    else
+    {
+        ForEachIngredientRailStripSlot([](UPUIngredientSlot* RailSlot)
+        {
+            if (IsValid(RailSlot))
+            {
+                RailSlot->SetIsEnabled(true);
+                RailSlot->SetIsFocusable(true);
+            }
+        });
+    }
+
+    ApplyCookingAddIngredientConsumedRailSlotLocks();
+}
+
+void UPUDishCustomizationWidget::BeginCookingAddIngredientRailStep(
+    int32 TargetRailSlotIndex,
+    FGameplayTag RequiredIngredientType)
+{
+    if (bPantryOpen)
+    {
+        ClosePantry();
+    }
+
+    bCookingAddIngredientRailStepActive = true;
+    CookingAddIngredientTargetRailSlotIndex = TargetRailSlotIndex;
+    CookingAddIngredientRequiredType = RequiredIngredientType;
+    ApplyCookingAddIngredientRailInteractionState();
+
+    if (UPUIngredientSlot* TargetSlot = ActiveCookingAddIngredientRailSlot.Get())
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            const FIngredientInstance& Instance = TargetSlot->GetIngredientInstance();
+            UE_LOG(LogTemp, Log, TEXT("[CookingAddIngredient] Step began — unlocked rail slot %s (index=%d, requiredType=%s, ingredient=%s)"),
+                *TargetSlot->GetName(),
+                TargetRailSlotIndex,
+                RequiredIngredientType.IsValid() ? *RequiredIngredientType.ToString() : TEXT("(any)"),
+                Instance.IngredientData.IngredientTag.IsValid()
+                    ? *Instance.IngredientData.IngredientTag.ToString()
+                    : TEXT("(no tag)"));
+        }
+        TargetSlot->SetFocus();
+    }
+    else if (bPU_LogCookingAddIngredientTrace)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Step began but no filled rail slot matched (index=%d, requiredType=%s, consumed=%d)"),
+            TargetRailSlotIndex,
+            RequiredIngredientType.IsValid() ? *RequiredIngredientType.ToString() : TEXT("(any)"),
+            CookingAddIngredientConsumedRailSlots.Num());
+    }
+}
+
+void UPUDishCustomizationWidget::EndCookingAddIngredientRailStep()
+{
+    if (!bCookingAddIngredientRailStepActive)
+    {
+        return;
+    }
+
+    bCookingAddIngredientRailStepActive = false;
+    CookingAddIngredientTargetRailSlotIndex = INDEX_NONE;
+    CookingAddIngredientRequiredType = FGameplayTag();
+    RestoreStripMinigameRailLockAfterCookingAddIngredientStep();
+
+    if (bPU_LogCookingAddIngredientTrace)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[CookingAddIngredient] Step ended — rail lock restored (consumed slots=%d)"),
+            CookingAddIngredientConsumedRailSlots.Num());
+    }
+}
+
+void UPUDishCustomizationWidget::TryCommitCookingAddIngredientRailSlot(UPUIngredientSlot* StripSlot)
+{
+    if (!bCookingAddIngredientRailStepActive)
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Verbose, TEXT("[CookingAddIngredient] Commit ignored — add-ingredient step not active"));
+        }
+        return;
+    }
+
+    if (!IsValid(StripSlot))
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Commit rejected — invalid strip slot"));
+        }
+        return;
+    }
+
+    if (StripSlot->IsEmpty())
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Commit rejected — slot %s is empty (select a filled rail slot)"),
+                *StripSlot->GetName());
+        }
+        return;
+    }
+
+    if (IsRailSlotConsumedForCookingAddIngredient(StripSlot))
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Commit rejected — slot %s already committed this session"),
+                *StripSlot->GetName());
+        }
+        return;
+    }
+
+    if (!ActiveCookingAddIngredientRailSlot.IsValid() || ActiveCookingAddIngredientRailSlot.Get() != StripSlot)
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Commit rejected — slot %s is not the unlocked target (active=%s)"),
+                *StripSlot->GetName(),
+                ActiveCookingAddIngredientRailSlot.IsValid()
+                    ? *ActiveCookingAddIngredientRailSlot->GetName()
+                    : TEXT("(none)"));
+        }
+        return;
+    }
+
+    if (!DoesRailSlotMatchCookingAddIngredientFilter(StripSlot))
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Commit rejected — slot %s ingredient does not match required type %s"),
+                *StripSlot->GetName(),
+                CookingAddIngredientRequiredType.IsValid()
+                    ? *CookingAddIngredientRequiredType.ToString()
+                    : TEXT("(any)"));
+        }
+        return;
+    }
+
+    if (bPU_LogCookingAddIngredientTrace)
+    {
+        const FIngredientInstance& Instance = StripSlot->GetIngredientInstance();
+        UE_LOG(LogTemp, Log, TEXT("[CookingAddIngredient] Commit accepted — slot %s, ingredient=%s"),
+            *StripSlot->GetName(),
+            Instance.IngredientData.IngredientTag.IsValid()
+                ? *Instance.IngredientData.IngredientTag.ToString()
+                : TEXT("(no tag)"));
+    }
+
+    NotifyCookingAddIngredientRailSlotCommittedFromShell(StripSlot);
+}
+
+void UPUDishCustomizationWidget::NotifyCookingAddIngredientRailSlotCommittedFromShell(UPUIngredientSlot* StripSlot)
+{
+    if (!IsValid(StripSlot))
+    {
+        return;
+    }
+
+    if (UPUPipelineStageMinigameModuleWidget* MinigameModule =
+            Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get()))
+    {
+        if (UPUCookingStripMinigameBehavior* CookingBehavior = MinigameModule->GetActiveCookingStripMinigameBehavior())
+        {
+            CookingBehavior->NotifyAddIngredientRailSlotCommitted(StripSlot);
+        }
+        else if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Shell commit — no active cooking behavior on mounted module"));
+        }
+    }
+    else if (bPU_LogCookingAddIngredientTrace)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Shell commit — no pipeline minigame module mounted"));
+    }
+
+    CookingAddIngredientConsumedRailSlots.Add(StripSlot);
+    EndCookingAddIngredientRailStep();
+}
+
+void UPUDishCustomizationWidget::ClearCookingAddIngredientSessionState()
+{
+    bCookingAddIngredientRailStepActive = false;
+    CookingAddIngredientTargetRailSlotIndex = INDEX_NONE;
+    CookingAddIngredientRequiredType = FGameplayTag();
+    CookingAddIngredientConsumedRailSlots.Empty();
+    ActiveCookingAddIngredientRailSlot.Reset();
+
+    if (bPU_LogCookingAddIngredientTrace)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[CookingAddIngredient] Session state cleared"));
+    }
+}
+
 UPUIngredientSlot* UPUDishCustomizationWidget::ResolveIngredientRailStripSlotForStageModulePreview(
     UPUIngredientSlot* StripSlot)
 {
@@ -1695,6 +2030,36 @@ bool UPUDishCustomizationWidget::AdvancePipelineStageAndRefreshPresentation()
     return CustomizationComponent->AdvanceCustomizationPipeline();
 }
 
+void UPUDishCustomizationWidget::AdvanceCustomizationAfterCookingMinigameComplete()
+{
+    if (AdvancePipelineStageAndRefreshPresentation())
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            const int32 StageIndex = CustomizationComponent
+                ? CustomizationComponent->GetActiveCustomizationPipelineIndex()
+                : INDEX_NONE;
+            UE_LOG(LogTemp, Log, TEXT("[CookingMinigame] Auto-advanced customization pipeline to stage index %d"), StageIndex);
+        }
+        return;
+    }
+
+    if (CustomizationComponent && CustomizationComponent->HasActiveCustomizationPipeline())
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[CookingMinigame] Cooking complete — already on last pipeline stage, not advancing"));
+        }
+        return;
+    }
+
+    if (bPU_LogCookingAddIngredientTrace)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[CookingMinigame] No customization pipeline — calling GoToNextStage"));
+    }
+    GoToNextStage();
+}
+
 bool UPUDishCustomizationWidget::CanIngredientStripSlotStartStageMinigame(const UPUIngredientSlot* StripSlot) const
 {
     if (!IsValid(StripSlot) || StripSlot->IsEmpty())
@@ -1753,6 +2118,32 @@ int32 UPUDishCustomizationWidget::CountFilledIngredientRailStripSlots() const
     });
 
     return FilledCount;
+}
+
+UPUIngredientSlot* UPUDishCustomizationWidget::GetIngredientRailStripSlotByIndex(int32 RailSlotIndex) const
+{
+    if (RailSlotIndex == INDEX_NONE)
+    {
+        return nullptr;
+    }
+
+    UPUIngredientSlot* FoundSlot = nullptr;
+    int32 CurrentIndex = 0;
+    ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+    {
+        if (FoundSlot != nullptr)
+        {
+            return;
+        }
+
+        if (CurrentIndex == RailSlotIndex)
+        {
+            FoundSlot = RailSlot;
+        }
+        ++CurrentIndex;
+    });
+
+    return FoundSlot;
 }
 
 bool UPUDishCustomizationWidget::TryTogglePipelineStageMinigameFromIngredientStripSlot(UPUIngredientSlot* StripSlot)
@@ -5276,6 +5667,11 @@ void UPUDishCustomizationWidget::PopulatePantrySlots()
 
 void UPUDishCustomizationWidget::OpenPantry()
 {
+    if (bStripMinigameMainPantrySuppressed)
+    {
+        return;
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OpenPantry - Opening pantry"));
 
     ClearPantrySlots();
@@ -5398,6 +5794,11 @@ void UPUDishCustomizationWidget::ClosePantryFromDrag()
 void UPUDishCustomizationWidget::OnPantryButtonClicked()
 {
     //UE_LOG(LogTemp,Display, TEXT("🎯 PUDishCustomizationWidget::OnPantryButtonClicked - Pantry button clicked"));
+
+    if (bStripMinigameMainPantrySuppressed)
+    {
+        return;
+    }
     
     if (bPantryOpen)
     {
@@ -5428,6 +5829,22 @@ void UPUDishCustomizationWidget::OnEmptySlotClicked(UPUIngredientSlot* Ingredien
         return;
     }
 
+    if (bCookingAddIngredientRailStepActive)
+    {
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[CookingAddIngredient] Rail slot clicked — %s (empty=%s)"),
+                *IngredientSlot->GetName(),
+                IngredientSlot->IsEmpty() ? TEXT("yes") : TEXT("no"));
+        }
+
+        if (!IngredientSlot->IsEmpty())
+        {
+            TryCommitCookingAddIngredientRailSlot(IngredientSlot);
+        }
+        return;
+    }
+
     if (bPantryOpen)
     {
         if (PendingEmptySlot.Get() == IngredientSlot)
@@ -5438,6 +5855,11 @@ void UPUDishCustomizationWidget::OnEmptySlotClicked(UPUIngredientSlot* Ingredien
 
         SetActivePantryContextFromSlot(IngredientSlot);
         RefreshPantryForActiveSlotContext();
+        return;
+    }
+
+    if (bStripMinigameMainPantrySuppressed)
+    {
         return;
     }
 

@@ -60,6 +60,7 @@ void UPUStripMinigameProgressBarWidget::BindToStripMinigameBehavior(UPUStripMini
     else if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(BoundBehavior))
     {
         CookingBehavior->OnCookingProgressUpdated.AddDynamic(this, &UPUStripMinigameProgressBarWidget::HandleCookingProgressUpdated);
+        CookingBehavior->OnCookingStepChanged.AddDynamic(this, &UPUStripMinigameProgressBarWidget::HandleCookingStepChanged);
         bBoundToCookingProgressDelegate = true;
     }
 
@@ -79,6 +80,7 @@ void UPUStripMinigameProgressBarWidget::UnbindFromStripMinigameBehavior()
     else if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(BoundBehavior))
     {
         CookingBehavior->OnCookingProgressUpdated.RemoveAll(this);
+        CookingBehavior->OnCookingStepChanged.RemoveAll(this);
     }
 
     bBoundToChopProgressDelegate = false;
@@ -151,8 +153,24 @@ void UPUStripMinigameProgressBarWidget::SyncVisualsFromBoundBehavior_Implementat
 
     if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(BoundBehavior))
     {
-        const float Overall = CookingBehavior->GetOverallCookProgressNormalized();
-        ApplyProgressVisuals(Overall, Overall, 0, TArray<float>(), TArray<EPUStripMinigameTierIconState>());
+        const int32 IconCount = FMath::Clamp(
+            CookingBehavior->GetProgressBarStepIconCount(),
+            1,
+            MaxTierIcons);
+
+        TArray<float> Anchors;
+        TArray<EPUStripMinigameTierIconState> States;
+        Anchors.Reserve(IconCount);
+        States.Reserve(IconCount);
+        for (int32 Index = 0; Index < IconCount; ++Index)
+        {
+            Anchors.Add(CookingBehavior->GetCookingStepAnchorPercent(Index));
+            States.Add(FromChopTierIconState(static_cast<uint8>(CookingBehavior->GetCookingStepIconState(Index))));
+        }
+
+        // Fill + marker track the active step only (resets each step); tier icons show session step milestones.
+        const float StepProgress = CookingBehavior->GetCurrentStepProgressNormalized();
+        ApplyProgressVisuals(StepProgress, StepProgress, IconCount, Anchors, States);
         return;
     }
 
@@ -241,10 +259,27 @@ void UPUStripMinigameProgressBarWidget::HandleMarinateProgressUpdated(int32 MixS
     RefreshFromBoundStripMinigameBehavior();
 }
 
-void UPUStripMinigameProgressBarWidget::HandleCookingProgressUpdated(int32 CookStrokesCompleted, int32 CookStrokesRequired)
+void UPUStripMinigameProgressBarWidget::HandleCookingProgressUpdated(
+    int32 StepIndex,
+    int32 StepProgressCompleted,
+    int32 StepProgressRequired,
+    float OverallProgressNormalized,
+    int32 TotalStepCount)
 {
-    (void)CookStrokesCompleted;
-    (void)CookStrokesRequired;
+    (void)StepIndex;
+    (void)StepProgressCompleted;
+    (void)StepProgressRequired;
+    (void)OverallProgressNormalized;
+    (void)TotalStepCount;
+    RefreshFromBoundStripMinigameBehavior();
+}
+
+void UPUStripMinigameProgressBarWidget::HandleCookingStepChanged(
+    int32 StepIndex,
+    FPUCookingMinigameStepDescriptor StepDescriptor)
+{
+    (void)StepIndex;
+    (void)StepDescriptor;
     RefreshFromBoundStripMinigameBehavior();
 }
 

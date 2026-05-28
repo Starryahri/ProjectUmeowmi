@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "PUChopStripMinigameBehavior.h"
+#include "PUCookingStripMinigameBehavior.h"
 #include "PUStripMinigameProgressBarWidget.generated.h"
 
 class UImage;
@@ -22,6 +23,7 @@ enum class EPUStripMinigameTierIconState : uint8
 /**
  * Reusable strip minigame progress bar (parent Blueprint: WBP_ProgressBar).
  * C++ drives UProgressBar fill percent, marker, tier-icon X positions, and per-state icon tint.
+ * Cooking: fill/marker = active step progress; tier icons = step milestones. Chop: fill = total session progress.
  * Place BarFill (Progress Bar), tier icons, and ProgressMarker in one Overlay (left-aligned).
  */
 UCLASS(Abstract, Blueprintable, meta = (DisplayName = "Strip Minigame Progress Bar"))
@@ -148,7 +150,15 @@ private:
     void HandleMarinateProgressUpdated(int32 MixStrokesCompleted, int32 MixStrokesRequired);
 
     UFUNCTION()
-    void HandleCookingProgressUpdated(int32 CookStrokesCompleted, int32 CookStrokesRequired);
+    void HandleCookingProgressUpdated(
+        int32 StepIndex,
+        int32 StepProgressCompleted,
+        int32 StepProgressRequired,
+        float OverallProgressNormalized,
+        int32 TotalStepCount);
+
+    UFUNCTION()
+    void HandleCookingStepChanged(int32 StepIndex, FPUCookingMinigameStepDescriptor StepDescriptor);
 
     void ApplyLayoutVisuals();
     void UpdateCachedTrackWidth();

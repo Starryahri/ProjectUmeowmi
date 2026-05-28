@@ -130,6 +130,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool AdvancePipelineStageAndRefreshPresentation();
 
+    /** After a successful cooking minigame commit: advance the pipeline or legacy next stage. */
+    void AdvanceCustomizationAfterCookingMinigameComplete();
+
     /** Forwards strip-slot minigame toggle (e.g. Y) to `MountedPipelineStageWidget` when it implements `PUCustomizationStageModuleInterface`. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool TryTogglePipelineStageMinigameFromIngredientStripSlot(class UPUIngredientSlot* StripSlot);
@@ -145,6 +148,10 @@ public:
     /** Count of non-empty slots on the ingredient rail. */
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
     int32 CountFilledIngredientRailStripSlots() const;
+
+    /** 0-based index following ingredient-rail strip slot creation order. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    UPUIngredientSlot* GetIngredientRailStripSlotByIndex(int32 RailSlotIndex) const;
 
     /** Forwards chop/finish keys to the mounted minigame module while `IsStripMinigameActive`. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
@@ -175,6 +182,34 @@ public:
     /** Disables rail slot input/focus while a strip minigame runs; pins preview to LockedStripSlot. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     void SetIngredientRailStripInteractionLocked(bool bLocked, UPUIngredientSlot* LockedStripSlot);
+
+    /** Blocks the sliding main pantry during strip minigames. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void SetStripMinigameMainPantrySuppressed(bool bSuppressed);
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    bool IsStripMinigameMainPantrySuppressed() const { return bStripMinigameMainPantrySuppressed; }
+
+    /** True when a filled rail slot may be clicked during an active strip minigame (Add Ingredient step). */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
+    bool IsIngredientRailSlotInteractableDuringStripMinigame(const UPUIngredientSlot* RailSlot) const;
+
+    /** Unlocks one filled rail slot so the player can commit it to the cooking pot. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
+    void BeginCookingAddIngredientRailStep(int32 TargetRailSlotIndex, FGameplayTag RequiredIngredientType);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
+    void EndCookingAddIngredientRailStep();
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
+    bool IsCookingAddIngredientRailStepActive() const { return bCookingAddIngredientRailStepActive; }
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
+    bool IsRailSlotConsumedForCookingAddIngredient(const UPUIngredientSlot* RailSlot) const;
+
+    /** Clears consumed rail slots and add-ingredient step state when a cooking minigame session ends. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
+    void ClearCookingAddIngredientSessionState();
 
     /**
      * Pushes the currently focused ingredient-rail strip slot (if any) to the mounted module. Call after mount if focus is already on the rail.
@@ -946,6 +981,21 @@ private:
     };
 
     TArray<FPUIngredientRailSlotInteractionSnapshot> IngredientRailInteractionLockSnapshots;
+
+    bool bStripMinigameMainPantrySuppressed = false;
+    bool bCookingAddIngredientRailStepActive = false;
+    int32 CookingAddIngredientTargetRailSlotIndex = INDEX_NONE;
+    FGameplayTag CookingAddIngredientRequiredType;
+    TSet<TWeakObjectPtr<UPUIngredientSlot>> CookingAddIngredientConsumedRailSlots;
+    TWeakObjectPtr<UPUIngredientSlot> ActiveCookingAddIngredientRailSlot;
+
+    UPUIngredientSlot* FindCookingAddIngredientTargetRailSlot() const;
+    void ApplyCookingAddIngredientRailInteractionState();
+    void RestoreStripMinigameRailLockAfterCookingAddIngredientStep();
+    bool DoesRailSlotMatchCookingAddIngredientFilter(const UPUIngredientSlot* RailSlot) const;
+    void TryCommitCookingAddIngredientRailSlot(UPUIngredientSlot* StripSlot);
+    void NotifyCookingAddIngredientRailSlotCommittedFromShell(UPUIngredientSlot* StripSlot);
+    void ApplyCookingAddIngredientConsumedRailSlotLocks();
 
     /** Last non-empty ingredient-rail strip slot focused; reused for vignette preview when focus leaves the rail during strip-minigame stages. */
     TWeakObjectPtr<UPUIngredientSlot> LastFocusedIngredientRailStripSlot;
