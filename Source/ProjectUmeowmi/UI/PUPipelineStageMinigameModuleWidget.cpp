@@ -4,6 +4,7 @@
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "PUDishCustomizationWidget.h"
 #include "PUChopStripMinigameBehavior.h"
+#include "PUCookingStripMinigameBehavior.h"
 #include "PUMarinateStripMinigameBehavior.h"
 #include "PUIngredientSlot.h"
 #include "PUStripMinigameBehavior.h"
@@ -1042,7 +1043,8 @@ void UPUPipelineStageMinigameModuleWidget::SetStripMinigameActive(bool bActive, 
         {
             bNextChopStrikeUsesAnimationA = true;
         }
-        else if (Cast<UPUMarinateStripMinigameBehavior>(ActiveStripMinigameBehavior))
+        else if (Cast<UPUMarinateStripMinigameBehavior>(ActiveStripMinigameBehavior)
+                 || Cast<UPUCookingStripMinigameBehavior>(ActiveStripMinigameBehavior))
         {
             bNextMixStrikeUsesAnimationA = true;
         }
@@ -1143,6 +1145,12 @@ TSubclassOf<UPUStripMinigameBehavior> UPUPipelineStageMinigameModuleWidget::Reso
         if (StageMarinateTag.IsValid() && StageDescriptor.StageId.MatchesTag(StageMarinateTag))
         {
             return UPUMarinateStripMinigameBehavior::StaticClass();
+        }
+
+        static const FGameplayTag StageCookingTag = FGameplayTag::RequestGameplayTag(FName("Stage.Cooking"), false);
+        if (StageCookingTag.IsValid() && StageDescriptor.StageId.MatchesTag(StageCookingTag))
+        {
+            return UPUCookingStripMinigameBehavior::StaticClass();
         }
     }
 

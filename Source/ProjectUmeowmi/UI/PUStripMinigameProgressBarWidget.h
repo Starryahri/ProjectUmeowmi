@@ -147,6 +147,9 @@ private:
     UFUNCTION()
     void HandleMarinateProgressUpdated(int32 MixStrokesCompleted, int32 MixStrokesRequired);
 
+    UFUNCTION()
+    void HandleCookingProgressUpdated(int32 CookStrokesCompleted, int32 CookStrokesRequired);
+
     void ApplyLayoutVisuals();
     void UpdateCachedTrackWidth();
     void ScheduleLayoutRefresh();
@@ -159,5 +162,6 @@ private:
     float CachedTrackWidth = 0.f;
     bool bBoundToChopProgressDelegate = false;
     bool bBoundToMarinateProgressDelegate = false;
+    bool bBoundToCookingProgressDelegate = false;
     FTimerHandle LayoutRefreshTimerHandle;
 };

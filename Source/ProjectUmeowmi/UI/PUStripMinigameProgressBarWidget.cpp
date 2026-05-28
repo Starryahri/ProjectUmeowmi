@@ -6,6 +6,7 @@
 #include "Components/Widget.h"
 #include "Engine/World.h"
 #include "PUChopStripMinigameBehavior.h"
+#include "PUCookingStripMinigameBehavior.h"
 #include "PUMarinateStripMinigameBehavior.h"
 #include "PUStripMinigameBehavior.h"
 #include "TimerManager.h"
@@ -56,6 +57,11 @@ void UPUStripMinigameProgressBarWidget::BindToStripMinigameBehavior(UPUStripMini
         MarinateBehavior->OnMarinateProgressUpdated.AddDynamic(this, &UPUStripMinigameProgressBarWidget::HandleMarinateProgressUpdated);
         bBoundToMarinateProgressDelegate = true;
     }
+    else if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(BoundBehavior))
+    {
+        CookingBehavior->OnCookingProgressUpdated.AddDynamic(this, &UPUStripMinigameProgressBarWidget::HandleCookingProgressUpdated);
+        bBoundToCookingProgressDelegate = true;
+    }
 
     RefreshFromBoundStripMinigameBehavior();
 }
@@ -70,9 +76,14 @@ void UPUStripMinigameProgressBarWidget::UnbindFromStripMinigameBehavior()
     {
         MarinateBehavior->OnMarinateProgressUpdated.RemoveAll(this);
     }
+    else if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(BoundBehavior))
+    {
+        CookingBehavior->OnCookingProgressUpdated.RemoveAll(this);
+    }
 
     bBoundToChopProgressDelegate = false;
     bBoundToMarinateProgressDelegate = false;
+    bBoundToCookingProgressDelegate = false;
     BoundBehavior = nullptr;
 }
 
@@ -134,6 +145,13 @@ void UPUStripMinigameProgressBarWidget::SyncVisualsFromBoundBehavior_Implementat
     if (UPUMarinateStripMinigameBehavior* MarinateBehavior = Cast<UPUMarinateStripMinigameBehavior>(BoundBehavior))
     {
         const float Overall = MarinateBehavior->GetOverallMarinateProgressNormalized();
+        ApplyProgressVisuals(Overall, Overall, 0, TArray<float>(), TArray<EPUStripMinigameTierIconState>());
+        return;
+    }
+
+    if (UPUCookingStripMinigameBehavior* CookingBehavior = Cast<UPUCookingStripMinigameBehavior>(BoundBehavior))
+    {
+        const float Overall = CookingBehavior->GetOverallCookProgressNormalized();
         ApplyProgressVisuals(Overall, Overall, 0, TArray<float>(), TArray<EPUStripMinigameTierIconState>());
         return;
     }
@@ -220,6 +238,13 @@ void UPUStripMinigameProgressBarWidget::HandleMarinateProgressUpdated(int32 MixS
 {
     (void)MixStrokesCompleted;
     (void)MixStrokesRequired;
+    RefreshFromBoundStripMinigameBehavior();
+}
+
+void UPUStripMinigameProgressBarWidget::HandleCookingProgressUpdated(int32 CookStrokesCompleted, int32 CookStrokesRequired)
+{
+    (void)CookStrokesCompleted;
+    (void)CookStrokesRequired;
     RefreshFromBoundStripMinigameBehavior();
 }
 

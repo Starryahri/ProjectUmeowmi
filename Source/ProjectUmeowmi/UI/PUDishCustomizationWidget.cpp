@@ -1718,6 +1718,43 @@ bool UPUDishCustomizationWidget::CanIngredientStripSlotStartStageMinigame(const 
     return Behavior->CanStartStripMinigameForSlot(StripSlot);
 }
 
+bool UPUDishCustomizationWidget::AreAllRequiredIngredientRailSlotsFilled() const
+{
+    bool bHasRequiredSlot = false;
+    bool bAllRequiredFilled = true;
+
+    ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+    {
+        if (!IsValid(RailSlot) || !RailSlot->HasRequiredIngredientTypes())
+        {
+            return;
+        }
+
+        bHasRequiredSlot = true;
+        if (RailSlot->IsEmpty())
+        {
+            bAllRequiredFilled = false;
+        }
+    });
+
+    return !bHasRequiredSlot || bAllRequiredFilled;
+}
+
+int32 UPUDishCustomizationWidget::CountFilledIngredientRailStripSlots() const
+{
+    int32 FilledCount = 0;
+
+    ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+    {
+        if (IsValid(RailSlot) && !RailSlot->IsEmpty())
+        {
+            ++FilledCount;
+        }
+    });
+
+    return FilledCount;
+}
+
 bool UPUDishCustomizationWidget::TryTogglePipelineStageMinigameFromIngredientStripSlot(UPUIngredientSlot* StripSlot)
 {
     UUserWidget* ModuleWidget = MountedPipelineStageWidget.Get();

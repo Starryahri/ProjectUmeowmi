@@ -138,6 +138,14 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
     bool CanIngredientStripSlotStartStageMinigame(const UPUIngredientSlot* StripSlot) const;
 
+    /** True when every ingredient-rail slot with RequiredIngredientTypes is filled. Open slots do not block. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    bool AreAllRequiredIngredientRailSlotsFilled() const;
+
+    /** Count of non-empty slots on the ingredient rail. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    int32 CountFilledIngredientRailStripSlots() const;
+
     /** Forwards chop/finish keys to the mounted minigame module while `IsStripMinigameActive`. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool TryConsumeActiveStripMinigameKey(FKey Key);
