@@ -11,7 +11,7 @@
 namespace
 {
     constexpr bool bPU_LogCookingMinigameProgress = true;
-    constexpr bool bPU_LogCookingAddIngredientTrace = true;
+    constexpr bool bPU_LogCookingStripAddIngredientTrace = true;
     constexpr float HoldProgressTickSeconds = 0.05f;
     constexpr float WaitProgressTickSeconds = 0.05f;
 }
@@ -405,6 +405,7 @@ void UPUCookingStripMinigameBehavior::CompleteCurrentStep()
     }
     else
     {
+        EndActiveStepShellEffects();
         BroadcastCookProgress();
     }
 }
@@ -747,7 +748,7 @@ void UPUCookingStripMinigameBehavior::NotifyAddIngredientRailSlotCommitted(UPUIn
 {
     if (!IsValid(OwnerModule) || !OwnerModule->IsStripMinigameActive() || AreAllCookingStepsComplete())
     {
-        if (bPU_LogCookingAddIngredientTrace)
+        if (bPU_LogCookingStripAddIngredientTrace)
         {
             UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Behavior commit ignored — minigame inactive or all steps done"));
         }
@@ -757,7 +758,7 @@ void UPUCookingStripMinigameBehavior::NotifyAddIngredientRailSlotCommitted(UPUIn
     const FPUCookingMinigameStepDescriptor* Step = GetStepDescriptor(CurrentStepIndex);
     if (!Step || Step->InputMode != EPUCookingStepInputMode::AddIngredient || bAddIngredientStepSatisfied)
     {
-        if (bPU_LogCookingAddIngredientTrace)
+        if (bPU_LogCookingStripAddIngredientTrace)
         {
             UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Behavior commit ignored — step %d is not an active Add Ingredient step"),
                 CurrentStepIndex);
@@ -767,7 +768,7 @@ void UPUCookingStripMinigameBehavior::NotifyAddIngredientRailSlotCommitted(UPUIn
 
     if (!DoesStripSlotSatisfyAddIngredientStep(StripSlot))
     {
-        if (bPU_LogCookingAddIngredientTrace)
+        if (bPU_LogCookingStripAddIngredientTrace)
         {
             UE_LOG(LogTemp, Warning, TEXT("[CookingAddIngredient] Behavior commit rejected — slot %s failed step validation"),
                 IsValid(StripSlot) ? *StripSlot->GetName() : TEXT("(invalid)"));
@@ -789,7 +790,7 @@ void UPUCookingStripMinigameBehavior::NotifyAddIngredientRailSlotCommitted(UPUIn
         CookingPotIngredients[PotIngredientIndex] = IngredientInstance;
     }
 
-    if (bPU_LogCookingAddIngredientTrace)
+    if (bPU_LogCookingStripAddIngredientTrace)
     {
         UE_LOG(LogTemp, Log, TEXT("[CookingAddIngredient] Added to pot — slot=%s ingredient=%s potIndex=%d potCount=%d (new=%s)"),
             *StripSlot->GetName(),

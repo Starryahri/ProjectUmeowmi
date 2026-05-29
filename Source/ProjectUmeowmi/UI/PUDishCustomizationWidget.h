@@ -122,6 +122,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
     UPUIngredientSlot* FindFocusedIngredientRailStripSlot();
 
+    /** Sticky focus border: only one slot shows IngredientSelected for focus at a time; click-off does not clear until another slot claims. */
+    void ClaimIngredientSlotFocusVisual(UPUIngredientSlot* IngredientSlot);
+    void ReleaseIngredientSlotFocusVisual(UPUIngredientSlot* IngredientSlot);
+
     /** Apply CustomizationComponent active pipeline stage: rail visibility + StageWidgetClass mount. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool RefreshPipelineStagePresentation();
@@ -999,6 +1003,9 @@ private:
 
     /** Last non-empty ingredient-rail strip slot focused; reused for vignette preview when focus leaves the rail during strip-minigame stages. */
     TWeakObjectPtr<UPUIngredientSlot> LastFocusedIngredientRailStripSlot;
+
+    /** Slot currently showing the sticky focus border (IngredientSelected). */
+    TWeakObjectPtr<UPUIngredientSlot> FocusVisualIngredientSlot;
 
     int32 LastPresentedPipelineStageIndex = INDEX_NONE;
     bool bTriptychTransitionPending = false;

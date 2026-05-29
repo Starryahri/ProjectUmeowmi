@@ -96,11 +96,7 @@ void UPUIngredientSlot::NativeConstruct()
         HoverText->SetVisibility(ESlateVisibility::Collapsed);
     }
 
-    // Hide IngredientSelect by default (shown on hover/focus)
-    if (IngredientSelect)
-    {
-        IngredientSelect->SetVisibility(ESlateVisibility::Collapsed);
-    }
+    UpdateIngredientBorderVisuals();
 
     // Preload material instances to ensure they're available at runtime
     // This fixes the issue where materials don't work on startup/builds
@@ -173,6 +169,11 @@ void UPUIngredientSlot::NativeConstruct()
 
 void UPUIngredientSlot::NativeDestruct()
 {
+    if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+    {
+        DishWidget->ReleaseIngredientSlotFocusVisual(this);
+    }
+
     // Clean up radial menu widget delegate bindings
     if (RadialMenuWidget && IsValid(RadialMenuWidget) && bRadialMenuEventsBound)
     {
@@ -1521,6 +1522,11 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
         return FReply::Handled();
     }
 
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        ClaimFocusVisualForInteraction();
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnMouseButtonDown - Mouse button down on slot: %s (Button: %s, DragEnabled: %s, Location: %d)"),
     //    *GetName(), *InMouseEvent.GetEffectingButton().ToString(), bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), (int32)Location);
 
@@ -1894,7 +1900,7 @@ void UPUIngredientSlot::NativeOnMouseEnter(const FGeometry& InGeometry, const FP
     UpdateHoverTextVisibility(true);
 
     bIsHovered = true;
-    UpdateIngredientSelectVisibility(true);
+    UpdateIngredientBorderVisuals();
 }
 
 void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
@@ -1911,7 +1917,7 @@ void UPUIngredientSlot::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
     }
 
     bIsHovered = false;
-    UpdateIngredientSelectVisibility(HasKeyboardFocus());
+    UpdateIngredientBorderVisuals();
 }
 
 void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent)
@@ -1926,7 +1932,7 @@ void UPUIngredientSlot::NativeOnAddedToFocusPath(const FFocusEvent& InFocusEvent
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    UpdateIngredientSelectVisibility(true);
+    ApplyFocusVisualClaim();
 
     if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
     {
@@ -1952,7 +1958,7 @@ void UPUIngredientSlot::NativeOnRemovedFromFocusPath(const FFocusEvent& InFocusE
     // Hide hover text
     UpdateHoverTextVisibility(false);
 
-    UpdateIngredientSelectVisibility(bIsHovered);
+    // Keep sticky focus border when clicking off — only another slot claiming focus clears it.
 
     if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
     {
@@ -2089,24 +2095,41 @@ void UPUIngredientSlot::EnsureEmptySlotHitTarget()
     }
 }
 
-void UPUIngredientSlot::UpdateIngredientSelectVisibility(bool bShow)
+UImage* UPUIngredientSlot::ResolveIngredientHoverImage() const
 {
-    if (!IngredientSelect)
+    return IngredientHover ? IngredientHover : IngredientSelect;
+}
+
+void UPUIngredientSlot::UpdateIngredientBorderVisuals()
+{
+    const bool bShowSelected = bHasFocusVisual || bIsSelected;
+    const bool bShowHover = bIsHovered && !bShowSelected;
+    const bool bShowUnselected = !bShowSelected && !bShowHover;
+
+    if (IngredientUnselected)
     {
-        return;
+        IngredientUnselected->SetVisibility(bShowUnselected ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     }
 
-    if (bShow)
+    if (UImage* HoverImage = ResolveIngredientHoverImage())
     {
-        IngredientSelect->SetVisibility(ESlateVisibility::Visible);
-        if (IngredientSelectAnim)
+        if (bShowHover)
         {
-            PlayAnimation(IngredientSelectAnim, 0.0f, 1, EUMGSequencePlayMode::Forward, 5.0f, false);
+            HoverImage->SetVisibility(ESlateVisibility::Visible);
+            if (IngredientSelectAnim)
+            {
+                PlayAnimation(IngredientSelectAnim, 0.0f, 1, EUMGSequencePlayMode::Forward, 5.0f, false);
+            }
+        }
+        else
+        {
+            HoverImage->SetVisibility(ESlateVisibility::Collapsed);
         }
     }
-    else
+
+    if (IngredientSelected)
     {
-        IngredientSelect->SetVisibility(ESlateVisibility::Collapsed);
+        IngredientSelected->SetVisibility(bShowSelected ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     }
 }
 
@@ -2116,6 +2139,7 @@ void UPUIngredientSlot::SetSelected(bool bSelected)
     {
         bIsSelected = bSelected;
         UpdatePlateBackgroundOpacity();
+        UpdateIngredientBorderVisuals();
     }
 }
 
@@ -2131,7 +2155,7 @@ void UPUIngredientSlot::UpdatePlateBackgroundOpacity()
     CurrentColor.A = 1.0f;
     PlateBackground->SetColorAndOpacity(CurrentColor);
     
-    // Outline disabled - IngredientSelect image used for hover/focus instead
+    // Outline disabled - IngredientUnselected / IngredientHover / IngredientSelected images used instead
     FSlateBrush Brush = PlateBackground->GetBrush();
     FLinearColor OutlineColor = Brush.OutlineSettings.Color.GetSpecifiedColor();
     OutlineColor.A = 0.0f;
@@ -3686,12 +3710,52 @@ void UPUIngredientSlot::SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredient
     // more control over the navigation behavior.
 }
 
+void UPUIngredientSlot::SetFocusVisualActive(bool bActive)
+{
+    if (bHasFocusVisual == bActive)
+    {
+        return;
+    }
+
+    bHasFocusVisual = bActive;
+    UpdateIngredientBorderVisuals();
+}
+
+void UPUIngredientSlot::ApplyFocusVisualClaim()
+{
+    if (bApplyingFocusVisualClaim)
+    {
+        return;
+    }
+
+    bApplyingFocusVisualClaim = true;
+    if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+    {
+        DishWidget->ClaimIngredientSlotFocusVisual(this);
+    }
+    else
+    {
+        SetFocusVisualActive(true);
+    }
+    bApplyingFocusVisualClaim = false;
+}
+
+void UPUIngredientSlot::ClaimFocusVisualForInteraction()
+{
+    ApplyFocusVisualClaim();
+
+    if (!HasKeyboardFocus() && !HasFocusedDescendants())
+    {
+        SetKeyboardFocus();
+    }
+}
+
 void UPUIngredientSlot::ShowFocusVisuals()
 {
     // Show hover text (works for prep/pantry slots even when "empty")
     UpdateHoverTextVisibility(true);
 
-    UpdateIngredientSelectVisibility(true);
+    ClaimFocusVisualForInteraction();
 }
 
 

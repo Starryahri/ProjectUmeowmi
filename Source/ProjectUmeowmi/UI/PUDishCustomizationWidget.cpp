@@ -1,7 +1,4 @@
-namespace
-{
-    constexpr bool bPU_LogCookingAddIngredientTrace = true;
-}
+#include "PUDishCustomizationWidget.h"
 #include "PURadarChart.h"
 #include "../DishCustomization/PUDishCustomizationComponent.h"
 #include "../ProjectUmeowmiCharacter.h"
@@ -56,6 +53,8 @@ namespace
 {
     // Set false after verifying strip ↔ stage-module toggle wiring.
     constexpr bool bPU_LogStageMinigameToggleTrace = true;
+    // Verbose trace for add-ingredient flow in the dish customization widget.
+    constexpr bool bPU_LogCookingAddIngredientTrace = true;
     // Enables verbose logging for dish/ingredient data reception and slot population.
     constexpr bool bPU_LogDishDataReceiveDebug = false;
     // Logs stale UObject* cleared from dish widget arrays/maps during pre-GC sanitization.
@@ -1234,6 +1233,11 @@ void UPUDishCustomizationWidget::ClearStageModuleSlot()
     }
     MountedPipelineStageWidget = nullptr;
     LastFocusedIngredientRailStripSlot.Reset();
+    if (UPUIngredientSlot* FocusVisual = FocusVisualIngredientSlot.Get())
+    {
+        FocusVisual->SetFocusVisualActive(false);
+    }
+    FocusVisualIngredientSlot.Reset();
     if (StageModuleSlot)
     {
         StageModuleSlot->ClearChildren();
@@ -1301,6 +1305,35 @@ bool UPUDishCustomizationWidget::IsWidgetUnderIngredientRailSlot(UWidget* Widget
 UPUIngredientSlot* UPUDishCustomizationWidget::FindFocusedIngredientRailStripSlot()
 {
     return PU_FindIngredientStripSlotUnderKeyboardFocus(this);
+}
+
+void UPUDishCustomizationWidget::ClaimIngredientSlotFocusVisual(UPUIngredientSlot* IngredientSlot)
+{
+    if (UPUIngredientSlot* Previous = FocusVisualIngredientSlot.Get())
+    {
+        if (Previous != IngredientSlot)
+        {
+            Previous->SetFocusVisualActive(false);
+        }
+    }
+
+    FocusVisualIngredientSlot = IngredientSlot;
+    if (IsValid(IngredientSlot))
+    {
+        IngredientSlot->SetFocusVisualActive(true);
+    }
+}
+
+void UPUDishCustomizationWidget::ReleaseIngredientSlotFocusVisual(UPUIngredientSlot* IngredientSlot)
+{
+    if (FocusVisualIngredientSlot.Get() == IngredientSlot)
+    {
+        FocusVisualIngredientSlot.Reset();
+    }
+    if (IsValid(IngredientSlot))
+    {
+        IngredientSlot->SetFocusVisualActive(false);
+    }
 }
 
 namespace
@@ -1745,7 +1778,8 @@ void UPUDishCustomizationWidget::NotifyCookingAddIngredientRailSlotCommittedFrom
     }
 
     CookingAddIngredientConsumedRailSlots.Add(StripSlot);
-    EndCookingAddIngredientRailStep();
+    // Do not call EndCookingAddIngredientRailStep here — NotifyAddIngredientRailSlotCommitted may
+    // auto-advance and BeginCookingAddIngredientRailStep for the next step; ending here would re-lock the rail.
 }
 
 void UPUDishCustomizationWidget::ClearCookingAddIngredientSessionState()

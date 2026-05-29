@@ -165,7 +165,16 @@ public:
     UImage* GetPlateBackground() const { return PlateBackground; }
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
-    UImage* GetIngredientSelect() const { return IngredientSelect; }
+    UImage* GetIngredientSelect() const { return IngredientHover ? IngredientHover : IngredientSelect; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
+    UImage* GetIngredientUnselected() const { return IngredientUnselected; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
+    UImage* GetIngredientHover() const { return IngredientHover; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Components")
+    UImage* GetIngredientSelected() const { return IngredientSelected; }
 
     // Radial menu functions (stubbed for now)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Radial Menu")
@@ -262,6 +271,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
     void ShowFocusVisuals();
 
+    /** Sticky focus border for IngredientSelected (persists through click-off until another slot claims). */
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
+    void SetFocusVisualActive(bool bActive);
+
     /** Sets normalized cook time on the backing ingredient instance and recalculates aspects (no slot widgets). */
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Time/Temp")
     void SetTimeValue(float NewTimeValue);
@@ -339,7 +352,19 @@ protected:
     UPROPERTY(meta = (BindWidget))
     UImage* PlateBackground;
 
-    // Optional selection/hover indicator image (shown on hover or focus - use when PlateBackground is hidden e.g. Prepped/ActiveIngredientArea)
+    /** Default slot border (visible at rest). Name must match IngredientUnselected in WBP. */
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* IngredientUnselected;
+
+    /** Mouse-hover slot border. Name must match IngredientHover in WBP. */
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* IngredientHover;
+
+    /** Controller focus or ingredient-in-dish selection border. Name must match IngredientSelected in WBP. */
+    UPROPERTY(meta = (BindWidgetOptional))
+    UImage* IngredientSelected;
+
+    /** Legacy hover indicator; used when IngredientHover is not bound. */
     UPROPERTY(meta = (BindWidgetOptional))
     UImage* IngredientSelect;
 
@@ -355,7 +380,7 @@ protected:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ingredient Slot|Pantry")
     TObjectPtr<UTexture2D> PantryShelfEmptyDotTexture = nullptr;
 
-    // Animation played when IngredientSelect is shown (fade-in + rotation). Name in Blueprint must match "IngredientSelectAnim"
+    // Animation played when IngredientHover is shown (fade-in + rotation). Name in Blueprint must match "IngredientSelectAnim"
     UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
     UWidgetAnimation* IngredientSelectAnim;
 
@@ -462,8 +487,17 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ingredient Slot|Drag")
     bool bDragEnabled = true;
 
-    // Track hover state for IngredientSelect visibility (hide on mouse leave only if not focused)
+    // Track hover state for border visibility (hide unselected / show selected on hover or focus)
     bool bIsHovered = false;
+
+    /** Sticky focus border — survives Slate focus loss when clicking empty UI. */
+    bool bHasFocusVisual = false;
+
+    /** Guard against SetKeyboardFocus ↔ NativeOnAddedToFocusPath re-entry. */
+    bool bApplyingFocusVisualClaim = false;
+
+    void ApplyFocusVisualClaim();
+    void ClaimFocusVisualForInteraction();
 
     bool IsIngredientRailInteractionBlockedByMinigame() const;
 
@@ -548,8 +582,10 @@ private:
     // Update hover text visibility
     void UpdateHoverTextVisibility(bool bShow);
 
-    // Update IngredientSelect image visibility (shown on hover or focus)
-    void UpdateIngredientSelectVisibility(bool bShow);
+    /** Shows IngredientUnselected, IngredientHover, or IngredientSelected from hover/focus/selection state. */
+    void UpdateIngredientBorderVisuals();
+
+    UImage* ResolveIngredientHoverImage() const;
 
     /** Keeps plate or invisible icon visible so empty slots still receive hover/click. */
     void EnsureEmptySlotHitTarget();
