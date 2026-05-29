@@ -14,6 +14,7 @@
 
 class UPUDishCustomizationComponent;
 class UScrollBox;
+class UWidgetAnimation;
 
 class UPanelWidget;
 
@@ -190,6 +191,10 @@ public:
     /** Blocks the sliding main pantry during strip minigames. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     void SetStripMinigameMainPantrySuppressed(bool bSuppressed);
+
+    /** Slides the shell footer away while a strip minigame runs; reverses when the session ends. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
+    void ApplyStripMinigameFooterPresentation(bool bMinigameActive);
 
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
     bool IsStripMinigameMainPantrySuppressed() const { return bStripMinigameMainPantrySuppressed; }
@@ -679,6 +684,10 @@ protected:
     UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell|Triptych")
     TObjectPtr<class UImage> TriptychRightCover;
 
+    /** UMG animation named FooterSlide — forward hides the footer during strip minigames; reverse restores it. */
+    UPROPERTY(Transient, meta = (BindWidgetAnimOptional))
+    TObjectPtr<UWidgetAnimation> FooterSlide;
+
     /** Widget spawned from active pipeline descriptor `StageWidgetClass` into StageModuleSlot. */
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Dish Customization Widget|Pipeline Shell")
     TObjectPtr<UUserWidget> MountedPipelineStageWidget;
@@ -987,6 +996,7 @@ private:
     TArray<FPUIngredientRailSlotInteractionSnapshot> IngredientRailInteractionLockSnapshots;
 
     bool bStripMinigameMainPantrySuppressed = false;
+    bool bFooterHiddenForStripMinigame = false;
     bool bCookingAddIngredientRailStepActive = false;
     int32 CookingAddIngredientTargetRailSlotIndex = INDEX_NONE;
     FGameplayTag CookingAddIngredientRequiredType;

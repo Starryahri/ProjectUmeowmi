@@ -81,6 +81,14 @@ struct PROJECTUMEOWMI_API FPUDishCustomizationStageDescriptor
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Slots", meta = (ClampMin = "0", ClampMax = "12"))
     int32 IngredientRailMaxSlots = 0;
 
+    /** Optional texture for the shell next/advance button while this stage is active. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Advance")
+    TObjectPtr<UTexture2D> NextButtonTexture;
+
+    /** Optional pressed/click texture for the shell next/advance button while this stage is active. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Advance")
+    TObjectPtr<UTexture2D> NextButtonClickTexture;
+
     /** Optional gate — BP/gameplay can require this tag before advancing (Phase 5+). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stage|Advance", meta = (Categories = "Dish"))
     FGameplayTag AdvanceGateTag;

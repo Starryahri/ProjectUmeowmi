@@ -1053,6 +1053,7 @@ void UPUPipelineStageMinigameModuleWidget::SetStripMinigameActive(bool bActive, 
 
     if (IsValid(OwnerShell))
     {
+        OwnerShell->ApplyStripMinigameFooterPresentation(bActive);
         OwnerShell->SetIngredientRailStripInteractionLocked(bActive, ContextStripSlot);
         if (bActive && IsValid(ContextStripSlot))
         {

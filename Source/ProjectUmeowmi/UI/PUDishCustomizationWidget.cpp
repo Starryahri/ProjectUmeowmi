@@ -40,6 +40,7 @@
 #include "PUPipelineStageMinigameModuleWidget.h"
 #include "PUCookingStripMinigameBehavior.h"
 #include "PUStripMinigameBehavior.h"
+#include "Animation/WidgetAnimation.h"
 #include "HAL/IConsoleManager.h"
 
 static TAutoConsoleVariable<int32> CVarPUDisableRadarChartUpdates(
@@ -550,6 +551,10 @@ void UPUDishCustomizationWidget::PrepareForCustomizationShutdown()
     SanitizeStaleObjectReferences();
 
     SetIngredientRailStripInteractionLocked(false, nullptr);
+    if (bFooterHiddenForStripMinigame)
+    {
+        ApplyStripMinigameFooterPresentation(false);
+    }
     UnsubscribeFromEvents();
     ReleaseProgrammaticCustomizationSlots();
 }
@@ -1470,6 +1475,24 @@ void UPUDishCustomizationWidget::SetStripMinigameMainPantrySuppressed(bool bSupp
     if (bSuppressed && bPantryOpen)
     {
         ClosePantry();
+    }
+}
+
+void UPUDishCustomizationWidget::ApplyStripMinigameFooterPresentation(const bool bMinigameActive)
+{
+    if (!FooterSlide || bFooterHiddenForStripMinigame == bMinigameActive)
+    {
+        return;
+    }
+
+    bFooterHiddenForStripMinigame = bMinigameActive;
+    if (bMinigameActive)
+    {
+        PlayAnimationForward(FooterSlide);
+    }
+    else
+    {
+        PlayAnimationReverse(FooterSlide);
     }
 }
 
