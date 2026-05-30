@@ -1630,6 +1630,11 @@ bool UPUDishCustomizationWidget::IsIngredientRailSlotInteractableDuringStripMini
         return false;
     }
 
+    if (IsIngredientRailSlotDraggableDuringPlatingMinigame(RailSlot))
+    {
+        return true;
+    }
+
     return bCookingAddIngredientRailStepActive
         && ActiveCookingAddIngredientRailSlot.IsValid()
         && ActiveCookingAddIngredientRailSlot.Get() == RailSlot
@@ -2241,6 +2246,157 @@ void UPUDishCustomizationWidget::AdvanceCustomizationAfterCookingMinigameComplet
         UE_LOG(LogTemp, Log, TEXT("[CookingMinigame] No customization pipeline — calling GoToNextStage"));
     }
     GoToNextStage();
+}
+
+TSubclassOf<UPUIngredientSlot> UPUDishCustomizationWidget::GetResolvedIngredientSlotClass() const
+{
+    if (IngredientSlotClass)
+    {
+        return IngredientSlotClass;
+    }
+    return UPUIngredientSlot::StaticClass();
+}
+
+bool UPUDishCustomizationWidget::IsRailSlotConsumedForPlating(const UPUIngredientSlot* RailSlot) const
+{
+    if (!IsValid(RailSlot))
+    {
+        return false;
+    }
+
+    for (const TWeakObjectPtr<UPUIngredientSlot>& ConsumedSlot : PlatingConsumedRailSlots)
+    {
+        if (ConsumedSlot.Get() == RailSlot)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool UPUDishCustomizationWidget::IsIngredientRailSlotDraggableDuringPlatingMinigame(
+    const UPUIngredientSlot* RailSlot) const
+{
+    if (!bPlatingMinigameRailDragStepActive || !IsValid(RailSlot) || RailSlot->IsEmpty())
+    {
+        return false;
+    }
+
+    return !IsRailSlotConsumedForPlating(RailSlot);
+}
+
+void UPUDishCustomizationWidget::ApplyPlatingMinigameRailDragInteractionState()
+{
+    ForEachIngredientRailStripSlot([this](UPUIngredientSlot* RailSlot)
+    {
+        if (!IsValid(RailSlot))
+        {
+            return;
+        }
+
+        const bool bAllowDrag = IsIngredientRailSlotDraggableDuringPlatingMinigame(RailSlot);
+        RailSlot->SetIsEnabled(bAllowDrag);
+        RailSlot->SetIsFocusable(false);
+        RailSlot->SetDragEnabled(bAllowDrag);
+    });
+}
+
+void UPUDishCustomizationWidget::BeginPlatingMinigameRailDragStep()
+{
+    if (bPantryOpen)
+    {
+        ClosePantry();
+    }
+
+    bPlatingMinigameRailDragStepActive = true;
+    ApplyPlatingMinigameRailDragInteractionState();
+}
+
+void UPUDishCustomizationWidget::EndPlatingMinigameRailDragStep()
+{
+    bPlatingMinigameRailDragStepActive = false;
+    PlatingConsumedRailSlots.Reset();
+
+    if (IsStripMinigameLockingIngredientRail())
+    {
+        SetIngredientRailStripInteractionLocked(true, GetLockedIngredientRailStripSlotForMinigame());
+    }
+    else
+    {
+        ForEachIngredientRailStripSlot([](UPUIngredientSlot* RailSlot)
+        {
+            if (IsValid(RailSlot))
+            {
+                RailSlot->SetIsEnabled(true);
+                RailSlot->SetIsFocusable(true);
+                RailSlot->SetDragEnabled(false);
+            }
+        });
+    }
+}
+
+void UPUDishCustomizationWidget::NotifyPlatingIngredientMovedFromRailToDish(
+    UPUIngredientSlot* SourceRailSlot,
+    UPUIngredientSlot* PlatedSlot)
+{
+    if (IsValid(SourceRailSlot))
+    {
+        PlatingConsumedRailSlots.Add(SourceRailSlot);
+        SourceRailSlot->ClearSlot();
+    }
+
+    ApplyPlatingMinigameRailDragInteractionState();
+
+    if (IsValid(PlatedSlot))
+    {
+        OnPlatingIngredientDropped(PlatedSlot);
+    }
+}
+
+void UPUDishCustomizationWidget::CompleteCustomizationAfterPlatingMinigame()
+{
+    EndCustomizationFromUI();
+}
+
+bool UPUDishCustomizationWidget::TryForwardPlatingDropToMountedStageModule(
+    UPUIngredientSlot* DropTargetSlot,
+    UPUIngredientDragDropOperation* DragOperation,
+    const FVector2D LocalPositionInDropTarget)
+{
+    UPUPipelineStageMinigameModuleWidget* MinigameModule =
+        Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get());
+    if (!IsValid(MinigameModule))
+    {
+        return false;
+    }
+
+    return MinigameModule->TryHandlePlatingDropOnDishArea(
+        DropTargetSlot,
+        DragOperation,
+        LocalPositionInDropTarget);
+}
+
+UPUIngredientSlot* UPUDishCustomizationWidget::FindIngredientRailStripSlotByInstanceId(const int32 InstanceId) const
+{
+    if (InstanceId == 0)
+    {
+        return nullptr;
+    }
+
+    UPUIngredientSlot* FoundSlot = nullptr;
+    ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+    {
+        if (FoundSlot != nullptr || !IsValid(RailSlot) || RailSlot->IsEmpty())
+        {
+            return;
+        }
+
+        if (RailSlot->GetIngredientInstance().InstanceID == InstanceId)
+        {
+            FoundSlot = RailSlot;
+        }
+    });
+    return FoundSlot;
 }
 
 bool UPUDishCustomizationWidget::CanIngredientStripSlotStartStageMinigame(const UPUIngredientSlot* StripSlot) const

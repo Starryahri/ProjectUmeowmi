@@ -1298,6 +1298,15 @@ FLinearColor UPUIngredientSlot::BoostColorSaturation(const FLinearColor& Color, 
 
 bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
+    if (IsPlatingDishDropTarget())
+    {
+        if (Cast<UPUIngredientDragDropOperation>(InOperation))
+        {
+            OnDragOverSlot();
+            return true;
+        }
+    }
+
     if (IsIngredientRailInteractionBlockedByMinigame())
     {
         return false;
@@ -1327,12 +1336,24 @@ bool UPUIngredientSlot::NativeOnDragOver(const FGeometry& InGeometry, const FDra
 
 bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
+    UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
+    if (IsPlatingDishDropTarget() && IngredientDragOp)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
+        {
+            const FVector2D LocalPosition = InGeometry.AbsoluteToLocal(InDragDropEvent.GetScreenSpacePosition());
+            if (DishWidget->TryForwardPlatingDropToMountedStageModule(this, IngredientDragOp, LocalPosition))
+            {
+                return true;
+            }
+        }
+    }
+
     if (IsIngredientRailInteractionBlockedByMinigame())
     {
         return false;
     }
 
-    UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
     if (IngredientDragOp)
     {
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnDrop - Drop on slot: %s (Ingredient: %s, Location: %d, Empty: %s)"),
@@ -1547,8 +1568,12 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     if (Location == EPUIngredientSlotLocation::ActiveIngredientArea && bHasIngredient &&
         InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !bShiftPressed)
     {
-        OnEmptySlotClicked.Broadcast(this);
-        return FReply::Handled();
+        const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        if (!DishWidget || !DishWidget->IsPlatingMinigameRailDragStepActive())
+        {
+            OnEmptySlotClicked.Broadcast(this);
+            return FReply::Handled();
+        }
     }
 
     const bool bPlanningGatherPlate = IsPlanningGatherPlateSlot();
@@ -2234,6 +2259,16 @@ void UPUIngredientSlot::SetDragEnabled(bool bEnabled)
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::SetDragEnabled - Drag enabled set to: %s"), bEnabled ? TEXT("TRUE") : TEXT("FALSE"));
 }
 
+void UPUIngredientSlot::SetPlatingDishDropTarget(bool bInPlatingDishDropTarget)
+{
+    bPlatingDishDropTarget = bInPlatingDishDropTarget;
+}
+
+void UPUIngredientSlot::SetPlatingDishArrangementSlot(bool bInPlatingDishArrangementSlot)
+{
+    bPlatingDishArrangementSlot = bInPlatingDishArrangementSlot;
+}
+
 FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
     if (IsIngredientRailInteractionBlockedByMinigame())
@@ -2283,8 +2318,11 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     bool bShiftPressed = InMouseEvent.IsShiftDown();
 
     // Occupied strip: plain LMB opens pantry (swap); do not start DetectDrag — it would swallow the click.
+    const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    const bool bPlatingDragActive = DishWidget && DishWidget->IsPlatingMinigameRailDragStepActive();
     const bool bOccupiedStripPantryClick =
-        (Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient && !bShiftPressed;
+        (Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient && !bShiftPressed
+        && !bPlatingDragActive;
 
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && bCanDrag && !bIsPantryLikeSlot && !bShiftPressed && !bOccupiedStripPantryClick)
     {
@@ -3677,7 +3715,11 @@ void UPUIngredientSlot::HandleControllerSelect()
     }
     else if (Location == EPUIngredientSlotLocation::ActiveIngredientArea)
     {
-        OnEmptySlotClicked.Broadcast(this);
+        const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        if (!DishWidget || !DishWidget->IsPlatingMinigameRailDragStepActive())
+        {
+            OnEmptySlotClicked.Broadcast(this);
+        }
     }
 }
 

@@ -6,7 +6,9 @@
 #include "PUChopStripMinigameBehavior.h"
 #include "PUCookingStripMinigameBehavior.h"
 #include "PUMarinateStripMinigameBehavior.h"
+#include "PUPlatingStripMinigameBehavior.h"
 #include "PUIngredientSlot.h"
+#include "PUIngredientDragDropOperation.h"
 #include "PUStripMinigameBehavior.h"
 #include "PUStripMinigameProgressBarWidget.h"
 #include "PUUObjectSafety.h"
@@ -17,6 +19,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/OverlaySlot.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/CanvasPanel.h"
 #include "Engine/Texture2D.h"
 
 namespace
@@ -250,6 +253,7 @@ void UPUPipelineStageMinigameModuleWidget::NativeConstruct()
     ResolveMarinationBowlSlotTargets();
     ResolveMarinationBowlFrontImage();
     EnsureMarinationBowlFrontOnTop();
+    ResolvePlatingDishAreaWidgets();
     SyncStripMinigameProgressBarBinding();
 }
 
@@ -924,6 +928,7 @@ void UPUPipelineStageMinigameModuleWidget::InitializeStageModule_Implementation(
     CachedStageDescriptor = StageDescriptor;
     bHasCachedStageDescriptor = true;
     SetupStripMinigameBehavior(StageDescriptor);
+    ResolvePlatingDishAreaWidgets();
     ApplyStageMinigameUIPanelVisibility();
 }
 
@@ -946,6 +951,7 @@ void UPUPipelineStageMinigameModuleWidget::ShutdownStageModule_Implementation()
     {
         SetStripMinigameActive(false, nullptr);
     }
+    ClearPlatingDishAreaVisuals();
     TeardownStripMinigameBehavior();
     bStripMinigameActive = false;
     ApplyStageMinigameUIPanelVisibility();
@@ -1153,6 +1159,18 @@ TSubclassOf<UPUStripMinigameBehavior> UPUPipelineStageMinigameModuleWidget::Reso
         {
             return UPUCookingStripMinigameBehavior::StaticClass();
         }
+
+        static const FGameplayTag StagePlatingTag = FGameplayTag::RequestGameplayTag(FName("Stage.Plating"), false);
+        if (StagePlatingTag.IsValid() && StageDescriptor.StageId.MatchesTag(StagePlatingTag))
+        {
+            return UPUPlatingStripMinigameBehavior::StaticClass();
+        }
+
+        static const FGameplayTag StageGarnishTag = FGameplayTag::RequestGameplayTag(FName("Stage.Garnish"), false);
+        if (StageGarnishTag.IsValid() && StageDescriptor.StageId.MatchesTag(StageGarnishTag))
+        {
+            return UPUPlatingStripMinigameBehavior::StaticClass();
+        }
     }
 
     return nullptr;
@@ -1161,6 +1179,11 @@ TSubclassOf<UPUStripMinigameBehavior> UPUPipelineStageMinigameModuleWidget::Reso
 UPUCookingStripMinigameBehavior* UPUPipelineStageMinigameModuleWidget::GetActiveCookingStripMinigameBehavior() const
 {
     return Cast<UPUCookingStripMinigameBehavior>(ActiveStripMinigameBehavior);
+}
+
+UPUPlatingStripMinigameBehavior* UPUPipelineStageMinigameModuleWidget::GetActivePlatingStripMinigameBehavior() const
+{
+    return Cast<UPUPlatingStripMinigameBehavior>(ActiveStripMinigameBehavior);
 }
 
 void UPUPipelineStageMinigameModuleWidget::AdvanceCookingStep()
@@ -1466,7 +1489,7 @@ void UPUPipelineStageMinigameModuleWidget::PlayStripMinigameMixAnimation_Impleme
     {
         AnimationToPlay = MixStrikeAnimationA;
     }
-    else if (MixStrikeAnimationB)
+    else     if (MixStrikeAnimationB)
     {
         AnimationToPlay = MixStrikeAnimationB;
     }
@@ -1475,4 +1498,228 @@ void UPUPipelineStageMinigameModuleWidget::PlayStripMinigameMixAnimation_Impleme
     {
         PlayAnimation(AnimationToPlay, 0.f, 1, EUMGSequencePlayMode::Forward, 1.f, false);
     }
+}
+
+void UPUPipelineStageMinigameModuleWidget::ResolvePlatingDishAreaWidgets()
+{
+    if (!PlatingDishArea && WidgetTree)
+    {
+        static const FName DishAreaName(TEXT("PlatingDishArea"));
+        if (UWidget* Found = WidgetTree->FindWidget(DishAreaName))
+        {
+            PlatingDishArea = Cast<UCanvasPanel>(Found);
+        }
+    }
+
+    if (!PlatingDishDropTarget && WidgetTree)
+    {
+        static const FName DropTargetName(TEXT("PlatingDishDropTarget"));
+        if (UWidget* Found = WidgetTree->FindWidget(DropTargetName))
+        {
+            PlatingDishDropTarget = Cast<UPUIngredientSlot>(Found);
+        }
+    }
+
+    if (IsValid(PlatingDishDropTarget))
+    {
+        PlatingDishDropTarget->SetPlatingDishDropTarget(true);
+        PlatingDishDropTarget->SetDragEnabled(false);
+        if (IsValid(OwnerShell))
+        {
+            PlatingDishDropTarget->SetDishCustomizationWidget(OwnerShell);
+        }
+    }
+}
+
+FVector2D UPUPipelineStageMinigameModuleWidget::ComputePlatingLocalPositionInCanvas(
+    UCanvasPanel* Canvas,
+    UWidget* DropTargetWidget,
+    const FVector2D& LocalPositionInDropTarget)
+{
+    if (!IsValid(Canvas))
+    {
+        return LocalPositionInDropTarget;
+    }
+
+    if (!IsValid(DropTargetWidget))
+    {
+        return LocalPositionInDropTarget;
+    }
+
+    const FGeometry& CanvasGeometry = Canvas->GetCachedGeometry();
+    const FGeometry& DropGeometry = DropTargetWidget->GetCachedGeometry();
+    const FVector2D DropAbsolute = DropGeometry.LocalToAbsolute(LocalPositionInDropTarget);
+    return CanvasGeometry.AbsoluteToLocal(DropAbsolute);
+}
+
+UPUIngredientSlot* UPUPipelineStageMinigameModuleWidget::SpawnPlatedIngredientOnDishArea(
+    const FIngredientInstance& IngredientInstance,
+    const FVector2D& LocalPositionInCanvas)
+{
+    if (!IsValid(PlatingDishArea) || !IsValid(OwnerShell))
+    {
+        return nullptr;
+    }
+
+    const TSubclassOf<UPUIngredientSlot> SlotClass = OwnerShell->GetResolvedIngredientSlotClass();
+    UPUIngredientSlot* NewSlot = CreateWidget<UPUIngredientSlot>(OwnerShell, SlotClass);
+    if (!IsValid(NewSlot))
+    {
+        return nullptr;
+    }
+
+    NewSlot->SetDishCustomizationWidget(OwnerShell);
+    NewSlot->SetLocation(EPUIngredientSlotLocation::Plating);
+    NewSlot->SetPlatingDishArrangementSlot(true);
+    NewSlot->SetDragEnabled(true);
+    if (IsValid(CustomizationComponent) && CustomizationComponent->PreparationDataTable)
+    {
+        NewSlot->SetPreparationDataTable(CustomizationComponent->PreparationDataTable);
+    }
+
+    NewSlot->SetIngredientInstance(IngredientInstance);
+    NewSlot->UpdateDisplay();
+
+    if (UCanvasPanelSlot* CanvasSlot = PlatingDishArea->AddChildToCanvas(NewSlot))
+    {
+        const float DrawSize = FMath::Max(16.f, PlatingDishSlotDrawSize);
+        CanvasSlot->SetAnchors(FAnchors(0.f, 0.f, 0.f, 0.f));
+        CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+        CanvasSlot->SetAutoSize(false);
+        CanvasSlot->SetSize(FVector2D(DrawSize, DrawSize));
+        CanvasSlot->SetPosition(LocalPositionInCanvas);
+    }
+
+    SpawnedPlatingDishSlots.Add(NewSlot);
+    return NewSlot;
+}
+
+bool UPUPipelineStageMinigameModuleWidget::TryMovePlatedIngredientOnDishArea(
+    UPUIngredientSlot* ArrangementSlot,
+    const FVector2D& LocalPositionInCanvas)
+{
+    if (!IsValid(ArrangementSlot) || !ArrangementSlot->IsPlatingDishArrangementSlot())
+    {
+        return false;
+    }
+
+    if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(ArrangementSlot->Slot))
+    {
+        CanvasSlot->SetPosition(LocalPositionInCanvas);
+        return true;
+    }
+
+    return false;
+}
+
+bool UPUPipelineStageMinigameModuleWidget::TryHandlePlatingDropOnDishArea(
+    UPUIngredientSlot* DropTargetSlot,
+    UPUIngredientDragDropOperation* DragOperation,
+    const FVector2D& LocalPositionInDropTarget)
+{
+    if (!bStripMinigameActive || !IsValid(DragOperation) || !GetActivePlatingStripMinigameBehavior())
+    {
+        return false;
+    }
+
+    if (!IsValid(DropTargetSlot) || !DropTargetSlot->IsPlatingDishDropTarget())
+    {
+        return false;
+    }
+
+    if (!IsValid(PlatingDishArea))
+    {
+        ResolvePlatingDishAreaWidgets();
+    }
+
+    if (!IsValid(PlatingDishArea) || !IsValid(OwnerShell))
+    {
+        return false;
+    }
+
+    const FVector2D CanvasPosition = ComputePlatingLocalPositionInCanvas(
+        PlatingDishArea.Get(),
+        DropTargetSlot,
+        LocalPositionInDropTarget);
+
+    const int32 DraggedInstanceId = DragOperation->IngredientInstance.InstanceID;
+    for (UPUIngredientSlot* ArrangementSlot : SpawnedPlatingDishSlots)
+    {
+        if (IsValid(ArrangementSlot)
+            && ArrangementSlot->GetIngredientInstance().InstanceID == DraggedInstanceId)
+        {
+            return TryMovePlatedIngredientOnDishArea(ArrangementSlot, CanvasPosition);
+        }
+    }
+
+    FIngredientInstance IngredientToPlace = DragOperation->IngredientInstance;
+    if (IngredientToPlace.InstanceID == 0 || IngredientToPlace.Quantity <= 0)
+    {
+        return false;
+    }
+
+    UPUIngredientSlot* SourceRailSlot = OwnerShell->FindIngredientRailStripSlotByInstanceId(IngredientToPlace.InstanceID);
+    if (!IsValid(SourceRailSlot))
+    {
+        return false;
+    }
+
+    if (UPUIngredientSlot* SpawnedSlot = SpawnPlatedIngredientOnDishArea(IngredientToPlace, CanvasPosition))
+    {
+        OwnerShell->NotifyPlatingIngredientMovedFromRailToDish(SourceRailSlot, SpawnedSlot);
+        return true;
+    }
+
+    return false;
+}
+
+void UPUPipelineStageMinigameModuleWidget::SyncPlatingDishAreaToDishData()
+{
+    if (!IsValid(OwnerShell) || !IsValid(PlatingDishArea))
+    {
+        return;
+    }
+
+    const FGeometry& CanvasGeometry = PlatingDishArea->GetCachedGeometry();
+    const FVector2D CanvasSize = CanvasGeometry.GetLocalSize();
+    const float SafeWidth = FMath::Max(1.f, CanvasSize.X);
+    const float SafeHeight = FMath::Max(1.f, CanvasSize.Y);
+
+    FPUDishBase DishData = OwnerShell->GetCurrentDishData();
+    for (UPUIngredientSlot* PlatedSlot : SpawnedPlatingDishSlots)
+    {
+        if (!IsValid(PlatedSlot) || PlatedSlot->IsEmpty())
+        {
+            continue;
+        }
+
+        const FIngredientInstance& Instance = PlatedSlot->GetIngredientInstance();
+        if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(PlatedSlot->Slot))
+        {
+            const FVector2D LocalPos = CanvasSlot->GetPosition();
+            const FVector NormalizedPos(
+                LocalPos.X / SafeWidth,
+                LocalPos.Y / SafeHeight,
+                0.f);
+            DishData.SetIngredientPlating(
+                Instance.InstanceID,
+                NormalizedPos,
+                FRotator::ZeroRotator,
+                FVector::OneVector);
+        }
+    }
+
+    OwnerShell->UpdateDishData(DishData);
+}
+
+void UPUPipelineStageMinigameModuleWidget::ClearPlatingDishAreaVisuals()
+{
+    for (UPUIngredientSlot* PlatedSlot : SpawnedPlatingDishSlots)
+    {
+        if (IsValid(PlatedSlot))
+        {
+            PlatedSlot->RemoveFromParent();
+        }
+    }
+    SpawnedPlatingDishSlots.Reset();
 }

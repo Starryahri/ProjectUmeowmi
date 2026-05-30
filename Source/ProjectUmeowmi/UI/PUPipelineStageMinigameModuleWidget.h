@@ -15,8 +15,11 @@ class UPUIngredientSlot;
 class UImage;
 class UPanelWidget;
 class UTexture2D;
+class UPUIngredientDragDropOperation;
+class UCanvasPanel;
 class UPUStripMinigameBehavior;
 class UPUStripMinigameProgressBarWidget;
+class UPUPlatingStripMinigameBehavior;
 
 /** Runtime-spawned bowl images for one ingredient layer (2nd rail ingredient = layer 0, etc.). */
 USTRUCT()
@@ -104,6 +107,18 @@ public:
     UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl")
     TObjectPtr<UImage> BowlFront;
 
+    /** Canvas for free-form plated ingredient slots (Stage.Plating / garnish). */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Plating")
+    TObjectPtr<UCanvasPanel> PlatingDishArea;
+
+    /** Optional full-area drop target over PlatingDishArea — name must be PlatingDishDropTarget. */
+    UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Plating")
+    TObjectPtr<UPUIngredientSlot> PlatingDishDropTarget;
+
+    /** Draw size for runtime-spawned plated ingredient slots on the dish canvas. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stage Minigame|Plating", meta = (ClampMin = "16"))
+    float PlatingDishSlotDrawSize = 64.f;
+
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Stage Minigame|Marination Bowl")
     TArray<TObjectPtr<UImage>> ResolvedMarinationBowlSlotImages;
 
@@ -149,6 +164,25 @@ public:
     /** Cast helper when Stage.Cooking (or a cooking behavior subclass) is active. */
     UFUNCTION(BlueprintPure, Category = "Stage Minigame|Cooking")
     UPUCookingStripMinigameBehavior* GetActiveCookingStripMinigameBehavior() const;
+
+    /** Cast helper when Stage.Plating / Stage.Garnish is active. */
+    UFUNCTION(BlueprintPure, Category = "Stage Minigame|Plating")
+    UPUPlatingStripMinigameBehavior* GetActivePlatingStripMinigameBehavior() const;
+
+    /** Writes 2D dish-area layout from spawned slots into OwnerShell / CustomizationComponent dish data. */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Plating")
+    void SyncPlatingDishAreaToDishData();
+
+    /** Removes runtime plated slots from the dish canvas. */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Plating")
+    void ClearPlatingDishAreaVisuals();
+
+    /** Drop from rail or rearrange an existing plated slot onto the dish canvas. Returns false if unhandled. */
+    UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Plating")
+    bool TryHandlePlatingDropOnDishArea(
+        UPUIngredientSlot* DropTargetSlot,
+        UPUIngredientDragDropOperation* DragOperation,
+        const FVector2D& LocalPositionInDropTarget);
 
     /** Forwards to the active cooking behavior when present. */
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Cooking")
@@ -339,6 +373,16 @@ private:
         UWidget* AnchorWidget);
     void ClearSpawnedMarinationBowlImages();
 
+    void ResolvePlatingDishAreaWidgets();
+    UPUIngredientSlot* SpawnPlatedIngredientOnDishArea(
+        const FIngredientInstance& IngredientInstance,
+        const FVector2D& LocalPositionInCanvas);
+    bool TryMovePlatedIngredientOnDishArea(UPUIngredientSlot* ArrangementSlot, const FVector2D& LocalPositionInCanvas);
+    static FVector2D ComputePlatingLocalPositionInCanvas(
+        UCanvasPanel* Canvas,
+        UWidget* DropTargetWidget,
+        const FVector2D& LocalPositionInDropTarget);
+
     /** Browsing preview on `FoodToBeChopped` while minigame is inactive — whole art, white tint (clears stale cut-tier multiply). */
     void ApplyStripSlotFocusPreviewVisual(UPUIngredientSlot* StripSlot);
 
@@ -370,4 +414,7 @@ private:
 
     bool bNextChopStrikeUsesAnimationA = true;
     bool bNextMixStrikeUsesAnimationA = true;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UPUIngredientSlot>> SpawnedPlatingDishSlots;
 };

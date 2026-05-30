@@ -138,6 +138,41 @@ public:
     /** After a successful cooking minigame commit: advance the pipeline or legacy next stage. */
     void AdvanceCustomizationAfterCookingMinigameComplete();
 
+    /** After plating minigame commit: end the customization session (final pipeline stage). */
+    void CompleteCustomizationAfterPlatingMinigame();
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Plating")
+    TSubclassOf<class UPUIngredientSlot> GetResolvedIngredientSlotClass() const;
+
+    /** True when a filled rail slot may be dragged onto the dish area during plating minigame. */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Plating")
+    bool IsIngredientRailSlotDraggableDuringPlatingMinigame(const UPUIngredientSlot* RailSlot) const;
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Plating")
+    bool IsPlatingMinigameRailDragStepActive() const { return bPlatingMinigameRailDragStepActive; }
+
+    /** Enables drag on filled, unplaced rail slots while the plating minigame runs. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Plating")
+    void BeginPlatingMinigameRailDragStep();
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Plating")
+    void EndPlatingMinigameRailDragStep();
+
+    /** Clears a rail slot after its ingredient was placed on the dish canvas. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Plating")
+    void NotifyPlatingIngredientMovedFromRailToDish(UPUIngredientSlot* SourceRailSlot, UPUIngredientSlot* PlatedSlot);
+
+    /** Forwards a dish-area drop to the mounted plating stage module when active. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Plating")
+    bool TryForwardPlatingDropToMountedStageModule(
+        UPUIngredientSlot* DropTargetSlot,
+        class UPUIngredientDragDropOperation* DragOperation,
+        FVector2D LocalPositionInDropTarget);
+
+    /** Finds the first filled ingredient-rail slot matching InstanceID (INDEX_NONE if not found). */
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell")
+    UPUIngredientSlot* FindIngredientRailStripSlotByInstanceId(int32 InstanceId) const;
+
     /** Forwards strip-slot minigame toggle (e.g. Y) to `MountedPipelineStageWidget` when it implements `PUCustomizationStageModuleInterface`. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool TryTogglePipelineStageMinigameFromIngredientStripSlot(class UPUIngredientSlot* StripSlot);
@@ -202,8 +237,6 @@ public:
     /** True when a filled rail slot may be clicked during an active strip minigame (Add Ingredient step). */
     UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
     bool IsIngredientRailSlotInteractableDuringStripMinigame(const UPUIngredientSlot* RailSlot) const;
-
-    /** Unlocks one filled rail slot so the player can commit it to the cooking pot. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell|Cooking")
     void BeginCookingAddIngredientRailStep(int32 TargetRailSlotIndex, FGameplayTag RequiredIngredientType);
 
@@ -1028,11 +1061,16 @@ private:
     TSet<TWeakObjectPtr<UPUIngredientSlot>> CookingAddIngredientConsumedRailSlots;
     TWeakObjectPtr<UPUIngredientSlot> ActiveCookingAddIngredientRailSlot;
 
+    bool bPlatingMinigameRailDragStepActive = false;
+    TSet<TWeakObjectPtr<UPUIngredientSlot>> PlatingConsumedRailSlots;
+
     UPUIngredientSlot* FindCookingAddIngredientTargetRailSlot() const;
     void ApplyCookingAddIngredientRailInteractionState();
     void RestoreStripMinigameRailLockAfterCookingAddIngredientStep();
     bool DoesRailSlotMatchCookingAddIngredientFilter(const UPUIngredientSlot* RailSlot) const;
     void TryCommitCookingAddIngredientRailSlot(UPUIngredientSlot* StripSlot);
+    void ApplyPlatingMinigameRailDragInteractionState();
+    bool IsRailSlotConsumedForPlating(const UPUIngredientSlot* RailSlot) const;
     void NotifyCookingAddIngredientRailSlotCommittedFromShell(UPUIngredientSlot* StripSlot);
     void ApplyCookingAddIngredientConsumedRailSlotLocks();
 

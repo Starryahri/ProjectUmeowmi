@@ -220,6 +220,18 @@ public:
     UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Pantry")
     bool IsRecipeLogSlot() const { return bRecipeLogSlot; }
 
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    void SetPlatingDishDropTarget(bool bInPlatingDishDropTarget);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Plating")
+    bool IsPlatingDishDropTarget() const { return bPlatingDishDropTarget; }
+
+    UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Plating")
+    void SetPlatingDishArrangementSlot(bool bInPlatingDishArrangementSlot);
+
+    UFUNCTION(BlueprintPure, Category = "Ingredient Slot|Plating")
+    bool IsPlatingDishArrangementSlot() const { return bPlatingDishArrangementSlot; }
+
     /** Pantry filter: when non-empty, only ingredients whose IngredientTypes overlap these tags (OR) may fill this slot. */
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Type")
     void SetRequiredIngredientTypes(const FGameplayTagContainer& InRequiredTypes);
@@ -465,6 +477,10 @@ protected:
     bool bPreppedPantryPickerSlot = false;
 
     bool bRecipeLogSlot = false;
+
+    bool bPlatingDishDropTarget = false;
+
+    bool bPlatingDishArrangementSlot = false;
 
     /** Slot accepts only ingredients whose IngredientTypes overlap this set (OR). Empty = any ingredient. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ingredient Slot|Type")
