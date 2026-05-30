@@ -45,8 +45,8 @@ UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer
     , bRadialMenuVisible(false)
     , bDragEnabled(true)  // Enable drag by default for testing
 {
-    StageMinigameToggleKeys.Add(EKeys::Gamepad_FaceButton_Top);
-    StageMinigameToggleKeys.Add(EKeys::Y);
+    StageMinigameToggleKeys.Add(EKeys::Gamepad_FaceButton_Left);
+    StageMinigameToggleKeys.Add(EKeys::X);
 }
 
 void UPUIngredientSlot::NativeConstruct()
@@ -3456,7 +3456,7 @@ bool UPUIngredientSlot::CanUseStageMinigameHotkey() const
 bool UPUIngredientSlot::ConsumeStageMinigameToggleFromStrip(const FKey& Key)
 {
     const bool bKeyListed = StageMinigameToggleKeys.Num() > 0 && StageMinigameToggleKeys.Contains(Key);
-    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::Y || Key == EKeys::Gamepad_FaceButton_Top || bKeyListed))
+    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::X || Key == EKeys::Gamepad_FaceButton_Left || bKeyListed))
     {
         UPUDishCustomizationWidget* DishForRail = GetDishCustomizationWidget();
         const int32 bUnderIngredientRail =
@@ -3533,8 +3533,8 @@ FReply UPUIngredientSlot::NativeOnKeyDown(const FGeometry& InGeometry, const FKe
             *Key.ToString(), *GetName(), (int32)Location, HasKeyboardFocus() ? TEXT("YES") : TEXT("NO"));
     }
     
-    // Gamepad A button (Xbox) / X button (PlayStation) - Select/Activate
-    if (Key == EKeys::Gamepad_FaceButton_Bottom || Key == EKeys::Enter || Key == EKeys::SpaceBar)
+    // Gamepad Y button (Xbox) / Triangle button (PlayStation) - Select/Activate ingredient slot
+    if (Key == EKeys::Gamepad_FaceButton_Top || Key == EKeys::Y || Key == EKeys::Enter || Key == EKeys::SpaceBar)
     {
         // If radial menu is visible, don't process input here - let the menu handle it
         if (bRadialMenuVisible && RadialMenuWidget && RadialMenuWidget->IsMenuVisible())

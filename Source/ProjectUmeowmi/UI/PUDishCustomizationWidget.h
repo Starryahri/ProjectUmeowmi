@@ -480,6 +480,17 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
     bool IsPantryOpen() const { return bPantryOpen; }
 
+    /** B / back: close pantry, exit strip minigame, etc. Returns true if handled without exiting customization. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    bool TryHandleControllerCancelOrBack();
+
+    /** Y / select: activate ingredient slot under virtual cursor, else keyboard-focused slot. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
+    bool TryActivateControllerIngredientSlot(APlayerController* PC);
+
+    UFUNCTION(BlueprintPure, Category = "Dish Customization Widget|Controller")
+    UPUIngredientSlot* FindIngredientSlotUnderVirtualCursor(APlayerController* PC) const;
+
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pantry")
     void OnPantryButtonClicked();
 
@@ -552,6 +563,20 @@ public:
     // Set up navigation for cooking stage slots (for controller support; slots in scrollbox use linear navigation)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")
     void SetupCookingSlotNavigation();
+
+    /** Horizontal left/right links between strip slots under IngredientRailSlot. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller|Ingredient Rail")
+    void SetupIngredientRailNavigation();
+
+    /** Move focus along the ingredient rail (D-pad / stick). Returns true when handled. */
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller|Ingredient Rail")
+    bool TryNavigateIngredientRailWithController(const FKey& Key);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller|Ingredient Rail")
+    void FocusIngredientRailStripSlot(UPUIngredientSlot* StripSlot);
+
+    UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller|Ingredient Rail")
+    void SetInitialFocusForIngredientRail();
 
     // Set initial focus for cooking stage (first ingredient slot)
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Controller")

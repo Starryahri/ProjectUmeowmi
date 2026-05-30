@@ -232,12 +232,12 @@ public:
 
     // Controller input functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
-    void HandleControllerSelect(); // Called when A/X button is pressed on focused slot
+    void HandleControllerSelect(); // Called when Y / FaceButton_Top is pressed on focused slot or under virtual cursor
 
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")
     void HandleControllerMenu(); // Called when X/Square button is pressed to open radial menu
 
-    /** Keys that toggle the mounted pipeline stage minigame from this strip slot (e.g. chop). Empty disables forwarding. Default includes gamepad Y and keyboard Y on strip slots. */
+    /** Keys that toggle the mounted pipeline stage minigame from this strip slot (e.g. chop). Default: gamepad X / FaceButton_Left. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Ingredient Slot|Stage Module")
     TArray<FKey> StageMinigameToggleKeys;
 
@@ -266,6 +266,11 @@ public:
     // Navigation setup functions
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Navigation")
     void SetupNavigation(UPUIngredientSlot* UpSlot, UPUIngredientSlot* DownSlot, UPUIngredientSlot* LeftSlot, UPUIngredientSlot* RightSlot);
+
+    UPUIngredientSlot* GetNavigationUpSlot() const { return NavigationUp.Get(); }
+    UPUIngredientSlot* GetNavigationDownSlot() const { return NavigationDown.Get(); }
+    UPUIngredientSlot* GetNavigationLeftSlot() const { return NavigationLeft.Get(); }
+    UPUIngredientSlot* GetNavigationRightSlot() const { return NavigationRight.Get(); }
 
     // Manually trigger focus visual feedback (outline and hover text)
     UFUNCTION(BlueprintCallable, Category = "Ingredient Slot|Controller")

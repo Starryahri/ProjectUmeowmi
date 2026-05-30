@@ -37,6 +37,8 @@
 #include "Layout/WidgetPath.h"
 #include "Input/Events.h"
 #include "TimerManager.h"
+#include "Components/InputComponent.h"
+#include "Slate/SObjectWidget.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 
@@ -57,6 +59,9 @@ namespace
 
     /** Synthetic Interact → Slate LMB down/up over virtual cursor (ingredient slots). Set false after debugging. */
     constexpr bool bPU_LogVirtualCursorClick = true;
+
+    /** Ingredient rail D-pad nav (throttled). Set false after debugging. */
+    constexpr bool bPU_LogIngredientRailNav = true;
 
     void LogMovementState(APlayerController* PC, const TCHAR* Context)
     {
@@ -176,6 +181,58 @@ namespace
         }
         return false;
     }
+
+    UWidget* GetWidgetObjectFromSlatePath(const FWidgetPath& Path)
+    {
+        if (!Path.IsValid())
+        {
+            return nullptr;
+        }
+        for (int32 i = Path.Widgets.Num() - 1; i >= 0; --i)
+        {
+            const TSharedRef<SWidget>& SlateWidget = Path.Widgets[i].Widget;
+            if (SlateWidget->GetType() == FName(TEXT("SObjectWidget")))
+            {
+                return static_cast<SObjectWidget*>(&SlateWidget.Get())->GetWidgetObject();
+            }
+        }
+        return nullptr;
+    }
+
+    bool IsWidgetDescendantOf(UWidget* Widget, UWidget* PotentialAncestor)
+    {
+        for (UWidget* W = Widget; W; W = W->GetParent())
+        {
+            if (W == PotentialAncestor)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    UPUIngredientSlot* FindIngredientSlotFromWidgetPath(
+        const FWidgetPath& Path,
+        UPUDishCustomizationWidget* DishWidget)
+    {
+        UWidget* Leaf = GetWidgetObjectFromSlatePath(Path);
+        if (!Leaf || !DishWidget)
+        {
+            return nullptr;
+        }
+        for (UWidget* W = Leaf; W; W = W->GetParent())
+        {
+            if (UPUIngredientSlot* Slot = Cast<UPUIngredientSlot>(W))
+            {
+                if (IsWidgetDescendantOf(Slot, DishWidget))
+                {
+                    return Slot;
+                }
+                break;
+            }
+        }
+        return nullptr;
+    }
 }
 
 UPUDishCustomizationComponent::UPUDishCustomizationComponent()
@@ -238,6 +295,14 @@ void UPUDishCustomizationComponent::TickComponent(float DeltaTime, ELevelTick Ti
         UpdateMouseDrag();
     }
 
+    if (CurrentCharacter && IsCustomizing())
+    {
+        if (APlayerController* NavPC = Cast<APlayerController>(CurrentCharacter->GetController()))
+        {
+            PollIngredientRailControllerNavigation(NavPC);
+        }
+    }
+
     if (CurrentCharacter && !IsGarbageCollecting())
     {
         CustomizationUIGCSanitizeAccumulator += DeltaTime;
@@ -275,6 +340,7 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     }
     bWasMouseDown = false;  // Reset for clean state when entering customization
     bVirtualClickConsumedBySlateUI = false;
+    bLastVirtualClickWidgetPathValid = false;
     bLastVirtualCursorDesktopValid = false;
     CachedVirtualCursorViewportExtentsX = 0;
     CachedVirtualCursorViewportExtentsY = 0;
@@ -471,6 +537,8 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     {
         //UE_LOG(LogTemp,Error, TEXT("❌ UPUDishCustomizationComponent::StartCustomization - Failed to get Enhanced Input Component"));
     }
+
+    BindCustomizationControllerFaceButtons(PlayerController);
 
     // Create and show the customization widget
     //UE_LOG(LogTemp,Display, TEXT("🎨 UPUDishCustomizationComponent::StartCustomization - About to create widget"));
@@ -679,6 +747,8 @@ void UPUDishCustomizationComponent::EndCustomization()
             }
         }
 
+        UnbindCustomizationControllerFaceButtons(PlayerController);
+
         // Remove only the customization layer; DefaultMappingContext was never removed.
         if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
         {
@@ -779,6 +849,7 @@ void UPUDishCustomizationComponent::EndCustomization()
 
     bVirtualCursorInitialized = false;
     bVirtualClickConsumedBySlateUI = false;
+    bLastVirtualClickWidgetPathValid = false;
     bLastVirtualCursorDesktopValid = false;
     CachedVirtualCursorViewportExtentsX = 0;
     CachedVirtualCursorViewportExtentsY = 0;
@@ -829,8 +900,317 @@ void UPUDishCustomizationComponent::EndCustomization()
 
 void UPUDishCustomizationComponent::HandleExitInput()
 {
-    //UE_LOG(LogTemp,Log, TEXT("Exit input received"));
+    if (CustomizationWidget)
+    {
+        if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+        {
+            if (DishWidget->TryHandleControllerCancelOrBack())
+            {
+                return;
+            }
+        }
+    }
     EndCustomization();
+}
+
+void UPUDishCustomizationComponent::BindCustomizationControllerFaceButtons(APlayerController* PlayerController)
+{
+    if (!PlayerController || bCustomizationControllerFaceButtonsBound)
+    {
+        return;
+    }
+    UInputComponent* InputComponent = PlayerController->InputComponent;
+    if (!InputComponent)
+    {
+        return;
+    }
+
+    // Schema: Y (FaceButton_Top) = slot activate, X (FaceButton_Left) = strip minigame toggle.
+    InputComponent->BindKey(EKeys::Gamepad_FaceButton_Top, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerSlotActivate);
+    InputComponent->BindKey(EKeys::Gamepad_FaceButton_Left, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerMinigameToggle);
+#if WITH_EDITOR
+    InputComponent->BindKey(EKeys::Y, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerSlotActivate);
+    InputComponent->BindKey(EKeys::X, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerMinigameToggle);
+#endif
+    bCustomizationControllerFaceButtonsBound = true;
+}
+
+void UPUDishCustomizationComponent::UnbindCustomizationControllerFaceButtons(APlayerController* PlayerController)
+{
+    if (!PlayerController || !bCustomizationControllerFaceButtonsBound)
+    {
+        return;
+    }
+    if (UInputComponent* InputComponent = PlayerController->InputComponent)
+    {
+        InputComponent->KeyBindings.RemoveAll([this](const FInputKeyBinding& Binding)
+        {
+            if (Binding.KeyEvent != EInputEvent::IE_Pressed)
+            {
+                return false;
+            }
+            const FKey Key = Binding.Chord.Key;
+            const bool bFaceButton =
+                Key == EKeys::Gamepad_FaceButton_Top
+                || Key == EKeys::Y
+                || Key == EKeys::Gamepad_FaceButton_Left
+                || Key == EKeys::X;
+            return bFaceButton && Binding.KeyDelegate.IsBoundToObject(this);
+        });
+    }
+    bCustomizationControllerFaceButtonsBound = false;
+}
+
+void UPUDishCustomizationComponent::HandleControllerSlotActivate()
+{
+    if (!CurrentCharacter)
+    {
+        return;
+    }
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        return;
+    }
+    if (TryActivateIngredientSlotUnderVirtualCursor(PlayerController))
+    {
+        return;
+    }
+    if (UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        DishWidget->TryActivateControllerIngredientSlot(PlayerController);
+    }
+}
+
+void UPUDishCustomizationComponent::HandleControllerMinigameToggle()
+{
+    if (!CurrentCharacter)
+    {
+        return;
+    }
+    APlayerController* PlayerController = Cast<APlayerController>(CurrentCharacter->GetController());
+    if (!PlayerController)
+    {
+        return;
+    }
+    TryToggleStageMinigameUnderVirtualCursorOrFocus(PlayerController);
+}
+
+bool UPUDishCustomizationComponent::TryLocateVirtualCursorWidgetPath(APlayerController* PC, FWidgetPath& OutPath) const
+{
+    OutPath = FWidgetPath();
+    if (!PC || !bVirtualCursorInitialized || !FSlateApplication::IsInitialized())
+    {
+        return false;
+    }
+    FVector2D AbsPos;
+    if (!TryComputeVirtualCursorDesktopAbsolute(PC, AbsPos))
+    {
+        return false;
+    }
+    ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+    if (!LocalPlayer)
+    {
+        return false;
+    }
+    FSlateApplication& SlateApp = FSlateApplication::Get();
+    TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
+    if (!SlateUser.IsValid())
+    {
+        SlateUser = SlateApp.GetCursorUser();
+    }
+    if (!SlateUser.IsValid())
+    {
+        return false;
+    }
+    OutPath = SlateApp.LocateWindowUnderMouse(AbsPos, SlateApp.GetInteractiveTopLevelWindows(), false, SlateUser->GetUserIndex());
+    return OutPath.IsValid() && WidgetPathContainsSObjectWidget(OutPath);
+}
+
+bool UPUDishCustomizationComponent::DispatchVirtualCursorPointerDown(APlayerController* PC, const FWidgetPath& Path)
+{
+    if (!PC || !Path.IsValid() || !FSlateApplication::IsInitialized())
+    {
+        return false;
+    }
+    ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+    if (!LocalPlayer)
+    {
+        return false;
+    }
+    FSlateApplication& SlateApp = FSlateApplication::Get();
+    TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
+    if (!SlateUser.IsValid())
+    {
+        SlateUser = SlateApp.GetCursorUser();
+    }
+    if (!SlateUser.IsValid())
+    {
+        return false;
+    }
+
+    FVector2D AbsPos;
+    if (!TryComputeVirtualCursorDesktopAbsolute(PC, AbsPos))
+    {
+        return false;
+    }
+
+    SlateUser->SetCursorPosition(static_cast<int32>(AbsPos.X), static_cast<int32>(AbsPos.Y));
+    const FVector2D OldAbs = bLastVirtualCursorDesktopValid ? LastVirtualCursorDesktopAbs : AbsPos;
+    const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
+    const FPointerEvent MouseEvent(
+        SlateUser->GetUserIndex(),
+        FSlateApplication::CursorPointerIndex,
+        AbsPos,
+        OldAbs,
+        bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
+        EKeys::LeftMouseButton,
+        0.f,
+        bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
+
+    FPUScopedSyntheticSlateMouseDispatch GuardSyntheticDispatch(bInsideSyntheticSlateMouseDispatch);
+    const FReply Reply = SlateApp.RoutePointerDownEvent(Path, MouseEvent);
+    ApplyVirtualCursorHardwareCursorLock(PC);
+    return Reply.IsEventHandled();
+}
+
+bool UPUDishCustomizationComponent::DispatchVirtualCursorPointerUp(APlayerController* PC, const FWidgetPath& Path)
+{
+    if (!PC || !Path.IsValid() || !FSlateApplication::IsInitialized())
+    {
+        return false;
+    }
+    ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+    if (!LocalPlayer)
+    {
+        return false;
+    }
+    FSlateApplication& SlateApp = FSlateApplication::Get();
+    TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
+    if (!SlateUser.IsValid())
+    {
+        SlateUser = SlateApp.GetCursorUser();
+    }
+    if (!SlateUser.IsValid())
+    {
+        return false;
+    }
+
+    FVector2D AbsPos;
+    if (!TryComputeVirtualCursorDesktopAbsolute(PC, AbsPos))
+    {
+        return false;
+    }
+
+    SlateUser->SetCursorPosition(static_cast<int32>(AbsPos.X), static_cast<int32>(AbsPos.Y));
+    const FVector2D OldAbs = bLastVirtualCursorDesktopValid ? LastVirtualCursorDesktopAbs : AbsPos;
+    const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
+    const FPointerEvent MouseEvent(
+        SlateUser->GetUserIndex(),
+        FSlateApplication::CursorPointerIndex,
+        AbsPos,
+        OldAbs,
+        bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
+        EKeys::LeftMouseButton,
+        0.f,
+        bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
+
+    SlateApp.RoutePointerUpEvent(Path, MouseEvent);
+    ApplyVirtualCursorHardwareCursorLock(PC);
+    return true;
+}
+
+bool UPUDishCustomizationComponent::TryActivateIngredientSlotUnderVirtualCursor(APlayerController* PC)
+{
+    if (!PC)
+    {
+        return false;
+    }
+    UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget);
+    if (!DishWidget)
+    {
+        return false;
+    }
+    if (UPUIngredientSlot* Slot = DishWidget->FindIngredientSlotUnderVirtualCursor(PC))
+    {
+        Slot->HandleControllerSelect();
+        return true;
+    }
+    return false;
+}
+
+bool UPUDishCustomizationComponent::TryToggleStageMinigameUnderVirtualCursorOrFocus(APlayerController* PC)
+{
+    UPUDishCustomizationWidget* DishWidget = Cast<UPUDishCustomizationWidget>(CustomizationWidget);
+    if (!DishWidget || DishWidget->IsStripMinigameLockingIngredientRail())
+    {
+        return false;
+    }
+
+    UPUIngredientSlot* StripSlot = nullptr;
+    if (PC)
+    {
+        StripSlot = DishWidget->FindIngredientSlotUnderVirtualCursor(PC);
+    }
+    if (!StripSlot)
+    {
+        StripSlot = DishWidget->FindFocusedIngredientRailStripSlot();
+    }
+    if (!StripSlot || !DishWidget->CanIngredientStripSlotStartStageMinigame(StripSlot))
+    {
+        return false;
+    }
+    return DishWidget->TryTogglePipelineStageMinigameFromIngredientStripSlot(StripSlot);
+}
+
+UPUDishCustomizationWidget* UPUDishCustomizationComponent::GetActiveDishCustomizationWidget() const
+{
+    if (UPUDishCustomizationWidget* Widget = Cast<UPUDishCustomizationWidget>(CustomizationWidget))
+    {
+        return Widget;
+    }
+    return CookingStageWidget;
+}
+
+void UPUDishCustomizationComponent::PollIngredientRailControllerNavigation(APlayerController* PlayerController)
+{
+    if (!PlayerController || !IsCustomizing())
+    {
+        return;
+    }
+
+    UPUDishCustomizationWidget* DishWidget = GetActiveDishCustomizationWidget();
+    if (!DishWidget)
+    {
+        return;
+    }
+
+    if (PlayerController->WasInputKeyJustPressed(EKeys::Gamepad_DPad_Left))
+    {
+        if (bPU_LogIngredientRailNav)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[IngredientRail] D-pad LEFT pressed"));
+        }
+        DishWidget->TryNavigateIngredientRailWithController(EKeys::Gamepad_DPad_Left);
+    }
+    if (PlayerController->WasInputKeyJustPressed(EKeys::Gamepad_DPad_Right))
+    {
+        if (bPU_LogIngredientRailNav)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[IngredientRail] D-pad RIGHT pressed"));
+        }
+        DishWidget->TryNavigateIngredientRailWithController(EKeys::Gamepad_DPad_Right);
+    }
+#if WITH_EDITOR
+    if (PlayerController->WasInputKeyJustPressed(EKeys::Left))
+    {
+        DishWidget->TryNavigateIngredientRailWithController(EKeys::Left);
+    }
+    if (PlayerController->WasInputKeyJustPressed(EKeys::Right))
+    {
+        DishWidget->TryNavigateIngredientRailWithController(EKeys::Right);
+    }
+#endif
 }
 
 void UPUDishCustomizationComponent::HandleControllerMouse(const FInputActionValue& Value)
@@ -1238,92 +1618,45 @@ void UPUDishCustomizationComponent::HandleMouseClick(const FInputActionValue& Va
             ViewportCursor.X, ViewportCursor.Y, bVirtualCursorInitialized ? 1 : 0, bPhysicalLMB ? 1 : 0);
     }
 
-    // Interact / MouseClickAction without physical LMB: send a synthetic left click through Slate so UMG matches mouse (ingredient slots, buttons).
-    // Real LMB still uses normal Slate routing; we skip this branch so we do not double-fire ProcessMouseButtonDownEvent.
+    // Interact / MouseClickAction without physical LMB: route pointer events through Slate, then fall back to direct slot activation.
     if (bVirtualCursorInitialized && FSlateApplication::IsInitialized() && !bPhysicalLMB)
     {
-        if (ULocalPlayer* LocalPlayer = PlayerController->GetLocalPlayer())
+        FWidgetPath Path;
+        if (TryLocateVirtualCursorWidgetPath(PlayerController, Path))
         {
-            FSlateApplication& SlateApp = FSlateApplication::Get();
-            TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
-            if (!SlateUser.IsValid())
+            if (bPU_LogVirtualCursorClick)
             {
-                SlateUser = SlateApp.GetCursorUser();
+                FString LeafType = Path.GetLastWidget()->GetTypeAsString();
+                UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] RoutePointerDownEvent pathWidgets=%d leafType=%s"),
+                    Path.Widgets.Num(), *LeafType);
             }
-            if (SlateUser.IsValid())
+            if (DispatchVirtualCursorPointerDown(PlayerController, Path))
             {
-                // Do not use SlateUser->GetCursorPosition() here: with OS cursor hidden it can be invalid (e.g. INT_MIN), breaking LocateWindowUnderMouse.
-                FVector2D AbsPos;
-                if (!TryComputeVirtualCursorDesktopAbsolute(PlayerController, AbsPos))
-                {
-                    if (bPU_LogVirtualCursorClick)
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: TryComputeVirtualCursorDesktopAbsolute failed"));
-                    }
-                }
-                else
-                {
-                const FWidgetPath Path = SlateApp.LocateWindowUnderMouse(AbsPos, SlateApp.GetInteractiveTopLevelWindows(), false, SlateUser->GetUserIndex());
-                const bool bHasUMG = Path.IsValid() && WidgetPathContainsSObjectWidget(Path);
-                FString LeafType = TEXT("(no path)");
-                if (Path.IsValid() && Path.Widgets.Num() > 0)
-                {
-                    LeafType = Path.GetLastWidget()->GetTypeAsString();
-                }
+                LastVirtualClickWidgetPath = Path;
+                bLastVirtualClickWidgetPathValid = true;
+                bVirtualClickConsumedBySlateUI = true;
+                ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
                 if (bPU_LogVirtualCursorClick)
                 {
-                    UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Slate probe: desktopAbs=(%.1f,%.1f) pathValid=%d pathWidgets=%d hasSObjectWidget=%d leafType=%s"),
-                        AbsPos.X, AbsPos.Y, Path.IsValid() ? 1 : 0, Path.IsValid() ? Path.Widgets.Num() : 0, bHasUMG ? 1 : 0, *LeafType);
+                    UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] RoutePointerDownEvent handled by UMG under virtual cursor."));
                 }
-                if (Path.IsValid() && bHasUMG)
-                {
-                    SlateUser->SetCursorPosition(static_cast<int32>(AbsPos.X), static_cast<int32>(AbsPos.Y));
-                    const FVector2D OldAbs = bLastVirtualCursorDesktopValid ? LastVirtualCursorDesktopAbs : AbsPos;
-                    const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
-                    const FPointerEvent MouseEvent(
-                        SlateUser->GetUserIndex(),
-                        FSlateApplication::CursorPointerIndex,
-                        AbsPos,
-                        OldAbs,
-                        bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
-                        EKeys::LeftMouseButton,
-                        0.f,
-                        bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
-                    TSharedPtr<FGenericWindow> GenWindow;
-                    {
-                        FPUScopedSyntheticSlateMouseDispatch GuardSyntheticDispatch(bInsideSyntheticSlateMouseDispatch);
-                        SlateApp.ProcessMouseButtonDownEvent(GenWindow, MouseEvent);
-                    }
-                    ApplyVirtualCursorHardwareCursorLock(PlayerController);
-                    ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
-                    bVirtualClickConsumedBySlateUI = true;
-                    if (bPU_LogVirtualCursorClick)
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] SYNTHETIC LMB DOWN sent to Slate (ProcessMouseButtonDownEvent). Expect slot NativeOnMouseButtonDown; hover may flicker while button is 'held'."));
-                    }
-                    return;
-                }
-                if (bPU_LogVirtualCursorClick)
-                {
-                    if (!Path.IsValid())
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: LocateWindowUnderMouse returned invalid path (SlateAbs mismatch with UI?)"));
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: path has no SObjectWidget — falling through to 3D trace (leaf=%s)"), *LeafType);
-                    }
-                }
-                }
-            }
-            else if (bPU_LogVirtualCursorClick)
-            {
-                UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: no FSlateUser for local player / cursor user"));
+                return;
             }
         }
         else if (bPU_LogVirtualCursorClick)
         {
-            UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] NO synthetic click: no ULocalPlayer"));
+            UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] No UMG path under virtual cursor — trying direct slot activate."));
+        }
+
+        if (TryActivateIngredientSlotUnderVirtualCursor(PlayerController))
+        {
+            bVirtualClickConsumedBySlateUI = true;
+            ScheduleVirtualCursorHardwareCursorLockNextFrame(PlayerController);
+            if (bPU_LogVirtualCursorClick)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Direct HandleControllerSelect on slot under virtual cursor."));
+            }
+            return;
         }
     }
     else if (bPU_LogVirtualCursorClick && bVirtualCursorInitialized && FSlateApplication::IsInitialized())
@@ -1417,50 +1750,29 @@ void UPUDishCustomizationComponent::HandleMouseRelease(const FInputActionValue& 
         bVirtualClickConsumedBySlateUI = false;
         if (APlayerController* PC = Cast<APlayerController>(CurrentCharacter->GetController()))
         {
-            if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+            FWidgetPath ReleasePath;
+            if (bLastVirtualClickWidgetPathValid && LastVirtualClickWidgetPath.IsValid())
             {
-                FSlateApplication& SlateApp = FSlateApplication::Get();
-                TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(LocalPlayer->GetControllerId());
-                if (!SlateUser.IsValid())
+                ReleasePath = LastVirtualClickWidgetPath;
+            }
+            else
+            {
+                TryLocateVirtualCursorWidgetPath(PC, ReleasePath);
+            }
+            if (ReleasePath.IsValid())
+            {
+                DispatchVirtualCursorPointerUp(PC, ReleasePath);
+                ScheduleVirtualCursorHardwareCursorLockNextFrame(PC);
+                if (bPU_LogVirtualCursorClick)
                 {
-                    SlateUser = SlateApp.GetCursorUser();
-                }
-                if (SlateUser.IsValid())
-                {
-                    FVector2D AbsPos;
-                    if (TryComputeVirtualCursorDesktopAbsolute(PC, AbsPos))
-                    {
-                        SlateUser->SetCursorPosition(static_cast<int32>(AbsPos.X), static_cast<int32>(AbsPos.Y));
-                        const FVector2D OldAbs = bLastVirtualCursorDesktopValid ? LastVirtualCursorDesktopAbs : AbsPos;
-                        const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
-                        const FPointerEvent MouseEvent(
-                            SlateUser->GetUserIndex(),
-                            FSlateApplication::CursorPointerIndex,
-                            AbsPos,
-                            OldAbs,
-                            bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : FTouchKeySet::EmptySet,
-                            EKeys::LeftMouseButton,
-                            0.f,
-                            bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState());
-                        SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
-                        ApplyVirtualCursorHardwareCursorLock(PC);
-                        ScheduleVirtualCursorHardwareCursorLockNextFrame(PC);
-                        if (bPU_LogVirtualCursorClick)
-                        {
-                            UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] SYNTHETIC LMB UP sent (ProcessMouseButtonUpEvent) desktopAbs=(%.1f,%.1f). Hover should restore on next stick move."),
-                                AbsPos.X, AbsPos.Y);
-                        }
-                    }
-                    else if (bPU_LogVirtualCursorClick)
-                    {
-                        UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Release: TryComputeVirtualCursorDesktopAbsolute failed; synthetic LMB up skipped"));
-                    }
-                }
-                else if (bPU_LogVirtualCursorClick)
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Release: expected synthetic up but SlateUser invalid"));
+                    UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] RoutePointerUpEvent sent for paired virtual-cursor click."));
                 }
             }
+            else if (bPU_LogVirtualCursorClick)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("[VirtualCursorClick] Release: no widget path for RoutePointerUpEvent (direct slot activate may have been used)."));
+            }
+            bLastVirtualClickWidgetPathValid = false;
         }
         if (!bIsDragging)
         {

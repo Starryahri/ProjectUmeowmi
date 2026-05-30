@@ -7,6 +7,7 @@
 #include "../ProjectUmeowmiCharacter.h"
 #include "../UI/PUDishCustomizationWidget.h"
 #include "Components/SlateWrapperTypes.h"
+#include "Layout/WidgetPath.h"
 #include "Engine/EngineBaseTypes.h"
 #include "PUDishCustomizationComponent.generated.h"
 
@@ -58,6 +59,9 @@ public:
     /** After SetUserFocus/SetKeyboardFocus on dish UI, Slate may call UsePlatformCursorForCursorUser(true) — call this to restore faux cursor + hover sync. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Virtual Cursor")
     void ReassertVirtualCursorAfterUMGFocus(APlayerController* PC);
+
+    /** Locate the UMG widget path under the virtual cursor (for slot activation / synthetic clicks). */
+    bool TryLocateVirtualCursorWidgetPath(APlayerController* PC, FWidgetPath& OutPath) const;
 
 	/** Player currently in customization (null if not customizing). */
 	AProjectUmeowmiCharacter* GetCurrentCharacter() const { return CurrentCharacter; }
@@ -369,6 +373,7 @@ protected:
     uint32 PreviousStageBindingHandle;
     uint32 QuantityIncreaseBindingHandle;
     uint32 QuantityDecreaseBindingHandle;
+    bool bCustomizationControllerFaceButtonsBound = false;
 
     // Mouse interaction state
     bool bIsDragging = false;
@@ -401,6 +406,19 @@ private:
     // Input handling
     void HandleExitInput();
     void HandleControllerMouse(const FInputActionValue& Value);
+    void HandleControllerSlotActivate();
+    void HandleControllerMinigameToggle();
+    void BindCustomizationControllerFaceButtons(APlayerController* PlayerController);
+    void UnbindCustomizationControllerFaceButtons(APlayerController* PlayerController);
+    void PollIngredientRailControllerNavigation(APlayerController* PlayerController);
+
+    UPUDishCustomizationWidget* GetActiveDishCustomizationWidget() const;
+
+    bool TryActivateIngredientSlotUnderVirtualCursor(APlayerController* PC);
+    bool TryToggleStageMinigameUnderVirtualCursorOrFocus(APlayerController* PC);
+
+    bool DispatchVirtualCursorPointerDown(APlayerController* PC, const FWidgetPath& Path);
+    bool DispatchVirtualCursorPointerUp(APlayerController* PC, const FWidgetPath& Path);
 
     /** Right-stick cursor in viewport pixels; sole source of truth during customization (not GetMousePosition / hardware mouse). */
     FVector2D VirtualCursorViewport = FVector2D::ZeroVector;
@@ -408,6 +426,10 @@ private:
 
     /** Last MouseClickAction (Started) was routed to Slate as a synthetic LMB down (UMG under virtual cursor); release must send synthetic LMB up. */
     bool bVirtualClickConsumedBySlateUI = false;
+
+    /** Widget path hit on the last synthetic virtual-cursor pointer down (paired with RoutePointerUpEvent on release). */
+    FWidgetPath LastVirtualClickWidgetPath;
+    bool bLastVirtualClickWidgetPathValid = false;
 
     /** True while we're inside ProcessMouseButtonDownEvent for a synthetic virtual-cursor click — that call re-fires pre-input listeners; without this, OnPreInputMouseButtonDown -> HandleMouseClick recurses until stack overflow. */
     bool bInsideSyntheticSlateMouseDispatch = false;

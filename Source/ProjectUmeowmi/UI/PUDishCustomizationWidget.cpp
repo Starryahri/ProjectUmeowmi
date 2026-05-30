@@ -29,6 +29,7 @@
 #include "UObject/UObjectIterator.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Slate/SObjectWidget.h"
+#include "Layout/WidgetPath.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
@@ -502,12 +503,16 @@ void UPUDishCustomizationWidget::NativeConstruct()
 FReply UPUDishCustomizationWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
     const FKey Key = InKeyEvent.GetKey();
+    if (TryNavigateIngredientRailWithController(Key))
+    {
+        return FReply::Handled();
+    }
     if (TryConsumeActiveStripMinigameKey(Key))
     {
         return FReply::Handled();
     }
     if (IsStripMinigameLockingIngredientRail()
-        && (Key == EKeys::Y || Key == EKeys::Gamepad_FaceButton_Top))
+        && (Key == EKeys::X || Key == EKeys::Gamepad_FaceButton_Left))
     {
         if (UPUIngredientSlot* LockedStrip = GetLockedIngredientRailStripSlotForMinigame())
         {
@@ -517,7 +522,7 @@ FReply UPUDishCustomizationWidget::NativeOnPreviewKeyDown(const FGeometry& InGeo
             }
         }
     }
-    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::Y || Key == EKeys::Gamepad_FaceButton_Top))
+    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::X || Key == EKeys::Gamepad_FaceButton_Left))
     {
         // Diagnostic only — toggling happens in `UPUIngredientSlot::NativeOnPreviewKeyDown` to avoid duplicate Execute on one key press.
         UPUIngredientSlot* FocusSlot = PU_FindIngredientStripSlotUnderKeyboardFocus(this);
@@ -1309,7 +1314,127 @@ bool UPUDishCustomizationWidget::IsWidgetUnderIngredientRailSlot(UWidget* Widget
 
 UPUIngredientSlot* UPUDishCustomizationWidget::FindFocusedIngredientRailStripSlot()
 {
-    return PU_FindIngredientStripSlotUnderKeyboardFocus(this);
+    if (UPUIngredientSlot* Strip = PU_FindIngredientStripSlotUnderKeyboardFocus(this))
+    {
+        return Strip;
+    }
+
+    if (UPUIngredientSlot* Cached = LastFocusedIngredientRailStripSlot.Get())
+    {
+        if (IsValid(Cached) && IsWidgetUnderIngredientRailSlot(Cached) && Cached->IsFocusable())
+        {
+            return Cached;
+        }
+    }
+
+    return nullptr;
+}
+
+UPUIngredientSlot* UPUDishCustomizationWidget::FindIngredientSlotUnderVirtualCursor(APlayerController* PC) const
+{
+    if (!CustomizationComponent || !PC)
+    {
+        return nullptr;
+    }
+    FWidgetPath Path;
+    if (!CustomizationComponent->TryLocateVirtualCursorWidgetPath(PC, Path))
+    {
+        return nullptr;
+    }
+    UWidget* Leaf = nullptr;
+    for (int32 i = Path.Widgets.Num() - 1; i >= 0; --i)
+    {
+        const TSharedRef<SWidget>& SlateWidget = Path.Widgets[i].Widget;
+        if (SlateWidget->GetType() == FName(TEXT("SObjectWidget")))
+        {
+            Leaf = static_cast<SObjectWidget*>(&SlateWidget.Get())->GetWidgetObject();
+            break;
+        }
+    }
+    if (!Leaf)
+    {
+        return nullptr;
+    }
+    for (UWidget* W = Leaf; W; W = W->GetParent())
+    {
+        if (UPUIngredientSlot* CandidateSlot = Cast<UPUIngredientSlot>(W))
+        {
+            if (IsWidgetDescendantOf(CandidateSlot, const_cast<UPUDishCustomizationWidget*>(this)))
+            {
+                return CandidateSlot;
+            }
+            break;
+        }
+    }
+    return nullptr;
+}
+
+bool UPUDishCustomizationWidget::TryActivateControllerIngredientSlot(APlayerController* PC)
+{
+    if (IsStripMinigameLockingIngredientRail())
+    {
+        return false;
+    }
+
+    if (UPUIngredientSlot* SlotUnderCursor = FindIngredientSlotUnderVirtualCursor(PC))
+    {
+        SlotUnderCursor->HandleControllerSelect();
+        return true;
+    }
+
+    if (UPUIngredientSlot* FocusedRail = FindFocusedIngredientRailStripSlot())
+    {
+        FocusedRail->HandleControllerSelect();
+        return true;
+    }
+
+    for (UPUIngredientSlot* PantrySlot : CreatedPantrySlots)
+    {
+        if (IsValid(PantrySlot) && (PantrySlot->HasKeyboardFocus() || PantrySlot->HasFocusedDescendants()))
+        {
+            PantrySlot->HandleControllerSelect();
+            return true;
+        }
+    }
+
+    for (UPUIngredientSlot* IngredientSlot : CreatedIngredientSlots)
+    {
+        if (IsValid(IngredientSlot) && (IngredientSlot->HasKeyboardFocus() || IngredientSlot->HasFocusedDescendants()))
+        {
+            IngredientSlot->HandleControllerSelect();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool UPUDishCustomizationWidget::TryHandleControllerCancelOrBack()
+{
+    if (IsStripMinigameLockingIngredientRail())
+    {
+        if (UPUIngredientSlot* LockedStrip = GetLockedIngredientRailStripSlotForMinigame())
+        {
+            TryTogglePipelineStageMinigameFromIngredientStripSlot(LockedStrip);
+        }
+        return true;
+    }
+
+    if (bPantryOpen)
+    {
+        ClosePantry();
+        if (StageType == EDishCustomizationStageType::Cooking || StageType == EDishCustomizationStageType::Plating)
+        {
+            SetInitialFocusForCookingStage();
+        }
+        else
+        {
+            SetInitialFocusForPrepStage();
+        }
+        return true;
+    }
+
+    return false;
 }
 
 void UPUDishCustomizationWidget::ClaimIngredientSlotFocusVisual(UPUIngredientSlot* IngredientSlot)
@@ -1445,6 +1570,7 @@ void UPUDishCustomizationWidget::SetIngredientRailStripInteractionLocked(bool bL
             }
         }
         IngredientRailInteractionLockSnapshots.Reset();
+        SetupIngredientRailNavigation();
         return;
     }
 
@@ -4121,6 +4247,9 @@ void UPUDishCustomizationWidget::RebuildIngredientRailForActiveStage(UPanelWidge
 
     UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] RebuildIngredientRailForActiveStage — done, created %d strip slot(s)."),
         CreatedIngredientSlots.Num());
+
+    SetupIngredientRailNavigation();
+    SetInitialFocusForIngredientRail();
 }
 
 TArray<FIngredientInstance> UPUDishCustomizationWidget::GetIngredientInstancesFromDataTable(UDataTable* IngredientDataTable)
@@ -6602,6 +6731,209 @@ void UPUDishCustomizationWidget::SetInitialFocusForPantry()
     UE_LOG(LogTemp, Warning, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForPantry - No pantry slots found"));
 }
 
+void UPUDishCustomizationWidget::SetupIngredientRailNavigation()
+{
+    if (!IngredientRailSlot)
+    {
+        TryResolvePipelineShellSlotsFromHierarchy();
+    }
+    if (!IngredientRailSlot || IngredientRailSlot->GetVisibility() == ESlateVisibility::Collapsed)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] SetupIngredientRailNavigation — skipped: rail panel missing or collapsed"));
+        return;
+    }
+
+    TArray<UPUIngredientSlot*> RailSlots;
+    ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+    {
+        if (!IsValid(RailSlot))
+        {
+            return;
+        }
+        RailSlot->SetIsFocusable(true);
+        RailSlots.Add(RailSlot);
+    });
+
+    if (RailSlots.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] SetupIngredientRailNavigation — no strip slots under IngredientRailSlot"));
+        return;
+    }
+
+    if (UPanelWidget* RailPanel = IngredientRailSlot.Get())
+    {
+        for (UWidget* Ancestor = RailPanel; Ancestor; Ancestor = Ancestor->GetParent())
+        {
+            if (UScrollBox* ScrollBox = Cast<UScrollBox>(Ancestor))
+            {
+                ScrollBox->SetScrollWhenFocusChanges(EScrollWhenFocusChanges::AnimatedScroll);
+                break;
+            }
+        }
+    }
+
+    for (int32 i = 0; i < RailSlots.Num(); ++i)
+    {
+        UPUIngredientSlot* CurrentSlot = RailSlots[i];
+        UPUIngredientSlot* LeftSlot = (i > 0) ? RailSlots[i - 1] : nullptr;
+        UPUIngredientSlot* RightSlot = (i + 1 < RailSlots.Num()) ? RailSlots[i + 1] : nullptr;
+        CurrentSlot->SetupNavigation(nullptr, nullptr, LeftSlot, RightSlot);
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("[IngredientRail] SetupIngredientRailNavigation — linked %d strip slot(s) left/right"), RailSlots.Num());
+}
+
+void UPUDishCustomizationWidget::FocusIngredientRailStripSlot(UPUIngredientSlot* StripSlot)
+{
+    if (!IsValid(StripSlot) || !IsWidgetUnderIngredientRailSlot(StripSlot))
+    {
+        return;
+    }
+    if (!StripSlot->IsFocusable())
+    {
+        return;
+    }
+    if (IsDialogueVisible())
+    {
+        return;
+    }
+
+    SetIsFocusable(true);
+    StripSlot->SetIsFocusable(true);
+    StripSlot->SetKeyboardFocus();
+
+    if (APlayerController* PC = GetOwningPlayer())
+    {
+        if (ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+        {
+            FSlateApplication::Get().SetUserFocus(
+                LocalPlayer->GetControllerId(),
+                StripSlot->TakeWidget(),
+                EFocusCause::Navigation);
+        }
+    }
+
+    StripSlot->ShowFocusVisuals();
+    LastFocusedIngredientRailStripSlot = StripSlot;
+    NotifyMountedStageModuleOfStripSlotFocus(StripSlot);
+}
+
+bool UPUDishCustomizationWidget::TryNavigateIngredientRailWithController(const FKey& Key)
+{
+    if (!IngredientRailSlot)
+    {
+        TryResolvePipelineShellSlotsFromHierarchy();
+    }
+    if (!IngredientRailSlot || IngredientRailSlot->GetVisibility() == ESlateVisibility::Collapsed)
+    {
+        return false;
+    }
+
+    if (IsStripMinigameLockingIngredientRail() && !bCookingAddIngredientRailStepActive)
+    {
+        return false;
+    }
+
+    const bool bNavigateLeft =
+        Key == EKeys::Gamepad_DPad_Left
+        || Key == EKeys::Gamepad_LeftStick_Left
+        || Key == EKeys::Left;
+    const bool bNavigateRight =
+        Key == EKeys::Gamepad_DPad_Right
+        || Key == EKeys::Gamepad_LeftStick_Right
+        || Key == EKeys::Right;
+    if (!bNavigateLeft && !bNavigateRight)
+    {
+        return false;
+    }
+
+    UPUIngredientSlot* CurrentSlot = FindFocusedIngredientRailStripSlot();
+    if (!CurrentSlot)
+    {
+        UPUIngredientSlot* FirstSlot = nullptr;
+        ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+        {
+            if (FirstSlot || !IsValid(RailSlot) || !RailSlot->IsFocusable())
+            {
+                return;
+            }
+            FirstSlot = RailSlot;
+        });
+        if (FirstSlot)
+        {
+            FocusIngredientRailStripSlot(FirstSlot);
+            UE_LOG(LogTemp, Log, TEXT("[IngredientRail] Initial focus on %s"), *FirstSlot->GetName());
+            return true;
+        }
+        return false;
+    }
+
+    UPUIngredientSlot* NextSlot = bNavigateLeft
+        ? CurrentSlot->GetNavigationLeftSlot()
+        : CurrentSlot->GetNavigationRightSlot();
+    if (!IsValid(NextSlot) || !NextSlot->IsFocusable())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] Navigate %s blocked from %s (next=%s focusable=%d)"),
+            bNavigateLeft ? TEXT("LEFT") : TEXT("RIGHT"),
+            *CurrentSlot->GetName(),
+            IsValid(NextSlot) ? *NextSlot->GetName() : TEXT("(none)"),
+            IsValid(NextSlot) ? (NextSlot->IsFocusable() ? 1 : 0) : 0);
+        return false;
+    }
+
+    FocusIngredientRailStripSlot(NextSlot);
+    UE_LOG(LogTemp, Log, TEXT("[IngredientRail] Navigate %s: %s -> %s"),
+        bNavigateLeft ? TEXT("LEFT") : TEXT("RIGHT"),
+        *CurrentSlot->GetName(),
+        *NextSlot->GetName());
+    return true;
+}
+
+void UPUDishCustomizationWidget::SetInitialFocusForIngredientRail()
+{
+    if (IsDialogueVisible())
+    {
+        return;
+    }
+
+    UPUIngredientSlot* FirstSlot = nullptr;
+    ForEachIngredientRailStripSlot([&](UPUIngredientSlot* RailSlot)
+    {
+        if (FirstSlot || !IsValid(RailSlot) || !RailSlot->IsFocusable())
+        {
+            return;
+        }
+        FirstSlot = RailSlot;
+    });
+
+    if (!FirstSlot)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[IngredientRail] SetInitialFocusForIngredientRail — no focusable strip slots"));
+        return;
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(InitialFocusTimerHandle);
+        TWeakObjectPtr<UPUIngredientSlot> WeakSlot = FirstSlot;
+        World->GetTimerManager().SetTimer(
+            InitialFocusTimerHandle,
+            FTimerDelegate::CreateWeakLambda(this, [WeakSlot, this]()
+            {
+                if (WeakSlot.IsValid() && !IsDialogueVisible())
+                {
+                    FocusIngredientRailStripSlot(WeakSlot.Get());
+                }
+            }),
+            0.15f,
+            false);
+    }
+    else
+    {
+        FocusIngredientRailStripSlot(FirstSlot);
+    }
+}
+
 void UPUDishCustomizationWidget::SetupCookingSlotNavigation()
 {
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetupCookingSlotNavigation - Setting up navigation for cooking stage slots"));
@@ -6687,8 +7019,15 @@ void UPUDishCustomizationWidget::SetInitialFocusForCookingStage()
 {
     if (IsDialogueVisible())
     {
-        return; // Dialogue has priority - don't steal focus
+        return;
     }
+
+    if (IngredientRailSlot && IngredientRailSlot->GetVisibility() != ESlateVisibility::Collapsed)
+    {
+        SetInitialFocusForIngredientRail();
+        return;
+    }
+
     UE_LOG(LogTemp, Log, TEXT("🎮 UPUDishCustomizationWidget::SetInitialFocusForCookingStage - Setting initial focus for cooking stage"));
     
     SetIsFocusable(true);
