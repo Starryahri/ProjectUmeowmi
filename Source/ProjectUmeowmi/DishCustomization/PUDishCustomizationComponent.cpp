@@ -21,6 +21,7 @@
 #include "InputMappingContext.h"
 #include "Engine/GameViewportClient.h"
 #include "../UI/PUDishCustomizationWidget.h"
+#include "../UI/PUDialogueBox.h"
 #include "../UI/PUScorecardWidget.h"
 #include "../UI/PUVirtualCursorUserWidget.h"
 #include "../UI/PUPlatingWidget.h"
@@ -583,6 +584,7 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
             
             // Add to viewport with a lower Z-Order so it doesn't override the recipe book widget
             CustomizationWidget->AddToViewport(PUDishCustomizationViewportZOrder);
+            RelayerModalWidgetsAboveDishCustomization();
             //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::StartCustomization - Widget added to viewport successfully with Z-Order -100"));
             
             // Check if widget is visible
@@ -624,6 +626,14 @@ void UPUDishCustomizationComponent::StartCustomization(AProjectUmeowmiCharacter*
     if (UWorld* WorldForCapture = GetWorld())
     {
         WorldForCapture->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateUObject(this, &UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup));
+    }
+
+    if (UWorld* NotifyWorld = GetWorld())
+    {
+        if (UPUProjectUmeowmiGameInstance* GI = NotifyWorld->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+        {
+            GI->NotifyDishCustomizationStarted();
+        }
     }
     
     //UE_LOG(LogTemp,Display, TEXT("🎉 UPUDishCustomizationComponent::StartCustomization - CUSTOMIZATION STARTED SUCCESSFULLY"));
@@ -1544,7 +1554,43 @@ void UPUDishCustomizationComponent::NotifyVirtualCursorInteractVisual(bool bPres
 
 void UPUDishCustomizationComponent::BroadcastOnCustomizationEndedNextTick()
 {
+    if (UWorld* World = GetWorld())
+    {
+        if (UPUProjectUmeowmiGameInstance* GI = World->GetGameInstance<UPUProjectUmeowmiGameInstance>())
+        {
+            GI->NotifyDishCustomizationEnded();
+        }
+    }
+
     OnCustomizationEnded.Broadcast();
+}
+
+void UPUDishCustomizationComponent::RelayerModalWidgetsAboveDishCustomization()
+{
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    if (UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance()))
+    {
+        GI->RelayerPopupIfShowing();
+    }
+
+    if (APlayerController* PC = World->GetFirstPlayerController())
+    {
+        if (AProjectUmeowmiCharacter* Char = Cast<AProjectUmeowmiCharacter>(PC->GetPawn()))
+        {
+            if (UPUDialogueBox* DialogueBox = Char->GetDialogueBox())
+            {
+                if (DialogueBox->GetVisibility() == ESlateVisibility::Visible)
+                {
+                    DialogueBox->EnsureViewportLayer();
+                }
+            }
+        }
+    }
 }
 
 void UPUDishCustomizationComponent::OnCustomizationViewportDeferredSetup()
@@ -1952,6 +1998,7 @@ bool UPUDishCustomizationComponent::AdvanceCustomizationPipeline()
     const int32 Next = ActiveCustomizationPipelineIndex + 1;
     if (!CurrentDishData.CustomizationStages.IsValidIndex(Next))
     {
+        EndCustomization();
         return false;
     }
     ActiveCustomizationPipelineIndex = Next;
@@ -2232,6 +2279,7 @@ void UPUDishCustomizationComponent::TransitionToCookingStage(const FPUDishBase& 
             
             // Add to viewport first
             CookingWidget->AddToViewport(PUDishCustomizationViewportZOrder);
+            RelayerModalWidgetsAboveDishCustomization();
             
             // Get the cooking station location (this component's owner location)
             FVector CookingStationLocation = GetOwner()->GetActorLocation();
@@ -2646,6 +2694,7 @@ void UPUDishCustomizationComponent::TransitionToPlatingStage(const FPUDishBase& 
                 
                 // Add the widget to viewport
                 CustomizationWidget->AddToViewport(PUDishCustomizationViewportZOrder);
+                RelayerModalWidgetsAboveDishCustomization();
                 //UE_LOG(LogTemp,Display, TEXT("✅ UPUDishCustomizationComponent::TransitionToPlatingStage - Plating widget added to viewport"));
                 
                 // Create plating ingredient buttons

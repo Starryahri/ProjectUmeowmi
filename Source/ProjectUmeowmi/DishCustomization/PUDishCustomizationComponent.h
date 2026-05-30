@@ -102,7 +102,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Pipeline")
     void ResetCustomizationPipelineProgress();
 
-    /** Move to next stage; returns false if no pipeline or already past last stage. */
+    /** Move to next stage and refresh presentation. False if no pipeline; on last stage ends customization and returns false. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization|Pipeline")
     bool AdvanceCustomizationPipeline();
 
@@ -462,6 +462,9 @@ private:
     void NotifyVirtualCursorInteractVisual(bool bPressed);
     FVector2D GetVirtualCursorScreenPosition(APlayerController* PC) const;
     void OnCustomizationViewportDeferredSetup();
+
+    /** Keep dialogue/popup above the dish customization viewport layer when customization is active. */
+    void RelayerModalWidgetsAboveDishCustomization();
     /** Runs OnCustomizationEnded next tick so Blueprint ReceiveEndInteraction / delegate graphs cannot re-enter EndCustomization during synchronous teardown. */
     void BroadcastOnCustomizationEndedNextTick();
     void OnPreInputMouseButtonDown(const struct FPointerEvent& MouseEvent);  // Slate pre-input (before widgets consume)

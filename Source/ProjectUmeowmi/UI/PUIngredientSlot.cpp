@@ -1342,11 +1342,28 @@ bool UPUIngredientSlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDro
         if (UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget())
         {
             const FVector2D LocalPosition = InGeometry.AbsoluteToLocal(InDragDropEvent.GetScreenSpacePosition());
+            UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] NativeOnDrop on %s — instanceId=%d local=(%.1f, %.1f) shell=%s"),
+                *GetName(),
+                IngredientDragOp->IngredientInstance.InstanceID,
+                LocalPosition.X,
+                LocalPosition.Y,
+                *DishWidget->GetName());
             if (DishWidget->TryForwardPlatingDropToMountedStageModule(this, IngredientDragOp, LocalPosition))
             {
+                UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] NativeOnDrop handled successfully on %s"), *GetName());
                 return true;
             }
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] NativeOnDrop on %s — forward to stage module failed (see earlier [PlatingDrop] warnings)"),
+                *GetName());
         }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] NativeOnDrop on %s — no DishCustomizationWidget on slot"), *GetName());
+        }
+    }
+    else if (IsPlatingDishDropTarget() && !IngredientDragOp)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] NativeOnDrop on %s — not a UPUIngredientDragDropOperation"), *GetName());
     }
 
     if (IsIngredientRailInteractionBlockedByMinigame())
@@ -1541,6 +1558,21 @@ FReply UPUIngredientSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, c
     if (IsIngredientRailInteractionBlockedByMinigame())
     {
         return FReply::Handled();
+    }
+
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && !InMouseEvent.IsShiftDown())
+    {
+        const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+        if (DishWidget
+            && DishWidget->IsPlatingMinigameRailDragStepActive()
+            && Location == EPUIngredientSlotLocation::ActiveIngredientArea
+            && bDragEnabled
+            && bHasIngredient)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] MouseDown DetectDrag on %s instanceId=%d"),
+                *GetName(), IngredientInstance.InstanceID);
+            return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+        }
     }
 
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
@@ -2276,6 +2308,20 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         return FReply::Handled();
     }
 
+    const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
+    if (DishWidget
+        && DishWidget->IsPlatingMinigameRailDragStepActive()
+        && Location == EPUIngredientSlotLocation::ActiveIngredientArea
+        && bDragEnabled
+        && bHasIngredient
+        && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton
+        && !InMouseEvent.IsShiftDown())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Preview DetectDrag on %s instanceId=%d"),
+            *GetName(), IngredientInstance.InstanceID);
+        return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+    }
+
     //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Preview mouse button down (Drag enabled: %s, HasIngredient: %s, Button: %s)"), 
     //    bDragEnabled ? TEXT("TRUE") : TEXT("FALSE"), 
     //    bHasIngredient ? TEXT("TRUE") : TEXT("FALSE"),
@@ -2318,7 +2364,6 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     bool bShiftPressed = InMouseEvent.IsShiftDown();
 
     // Occupied strip: plain LMB opens pantry (swap); do not start DetectDrag — it would swallow the click.
-    const UPUDishCustomizationWidget* DishWidget = GetDishCustomizationWidget();
     const bool bPlatingDragActive = DishWidget && DishWidget->IsPlatingMinigameRailDragStepActive();
     const bool bOccupiedStripPantryClick =
         (Location == EPUIngredientSlotLocation::ActiveIngredientArea) && bHasIngredient && !bShiftPressed
@@ -2329,8 +2374,7 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - Starting drag detection for ingredient: %s (Location: %d)"), 
         //    *IngredientInstance.IngredientData.DisplayName.ToString(), (int32)Location);
         
-        // Start drag detection - this will call the Blueprint OnDragDetected event
-        // Use DetectDrag which will trigger OnDragDetected when the mouse moves
+        // Start drag detection — NativeOnDragDetected creates the operation when the mouse moves.
         FReply Reply = FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
         //UE_LOG(LogTemp,Display, TEXT("🎯 UPUIngredientSlot::NativeOnPreviewMouseButtonDown - DetectDrag called, Reply.IsEventHandled: %s"), 
         //    Reply.IsEventHandled() ? TEXT("TRUE") : TEXT("FALSE"));
@@ -2359,6 +2403,26 @@ FReply UPUIngredientSlot::NativeOnPreviewMouseButtonDown(const FGeometry& InGeom
     }
     
     return FReply::Unhandled();
+}
+
+void UPUIngredientSlot::NativeOnDragDetected(
+    const FGeometry& InGeometry,
+    const FPointerEvent& InMouseEvent,
+    UDragDropOperation*& OutOperation)
+{
+    Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
+
+    if (OutOperation != nullptr || !bDragEnabled || !bHasIngredient)
+    {
+        return;
+    }
+
+    if (UPUIngredientDragDropOperation* DragOperation = CreateIngredientDragDropOperation())
+    {
+        OutOperation = DragOperation;
+        UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] NativeOnDragDetected on %s — instanceId=%d location=%d"),
+            *GetName(), IngredientInstance.InstanceID, static_cast<int32>(Location));
+    }
 }
 
 UPUIngredientDragDropOperation* UPUIngredientSlot::CreateIngredientDragDropOperation() const

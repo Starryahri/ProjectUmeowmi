@@ -29,6 +29,20 @@ inline constexpr int32 PUDishVirtualCursorViewportZOrder = PUDishCustomizationVi
 inline constexpr int32 PUJournalViewportZOrderDuringDishCustomization = PUDishVirtualCursorViewportZOrder + 25;
 /** Radial menu when added directly to viewport — just above the virtual cursor. */
 inline constexpr int32 PURadialMenuViewportZOrder = PUDishVirtualCursorViewportZOrder + 20;
+/** Default popup Z for normal gameplay (no dish customization). */
+inline constexpr int32 PUPopupViewportZOrder = 1000;
+/** Dialogue during dish customization — above journal/cursor/dish panel. */
+inline constexpr int32 PUDialogueViewportZOrderDuringDishCustomization = PUJournalViewportZOrderDuringDishCustomization + 25;
+/** Popup during dish customization — above dialogue so tutorial modals stay on top. */
+inline constexpr int32 PUPopupViewportZOrderDuringDishCustomization = PUDialogueViewportZOrderDuringDishCustomization + 25;
+
+class UWorld;
+
+/** Viewport Z for dialogue: scoring stack Z normally, above dish customization when that UI is open. */
+PROJECTUMEOWMI_API int32 PUResolveDialogueViewportZOrder(const UWorld* World);
+
+/** Viewport Z for popups: default Z normally, above dish customization when that UI is open. */
+PROJECTUMEOWMI_API int32 PUResolvePopupViewportZOrder(const UWorld* World);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnScorecardClosed);
 

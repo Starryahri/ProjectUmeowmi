@@ -61,6 +61,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Preview")
     TSoftObjectPtr<UStaticMesh> DefaultDishMesh;
 
+    /** When false, BuildFromDishData is a no-op (no dish clone above the character). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Preview")
+    bool bEnableHeadPreview = false;
+
     /** When true, shows on-screen debug messages for dish preview (BuildFromDishData, ClearPreview, etc.). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dish Preview")
     bool bEnableDishPreviewDebug = false;

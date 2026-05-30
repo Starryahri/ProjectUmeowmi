@@ -117,6 +117,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dialogue")
     UWidget* GetFocusTarget() const;
 
+    /** Re-add to viewport at the Z-order for the current UI context (above dish customization when active). */
+    UFUNCTION(BlueprintCallable, Category = "Dialogue")
+    void EnsureViewportLayer();
+
     /** Skip mode: fast typewriter, no sound, auto-advance when single option. Toggle via SetSkipMode or Skip button. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dialogue|Skip")
     bool IsSkipMode() const { return bSkipMode; }

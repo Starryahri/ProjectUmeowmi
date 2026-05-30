@@ -7,6 +7,7 @@
 #include "DishCustomization/PUIngredientBase.h"
 #include "DishCustomization/PUDishBlueprintLibrary.h"
 #include "UI/PUPopupWidget.h"
+#include "UI/PUScorecardWidget.h"
 #include "DishCustomization/PUDishCustomizationComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
@@ -24,6 +25,39 @@
 #include "Components/Button.h"
 #include "UObject/UObjectGlobals.h"
 #include "Sound/SoundBase.h"
+#include "Components/AudioComponent.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogPUMusic, Log, All);
+
+namespace
+{
+	FString DescribeSound(const USoundBase* Sound)
+	{
+		if (!Sound)
+		{
+			return TEXT("NULL");
+		}
+		return FString::Printf(TEXT("%s (Duration=%.2fs)"), *Sound->GetName(), Sound->GetDuration());
+	}
+
+	void LogMusicComponentState(const TCHAR* Context, UAudioComponent* Component)
+	{
+		if (!Component)
+		{
+			UE_LOG(LogPUMusic, Log, TEXT("%s: component=NULL"), Context);
+			return;
+		}
+
+		const USoundBase* Sound = Component->GetSound();
+		UE_LOG(LogPUMusic, Log, TEXT("%s: Component=%s Sound=%s IsPlaying=%d IsActive=%d Volume=%.3f"),
+			Context,
+			*Component->GetName(),
+			Sound ? *Sound->GetName() : TEXT("NULL"),
+			Component->IsPlaying(),
+			Component->IsActive(),
+			Component->VolumeMultiplier);
+	}
+}
 
 UPUProjectUmeowmiGameInstance::UPUProjectUmeowmiGameInstance(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -78,6 +112,7 @@ void UPUProjectUmeowmiGameInstance::Shutdown()
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(LevelTransitionUIShowTimerHandle);
+		StopMusicVolumeFade();
 	}
 
 	// Unbind the delegate to prevent memory leaks
@@ -976,7 +1011,8 @@ void UPUProjectUmeowmiGameInstance::ShowPopupWithCallback(const FPopupData& Popu
 	CurrentPopupCallback = OnPopupClosed;
 
 	// Add to viewport first so widget hierarchy is built before we set focus
-	PopupWidget->AddToViewport(1000); // High z-order to appear on top
+	const int32 PopupZ = PUResolvePopupViewportZOrder(World);
+	PopupWidget->AddToViewport(PopupZ);
 
 	// Set popup data directly (now we have a proper C++ class!)
 	PopupWidget->SetPopupData(PopupData);
@@ -1179,6 +1215,360 @@ void UPUProjectUmeowmiGameInstance::NotifyJournalClosed()
 	NotifyPlayerQuestObjectiveOverlayVisibility();
 }
 
+void UPUProjectUmeowmiGameInstance::NotifyDishCustomizationStarted()
+{
+	UE_LOG(LogPUMusic, Log, TEXT("NotifyDishCustomizationStarted: GI=%s AutoSwitch=%d CustomizationSound=%s"),
+		*GetClass()->GetName(),
+		bAutoSwitchMusicForDishCustomization ? 1 : 0,
+		*DescribeSound(DishCustomizationMusicLoop));
+
+	OnDishCustomizationStartedEvent.Broadcast();
+	ApplyDishCustomizationMusicState(true);
+}
+
+void UPUProjectUmeowmiGameInstance::NotifyDishCustomizationEnded()
+{
+	UE_LOG(LogPUMusic, Log, TEXT("NotifyDishCustomizationEnded: GI=%s BackgroundSound=%s"),
+		*GetClass()->GetName(),
+		*DescribeSound(BackgroundMusicLoop));
+
+	OnDishCustomizationEndedEvent.Broadcast();
+	ApplyDishCustomizationMusicState(false);
+}
+
+float UPUProjectUmeowmiGameInstance::GetEffectiveMusicVolume() const
+{
+	if (MusicVolume > KINDA_SMALL_NUMBER)
+	{
+		return FMath::Clamp(MusicVolume, 0.f, 1.f);
+	}
+
+	UE_LOG(LogPUMusic, Warning, TEXT("MusicVolume is %.3f on %s — using 1.0. Set Music Volume on BP_LFCDGameInstance (Music category)."),
+		MusicVolume,
+		*GetClass()->GetName());
+	return 1.f;
+}
+
+UAudioComponent* UPUProjectUmeowmiGameInstance::GetOrCreateMusicComponent(TObjectPtr<UAudioComponent>& ComponentSlot, USoundBase* Sound)
+{
+	UWorld* World = GetWorld();
+	if (!Sound)
+	{
+		UE_LOG(LogPUMusic, Warning, TEXT("GetOrCreateMusicComponent: Sound is null (GI=%s)"), *GetClass()->GetName());
+		return nullptr;
+	}
+
+	if (!World)
+	{
+		UE_LOG(LogPUMusic, Warning, TEXT("GetOrCreateMusicComponent: GetWorld() is null — cannot play %s yet. Call StartBackgroundMusicIfConfigured from level BeginPlay or later."),
+			*Sound->GetName());
+		return nullptr;
+	}
+
+	if (!ComponentSlot || !IsValid(ComponentSlot))
+	{
+		UE_LOG(LogPUMusic, Log, TEXT("GetOrCreateMusicComponent: Spawning 2D audio for %s in world %s"),
+			*DescribeSound(Sound),
+			*World->GetName());
+
+		ComponentSlot = UGameplayStatics::SpawnSound2D(
+			World,
+			Sound,
+			0.f,
+			1.f,
+			0.f,
+			nullptr,
+			true,
+			false);
+
+		if (!ComponentSlot)
+		{
+			UE_LOG(LogPUMusic, Error, TEXT("GetOrCreateMusicComponent: SpawnSound2D failed for %s"), *Sound->GetName());
+			return nullptr;
+		}
+
+		ComponentSlot->bAutoDestroy = false;
+		ComponentSlot->Stop();
+		ComponentSlot->SetVolumeMultiplier(0.f);
+		LogMusicComponentState(TEXT("GetOrCreateMusicComponent: after spawn"), ComponentSlot);
+		return ComponentSlot.Get();
+	}
+
+	if (ComponentSlot->GetSound() != Sound)
+	{
+		UE_LOG(LogPUMusic, Log, TEXT("GetOrCreateMusicComponent: Updating sound on %s -> %s"),
+			ComponentSlot->GetSound() ? *ComponentSlot->GetSound()->GetName() : TEXT("NULL"),
+			*Sound->GetName());
+		ComponentSlot->SetSound(Sound);
+	}
+
+	LogMusicComponentState(TEXT("GetOrCreateMusicComponent: reusing"), ComponentSlot);
+	return ComponentSlot.Get();
+}
+
+void UPUProjectUmeowmiGameInstance::StopMusicVolumeFade()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(MusicVolumeFadeTimerHandle);
+	}
+
+	MusicFadeIncomingComponent.Reset();
+	MusicFadeOutgoingComponent.Reset();
+	MusicVolumeFadeDuration = 0.f;
+	MusicVolumeFadeElapsed = 0.f;
+}
+
+void UPUProjectUmeowmiGameInstance::TickMusicVolumeFade()
+{
+	UWorld* World = GetWorld();
+	if (!World || MusicVolumeFadeDuration <= KINDA_SMALL_NUMBER)
+	{
+		StopMusicVolumeFade();
+		return;
+	}
+
+	MusicVolumeFadeElapsed += World->GetDeltaSeconds();
+	const float Alpha = FMath::Clamp(MusicVolumeFadeElapsed / MusicVolumeFadeDuration, 0.f, 1.f);
+
+	if (UAudioComponent* Incoming = MusicFadeIncomingComponent.Get())
+	{
+		Incoming->SetVolumeMultiplier(FMath::Lerp(MusicFadeIncomingStartVolume, MusicFadeIncomingTargetVolume, Alpha));
+	}
+
+	if (UAudioComponent* Outgoing = MusicFadeOutgoingComponent.Get())
+	{
+		Outgoing->SetVolumeMultiplier(FMath::Lerp(MusicFadeOutgoingStartVolume, 0.f, Alpha));
+	}
+
+	if (Alpha >= 1.f)
+	{
+		if (UAudioComponent* Incoming = MusicFadeIncomingComponent.Get())
+		{
+			Incoming->SetVolumeMultiplier(MusicFadeIncomingTargetVolume);
+		}
+
+		if (UAudioComponent* Outgoing = MusicFadeOutgoingComponent.Get())
+		{
+			Outgoing->Stop();
+			Outgoing->SetVolumeMultiplier(0.f);
+		}
+
+		UE_LOG(LogPUMusic, Log, TEXT("TickMusicVolumeFade: Crossfade complete (target volume %.3f)"),
+			MusicFadeIncomingTargetVolume);
+		StopMusicVolumeFade();
+	}
+}
+
+void UPUProjectUmeowmiGameInstance::CrossfadeMusicComponent(UAudioComponent* TargetComponent, UAudioComponent* OutgoingComponent, float FadeSeconds)
+{
+	const float TargetVolume = GetEffectiveMusicVolume();
+
+	UE_LOG(LogPUMusic, Log, TEXT("CrossfadeMusicComponent: Target=%s Outgoing=%s FadeSeconds=%.2f TargetVolume=%.3f"),
+		TargetComponent ? *TargetComponent->GetName() : TEXT("NULL"),
+		OutgoingComponent ? *OutgoingComponent->GetName() : TEXT("NULL"),
+		FadeSeconds,
+		TargetVolume);
+
+	if (!TargetComponent)
+	{
+		StopMusicVolumeFade();
+
+		if (OutgoingComponent && OutgoingComponent->IsPlaying())
+		{
+			if (FadeSeconds <= KINDA_SMALL_NUMBER)
+			{
+				OutgoingComponent->Stop();
+			}
+			else
+			{
+				MusicFadeOutgoingComponent = OutgoingComponent;
+				MusicFadeOutgoingStartVolume = OutgoingComponent->VolumeMultiplier;
+				MusicFadeIncomingComponent.Reset();
+				MusicVolumeFadeDuration = FadeSeconds;
+				MusicVolumeFadeElapsed = 0.f;
+
+				if (UWorld* World = GetWorld())
+				{
+					World->GetTimerManager().SetTimer(
+						MusicVolumeFadeTimerHandle,
+						this,
+						&UPUProjectUmeowmiGameInstance::TickMusicVolumeFade,
+						0.016f,
+						true);
+				}
+			}
+		}
+		return;
+	}
+
+	StopMusicVolumeFade();
+
+	if (FadeSeconds <= KINDA_SMALL_NUMBER)
+	{
+		if (OutgoingComponent && OutgoingComponent != TargetComponent && OutgoingComponent->IsPlaying())
+		{
+			OutgoingComponent->Stop();
+		}
+
+		TargetComponent->SetVolumeMultiplier(TargetVolume);
+		TargetComponent->Play();
+		LogMusicComponentState(TEXT("CrossfadeMusicComponent: immediate"), TargetComponent);
+		return;
+	}
+
+	if (OutgoingComponent && OutgoingComponent != TargetComponent && OutgoingComponent->IsPlaying())
+	{
+		MusicFadeOutgoingComponent = OutgoingComponent;
+		MusicFadeOutgoingStartVolume = OutgoingComponent->VolumeMultiplier;
+	}
+	else if (OutgoingComponent && OutgoingComponent != TargetComponent)
+	{
+		OutgoingComponent->Stop();
+	}
+
+	TargetComponent->Stop();
+	TargetComponent->SetVolumeMultiplier(0.f);
+	TargetComponent->Play();
+
+	MusicFadeIncomingComponent = TargetComponent;
+	MusicFadeIncomingStartVolume = 0.f;
+	MusicFadeIncomingTargetVolume = TargetVolume;
+	MusicVolumeFadeDuration = FadeSeconds;
+	MusicVolumeFadeElapsed = 0.f;
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			MusicVolumeFadeTimerHandle,
+			this,
+			&UPUProjectUmeowmiGameInstance::TickMusicVolumeFade,
+			0.016f,
+			true);
+	}
+
+	LogMusicComponentState(TEXT("CrossfadeMusicComponent: crossfade started"), TargetComponent);
+}
+
+void UPUProjectUmeowmiGameInstance::ApplyDishCustomizationMusicState(bool bCustomizationActive)
+{
+	UE_LOG(LogPUMusic, Log, TEXT("ApplyDishCustomizationMusicState: Active=%d AutoSwitch=%d"),
+		bCustomizationActive ? 1 : 0,
+		bAutoSwitchMusicForDishCustomization ? 1 : 0);
+
+	if (!bAutoSwitchMusicForDishCustomization)
+	{
+		UE_LOG(LogPUMusic, Log, TEXT("ApplyDishCustomizationMusicState: Skipped — bAutoSwitchMusicForDishCustomization is false"));
+		return;
+	}
+
+	if (bCustomizationActive)
+	{
+		if (!DishCustomizationMusicLoop)
+		{
+			UE_LOG(LogPUMusic, Warning, TEXT("ApplyDishCustomizationMusicState: DishCustomizationMusicLoop is not set on %s"), *GetClass()->GetName());
+			return;
+		}
+
+		UAudioComponent* CustomizationComponent = GetOrCreateMusicComponent(DishCustomizationMusicAudioComponent, DishCustomizationMusicLoop);
+		CrossfadeMusicComponent(CustomizationComponent, BackgroundMusicAudioComponent, MusicCrossfadeSeconds);
+		return;
+	}
+
+	if (BackgroundMusicLoop)
+	{
+		UAudioComponent* BackgroundComponent = GetOrCreateMusicComponent(BackgroundMusicAudioComponent, BackgroundMusicLoop);
+		CrossfadeMusicComponent(BackgroundComponent, DishCustomizationMusicAudioComponent, MusicCrossfadeSeconds);
+	}
+	else if (DishCustomizationMusicAudioComponent && DishCustomizationMusicAudioComponent->IsPlaying())
+	{
+		UE_LOG(LogPUMusic, Log, TEXT("ApplyDishCustomizationMusicState: No BackgroundMusicLoop — fading out customization music"));
+		CrossfadeMusicComponent(nullptr, DishCustomizationMusicAudioComponent, MusicCrossfadeSeconds);
+	}
+	else
+	{
+		UE_LOG(LogPUMusic, Warning, TEXT("ApplyDishCustomizationMusicState: Ended but BackgroundMusicLoop is not set on %s"), *GetClass()->GetName());
+	}
+}
+
+void UPUProjectUmeowmiGameInstance::StartBackgroundMusicIfConfigured(bool bCrossfade)
+{
+	const float FadeSeconds = bCrossfade ? MusicCrossfadeSeconds : 0.f;
+
+	UE_LOG(LogPUMusic, Log, TEXT("StartBackgroundMusicIfConfigured: GI=%s World=%s BackgroundMusicLoop=%s bCrossfade=%d FadeSeconds=%.2f EffectiveVolume=%.3f"),
+		*GetClass()->GetName(),
+		GetWorld() ? *GetWorld()->GetName() : TEXT("NULL"),
+		*DescribeSound(BackgroundMusicLoop),
+		bCrossfade ? 1 : 0,
+		FadeSeconds,
+		GetEffectiveMusicVolume());
+
+	if (!BackgroundMusicLoop)
+	{
+		UE_LOG(LogPUMusic, Warning, TEXT("StartBackgroundMusicIfConfigured: BackgroundMusicLoop is NOT set on %s — assign it on BP_LFCDGameInstance (Music category)."), *GetClass()->GetName());
+		return;
+	}
+
+	UAudioComponent* BackgroundComponent = GetOrCreateMusicComponent(BackgroundMusicAudioComponent, BackgroundMusicLoop);
+	if (!BackgroundComponent)
+	{
+		UE_LOG(LogPUMusic, Error, TEXT("StartBackgroundMusicIfConfigured: Failed to create audio component for %s"), *BackgroundMusicLoop->GetName());
+		return;
+	}
+
+	CrossfadeMusicComponent(BackgroundComponent, DishCustomizationMusicAudioComponent, FadeSeconds);
+}
+
+void UPUProjectUmeowmiGameInstance::StopGameInstanceMusic(float FadeOutSeconds)
+{
+	const float FadeSeconds = FadeOutSeconds >= 0.f ? FadeOutSeconds : MusicCrossfadeSeconds;
+
+	StopMusicVolumeFade();
+
+	if (FadeSeconds <= KINDA_SMALL_NUMBER)
+	{
+		if (BackgroundMusicAudioComponent && BackgroundMusicAudioComponent->IsPlaying())
+		{
+			BackgroundMusicAudioComponent->Stop();
+		}
+
+		if (DishCustomizationMusicAudioComponent && DishCustomizationMusicAudioComponent->IsPlaying())
+		{
+			DishCustomizationMusicAudioComponent->Stop();
+		}
+		return;
+	}
+
+	UAudioComponent* Outgoing = nullptr;
+	if (DishCustomizationMusicAudioComponent && DishCustomizationMusicAudioComponent->IsPlaying())
+	{
+		Outgoing = DishCustomizationMusicAudioComponent;
+	}
+	else if (BackgroundMusicAudioComponent && BackgroundMusicAudioComponent->IsPlaying())
+	{
+		Outgoing = BackgroundMusicAudioComponent;
+	}
+
+	if (Outgoing)
+	{
+		MusicFadeOutgoingComponent = Outgoing;
+		MusicFadeOutgoingStartVolume = Outgoing->VolumeMultiplier;
+		MusicFadeIncomingComponent.Reset();
+		MusicVolumeFadeDuration = FadeSeconds;
+		MusicVolumeFadeElapsed = 0.f;
+
+		if (UWorld* World = GetWorld())
+		{
+			World->GetTimerManager().SetTimer(
+				MusicVolumeFadeTimerHandle,
+				this,
+				&UPUProjectUmeowmiGameInstance::TickMusicVolumeFade,
+				0.016f,
+				true);
+		}
+	}
+}
+
 UPUDishCustomizationComponent* UPUProjectUmeowmiGameInstance::GetActiveDishCustomizationComponent() const
 {
 	UWorld* World = GetWorld();
@@ -1202,6 +1592,20 @@ UPUDishCustomizationComponent* UPUProjectUmeowmiGameInstance::GetActiveDishCusto
 bool UPUProjectUmeowmiGameInstance::IsDishCustomizationActive() const
 {
 	return GetActiveDishCustomizationComponent() != nullptr;
+}
+
+void UPUProjectUmeowmiGameInstance::RelayerPopupIfShowing()
+{
+	if (!CurrentPopupWidget)
+	{
+		return;
+	}
+	const int32 PopupZ = PUResolvePopupViewportZOrder(GetWorld());
+	if (CurrentPopupWidget->IsInViewport())
+	{
+		CurrentPopupWidget->RemoveFromParent();
+	}
+	CurrentPopupWidget->AddToViewport(PopupZ);
 }
 
 void UPUProjectUmeowmiGameInstance::OnPopupWidgetClosed(FName ButtonID)

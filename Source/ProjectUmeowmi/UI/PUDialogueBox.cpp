@@ -80,6 +80,16 @@ void UPUDialogueBox::Update(UDlgContext* ActiveContext)
     Update_Implementation(ActiveContext);
 }
 
+void UPUDialogueBox::EnsureViewportLayer()
+{
+    const int32 DesiredZ = PUResolveDialogueViewportZOrder(GetWorld());
+    if (IsInViewport())
+    {
+        RemoveFromParent();
+    }
+    AddToViewport(DesiredZ);
+}
+
 void UPUDialogueBox::NativeConstruct()
 {
     Super::NativeConstruct();
@@ -94,10 +104,10 @@ void UPUDialogueBox::NativeConstruct()
         SkipButton->OnClicked.AddDynamic(this, &UPUDialogueBox::OnSkipButtonClicked);
     }
 
-    // Same layer as scoring dialogue (50001) so we stay above dish/scene overlays at 50000 if any are left in the viewport.
+    // Same layer as scoring dialogue (50001) unless dish customization is active — then paint above the dish panel.
     if (!IsInViewport())
     {
-        AddToViewport(PUScoringDialogueViewportZOrder);
+        EnsureViewportLayer();
     }
 
     // Initialize vignette intensity
@@ -168,10 +178,7 @@ void UPUDialogueBox::OpenVisualAndInputPipeline()
     SetVisibility(ESlateVisibility::Visible);
     SetIsFocusable(true);
 
-    if (!IsInViewport())
-    {
-        AddToViewport(PUScoringDialogueViewportZOrder);
-    }
+    EnsureViewportLayer();
 
     APlayerController* PC = GetOwningPlayer();
     if (!PC)
@@ -204,11 +211,6 @@ void UPUDialogueBox::OpenVisualAndInputPipeline()
 
             if (IsValid(this) && IsValid(PC) && IsValid(LocalPlayer))
             {
-                if (!IsInViewport())
-                {
-                    AddToViewport(PUScoringDialogueViewportZOrder);
-                }
-
                 if (TSharedPtr<SWidget> SlateWidget = GetCachedWidget(); SlateWidget.IsValid())
                 {
                     FSlateApplication::Get().SetKeyboardFocus(SlateWidget);

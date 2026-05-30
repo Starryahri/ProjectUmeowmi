@@ -1574,6 +1574,12 @@ void UPUDishCustomizationWidget::SetIngredientRailStripInteractionLocked(bool bL
         return;
     }
 
+    if (bPlatingMinigameRailDragStepActive)
+    {
+        ApplyPlatingMinigameRailDragInteractionState();
+        return;
+    }
+
     IngredientRailInteractionLockSnapshots.Reset();
     ForEachIngredientRailStripSlot([this, LockedStripSlot](UPUIngredientSlot* RailIngredientSlot)
     {
@@ -2232,20 +2238,19 @@ void UPUDishCustomizationWidget::AdvanceCustomizationAfterCookingMinigameComplet
         return;
     }
 
-    if (CustomizationComponent && CustomizationComponent->HasActiveCustomizationPipeline())
+    if (CustomizationComponent && CustomizationComponent->IsTearingDownCustomization())
     {
-        if (bPU_LogCookingAddIngredientTrace)
-        {
-            UE_LOG(LogTemp, Log, TEXT("[CookingMinigame] Cooking complete — already on last pipeline stage, not advancing"));
-        }
         return;
     }
 
-    if (bPU_LogCookingAddIngredientTrace)
+    if (!CustomizationComponent || !CustomizationComponent->HasActiveCustomizationPipeline())
     {
-        UE_LOG(LogTemp, Log, TEXT("[CookingMinigame] No customization pipeline — calling GoToNextStage"));
+        if (bPU_LogCookingAddIngredientTrace)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[CookingMinigame] No customization pipeline — calling GoToNextStage"));
+        }
+        GoToNextStage();
     }
-    GoToNextStage();
 }
 
 TSubclassOf<UPUIngredientSlot> UPUDishCustomizationWidget::GetResolvedIngredientSlotClass() const
@@ -2287,7 +2292,8 @@ bool UPUDishCustomizationWidget::IsIngredientRailSlotDraggableDuringPlatingMinig
 
 void UPUDishCustomizationWidget::ApplyPlatingMinigameRailDragInteractionState()
 {
-    ForEachIngredientRailStripSlot([this](UPUIngredientSlot* RailSlot)
+    int32 DraggableCount = 0;
+    ForEachIngredientRailStripSlot([this, &DraggableCount](UPUIngredientSlot* RailSlot)
     {
         if (!IsValid(RailSlot))
         {
@@ -2298,7 +2304,15 @@ void UPUDishCustomizationWidget::ApplyPlatingMinigameRailDragInteractionState()
         RailSlot->SetIsEnabled(bAllowDrag);
         RailSlot->SetIsFocusable(false);
         RailSlot->SetDragEnabled(bAllowDrag);
+        if (bAllowDrag)
+        {
+            ++DraggableCount;
+        }
     });
+
+    UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Rail drag interaction — %d draggable slot(s), stepActive=%d"),
+        DraggableCount,
+        bPlatingMinigameRailDragStepActive ? 1 : 0);
 }
 
 void UPUDishCustomizationWidget::BeginPlatingMinigameRailDragStep()
@@ -2310,6 +2324,7 @@ void UPUDishCustomizationWidget::BeginPlatingMinigameRailDragStep()
 
     bPlatingMinigameRailDragStepActive = true;
     ApplyPlatingMinigameRailDragInteractionState();
+    UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] Rail drag step began — drag filled rail slots onto PlatingDishDropTarget"));
 }
 
 void UPUDishCustomizationWidget::EndPlatingMinigameRailDragStep()
@@ -2367,6 +2382,7 @@ bool UPUDishCustomizationWidget::TryForwardPlatingDropToMountedStageModule(
         Cast<UPUPipelineStageMinigameModuleWidget>(MountedPipelineStageWidget.Get());
     if (!IsValid(MinigameModule))
     {
+        UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] TryForward failed — MountedPipelineStageWidget is not UPUPipelineStageMinigameModuleWidget"));
         return false;
     }
 

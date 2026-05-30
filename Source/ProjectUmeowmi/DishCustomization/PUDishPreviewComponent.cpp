@@ -25,6 +25,12 @@ void UPUDishPreviewComponent::SetDishMeshComponent(UStaticMeshComponent* InDishM
 
 void UPUDishPreviewComponent::BuildFromDishData(const FPUDishBase& DishData)
 {
+    if (!bEnableHeadPreview)
+    {
+        ClearPreview();
+        return;
+    }
+
     UE_LOG(LogDishPreview, Log, TEXT("BuildFromDishData - START (dish: %s, %d ingredients)"),
         *DishData.DishName.ToString(), DishData.IngredientInstances.Num());
     if (bEnableDishPreviewDebug && GEngine)

@@ -20,6 +20,7 @@ class UCanvasPanel;
 class UPUStripMinigameBehavior;
 class UPUStripMinigameProgressBarWidget;
 class UPUPlatingStripMinigameBehavior;
+class UPlatingDishDropZoneWidget;
 
 /** Runtime-spawned bowl images for one ingredient layer (2nd rail ingredient = layer 0, etc.). */
 USTRUCT()
@@ -111,9 +112,9 @@ public:
     UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Plating")
     TObjectPtr<UCanvasPanel> PlatingDishArea;
 
-    /** Optional full-area drop target over PlatingDishArea — name must be PlatingDishDropTarget. */
+    /** Optional designer-placed drop overlay (Border/Image/etc.) — name PlatingDishDropTarget. Not required; C++ spawns a transparent drop zone on PlatingDishArea when missing. */
     UPROPERTY(meta = (BindWidgetOptional), BlueprintReadOnly, Category = "Stage Minigame|Plating")
-    TObjectPtr<UPUIngredientSlot> PlatingDishDropTarget;
+    TObjectPtr<UWidget> PlatingDishDropTarget;
 
     /** Draw size for runtime-spawned plated ingredient slots on the dish canvas. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stage Minigame|Plating", meta = (ClampMin = "16"))
@@ -183,6 +184,17 @@ public:
         UPUIngredientSlot* DropTargetSlot,
         UPUIngredientDragDropOperation* DragOperation,
         const FVector2D& LocalPositionInDropTarget);
+
+    /** Drop using a position already in PlatingDishArea local space. */
+    bool TryHandlePlatingDropAtCanvasPosition(
+        UPUIngredientDragDropOperation* DragOperation,
+        const FVector2D& LocalPositionInCanvas);
+
+    /** Converts a screen-space drop to canvas coordinates and handles plating. */
+    bool TryAcceptPlatingDropFromScreenPosition(
+        UPUIngredientDragDropOperation* DragOperation,
+        const FVector2D& ScreenSpacePosition,
+        UWidget* DropTargetWidgetForConversion);
 
     /** Forwards to the active cooking behavior when present. */
     UFUNCTION(BlueprintCallable, Category = "Stage Minigame|Cooking")
@@ -374,6 +386,7 @@ private:
     void ClearSpawnedMarinationBowlImages();
 
     void ResolvePlatingDishAreaWidgets();
+    void EnsurePlatingDishDropZoneWidget();
     UPUIngredientSlot* SpawnPlatedIngredientOnDishArea(
         const FIngredientInstance& IngredientInstance,
         const FVector2D& LocalPositionInCanvas);
@@ -417,4 +430,30 @@ private:
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UPUIngredientSlot>> SpawnedPlatingDishSlots;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UPlatingDishDropZoneWidget> RuntimePlatingDishDropZone;
+};
+
+/** Transparent full-area drop catcher on PlatingDishArea — no WBP_IngredientSlot required. */
+UCLASS()
+class PROJECTUMEOWMI_API UPlatingDishDropZoneWidget : public UUserWidget
+{
+    GENERATED_BODY()
+
+public:
+    TWeakObjectPtr<UPUPipelineStageMinigameModuleWidget> OwnerModule;
+
+protected:
+    virtual void NativeConstruct() override;
+
+    virtual bool NativeOnDragOver(
+        const FGeometry& InGeometry,
+        const FDragDropEvent& InDragDropEvent,
+        UDragDropOperation* InOperation) override;
+
+    virtual bool NativeOnDrop(
+        const FGeometry& InGeometry,
+        const FDragDropEvent& InDragDropEvent,
+        UDragDropOperation* InOperation) override;
 };

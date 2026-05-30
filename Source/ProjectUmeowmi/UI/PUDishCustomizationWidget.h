@@ -131,7 +131,7 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool RefreshPipelineStagePresentation();
 
-    /** Calls AdvanceCustomizationPipeline on the component then RefreshPipelineStagePresentation. False if no pipeline or cannot advance. */
+    /** Calls AdvanceCustomizationPipeline on the component (includes RefreshPipelineStagePresentation). False if no pipeline; ends customization when already on the last stage. */
     UFUNCTION(BlueprintCallable, Category = "Dish Customization Widget|Pipeline Shell")
     bool AdvancePipelineStageAndRefreshPresentation();
 

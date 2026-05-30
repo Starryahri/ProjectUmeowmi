@@ -1,5 +1,6 @@
 #include "PUScorecardWidget.h"
 #include "PUAspectProfileWidget.h"
+#include "../PUProjectUmeowmiGameInstance.h"
 #include "../DishCustomization/PUDishBlueprintLibrary.h"
 #include "../DishCustomization/PUOrderBase.h"
 #include "../DishCustomization/PUDishBase.h"
@@ -47,6 +48,36 @@ namespace
 		}
 		return BrushMat;
 	}
+}
+
+int32 PUResolveDialogueViewportZOrder(const UWorld* World)
+{
+	if (World)
+	{
+		if (const UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance()))
+		{
+			if (GI->IsDishCustomizationActive())
+			{
+				return PUDialogueViewportZOrderDuringDishCustomization;
+			}
+		}
+	}
+	return PUScoringDialogueViewportZOrder;
+}
+
+int32 PUResolvePopupViewportZOrder(const UWorld* World)
+{
+	if (World)
+	{
+		if (const UPUProjectUmeowmiGameInstance* GI = Cast<UPUProjectUmeowmiGameInstance>(World->GetGameInstance()))
+		{
+			if (GI->IsDishCustomizationActive())
+			{
+				return PUPopupViewportZOrderDuringDishCustomization;
+			}
+		}
+	}
+	return PUPopupViewportZOrder;
 }
 
 UPUScorecardWidget::UPUScorecardWidget(const FObjectInitializer& ObjectInitializer)

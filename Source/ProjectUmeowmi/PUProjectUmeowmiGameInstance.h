@@ -15,6 +15,7 @@ class UPUPlayerSaveGame;
 class UUserWidget;
 class UPUPopupWidget;
 class USoundBase;
+class UAudioComponent;
 class UPUDishCustomizationComponent;
 
 /**
@@ -498,6 +499,9 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Popup Manager")
 	bool IsPopupShowing() const { return CurrentPopupWidget != nullptr; }
+
+	/** Re-add the active popup at the Z-order for the current UI context (above dish customization when active). */
+	void RelayerPopupIfShowing();
 	
 	/** Broadcast when any popup closes. Bind to this (e.g. from Event Construct) to react to popup button presses. Passes the ButtonID (e.g. "BACK", "NEXT"). */
 	UPROPERTY(BlueprintAssignable, Category = "Popup Manager|Events", meta = (DisplayName = "On Popup Closed"))
@@ -549,6 +553,52 @@ public:
 	/** True while any dish customization station has an active player session (same scan as popup/input restoration). */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Dish Customization")
 	bool IsDishCustomizationActive() const;
+
+	/** Broadcast when a dish customization session starts (UI shown). Bind to switch music or mute ambient tracks. */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDishCustomizationStartedEvent);
+	UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events", meta = (DisplayName = "On Dish Customization Started"))
+	FOnDishCustomizationStartedEvent OnDishCustomizationStartedEvent;
+
+	/** Broadcast when a dish customization session ends (after teardown, next tick). Bind to restore background music. */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDishCustomizationEndedEvent);
+	UPROPERTY(BlueprintAssignable, Category = "Dish Customization|Events", meta = (DisplayName = "On Dish Customization Ended"))
+	FOnDishCustomizationEndedEvent OnDishCustomizationEndedEvent;
+
+	/** Called by UPUDishCustomizationComponent when a session begins. */
+	UFUNCTION(BlueprintCallable, Category = "Dish Customization")
+	void NotifyDishCustomizationStarted();
+
+	/** Called by UPUDishCustomizationComponent when a session ends. */
+	UFUNCTION(BlueprintCallable, Category = "Dish Customization")
+	void NotifyDishCustomizationEnded();
+
+	/** Looped explore/diner background track. Leave empty if music is managed elsewhere in Blueprint. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Music")
+	TObjectPtr<USoundBase> BackgroundMusicLoop;
+
+	/** Looped track while customizing a dish. Leave empty if music is managed only via events. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Music")
+	TObjectPtr<USoundBase> DishCustomizationMusicLoop;
+
+	/** Target playback volume (0–1). If left at 0 in Blueprint, code uses 1.0 and logs a warning. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Music", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float MusicVolume = 1.0f;
+
+	/** Seconds to crossfade when switching music tracks (manual volume ramp — not engine FadeIn). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Music", meta = (ClampMin = "0.0"))
+	float MusicCrossfadeSeconds = 1.0f;
+
+	/** When music assets are set, switch automatically on customization start/end. Events always broadcast. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Music")
+	bool bAutoSwitchMusicForDishCustomization = true;
+
+	/** Start BackgroundMusicLoop if assigned (e.g. from level BeginPlay). */
+	UFUNCTION(BlueprintCallable, Category = "Music")
+	void StartBackgroundMusicIfConfigured(bool bCrossfade = true);
+
+	/** Stop music started through this Game Instance (-1 uses MusicCrossfadeSeconds for fade out). */
+	UFUNCTION(BlueprintCallable, Category = "Music")
+	void StopGameInstanceMusic(float FadeOutSeconds = -1.f);
 
 	/** Refreshes quest objective edge-arrow HUD visibility (dialogue, journal, dish customization). */
 	UFUNCTION(BlueprintCallable, Category = "Quest|HUD")
@@ -727,6 +777,28 @@ private:
 	 * Find and position player at spawn point
 	 */
 	void PositionPlayerAtSpawnPoint(const FName& SpawnPointTag);
+
+	UPROPERTY()
+	TObjectPtr<UAudioComponent> BackgroundMusicAudioComponent;
+
+	UPROPERTY()
+	TObjectPtr<UAudioComponent> DishCustomizationMusicAudioComponent;
+
+	void ApplyDishCustomizationMusicState(bool bCustomizationActive);
+	UAudioComponent* GetOrCreateMusicComponent(TObjectPtr<UAudioComponent>& ComponentSlot, USoundBase* Sound);
+	void CrossfadeMusicComponent(UAudioComponent* TargetComponent, UAudioComponent* OutgoingComponent, float FadeSeconds);
+	void StopMusicVolumeFade();
+	void TickMusicVolumeFade();
+	float GetEffectiveMusicVolume() const;
+
+	FTimerHandle MusicVolumeFadeTimerHandle;
+	TWeakObjectPtr<UAudioComponent> MusicFadeIncomingComponent;
+	TWeakObjectPtr<UAudioComponent> MusicFadeOutgoingComponent;
+	float MusicFadeIncomingStartVolume = 0.f;
+	float MusicFadeIncomingTargetVolume = 0.f;
+	float MusicFadeOutgoingStartVolume = 0.f;
+	float MusicVolumeFadeDuration = 0.f;
+	float MusicVolumeFadeElapsed = 0.f;
 
 };
 

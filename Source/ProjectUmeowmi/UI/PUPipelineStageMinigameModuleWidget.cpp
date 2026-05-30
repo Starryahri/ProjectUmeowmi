@@ -20,10 +20,13 @@
 #include "Components/OverlaySlot.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/CanvasPanel.h"
+#include "Components/Border.h"
 #include "Engine/Texture2D.h"
 
 namespace
 {
+    constexpr bool bPU_LogPlatingDropTrace = true;
+
     UImage* FindFoodImageDescendant(UWidget* Widget, const UPUStripMinigameProgressBarWidget* ProgressBarToSkip)
     {
         if (!Widget)
@@ -1060,16 +1063,33 @@ void UPUPipelineStageMinigameModuleWidget::SetStripMinigameActive(bool bActive, 
     if (IsValid(OwnerShell))
     {
         OwnerShell->ApplyStripMinigameFooterPresentation(bActive);
-        OwnerShell->SetIngredientRailStripInteractionLocked(bActive, ContextStripSlot);
-        if (bActive && IsValid(ContextStripSlot))
-        {
-            OwnerShell->NotifyMountedStageModuleOfStripSlotFocus(ContextStripSlot);
-        }
     }
+
+    const bool bSkipRailLockForPlating = bActive && IsValid(GetActivePlatingStripMinigameBehavior());
 
     if (IsValid(ActiveStripMinigameBehavior))
     {
         ActiveStripMinigameBehavior->HandleStripMinigameSessionChanged(bActive, ContextStripSlot);
+    }
+
+    if (IsValid(OwnerShell))
+    {
+        if (bActive)
+        {
+            if (!bSkipRailLockForPlating)
+            {
+                OwnerShell->SetIngredientRailStripInteractionLocked(bActive, ContextStripSlot);
+            }
+        }
+        else
+        {
+            OwnerShell->SetIngredientRailStripInteractionLocked(false, nullptr);
+        }
+
+        if (bActive && IsValid(ContextStripSlot))
+        {
+            OwnerShell->NotifyMountedStageModuleOfStripSlotFocus(ContextStripSlot);
+        }
     }
 
     SyncStripMinigameProgressBarBinding();
@@ -1508,27 +1528,138 @@ void UPUPipelineStageMinigameModuleWidget::ResolvePlatingDishAreaWidgets()
         if (UWidget* Found = WidgetTree->FindWidget(DishAreaName))
         {
             PlatingDishArea = Cast<UCanvasPanel>(Found);
+            if (!PlatingDishArea && bPU_LogPlatingDropTrace)
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("[PlatingDrop] Found widget named PlatingDishArea (%s) but it is NOT a Canvas Panel"),
+                    *Found->GetClass()->GetName());
+            }
         }
     }
 
     if (!PlatingDishDropTarget && WidgetTree)
     {
         static const FName DropTargetName(TEXT("PlatingDishDropTarget"));
-        if (UWidget* Found = WidgetTree->FindWidget(DropTargetName))
+        PlatingDishDropTarget = WidgetTree->FindWidget(DropTargetName);
+    }
+
+    if (UPUIngredientSlot* LegacyIngredientDropTarget = Cast<UPUIngredientSlot>(PlatingDishDropTarget.Get()))
+    {
+        LegacyIngredientDropTarget->SetPlatingDishDropTarget(true);
+        LegacyIngredientDropTarget->SetDragEnabled(false);
+        if (IsValid(OwnerShell))
         {
-            PlatingDishDropTarget = Cast<UPUIngredientSlot>(Found);
+            LegacyIngredientDropTarget->SetDishCustomizationWidget(OwnerShell);
         }
     }
 
-    if (IsValid(PlatingDishDropTarget))
+    if (bPU_LogPlatingDropTrace)
     {
-        PlatingDishDropTarget->SetPlatingDishDropTarget(true);
-        PlatingDishDropTarget->SetDragEnabled(false);
-        if (IsValid(OwnerShell))
+        UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] Resolved PlatingDishArea=%s dropTarget=%s runtimeZone=%s"),
+            IsValid(PlatingDishArea) ? *PlatingDishArea->GetName() : TEXT("NULL"),
+            IsValid(PlatingDishDropTarget) ? *PlatingDishDropTarget->GetName() : TEXT("(none — C++ drop zone)"),
+            IsValid(RuntimePlatingDishDropZone) ? *RuntimePlatingDishDropZone->GetName() : TEXT("pending"));
+    }
+
+    if (!IsValid(PlatingDishArea) && bPU_LogPlatingDropTrace)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] PlatingDishArea canvas not found — UMG widget must be named PlatingDishArea"));
+    }
+
+    EnsurePlatingDishDropZoneWidget();
+}
+
+void UPUPipelineStageMinigameModuleWidget::EnsurePlatingDishDropZoneWidget()
+{
+    if (!IsValid(PlatingDishArea))
+    {
+        return;
+    }
+
+    if (IsValid(RuntimePlatingDishDropZone) && RuntimePlatingDishDropZone->GetParent() == PlatingDishArea)
+    {
+        return;
+    }
+
+    RuntimePlatingDishDropZone = CreateWidget<UPlatingDishDropZoneWidget>(this, UPlatingDishDropZoneWidget::StaticClass());
+    if (!IsValid(RuntimePlatingDishDropZone))
+    {
+        return;
+    }
+
+    RuntimePlatingDishDropZone->OwnerModule = this;
+    RuntimePlatingDishDropZone->SetVisibility(ESlateVisibility::Visible);
+
+    if (UCanvasPanelSlot* CanvasSlot = PlatingDishArea->AddChildToCanvas(RuntimePlatingDishDropZone))
+    {
+        CanvasSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+        CanvasSlot->SetOffsets(FMargin(0.f));
+        CanvasSlot->SetZOrder(0);
+        if (PlatingDishArea->GetChildrenCount() > 1)
         {
-            PlatingDishDropTarget->SetDishCustomizationWidget(OwnerShell);
+            const int32 DropZoneIndex = PlatingDishArea->GetChildIndex(RuntimePlatingDishDropZone);
+            PlatingDishArea->ShiftChild(DropZoneIndex, 0);
         }
     }
+
+    if (bPU_LogPlatingDropTrace)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] Spawned transparent drop zone on %s (no WBP_IngredientSlot required)"),
+            *PlatingDishArea->GetName());
+    }
+}
+
+void UPlatingDishDropZoneWidget::NativeConstruct()
+{
+    Super::NativeConstruct();
+
+    if (WidgetTree && !WidgetTree->RootWidget)
+    {
+        UBorder* RootBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PlatingDropZoneRoot"));
+        if (RootBorder)
+        {
+            RootBorder->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.f));
+            WidgetTree->RootWidget = RootBorder;
+        }
+    }
+}
+
+bool UPlatingDishDropZoneWidget::NativeOnDragOver(
+    const FGeometry& InGeometry,
+    const FDragDropEvent& InDragDropEvent,
+    UDragDropOperation* InOperation)
+{
+    if (!Cast<UPUIngredientDragDropOperation>(InOperation))
+    {
+        return false;
+    }
+
+    UPUPipelineStageMinigameModuleWidget* Module = OwnerModule.Get();
+    return IsValid(Module) && Module->IsStripMinigameActive() && IsValid(Module->GetActivePlatingStripMinigameBehavior());
+}
+
+bool UPlatingDishDropZoneWidget::NativeOnDrop(
+    const FGeometry& InGeometry,
+    const FDragDropEvent& InDragDropEvent,
+    UDragDropOperation* InOperation)
+{
+    UPUPipelineStageMinigameModuleWidget* Module = OwnerModule.Get();
+    UPUIngredientDragDropOperation* IngredientDragOp = Cast<UPUIngredientDragDropOperation>(InOperation);
+    if (!IsValid(Module) || !IngredientDragOp)
+    {
+        return false;
+    }
+
+    if (bPU_LogPlatingDropTrace)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] Drop zone NativeOnDrop — instanceId=%d"),
+            IngredientDragOp->IngredientInstance.InstanceID);
+    }
+
+    return Module->TryAcceptPlatingDropFromScreenPosition(
+        IngredientDragOp,
+        InDragDropEvent.GetScreenSpacePosition(),
+        this);
 }
 
 FVector2D UPUPipelineStageMinigameModuleWidget::ComputePlatingLocalPositionInCanvas(
@@ -1558,6 +1689,12 @@ UPUIngredientSlot* UPUPipelineStageMinigameModuleWidget::SpawnPlatedIngredientOn
 {
     if (!IsValid(PlatingDishArea) || !IsValid(OwnerShell))
     {
+        if (bPU_LogPlatingDropTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] SpawnPlatedIngredientOnDishArea failed — PlatingDishArea=%s OwnerShell=%s"),
+                IsValid(PlatingDishArea) ? TEXT("ok") : TEXT("NULL"),
+                IsValid(OwnerShell) ? TEXT("ok") : TEXT("NULL"));
+        }
         return nullptr;
     }
 
@@ -1588,9 +1725,20 @@ UPUIngredientSlot* UPUPipelineStageMinigameModuleWidget::SpawnPlatedIngredientOn
         CanvasSlot->SetAutoSize(false);
         CanvasSlot->SetSize(FVector2D(DrawSize, DrawSize));
         CanvasSlot->SetPosition(LocalPositionInCanvas);
+        CanvasSlot->SetZOrder(10);
     }
 
     SpawnedPlatingDishSlots.Add(NewSlot);
+
+    if (bPU_LogPlatingDropTrace)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] Spawned arrangement slot %s for instance %d at canvas (%.1f, %.1f) — drag enabled"),
+            *NewSlot->GetName(),
+            IngredientInstance.InstanceID,
+            LocalPositionInCanvas.X,
+            LocalPositionInCanvas.Y);
+    }
+
     return NewSlot;
 }
 
@@ -1617,14 +1765,15 @@ bool UPUPipelineStageMinigameModuleWidget::TryHandlePlatingDropOnDishArea(
     UPUIngredientDragDropOperation* DragOperation,
     const FVector2D& LocalPositionInDropTarget)
 {
-    if (!bStripMinigameActive || !IsValid(DragOperation) || !GetActivePlatingStripMinigameBehavior())
+    if (bPU_LogPlatingDropTrace)
     {
-        return false;
-    }
-
-    if (!IsValid(DropTargetSlot) || !DropTargetSlot->IsPlatingDishDropTarget())
-    {
-        return false;
+        UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] TryHandlePlatingDropOnDishArea — target=%s minigameActive=%d behavior=%s instanceId=%d local=(%.1f, %.1f)"),
+            IsValid(DropTargetSlot) ? *DropTargetSlot->GetName() : TEXT("NULL"),
+            bStripMinigameActive ? 1 : 0,
+            GetActivePlatingStripMinigameBehavior() ? TEXT("ok") : TEXT("NULL"),
+            IsValid(DragOperation) ? DragOperation->IngredientInstance.InstanceID : 0,
+            LocalPositionInDropTarget.X,
+            LocalPositionInDropTarget.Y);
     }
 
     if (!IsValid(PlatingDishArea))
@@ -1632,8 +1781,12 @@ bool UPUPipelineStageMinigameModuleWidget::TryHandlePlatingDropOnDishArea(
         ResolvePlatingDishAreaWidgets();
     }
 
-    if (!IsValid(PlatingDishArea) || !IsValid(OwnerShell))
+    if (!IsValid(PlatingDishArea))
     {
+        if (bPU_LogPlatingDropTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Rejected — missing PlatingDishArea canvas"));
+        }
         return false;
     }
 
@@ -1642,12 +1795,78 @@ bool UPUPipelineStageMinigameModuleWidget::TryHandlePlatingDropOnDishArea(
         DropTargetSlot,
         LocalPositionInDropTarget);
 
+    return TryHandlePlatingDropAtCanvasPosition(DragOperation, CanvasPosition);
+}
+
+bool UPUPipelineStageMinigameModuleWidget::TryAcceptPlatingDropFromScreenPosition(
+    UPUIngredientDragDropOperation* DragOperation,
+    const FVector2D& ScreenSpacePosition,
+    UWidget* DropTargetWidgetForConversion)
+{
+    ResolvePlatingDishAreaWidgets();
+
+    if (!IsValid(PlatingDishArea) || !IsValid(DropTargetWidgetForConversion))
+    {
+        return false;
+    }
+
+    const FVector2D LocalInTarget = DropTargetWidgetForConversion->GetCachedGeometry().AbsoluteToLocal(ScreenSpacePosition);
+    const FVector2D CanvasPosition = ComputePlatingLocalPositionInCanvas(
+        PlatingDishArea.Get(),
+        DropTargetWidgetForConversion,
+        LocalInTarget);
+
+    if (bPU_LogPlatingDropTrace)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] AcceptPlatingDrop canvas=(%.1f, %.1f) instanceId=%d"),
+            CanvasPosition.X,
+            CanvasPosition.Y,
+            IsValid(DragOperation) ? DragOperation->IngredientInstance.InstanceID : 0);
+    }
+
+    return TryHandlePlatingDropAtCanvasPosition(DragOperation, CanvasPosition);
+}
+
+bool UPUPipelineStageMinigameModuleWidget::TryHandlePlatingDropAtCanvasPosition(
+    UPUIngredientDragDropOperation* DragOperation,
+    const FVector2D& LocalPositionInCanvas)
+{
+    if (!bStripMinigameActive || !IsValid(DragOperation) || !GetActivePlatingStripMinigameBehavior())
+    {
+        if (bPU_LogPlatingDropTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Rejected — start the plating minigame (Y) before dragging from the rail"));
+        }
+        return false;
+    }
+
+    if (!IsValid(PlatingDishArea) || !IsValid(OwnerShell))
+    {
+        ResolvePlatingDishAreaWidgets();
+    }
+
+    if (!IsValid(PlatingDishArea) || !IsValid(OwnerShell))
+    {
+        if (bPU_LogPlatingDropTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Rejected — missing PlatingDishArea canvas or OwnerShell"));
+        }
+        return false;
+    }
+
+    const FVector2D CanvasPosition = LocalPositionInCanvas;
+
     const int32 DraggedInstanceId = DragOperation->IngredientInstance.InstanceID;
     for (UPUIngredientSlot* ArrangementSlot : SpawnedPlatingDishSlots)
     {
         if (IsValid(ArrangementSlot)
             && ArrangementSlot->GetIngredientInstance().InstanceID == DraggedInstanceId)
         {
+            if (bPU_LogPlatingDropTrace)
+            {
+                UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] Rearranged existing plated slot instance %d to (%.1f, %.1f)"),
+                    DraggedInstanceId, CanvasPosition.X, CanvasPosition.Y);
+            }
             return TryMovePlatedIngredientOnDishArea(ArrangementSlot, CanvasPosition);
         }
     }
@@ -1655,21 +1874,42 @@ bool UPUPipelineStageMinigameModuleWidget::TryHandlePlatingDropOnDishArea(
     FIngredientInstance IngredientToPlace = DragOperation->IngredientInstance;
     if (IngredientToPlace.InstanceID == 0 || IngredientToPlace.Quantity <= 0)
     {
+        if (bPU_LogPlatingDropTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Rejected — invalid dragged ingredient (instanceId=%d qty=%d)"),
+                IngredientToPlace.InstanceID, IngredientToPlace.Quantity);
+        }
         return false;
     }
 
     UPUIngredientSlot* SourceRailSlot = OwnerShell->FindIngredientRailStripSlotByInstanceId(IngredientToPlace.InstanceID);
     if (!IsValid(SourceRailSlot))
     {
+        if (bPU_LogPlatingDropTrace)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Rejected — no rail slot found for instance %d (drag must start from ingredient rail)"),
+                IngredientToPlace.InstanceID);
+        }
         return false;
     }
 
     if (UPUIngredientSlot* SpawnedSlot = SpawnPlatedIngredientOnDishArea(IngredientToPlace, CanvasPosition))
     {
         OwnerShell->NotifyPlatingIngredientMovedFromRailToDish(SourceRailSlot, SpawnedSlot);
+        if (bPU_LogPlatingDropTrace)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[PlatingDrop] Success — moved %s from rail to dish at canvas (%.1f, %.1f)"),
+                *IngredientToPlace.IngredientData.DisplayName.ToString(),
+                CanvasPosition.X,
+                CanvasPosition.Y);
+        }
         return true;
     }
 
+    if (bPU_LogPlatingDropTrace)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[PlatingDrop] Failed to spawn arrangement slot on canvas"));
+    }
     return false;
 }
 

@@ -26,12 +26,20 @@ void UPUPlatingStripMinigameBehavior::HandleStripMinigameSessionChanged_Implemen
     UPUDishCustomizationWidget* Shell = OwnerModule->OwnerShell;
     if (bActive)
     {
+        if (bPU_LogPlatingMinigameProgress)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[PlatingMinigame] Session started — pantry locked, rail drag enabled"));
+        }
         Shell->SetStripMinigameMainPantrySuppressed(true);
         Shell->BeginPlatingMinigameRailDragStep();
         OwnerModule->ClearPlatingDishAreaVisuals();
     }
     else
     {
+        if (bPU_LogPlatingMinigameProgress)
+        {
+            UE_LOG(LogTemp, Log, TEXT("[PlatingMinigame] Session ended"));
+        }
         Shell->SetStripMinigameMainPantrySuppressed(false);
         Shell->EndPlatingMinigameRailDragStep();
         OwnerModule->ClearPlatingDishAreaVisuals();
