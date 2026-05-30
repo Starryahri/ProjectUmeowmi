@@ -512,7 +512,7 @@ FReply UPUDishCustomizationWidget::NativeOnPreviewKeyDown(const FGeometry& InGeo
         return FReply::Handled();
     }
     if (IsStripMinigameLockingIngredientRail()
-        && (Key == EKeys::X || Key == EKeys::Gamepad_FaceButton_Left))
+        && (Key == EKeys::BackSpace || Key == EKeys::Gamepad_FaceButton_Left))
     {
         if (UPUIngredientSlot* LockedStrip = GetLockedIngredientRailStripSlotForMinigame())
         {
@@ -522,7 +522,7 @@ FReply UPUDishCustomizationWidget::NativeOnPreviewKeyDown(const FGeometry& InGeo
             }
         }
     }
-    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::X || Key == EKeys::Gamepad_FaceButton_Left))
+    if (bPU_LogStageMinigameToggleTrace && (Key == EKeys::F || Key == EKeys::BackSpace || Key == EKeys::Gamepad_FaceButton_Left))
     {
         // Diagnostic only — toggling happens in `UPUIngredientSlot::NativeOnPreviewKeyDown` to avoid duplicate Execute on one key press.
         UPUIngredientSlot* FocusSlot = PU_FindIngredientStripSlotUnderKeyboardFocus(this);

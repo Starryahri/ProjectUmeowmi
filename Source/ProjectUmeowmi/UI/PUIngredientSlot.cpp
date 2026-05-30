@@ -46,7 +46,7 @@ UPUIngredientSlot::UPUIngredientSlot(const FObjectInitializer& ObjectInitializer
     , bDragEnabled(true)  // Enable drag by default for testing
 {
     StageMinigameToggleKeys.Add(EKeys::Gamepad_FaceButton_Left);
-    StageMinigameToggleKeys.Add(EKeys::X);
+    StageMinigameToggleKeys.Add(EKeys::F);
 }
 
 void UPUIngredientSlot::NativeConstruct()

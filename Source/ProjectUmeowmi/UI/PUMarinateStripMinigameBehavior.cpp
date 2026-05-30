@@ -226,7 +226,7 @@ bool UPUMarinateStripMinigameBehavior::IngredientHasMarinatedPreparation(const F
 
 bool UPUMarinateStripMinigameBehavior::IsMarinateMixKey(FKey Key)
 {
-    return Key == EKeys::P || Key == EKeys::Gamepad_FaceButton_Bottom;
+    return Key == EKeys::F || Key == EKeys::Gamepad_FaceButton_Bottom;
 }
 
 void UPUMarinateStripMinigameBehavior::DisconnectMarinateDelegates(UObject* ProgressBarSubscriber)

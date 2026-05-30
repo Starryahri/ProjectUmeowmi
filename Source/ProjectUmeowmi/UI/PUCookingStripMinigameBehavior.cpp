@@ -880,7 +880,7 @@ bool UPUCookingStripMinigameBehavior::IngredientHasCookedPreparation(const FIngr
 
 bool UPUCookingStripMinigameBehavior::IsCookStrikeKey(FKey Key)
 {
-    return Key == EKeys::P || Key == EKeys::Gamepad_FaceButton_Bottom;
+    return Key == EKeys::F || Key == EKeys::Gamepad_FaceButton_Bottom;
 }
 
 bool UPUCookingStripMinigameBehavior::IsConfirmStepKey(FKey Key)

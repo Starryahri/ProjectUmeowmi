@@ -935,12 +935,12 @@ void UPUDishCustomizationComponent::BindCustomizationControllerFaceButtons(APlay
         return;
     }
 
-    // Schema: Y (FaceButton_Top) = slot activate, X (FaceButton_Left) = strip minigame toggle.
+    // Schema: Y (FaceButton_Top) = slot activate, F / FaceButton_Left = strip minigame toggle (start).
     InputComponent->BindKey(EKeys::Gamepad_FaceButton_Top, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerSlotActivate);
     InputComponent->BindKey(EKeys::Gamepad_FaceButton_Left, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerMinigameToggle);
 #if WITH_EDITOR
     InputComponent->BindKey(EKeys::Y, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerSlotActivate);
-    InputComponent->BindKey(EKeys::X, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerMinigameToggle);
+    InputComponent->BindKey(EKeys::F, EInputEvent::IE_Pressed, this, &UPUDishCustomizationComponent::HandleControllerMinigameToggle);
 #endif
     bCustomizationControllerFaceButtonsBound = true;
 }
